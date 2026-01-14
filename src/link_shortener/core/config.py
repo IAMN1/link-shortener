@@ -26,6 +26,7 @@ class BaseConfig:
 
     # Database settings
     DATABASE_URL = os.environ.get('DATABASE_URL') or 'sqlite:///dev.db'
+    
     # TODO add redis
 
 
@@ -42,7 +43,6 @@ class TestConfig:
 class ProductionConfig(BaseConfig):
     DEBUG = False
 
-    SECRETS_KEY = os.environ['SECRET_KEY']
-    
+    SECRETS_KEY = os.environ['SECRET_KEY']    
     # TODO add database
 
