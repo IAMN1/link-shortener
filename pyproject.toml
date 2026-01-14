@@ -8,6 +8,7 @@ dependencies = [
     "flask>=3.1.2",
     "flask-cors>=6.0.2",
     "python-dotenv>=1.2.1",
+    "sqlalchemy[asyncio]>=2.0.45",
     "validators>=0.35.0",
 ]
 
