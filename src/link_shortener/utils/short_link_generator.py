@@ -1,110 +1,117 @@
 
-from datetime import datetime
 import hashlib
 import secrets
 import string
+from typing import Optional
 
 BASE_62_ALPHABET = string.ascii_lowercase + string.ascii_uppercase + string.digits
 ALPHABET_LENGTH = len(BASE_62_ALPHABET)
 
 
 
-class ShortCodeGenerator():
+class HashBasedGenerator():
     """
-    Класс генератор кодов по гибридной схеме
+    Генератор на основе хеширования URL
+    - Один Url = один код
+    - Криптографически безопасный
+    - Поддерживает дедупликацию
     """
 
-    def __init__(self, id_part_length=3, random_part_length=4):
-        self.id_part_length = id_part_length
-        self.random_part_length = random_part_length
-        self.total_length = id_part_length + random_part_length
+    def __init__(self, code_length=7, pepper: Optional[str]=None):
+        """
+        Конструктов класса с инициализацией полей
+        Args:
+            code_length (int, optional): Длинна короткого кода. Defaults to 7.
+            TODO Позже добавить возможность менять длинну (6-8 символов)
+            pepper (Optional[str], optional): Секретный ключь для усиления безопасности. Defaults to None.
+        """
+        self.code_length = code_length
+        self.pepper = pepper or secrets.token_hex(32)
     
+
+    def generate(self, normalized_original_url: str) -> str:
+        """
+        Генерация кода на основе хеша URL
+
+        Args:
+            normalized_original_url (str): нормализированный оригинальный URL
+
+        Returns:
+            str: короткий код фиксированной длинны
+        """
+
+        # 1. вычисление хэша с перцем
+        url_hash = self._calculate_hash(normalized_original_url)
+
+        # 2. конвертация в base62
+        result = self._hash_to_base62(url_hash)
+        return result
+    
+
+    def _calculate_hash(self, normalized_original_url) -> bytes:
+        """
+        Вычисление хэша URL с использованием перца
+
+        Args:
+            normalized_original_url (_type_): нормализированный оригинальный URL
+
+        Returns:
+            bytes: Хэш оригинального URL
+        """
+        data = f'{normalized_original_url}:{self.pepper}'.encode('utf-8')
+        return hashlib.blake2b(data, digest_size=32).digest()
+    
+    def _hash_to_base62(self, hash_url: bytes) -> str:
+        """
+        Конвертация хэша в base62 строку
+
+        Args:
+            hash_url (bytes): Хэш URL
+
+        Returns:
+            str: короткий код ссылки
+        """
+        
+        # Берет первые N байт для нужной длинны
+        bytes_needed = (self.code_length * 6 + 7) // 8 # окрегдение вверх
+        truncated_hash = hash_url[:bytes_needed]
+
+        # конвертация в число
+        num = int.from_bytes(truncated_hash, 'big')
+
+        # Кодирование в base62
+        if num == 0:
+            return BASE_62_ALPHABET[0] * self.code_length
+
+        encoded = []
+        for i in range(self.code_length):
+            if num > 0:
+                num, remainder = divmod(num, ALPHABET_LENGTH)
+                encoded.append(BASE_62_ALPHABET[remainder])
+            else:
+                encoded.append(BASE_62_ALPHABET[0])
+        
+        return ''.join(reversed(encoded))
+
     
     @staticmethod
-    def _base62_encode(num: int) -> str:
+    def calculate_entropy(code_length: int) -> tuple:
         """
-        Кодирование числа в base62
+        Расчет энтропии для оценки безопасности
 
         Args:
-            num (int): число для кодирования
+            code_length (int): длина короткого кода
 
         Returns:
-            str: строка base62
+            tuple: энтропия в битах, количство вариантов 
         """
-        if num == 0:
-            return BASE_62_ALPHABET[0]
-        
-        encoded = []
-        while num > 0:
-            num, remainder = divmod(num, ALPHABET_LENGTH)
-            encoded.append(BASE_62_ALPHABET[remainder])
-
-        return ''.join(reversed(encoded))
+        import math
+        bits = math.log2(62 ** code_length)
+        variants = code_length * (62 ** code_length)
+        return bits, variants
     
-    def _generate_fallback(self, record_id: int, existing_codes: set) -> str:
-        """
-        Резервный метод генерации кода
-
-        Args:
-            record_id (int): ID записи в БД
-            existing_codes (set): Множество существующих кодов
-              для проверки коллизий 
-
-        Raises:
-            ValueError: Ошибка при достижении лимита попыток при создании кода
-
-        Returns:
-            str: сгенерированный код
-        """
-
-        timestamp = int(datetime.utcnow().timestamp())
-        data = f"{record_id}:{timestamp}:{secrets.token_hex(4)}"
-        hash_bytes = hashlib.sha256(data.encode()).digest
-
-        hash_num = int.from_bytes(hash_bytes[:4], 'big')
-        hash_part = self._base62_encode(hash_num).zfill(6)[:6]
-
-        if hash_part not in existing_codes:
-            return hash_part[:self.total_length]
-        
-        raise ValueError("Не удалось сгенерировать уникальный код после всех попыток!")
-
-    
-    def generate(self, record_id: int, existing_codes=None):
-        """
-        Основной метод генерации кода
-
-        Args:
-            record_id (int): ID записи в БД
-            existing_codes (set or None): Множество существующих кодов
-              для проверки коллизий. Defaults to None.
-
-        Returns:
-            _type_: _description_
-        """
-
-        if existing_codes is None:
-            existing_codes = set()
-        
-        # первые 3 символа из base62 от ID
-        id_part = self._base62_encode(record_id).zfill(self.id_part_length)[-self.id_part_length:]
-
-        # 4 случайных символа
-        # пытаемся сгенерировать за max_attempts попыток
-        max_attempts = 10
-        for attempt in range(max_attempts):
-            random_part = ''.join(secrets.choice(BASE_62_ALPHABET) for _ in range(self.random_part_length))
-        
-
-            full_code = id_part + random_part
-
-            if full_code not in existing_codes:
-                return full_code
-            
-            continue
-
-        # Если не смогли за max_attempts попыток сгенерировать,
-        # тогда вызываем более надежный метод для генерации
-        return self._generate_fallback(record_id, existing_codes)
+    # Пример расчета:
+    # Для 7 символов: 62^7 = 3.5 триллиона комбинаций
+    # Для 8 символов: 62^8 = 218 триллионов комбинаций
 
     
