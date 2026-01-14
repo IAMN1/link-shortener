@@ -37,3 +37,19 @@ def get_session():
     if db_session is None:
         raise RuntimeError("База данных не инициализирована. сначала вызовите init_db()")
     return db_session()
+
+
+def transaction():
+    """
+    Контекстный менеджер для транзакций
+    """
+    session = get_session()
+
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        pass
