@@ -28,12 +28,29 @@ def create_app(config=None):
     # CORS для API
     CORS(app)
 
+    # DB
+    with app.app_context():
+        from link_shortener.database.database import init_db
+        init_db()
+
     # BluePrints
     #app.register_blueprint(api_bp, url_prefix='/api')
+
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        """Закрывает соединение при завершении контекста"""
+        from link_shortener.database.database import db_session
+        if db_session:
+            db_session.remove()
 
     return app
 
 if __name__ == "__main__":
     app = create_app()
+    app.run(
+        host=app.config['HOST'],
+        port=app.config['PORT'],
+        debug=app.config['DEBUG']
+    )
         
 
