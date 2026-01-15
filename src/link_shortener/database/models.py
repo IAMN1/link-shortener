@@ -13,7 +13,7 @@ class TableURL(Base):
         short_code (str): Сгенерированная короткая ссылка
         clicks (int): Количество переходов по ссылке
     """
-    __tablename__ = 'table_urls'
+    __tablename__ = 'urls'
 
     id: Mapped[int] = mapped_column(primary_key=True)
     original_url: Mapped[str] = mapped_column(
