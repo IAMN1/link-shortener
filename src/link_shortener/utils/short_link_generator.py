@@ -2,7 +2,7 @@
 import hashlib
 import secrets
 import string
-from typing import Optional
+from typing import Optional, Union
 
 BASE_62_ALPHABET = string.ascii_lowercase + string.ascii_uppercase + string.digits
 ALPHABET_LENGTH = len(BASE_62_ALPHABET)
@@ -17,7 +17,7 @@ class HashBasedGenerator():
     - Поддерживает дедупликацию
     """
 
-    def __init__(self, code_length=7, pepper: Optional[str]=None):
+    def __init__(self, code_length: int=7, pepper: Optional[str]=None):
         """
         Конструктов класса с инициализацией полей
         Args:
@@ -29,7 +29,7 @@ class HashBasedGenerator():
         self.pepper = pepper or secrets.token_hex(32)
     
 
-    def generate(self, normalized_original_url: str) -> str:
+    def generate_code(self, normalized_original_url: str) -> str:
         """
         Генерация кода на основе хеша URL
 
@@ -40,26 +40,49 @@ class HashBasedGenerator():
             str: короткий код фиксированной длинны
         """
 
-        # 1. вычисление хэша с перцем
-        url_hash = self._calculate_hash(normalized_original_url)
+        # 1. вычисление хэша с перцем (для последующей генерации кода)
+        url_hash = self._calculate_hash(normalized_original_url, with_pepper=True)
 
         # 2. конвертация в base62
         result = self._hash_to_base62(url_hash)
         return result
-    
 
-    def _calculate_hash(self, normalized_original_url) -> bytes:
+    def calculate_deduplication_hash(self, normalized_original_url: str) -> str:
+        """
+        Вычисление хэша для дедупликации (без перца)
+
+        Args:
+            url (str): URL для дедупликации
+
+        Returns:
+            str: Хэш в Hex формате
+        """
+        return self._calculate_hash(normalized_original_url, with_pepper=False, as_hex=True)
+
+    def _calculate_hash(
+            self, normalized_original_url: str, 
+            with_pepper: bool = False, as_hex: bool = False) -> Union[bytes, str]:
         """
         Вычисление хэша URL с использованием перца
 
         Args:
-            normalized_original_url (_type_): нормализированный оригинальный URL
+            normalized_original_url (str): нормализированный оригинальный URL
+            with_pepper (bool, optional): флаг, обозначающий использовать ли перец. Defaults to False.
+            as_hex (bool, optional): Флаг обозначающий возвращение hex как строку. Defaults to False.
 
         Returns:
-            bytes: Хэш оригинального URL
+            Union[bytes, str]: Хэш оригинального URL
         """
-        data = f'{normalized_original_url}:{self.pepper}'.encode('utf-8')
-        return hashlib.blake2b(data, digest_size=32).digest()
+        if with_pepper:
+            data = f'{normalized_original_url}:{self.pepper}'.encode('utf-8')
+        else:
+            data = normalized_original_url.encode('utf-8')
+        
+        hash_bytes = hashlib.blake2b(data, digest_size=32).digest()
+
+        if as_hex:
+            return hash_bytes.hex()
+        return hash_bytes
     
     def _hash_to_base62(self, hash_url: bytes) -> str:
         """
