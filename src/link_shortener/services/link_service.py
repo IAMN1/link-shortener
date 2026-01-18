@@ -3,21 +3,21 @@ from link_shortener.core.config import BaseConfig
 from link_shortener.database.crud import URLCrud
 from link_shortener.database.models import TableURL
 from link_shortener.exceptions import NotFoundError, ValidationError
-from link_shortener.utils.short_link_generator import HashBasedGenerator
+from link_shortener.utils.short_code_generator import HashBasedGenerator
 from link_shortener.utils.url_validators import UrlValidator
 
 
 class LinkService:
-    def __init__(self):
-        self.generator = HashBasedGenerator(
-            code_length=BaseConfig.SHORT_CODE_LENGTH,
+    def __init__(self, code_generator=None, base_url=None, cache_client=None):
+        self.generator = code_generator or HashBasedGenerator(
+            code_length=BaseConfig.SHORT_CODE_LENGTH, 
             pepper=BaseConfig.SHORT_CODE_SECRET_PEPPER
         )
-        self.base_url = BaseConfig.BASE_LINK
-        # TODO добавить кэш redis
+        self.base_url = base_url or BaseConfig.BASE_LINK
+        self.cache = cache_client
 
     
-    def create_short_url(self, original_url: str) -> dict:
+    def create_short_url(self, original_url: str) -> Dict:
         """
         Создание короткой URL
 
@@ -45,7 +45,7 @@ class LinkService:
         # Сохранение в бд
         try:
             short_url, is_created = URLCrud.create_or_get(
-                normalized_url=original_url,
+                source_url=original_url,
                 url_hash=url_hash,
                 short_code=short_code
             )
@@ -65,7 +65,7 @@ class LinkService:
                 "INTERNAL_ERROR"   
             )
     
-    def get_original_url(self, short_code: str) -> str:
+    def get_original_url(self, short_code: str) -> Dict:
         """
         Получение оригинального URL
 
@@ -86,7 +86,7 @@ class LinkService:
         
         return {
             'url_hash': short_url.url_hash,
-            'Original_url': short_url.original_url,
+            'original_url': short_url.original_url,
             'short_url': f'{self.base_url}{short_code}',
             'short_code': short_code,
             'clicks': short_url.clicks,
@@ -94,7 +94,7 @@ class LinkService:
             'last_accessed': short_url.last_accessed.isoformat() if short_url.last_accessed else None,
         }
     
-    def bathc_create(self, urls: List[str]) -> List[Dict]:
+    def batch_create(self, urls: List[str]) -> List[Dict]:
         """
         Пакетное создание ссылок
 
@@ -109,11 +109,11 @@ class LinkService:
         # Массим с успешно нормализованными ссылками
         url_data_for_bulk = []
 
-        for url in urls:
+        for url in enumerate(urls):
             try:
                 is_valid, result = UrlValidator.is_valid_url(url)
                 if not is_valid:
-                    results.append({'url': url, 'error': result})
+                    results.append({'success': False, 'url': url, 'error': result})
                     continue
 
                 # Генерация хэшей и кодов для ссылок
@@ -121,13 +121,13 @@ class LinkService:
                 short_code = self.generator.generate_code(result)
 
                 url_data_for_bulk.append({
-                    'original_url': result,
                     'url_hash': url_hash,
+                    'original_url': result,
                     'short_code': short_code
                 })
             
             except Exception as e:
-                results.append({'url': url, 'error': str(e)})
+                results.append({'success': False, 'url': url, 'error': str(e)})
             
         # Пакетное сохранение в БД
         if url_data_for_bulk:
@@ -138,16 +138,34 @@ class LinkService:
         
         return results
     
-    def get_service_stats(self) -> Dict:
+    def get_service_stats(self, stats: Dict) -> Dict:
         """
         Получение статистики сервиса
 
         Returns:
             Dict: Стастистика
         """
-        return URLCrud.get_stats()
-    
+        stats = URLCrud.get_stats()
+        
+        total_urls = stats.get('total_urls', 0)
+        total_clicks = stats.get('total_clicks', 0)
+        avg_clicks = round((total_clicks /  total_urls if total_clicks else 0), 2)
+        popular_urls = stats.get('popular_urls', [])
 
+        return {
+            'total_urls': total_urls,
+            'total_clicks': total_clicks,
+            'avg_clicks_per_url': avg_clicks,
+            'popular_urls': [{
+                'short_code': url.short_code,
+                'short_url': f'{self.base_url}{url.short_code}',
+                'clicks': url.clicks,
+                'original_url': (url.original_url[:50] + '...' 
+                                 if len(url.original_url) > 50 
+                                 else url.original_url)
+            } for url in popular_urls]
+        }
+    
     def cleanup_cache(self):
         """
         Очистка кэша
@@ -155,7 +173,6 @@ class LinkService:
         # TODO Добавить отчистку кэша
         pass
     
-
     def _format_response(self, element: TableURL, created: bool) -> Dict:
         """Форматирование итогового ответа"""
         return {
