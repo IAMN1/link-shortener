@@ -11,7 +11,7 @@ class URLCrud:
 
     @staticmethod
     def create_or_get(
-        normalized_url: str,
+        source_url: str,
         url_hash: str,
         short_code: str
     ) -> Tuple[TableURL, bool]:
@@ -29,7 +29,7 @@ class URLCrud:
             
             try:
                 new_element = TableURL(
-                    original_url=normalized_url,
+                    original_url=source_url,
                     url_hash=url_hash,
                     short_code=short_code
                 )
@@ -80,20 +80,38 @@ class URLCrud:
     
 
     @staticmethod
-    def bulk_create(urls_data: list[dict]) -> List[TableURL]:
+    def bulk_create(urls_data: List[dict]) -> List[TableURL]:
         """Пакетное создание записей"""
         with transaction() as session:
-            elements = [
-                TableURL(
-                    original_url=data['original_url'],
-                    url_hash=data['url_hash'],
-                    short_url=data['short_url'],
-                )
-                for data in urls_data
-            ]
+            
+            # 1. проверка хэшей на наличие в бд 
+            hashes = [data['url_hash'] for data in urls_data]
+            
+            # Получение всех сущуствующих записий за один запрос
+            existing_stmt = select(TableURL).where(TableURL.url_hash.in_(hashes))
+            existing_records = {r.url_hash: r for r in session.execute(existing_stmt).scalars()}
+
+            # Фильтруем
+            new_data = [data for data in urls_data if data['urls_hash'] not in existing_records]
+
+            if new_data:
+                # 2. Запись в БД
+                elements = [
+                    TableURL(
+                        url_hash=data['url_hash'],
+                        original_url=data['original_url'],
+                        short_code=data['short_code'],
+                    )
+                    for data in new_data
+                ]
 
             session.bulk_save_objects(elements)
-            return elements
+            if new_data:
+                session.expire_all()
+
+            result_hashes = set(hashes)
+            final_stmt = select(TableURL).where(TableURL.url_hash.in_(result_hashes))
+            return session.execute(final_stmt).scalars().all()
     
 
     @staticmethod
@@ -112,18 +130,13 @@ class URLCrud:
             popular_stmt = select(TableURL).order_by(TableURL.clicks.desc()).limit(10)
             popular_urls = session.execute(popular_stmt).scalars().all()
 
-            return {
+            result = {
                 'total_urls': total_urls,
-                'total_clicks': total_urls,
-                'avg_clicks_per_url': total_clicks / total_urls if total_clicks else 0,
-                'popular_urls': [{
-                    'short_code': url.short_code,
-                    'clicks': url.clicks,
-                    'original_url': (url.original_url[:50] + '...' 
-                                     if len(url.original_url) > 50 
-                                     else url.original_url)
-                } for url in popular_urls]
+                'total_clicks': total_clicks,
+                'popular_urls': popular_urls
             }
+            
+            return result
 
 # global instanse
 table_url_crud = URLCrud()
