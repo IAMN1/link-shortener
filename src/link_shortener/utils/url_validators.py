@@ -1,7 +1,7 @@
 import re
 from urllib.parse import urlparse, urlunparse
 import validators
-from src.link_shortener.core.config import Config
+from src.link_shortener.core.config import BaseConfig
 
 class UrlValidator:
     """
@@ -26,8 +26,8 @@ class UrlValidator:
         """
         
         # проверка длинны ссылки
-        if len(url) > Config.MAX_URL_LENGTH:
-            return False, f'URL длинна превышаем максимальное количество символов {Config.MAX_URL_LENGTH}'
+        if len(url) > BaseConfig.MAX_URL_LENGTH:
+            return False, f'URL длинна превышаем максимальное количество символов {BaseConfig.MAX_URL_LENGTH}'
 
 
         if not validators.url(url):
@@ -46,8 +46,8 @@ class UrlValidator:
         if parsed.scheme.lower() in cls.DANGEROUS_SHEMES:
             return False, f'Опасная схема URL: {parsed.scheme}'
         
-        if parsed.scheme.lower() not in Config.ALLOWED_SHEMES:
-            return False, f'Недопустимая схема! Разрешены: {''.join(Config.ALLOWED_SHEMES)}'
+        if parsed.scheme.lower() not in BaseConfig.ALLOWED_SHEMES:
+            return False, f'Недопустимая схема! Разрешены: {''.join(BaseConfig.ALLOWED_SHEMES)}'
         
         
         # проверка домена
