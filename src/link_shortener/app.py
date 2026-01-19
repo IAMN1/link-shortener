@@ -2,7 +2,12 @@ import os
 from flask import Flask
 from flask_cors import CORS
 
-from link_shortener.core.config import DevelopmentConfig, ProductionConfig, TestConfig
+from link_shortener.core.config import (
+    DevelopmentConfig,
+    ProductionConfig,
+    TestConfig
+)
+from link_shortener.core.logging_config import setup_logging
 
 PROD = 'PROD'
 DEV = 'DEV'
@@ -25,13 +30,21 @@ def create_app(config=None):
     
     app.config.from_object(config)
 
+    setup_logging(app)
+
+    app.logger.info(f'Запуск приложения в среде {env}')
+    app.logger.info(f'Конфигурация: {config.__name__}')
+
     # CORS для API
     CORS(app)
+    app.logger.debug("CORS инициализирован")
 
     # DB
     with app.app_context():
         from link_shortener.database.database import init_db
+        app.logger.info("Инициализация Базы Данных")
         init_db()
+        app.logger.info("База данных успешно инициализирована")
 
     # BluePrints
     #app.register_blueprint(api_bp, url_prefix='/api')
@@ -42,11 +55,18 @@ def create_app(config=None):
         from link_shortener.database.database import db_session
         if db_session:
             db_session.remove()
+            app.logger.debug("Сессия базы данных закрыта")
+        
+        if exception:
+            app.logger.error(f"Ошибка при завершении контекста: {exception}")
 
     return app
 
 if __name__ == "__main__":
     app = create_app()
+    
+    app.logger.info(f"Запуск сервера на {app.config['HOST']}:{app.config['PORT']}")
+    
     app.run(
         host=app.config['HOST'],
         port=app.config['PORT'],
