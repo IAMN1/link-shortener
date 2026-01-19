@@ -1,3 +1,4 @@
+import logging
 import os
 import secrets
 from dotenv import load_dotenv
@@ -8,6 +9,19 @@ load_dotenv()
 class BaseConfig:
     SHORT_CODE_LENGTH = 7
     DEBUG = True
+
+    # logging settings
+    LOG_DIR = os.environ.get('LOG_DIR', 'logs')
+    # имя будет дополненно датой
+    LOG_FILENAME = 'link_shortener'
+    LOG_LEVEL = logging.INFO
+    LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    LOG_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+    LOG_MAX_BYTES = 10 * 1024 * 1024 # 10 MB
+    LOG_BACKUP_FILES_COUNT = 5
+    LOG_TO_CONSOLE = True
+    LOG_TO_FILE = True
+    REQUEST_LOG_LEVEL = logging.INFO
 
     # Security App
     SECRETS_KEY = os.environ.get('SECRET_KEY') or 'SECRET-KEY'
@@ -43,12 +57,26 @@ class BaseConfig:
 class DevelopmentConfig(BaseConfig):
     DEBUG = True
     
+    LOG_LEVEL = logging.DEBUG
+    LOG_TO_CONSOLE = True
+    LOG_TO_FILE = False
+    
 class TestConfig:
     TESTING = True
+    
+    LOG_LEVEL = logging.WARNING  # В тестах меньше шума
+    LOG_TO_CONSOLE = False
+    LOG_TO_FILE = False
+
     DATABASE_URL = os.environ.get('DATABASE_URL_TEST') or 'sqlite:///test.db'
 
 class ProductionConfig(BaseConfig):
     DEBUG = False
+
+    LOG_LEVEL = logging.INFO
+    LOG_TO_CONSOLE = False
+    LOG_TO_FILE = True
+    # LOG_DIR = '/var/log/link_shortener'  # Стандартный путь для логов в Linux
 
     SECRETS_KEY = os.environ['SECRET_KEY']    
     
