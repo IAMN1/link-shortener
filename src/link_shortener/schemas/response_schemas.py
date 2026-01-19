@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class URLResponse(BaseModel):
@@ -30,6 +30,10 @@ class URLResponse(BaseModel):
         ...,
         description='Дата создания URL'
     )
+    last_accessed: Optional[datetime] = Field(
+        None,
+        description='Дата последнего обращения к ресурсу'
+    )
     already_exists: Optional[bool] = Field(
         ...,
         description='Флаг, указывающий существовала ли ссылка ранее',
@@ -39,21 +43,26 @@ class URLResponse(BaseModel):
         description='Сообщение о результате операции'
     )
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-        schema_extra = {
+    @field_serializer('created_at', 'last_accessed')
+    def serialize_dates(self, value: Optional[datetime], _info) -> str:
+        if value is None:
+            return None
+        return value.isoformat()
+    
+    model_config = ConfigDict(
+        json_schema_extra = {
             "example": {
                 "short_code": "aAbBcDE",
                 "short_url": "https://domain.com/aAbBcDE",
                 "original_url": "https://example.com/some/parameters",
                 "clicks": 0,
                 "created_at": "2026-01-17T10:30:00",
+                "last_accessed": None,
                 "already_exists": False,
                 "message": "Ссылка успешно создана"
             }
         }
+    )
 
 
 class BatchItemResponse(BaseModel):
@@ -85,8 +94,8 @@ class BatchItemResponse(BaseModel):
         description='Сообщение об ошибке (если в процессе обработки ссылки произошла ошибка)'
     )
 
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra = {
             "examples": [
                 {
                     "success": True,
@@ -101,6 +110,7 @@ class BatchItemResponse(BaseModel):
                 }
             ]
         }
+    )
 
 
 class BatchURLSResponse(BaseModel):
@@ -122,8 +132,8 @@ class BatchURLSResponse(BaseModel):
         description='Количество URL, которые не удалось обработать'
     )
 
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra = {
             "example": {
                 "results": [
                     {
@@ -143,6 +153,7 @@ class BatchURLSResponse(BaseModel):
                 "failed": 1
             }
         }
+    )
 
 
 class StatsPopularURLItemResponse(BaseModel):
@@ -153,6 +164,9 @@ class StatsPopularURLItemResponse(BaseModel):
     clicks: int
     created_at: datetime
 
+    @field_serializer('created_at')
+    def serialize_created_at(self, value: datetime, _info) -> str:
+        return value.isoformat()
 
 class ServiceStatsResponse(BaseModel):
     """Схема ответа для получения статистики"""
@@ -178,8 +192,8 @@ class ServiceStatsResponse(BaseModel):
         max_length=10
     )
 
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra = {
             "example": {
                 "total_urls": 10_000,
                 "total_clicks": 11_230_034,
@@ -204,3 +218,4 @@ class ServiceStatsResponse(BaseModel):
                 ]
             }
         }
+    )
