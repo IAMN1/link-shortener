@@ -1,6 +1,5 @@
-from sqlite3 import IntegrityError
 from typing import List, Optional, Tuple
-
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select, update
 from link_shortener.database.database import transaction
 from link_shortener.database.models import TableURL
@@ -92,7 +91,7 @@ class URLCrud:
             existing_records = {r.url_hash: r for r in session.execute(existing_stmt).scalars()}
 
             # Фильтруем
-            new_data = [data for data in urls_data if data['urls_hash'] not in existing_records]
+            new_data = [data for data in urls_data if data['url_hash'] not in existing_records]
 
             if new_data:
                 # 2. Запись в БД
