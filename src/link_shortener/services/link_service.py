@@ -2,7 +2,7 @@ from typing import Dict, List
 from link_shortener.core.config import BaseConfig
 from link_shortener.database.crud import URLCrud
 from link_shortener.database.models import TableURL
-from link_shortener.exceptions import NotFoundError, ServiceError, ValidationError
+from link_shortener.core.exceptions import NotFoundError, ServiceError, ValidationError
 from link_shortener.utils.short_code_generator import HashBasedGenerator
 from link_shortener.utils.url_validators import UrlValidator
 

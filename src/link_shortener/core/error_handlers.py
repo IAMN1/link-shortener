@@ -5,8 +5,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from flask import request
 from pydantic import ValidationError as PydanticValidationError
-from link_shortener.exceptions import AppException
-from link_shortener.schemas.common_schemas import ErrorResponse
+from link_shortener.core.exceptions import AppException
+from link_shortener.schemas.common import ErrorResponse
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 
