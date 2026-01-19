@@ -2,10 +2,12 @@ from typing import Dict, List
 from link_shortener.core.config import BaseConfig
 from link_shortener.database.crud import URLCrud
 from link_shortener.database.models import TableURL
-from link_shortener.exceptions import NotFoundError, ValidationError
+from link_shortener.exceptions import NotFoundError, ServiceError, ValidationError
 from link_shortener.utils.short_code_generator import HashBasedGenerator
 from link_shortener.utils.url_validators import UrlValidator
 
+
+# TODO Add logging
 
 class LinkService:
     def __init__(self, code_generator=None, base_url=None, cache_client=None):
@@ -58,11 +60,14 @@ class LinkService:
             # TODO Добавить логирование
 
             return response
+        
+        except ValidationError:
+            raise # top level
         except Exception as e:
             # TODO логирование ошибки
-            raise ValidationError(
+            raise ServiceError(
                 "Внутренняя ошибка при создании ссылки",
-                "INTERNAL_ERROR"   
+                "SERVICE_ERROR"   
             )
     
     def get_original_url(self, short_code: str) -> Dict:
@@ -73,26 +78,39 @@ class LinkService:
             short_code (str): Короткий код
 
         Returns:
-            str: Оригинальный URL
+            Dict: словарь с данными URL
         """
-        # Проверка кэша
-        # TODO Добавить проверку наличия в кэше
+        try:
 
-        # Поиск и извлечение из БД
-        short_url = URLCrud.get_by_short_code(short_code)
+            # Проверка кэша
+            # TODO Добавить проверку наличия в кэше
 
-        if not short_url:
-            raise NotFoundError('Короткая ссылка не найдена', 'URL_NOT_FOUND')
-        
-        return {
-            'url_hash': short_url.url_hash,
-            'original_url': short_url.original_url,
-            'short_url': f'{self.base_url}{short_code}',
-            'short_code': short_code,
-            'clicks': short_url.clicks,
-            'created_at': short_url.created_at.isoformat(),
-            'last_accessed': short_url.last_accessed.isoformat() if short_url.last_accessed else None,
-        }
+            # Поиск и извлечение из БД
+            short_url = URLCrud.get_by_short_code(short_code)
+
+            if not short_url:
+                raise NotFoundError(
+                    f'Короткая ссылка c {short_code} не найдена', 
+                    'URL_NOT_FOUND'
+                )
+            
+            return {
+                'url_hash': short_url.url_hash,
+                'original_url': short_url.original_url,
+                'short_url': f'{self.base_url}{short_code}',
+                'short_code': short_code,
+                'clicks': short_url.clicks,
+                'created_at': short_url.created_at.isoformat(),
+                'last_accessed': short_url.last_accessed.isoformat() if short_url.last_accessed else None,
+            }
+        except (NotFoundError):
+            raise # top level
+        except Exception as e:
+            # TODO add logger
+            raise ServiceError(
+                'Внутрення ошибка при получении ссылки',
+                'SERVICE_ERROR'
+            )
     
     def batch_create(self, urls: List[str]) -> List[Dict]:
         """
@@ -102,39 +120,58 @@ class LinkService:
             urls (List[str]): Список URL
 
         Returns:
-            List[Dict]: Список созданный URL
+            List[Dict]: Список созданных URL
         """
         # Массив с созданными ссылками и ошибочными при нормализации
         results = []
         # Массим с успешно нормализованными ссылками
         url_data_for_bulk = []
 
-        for url in enumerate(urls):
+        # 1. Обработка ссылок
+        for url in urls:
             try:
-                is_valid, result = UrlValidator.is_valid_url(url)
+                # Валидация
+                is_valid, url_or_message = UrlValidator.is_valid_url(url)
                 if not is_valid:
-                    results.append({'success': False, 'url': url, 'error': result})
+                    results.append({
+                        'success': False,
+                        'url': url,
+                        'error': url_or_message,
+                        'code': 'INVALID_URL'})
                     continue
 
                 # Генерация хэшей и кодов для ссылок
-                url_hash = self.generator.calculate_deduplication_hash(result)
-                short_code = self.generator.generate_code(result)
+                url_hash = self.generator.calculate_deduplication_hash(url_or_message)
+                short_code = self.generator.generate_code(url_or_message)
 
                 url_data_for_bulk.append({
                     'url_hash': url_hash,
-                    'original_url': result,
+                    'original_url': url_or_message,
                     'short_code': short_code
                 })
             
             except Exception as e:
+                # TODO add logger
+                # TODO заменить str(e) на message, а сам str(e) записывать в log
                 results.append({'success': False, 'url': url, 'error': str(e)})
             
-        # Пакетное сохранение в БД
+        # 2. Пакетное сохранение в БД
         if url_data_for_bulk:
-            created_urls = URLCrud.bulk_create(url_data_for_bulk)
+            try:
+                created_urls = URLCrud.bulk_create(url_data_for_bulk)
 
-            for url in created_urls:
-                results.append(self._format_response(url, True))
+                for url in created_urls:
+                    results.append(self._format_response(url, True))
+
+            except Exception as e:
+                # TODO add logger
+                for data in url_data_for_bulk:
+                    results.append({
+                        'success': False,
+                        'url': data['original_url'],
+                        'error': 'Ошибка при сохранении в БД',
+                        'code': 'DB_SAVE_ERROR'
+                    })
         
         return results
     
@@ -175,7 +212,8 @@ class LinkService:
     
     def _format_response(self, element: TableURL, created: bool) -> Dict:
         """Форматирование итогового ответа"""
-        return {
+
+        result = {
             'already_exists': not created,
             'short_code': element.short_code,
             'short_url': f'{self.base_url}{element.short_code}',
@@ -184,6 +222,11 @@ class LinkService:
             'created_at': element.created_at.isoformat(),
             'message': 'Ссылка уже существует' if not created else 'Ссылка успешно создана'
         }
+
+        if element.last_accessed:
+            result['last_accessed'] = element.last_accessed.isoformat()
+        
+        return result
 
 # instance
 link_service = LinkService()
