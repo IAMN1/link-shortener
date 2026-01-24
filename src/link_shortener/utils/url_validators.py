@@ -83,7 +83,7 @@ class UrlValidator:
         parsed = parsed._replace(fragment='')
 
         # Приводим хост к нижнему регистру
-        parsed = parsed._replace(sheme=parsed.scheme.lower())
+        parsed = parsed._replace(scheme=parsed.scheme.lower())
 
         if parsed.netloc:
             parsed = parsed._replace(netloc=parsed.netloc.lower())
