@@ -4,7 +4,6 @@ import logging.handlers
 import os
 from typing import Any, Dict, Optional
 from flask import Flask
-import time
 
 from link_shortener.core.config import BaseConfig
 import structlog
@@ -74,59 +73,16 @@ def _setup_structlog(config: StructLogConfig):
         cache_logger_on_first_use=True,
     )
 
-def _setup_request_logging(app: Flask, config: StructLogConfig):
-    """Настройка логирования HTTP запросов через structlog"""
-    from flask import request, g
-
-    @app.before_request
-    def before_request_logging():
-        """Логирование информации о входящем запросе"""
-        g.start_time = time.time()
-
-        # получение логгера с контекстом запроса
-        logger = structlog.get_logger("request")
-        logger = logger.bind(
-            method=request.method,
-            path=request.path,
-            remote_addr=request.remote_addr,
-        )
-
-        # логирование начала обработки
-        logger.debug("request_started")
-
-    @app.after_request
-    def after_request_logging(response):
-        """Логирование информации об ответе"""
-
-        # Вычисление времени обработки запроса
-        if hasattr(g, 'start_time'):
-            processing_time = time.time() - g.start_time
-        else:
-            processing_time = 0
-        
-        logger = structlog.get_logger("request")
-        logger = logger.bind(
-            method=request.method,
-            path=request.path,
-            status_code=response.status_code,
-            processing_time=f"{processing_time:.3f}",
-            remote_addr=request.remote_addr,
-        )
-
-        # Уровень логирования в зависимости от статуса ответа
-        if response.status_code >= 500:
-            logger.error("request_completed")
-        elif response.status_code >= 400:
-            logger.warning("request_completed")
-        else:
-            logger.info("request_completed")
-        
-        return response
 
 
 def setup_logging(app: Flask) -> None:
     """
     Настройка structlog для Flask app
+
+    Основная настройка:
+    1. Structlog с цепочкой процессоров
+    2. Обработчики (в консоль и/или в файл)
+    3. Уровни логирования для сторонних библиотек
 
     Args:
         app (Flask): Flask application
@@ -145,6 +101,7 @@ def setup_logging(app: Flask) -> None:
     # очищаем существующие обработчики (чтобы не дублировать логи)
     root_logger.handlers.clear()
 
+    # Настройка structlog
     _setup_structlog(log_config)
 
     # CONSOLE HANDLER
@@ -182,13 +139,13 @@ def setup_logging(app: Flask) -> None:
     logging.getLogger('werkzeug').setLevel(werkzeug_level)
 
     # Flask logger for HTTP-requests (access logs)
-    _setup_request_logging(app, log_config)
     
     # Логирование успешной настройки приложения
     logger = structlog.get_logger(__name__)
     logger.info(
         'structlog_initialized',
         log_level=log_config.log_level,
+        log_to_console=log_config.log_to_console,
         log_to_file=log_config.log_to_file,
         log_dir=log_config.log_dir if log_config.log_to_file else None,
         debug_mode=log_config.debug,

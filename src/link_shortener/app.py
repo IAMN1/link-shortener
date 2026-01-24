@@ -8,6 +8,7 @@ from link_shortener.core.config import (
     TestConfig
 )
 from link_shortener.core.logging_config import setup_logging
+from link_shortener.middleware.request_logging import init_middleware_request_logging
 
 PROD = 'PROD'
 DEV = 'DEV'
@@ -31,13 +32,16 @@ def create_app(config=None):
     app.config.from_object(config)
 
     setup_logging(app)
-
     app.logger.info(f'Запуск приложения в среде {env}')
     app.logger.info(f'Конфигурация: {config.__name__}')
 
     # CORS для API
     CORS(app)
     app.logger.debug("CORS инициализирован")
+
+    # Middleware для логирования запросов
+    init_middleware_request_logging(app)
+    app.logger.info("Middleware для логирования запросов инициализирован")
 
     # DB
     with app.app_context():
