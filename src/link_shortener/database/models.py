@@ -15,7 +15,7 @@ class TableURL(Base):
     """
     __tablename__ = 'urls'
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     original_url: Mapped[str] = mapped_column(
         String(2048), 
         nullable=False,

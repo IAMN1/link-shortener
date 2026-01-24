@@ -1,16 +1,17 @@
 from http import HTTPStatus
-import logging
 import os
+from sqlite3 import OperationalError
 from typing import Any, Dict, Optional, Tuple
 
 from flask import request
 from pydantic import ValidationError as PydanticValidationError
 from link_shortener.core.exceptions import AppException
+from link_shortener.core.logging_config import get_logger
 from link_shortener.schemas.common import ErrorResponse
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def register_error_handlers(app):
@@ -21,13 +22,20 @@ def register_error_handlers(app):
         app (FLASK): Flask application
     """
 
-    @app.errorhadnler(AppException)
+    @app.errorhandler(AppException)
     def handle_app_exception(error: AppException) -> Tuple[Dict[str, Any], int]:
         """Обработка кастомных исключений приложения"""
+        
         logger.warning(
-            "AppException: %s (code: %s, status: %d, path: %s)",
-            error.message, error.code, error.status_code, request.path
+            "AppException", 
+            error_message=error.message,
+            error_code=error.code, 
+            status_code=error.status_code,
+            path=request.path,
+            method=request.method,
+            remote_addr=request.remote_addr
         )
+
         response = create_error_response(
             error_code=error.code or "UNKNOWN_ERROR",
             message=error.message,
@@ -39,6 +47,7 @@ def register_error_handlers(app):
     @app.errorhandler(PydanticValidationError)
     def handle_pydantic_validation_error(error: PydanticValidationError) -> Tuple[Dict[str, Any], int]:
         """Обработка ошибок валидации Pydantic"""
+        
         error_details = []
         for err in error.errors():
             error_details.append({
@@ -48,8 +57,10 @@ def register_error_handlers(app):
             })
         
         logger.warning(
-            "Pydantic validation error: %s (path: %s)",
-            error_details, request.path
+            "Pydantic validation error",
+            error_details=error_details,
+            path=request.path,
+            method=request.method
         )
 
         response = create_error_response(
@@ -62,18 +73,23 @@ def register_error_handlers(app):
             }
         )
         return response
-    
+
 
     @app.errorhandler(IntegrityError)
     def handle_integrity_error(error: IntegrityError) -> Tuple[Dict[str, Any], int]:
         """Обработка целостности БД (уникальность и тп.)"""
+        
+        error_msg = str(error.orig)
+
         logger.error(
-            "Database integrity error: %s (path: %s)",
-            str(error.orig), request.path, exc_info=True
+            "Database integrity error",
+            error_message=error_msg[:200], 
+            path=request.path, 
+            method=request.method,
+            exc_info=True
         )
 
         # Проверка является ли ошибка нарушением целостности уникальности
-        error_msg = str(error.orig)
         if "unique" in error_msg.lower() or "duplicate" in error_msg.lower():
             message = "Нарушение уникальности данных"
         else:
@@ -90,13 +106,38 @@ def register_error_handlers(app):
         )
         return response
     
-    
+    @app.errorhandler(OperationalError)
+    def handle_operation_error(error: OperationalError) -> Tuple[Dict[str, Any], int]:
+        """Обработка ошибок подключения к БД"""
+
+        logger.critical(
+            'Database Connection Error',
+            error_message=str(error), 
+            path=request.path,
+            method=request.method,
+            exc_info=True
+        )
+
+        response = create_error_response(
+            error_code="DATABASE_CONNECTION_ERROR",
+            message="Ошибка подключения к базе данных",
+            status_code=HTTPStatus.SERVICE_UNAVAILABLE,
+            details={
+                "path": request.path
+            }
+        )
+        return response
+
     @app.errorhandler(SQLAlchemyError)
     def handle_sqlalchemy_error(error: SQLAlchemyError) -> Tuple[Dict[str, Any], int]:
         """Обработка общих ошибок SQLAlchemy"""
+        
         logger.error(
-            "Database error: %s (path: %s)",
-            str(error), request.path, exc_info=True
+            "Database error",
+            error_message=str(error), 
+            path=request.path,
+            method=request.method,
+            exc_info=True
         )
         
         response = create_error_response(
@@ -108,10 +149,19 @@ def register_error_handlers(app):
             }
         )
         return response
-    
+
+
     @app.errorhandler(404)
     def handle_not_found(error) -> Tuple[Dict[str, Any], int]:
         """Обработка 404 (Not Found)"""
+
+        logger.info(
+            '404 Not Found',
+            method=request.method,
+            path=request.path, 
+            remote_addr=request.remote_addr
+        )
+
         response = create_error_response(
             error_code="NOT_FOUND",
             message="Запрошенный ресурс не найден",
@@ -123,10 +173,16 @@ def register_error_handlers(app):
         )
         return response
     
-
     @app.errorhandler(405)
     def handle_method_not_allowed(error) -> Tuple[Dict[str, Any], int]:
         """обработка 405 (Method not allowed)"""
+
+        logger.warning(
+            '405 Method Not Allowed',
+            method=request.method,
+            path=request.path, 
+            allowed_methods=getattr(error, 'valid_methods', [])
+        )
 
         response = create_error_response(
             error_code="METHOD_NOT_ALLOWED",
@@ -143,6 +199,13 @@ def register_error_handlers(app):
     def handle_rate_limit(error) -> Tuple[Dict[str, Any], int]:
         """Обработка 429 (Слишком много запросов)"""
 
+        logger.warning(
+            '429 Rate Limit Exceeded',
+            method=request.method, 
+            path=request.path, 
+            remote_addr=request.remote_addr
+        )
+
         response = create_error_response(
             error_code="RATE_LIMIT_EXCEEDED",
             message="Превышен лимит запросов. Пожалуйста, попробуйте позже.",
@@ -154,15 +217,18 @@ def register_error_handlers(app):
         )
         return response
     
-
     @app.errorhandler(Exception)
     def handle_generic_exception(error: Exception) -> Tuple[Dict[str, Any], int]:
         """
         Обработка всех непредвиденных исключений
         """
         logger.error(
-            "Unhandled exception: %s (path: %s)",
-            str(error), request.path, exc_info=True
+            "Unhandled exception",
+            error_message=str(error), 
+            path=request.path, 
+            method=request.method, 
+            remote_addr=request.remote_addr,
+            exc_info=True
         )
         
         # В production режиме не показываем детали ошибки
