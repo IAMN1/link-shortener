@@ -20,7 +20,6 @@ class StructLogConfig:
     def __init__(self, flask_cfg: Dict[str, Any]):
         self.log_dir: str = flask_cfg.get('LOG_DIR', BaseConfig.LOG_DIR)
         self.log_file_name: str = flask_cfg.get('LOG_FILENAME', BaseConfig.LOG_FILENAME)
-        self.log_format: str = flask_cfg.get('LOG_FORMAT', BaseConfig.LOG_FORMAT)
         self.log_date_format: str = flask_cfg.get('LOG_DATE_FORMAT', BaseConfig.LOG_DATE_FORMAT)
         self.log_max_bytes: int = flask_cfg.get('LOG_MAX_BYTES', BaseConfig.LOG_MAX_BYTES)
         self.log_backup_files_count: int = flask_cfg.get('LOG_BACKUP_FILES_COUNT', BaseConfig.LOG_BACKUP_FILES_COUNT)
@@ -28,7 +27,6 @@ class StructLogConfig:
         self.log_to_file: bool = flask_cfg.get('LOG_TO_FILE', BaseConfig.LOG_TO_FILE)
         self.debug: bool = flask_cfg.get('DEBUG', BaseConfig.DEBUG)
         self.log_level = flask_cfg.get('LOG_LEVEL', logging.INFO)
-        self.request_log_level = flask_cfg.get('REQUEST_LOG_LEVEL', BaseConfig.REQUEST_LOG_LEVEL)
 
     @property
     def should_log_to_file(self) -> bool:
@@ -58,7 +56,7 @@ def _setup_structlog(config: StructLogConfig):
     processors = [
             structlog.stdlib.add_log_level,
             structlog.stdlib.add_logger_name,
-            structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+            structlog.processors.TimeStamper(fmt=config.log_date_format),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
         ]
@@ -67,7 +65,7 @@ def _setup_structlog(config: StructLogConfig):
     else:
         renderer = structlog.processors.JSONRenderer()
     
-    processors = processors + [renderer]
+    processors.append(renderer)
         
     structlog.configure(
         processors=processors,

@@ -15,13 +15,11 @@ class BaseConfig:
     # имя будет дополненно датой
     LOG_FILENAME = 'link_shortener'
     LOG_LEVEL = logging.INFO
-    LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     LOG_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
     LOG_MAX_BYTES = 10 * 1024 * 1024 # 10 MB
     LOG_BACKUP_FILES_COUNT = 5
     LOG_TO_CONSOLE = True
     LOG_TO_FILE = True
-    REQUEST_LOG_LEVEL = logging.INFO
 
     # Security App
     SECRETS_KEY = os.environ.get('SECRET_KEY') or 'SECRET-KEY'
