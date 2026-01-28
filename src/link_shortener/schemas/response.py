@@ -78,16 +78,20 @@ class BatchItemResponse(BaseModel):
         ...,
         description='Исходный URL, который обрабатывался'
     )
-    short_code: Optional[str] = Field(
-        None,
-        description='Короткий код ссылки'
-    )
     # Опциональные поля
     short_url: Optional[str] =Field(
         None,
-        description='Короткий код (если ссылка обработана успешно)',
+        description='Короткий URL (если ссылка обработана успешно)',
+    )
+    short_code: Optional[str] = Field(
+        None,
+        description='Короткий код ссылки',
         min_length=6,
         max_length=10
+    )
+    already_exists: Optional[bool] = Field(
+        ...,
+        description='Флаг, указывающий существовала ли ссылка ранее',
     )
     error: Optional[str] = Field(
         None,
@@ -99,9 +103,17 @@ class BatchItemResponse(BaseModel):
             "examples": [
                 {
                     "success": True,
-                    "source_url": "https://example.com/some/parameters",
+                    "source_url": "https://example.com/some/parameters1",
                     "short_url": "https://domain.com/aAbBcDE",
+                    "already_exists": True,
                     "short_code": "aAbBcDE"
+                },
+                {
+                    "success": True,
+                    "source_url": "https://example.com/some/parameters2",
+                    "short_url": "https://domain.com/D32AseQ",
+                    "already_exists": False,
+                    "short_code": "D32AseQ"
                 },
                 {
                     "success": False,
@@ -138,9 +150,17 @@ class BatchURLSResponse(BaseModel):
                 "results": [
                     {
                         "success": True,
-                        "url": "https://example.com/some/parameters",
+                        "source_url": "https://example.com/some/parameters1",
                         "short_url": "https://domain.com/aAbBcDE",
+                        "already_exists": True,
                         "short_code": "aAbBcDE"
+                    },
+                    {
+                        "success": True,
+                        "source_url": "https://example.com/some/parameters2",
+                        "short_url": "https://domain.com/D32AseQ",
+                        "already_exists": False,
+                        "short_code": "D32AseQ"
                     },
                     {
                         "success": False,
@@ -210,7 +230,7 @@ class ServiceStatsResponse(BaseModel):
                     {
                         "short_code": "D32AseQ",
                         "short_url": "https://domain.com/D32AseQ",
-                        "original_url": "https://example.com/some/parameters",
+                        "original_url": "https://example.com/some/parameters2",
                         "clicks": 0,
                         "created_at": "2025-12-21T10:30:00",
                     },
