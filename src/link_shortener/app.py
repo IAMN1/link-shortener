@@ -2,6 +2,7 @@ import os
 from flask import Flask
 from flask_cors import CORS
 
+from link_shortener.cache.cache_client import init_cache
 from link_shortener.core.config import (
     DevelopmentConfig,
     ProductionConfig,
@@ -35,6 +36,10 @@ def create_app(config=None):
     app.logger.info(f'Запуск приложения в среде {env}')
     app.logger.info(f'Конфигурация: {config.__name__}')
 
+    # Redis Cache
+    app.logger.info('инициализация кэша Redis')
+    app.cache_client = init_cache(app.config)
+
     # CORS для API
     CORS(app)
     app.logger.debug("CORS инициализирован")
@@ -55,11 +60,19 @@ def create_app(config=None):
 
     @app.teardown_appcontext
     def shutdown_session(exception=None):
-        """Закрывает соединение при завершении контекста"""
+        """Закрывает соединения при завершении контекста"""
+
+        # DB
         from link_shortener.database.database import db_session
         if db_session:
             db_session.remove()
             app.logger.debug("Сессия базы данных закрыта")
+        
+        
+        # Redis
+        if app.cache_client:
+            app.cache_client.close()
+            app.logger.debug('Соединение с redis закрыто')
         
         if exception:
             app.logger.error(f"Ошибка при завершении контекста: {exception}")
