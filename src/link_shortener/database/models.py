@@ -16,14 +16,14 @@ class TableURL(Base):
     __tablename__ = 'urls'
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    original_url: Mapped[str] = mapped_column(
-        String(2048), 
-        nullable=False,
-        index=True
-    )
     url_hash: Mapped[str] = mapped_column(
         String(64),
         unique=True,
+        nullable=False,
+        index=True
+    )
+    original_url: Mapped[str] = mapped_column(
+        String(2048), 
         nullable=False,
         index=True
     )
