@@ -12,11 +12,7 @@ class URLCrud:
     """Класс с CRUD операциями для таблицы ShortURL"""
 
     @staticmethod
-    def create_or_get(
-        source_url: str,
-        url_hash: str,
-        short_code: str
-    ) -> Tuple[TableURL, bool]:
+    def create_or_get(source_url: str, url_hash: str, short_code: str) -> Tuple[TableURL, bool]:
         """
         Создание или получение существующей записи
         """
@@ -28,7 +24,7 @@ class URLCrud:
         )
 
         with transaction() as session:
-            # 1. пробуем найти по хэшу
+            # 1. Проверяем по хэшу есть ли такая запись
             stmt = select(TableURL).where(TableURL.url_hash == url_hash)
             result = session.execute(stmt)
             existing = result.scalar_one_or_none()
@@ -38,6 +34,7 @@ class URLCrud:
                 return existing, False
             
             try:
+                # 2. Создаем запись
                 new_element = TableURL(
                     original_url=source_url,
                     url_hash=url_hash,
@@ -73,7 +70,6 @@ class URLCrud:
                 else: 
                     raise
     
-    
     @staticmethod
     def get_by_hash(url_hash: str) -> Optional[TableURL]:
         """ быстрый поиск по хэшу"""
@@ -96,6 +92,25 @@ class URLCrud:
 
             return element
     
+    @staticmethod
+    def get_by_hashes(url_hashes: List) -> List[TableURL]:
+        """Пакетное получение хэшей"""
+        logger.debug('get_by_url_hashes', hashes_count=len(url_hashes))
+
+        if not url_hashes:
+            return []
+        
+        with transaction() as session:
+            stmt = select(TableURL).where(TableURL.url_hash.in_(url_hashes))
+            result = session.execute(stmt)
+            elements = result.scalars().all()
+
+            logger.debug(
+                'Найдено записей по хэшам',
+                requested=len(url_hashes),
+                founded=len(elements)
+            )
+            return elements
 
     @staticmethod
     def get_by_short_code(short_code: str, increment_click: bool = True) -> Optional[TableURL]:
@@ -140,7 +155,6 @@ class URLCrud:
 
             return element
     
-
     @staticmethod
     def bulk_create(urls_data: List[dict]) -> List[TableURL]:
         """Пакетное создание записей"""
@@ -154,7 +168,7 @@ class URLCrud:
 
             logger.debug('Проверка хэшей', hash_count=len(hashes))
             
-            # Получение всех сущуствующих записий за один запрос
+            # Получение всех существующих записий за один запрос
             existing_stmt = select(TableURL).where(TableURL.url_hash.in_(hashes))
             existing_records = {r.url_hash: r for r in session.execute(existing_stmt).scalars()}
 
@@ -196,7 +210,6 @@ class URLCrud:
 
             return result
     
-
     @staticmethod
     def get_stats() -> dict:
         """Получение статистики сервиса"""
@@ -231,5 +244,23 @@ class URLCrud:
 
             return result
 
-# global instanse
-table_url_crud = URLCrud()
+    @staticmethod
+    def increment_clicks(short_code: str) -> bool:
+        """увеличение счетчика кликов"""
+        logger.debug('increment_clciks', short_code=short_code)
+
+        with transaction() as session:
+            update_stmt = (
+                update(TableURL).where(TableURL.short_code == short_code)
+                .values(clicks=TableURL.clicks + 1, last_accessed=func.now())
+            )
+            result = session.execute(update_stmt)
+            session.commit()
+
+            updated = result.rowcount > 0
+            logger.debug(
+                'Инкремент счетчика клика',
+                short_code=short_code,
+                updated=updated
+            )
+            return updated
