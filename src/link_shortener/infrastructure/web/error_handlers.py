@@ -1,14 +1,14 @@
 from http import HTTPStatus
-import os
-from sqlite3 import OperationalError
+import traceback
 from typing import Any, Dict, Optional, Tuple
 
-from flask import request
+from flask import current_app, request
 from pydantic import ValidationError as PydanticValidationError
-from link_shortener.core.exceptions import AppException
-from link_shortener.core.logging_config import get_logger
-from link_shortener.schemas.common import ErrorResponse
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
+from link_shortener.core.exceptions import AppException
+from link_shortener.infrastructure.core.logging_config import get_logger
+from link_shortener.infrastructure.web.schemas.common import ErrorResponse
 
 
 logger = get_logger(__name__)
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 def register_error_handlers(app):
     """
-    Метод для регистрации обработчиков ошибок в flask
+    фабричный метод регистрации обработчиков ошибок в flask приложении
 
     Args:
         app (FLASK): Flask application
@@ -25,25 +25,32 @@ def register_error_handlers(app):
     @app.errorhandler(AppException)
     def handle_app_exception(error: AppException) -> Tuple[Dict[str, Any], int]:
         """Обработка кастомных исключений приложения"""
-        
-        logger.warning(
-            "AppException", 
-            error_message=error.message,
-            error_code=error.code, 
+
+        log_level = 'error' if error.status_code >= 500 else 'warning'
+
+        logger.log(
+            log_level,
+            "app_exception", 
+            exception_type=error.__class__.__name__,
             status_code=error.status_code,
+            error_code=error.code, 
+            error_message=error.message,
+            
             path=request.path,
             method=request.method,
-            remote_addr=request.remote_addr
+            remote_addr=request.remote_addr,
+            traceback=traceback.format_exc() if current_app.debug else None
         )
 
         response = create_error_response(
-            error_code=error.code or "UNKNOWN_ERROR",
+            error_code=error.code,
             message=error.message,
             status_code=error.status_code,
-            details={"path": request.path}
+            path=request.path
         )
         return response
     
+    # ========== PYDANTIC ERRORS ==========
     @app.errorhandler(PydanticValidationError)
     def handle_pydantic_validation_error(error: PydanticValidationError) -> Tuple[Dict[str, Any], int]:
         """Обработка ошибок валидации Pydantic"""
@@ -57,7 +64,7 @@ def register_error_handlers(app):
             })
         
         logger.warning(
-            "Pydantic validation error",
+            "pydantic_validation_error",
             error_details=error_details,
             path=request.path,
             method=request.method
@@ -74,15 +81,38 @@ def register_error_handlers(app):
         )
         return response
 
+    # ========== SQLALCHEMY ERRORS ==========
+    @app.errorhandler(SQLAlchemyError)
+    def handle_sqlalchemy_error(error: SQLAlchemyError) -> Tuple[Dict[str, Any], int]:
+        """Обработка общих ошибок SQLAlchemy"""
+        
+        logger.error(
+            "database_error",
+            error_message=str(error), 
+            path=request.path,
+            method=request.method,
+            exc_info=True
+        )
+        
+        response = create_error_response(
+            error_code="DATABASE_ERROR",
+            message="Внутрянняя ошибка базы данных",
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            details={
+                "path": request.path,
+                "original_error": str(error) if current_app.debug else None
+            }
+        )
+        return response
 
     @app.errorhandler(IntegrityError)
     def handle_integrity_error(error: IntegrityError) -> Tuple[Dict[str, Any], int]:
-        """Обработка целостности БД (уникальность и тп.)"""
+        """Обработка ошибок целостности БД (уникальность и тп.)"""
         
         error_msg = str(error.orig)
 
         logger.error(
-            "Database integrity error",
+            "database_integrity_error",
             error_message=error_msg[:200], 
             path=request.path, 
             method=request.method,
@@ -101,62 +131,18 @@ def register_error_handlers(app):
             status_code=HTTPStatus.CONFLICT,
             details={
                 "path": request.path,
-                "original_error": error_msg[:200]
+                "original_error": error_msg[:200] if current_app.debug else None
             }
         )
         return response
     
-    @app.errorhandler(OperationalError)
-    def handle_operation_error(error: OperationalError) -> Tuple[Dict[str, Any], int]:
-        """Обработка ошибок подключения к БД"""
-
-        logger.critical(
-            'Database Connection Error',
-            error_message=str(error), 
-            path=request.path,
-            method=request.method,
-            exc_info=True
-        )
-
-        response = create_error_response(
-            error_code="DATABASE_CONNECTION_ERROR",
-            message="Ошибка подключения к базе данных",
-            status_code=HTTPStatus.SERVICE_UNAVAILABLE,
-            details={
-                "path": request.path
-            }
-        )
-        return response
-
-    @app.errorhandler(SQLAlchemyError)
-    def handle_sqlalchemy_error(error: SQLAlchemyError) -> Tuple[Dict[str, Any], int]:
-        """Обработка общих ошибок SQLAlchemy"""
-        
-        logger.error(
-            "Database error",
-            error_message=str(error), 
-            path=request.path,
-            method=request.method,
-            exc_info=True
-        )
-        
-        response = create_error_response(
-            error_code="DATABASE_ERROR",
-            message="Внутрянняя ошибка базы данных",
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            details={
-                "path": request.path
-            }
-        )
-        return response
-
-
+    # ========== TODO add name ==========
     @app.errorhandler(404)
     def handle_not_found(error) -> Tuple[Dict[str, Any], int]:
         """Обработка 404 (Not Found)"""
 
         logger.info(
-            '404 Not Found',
+            'not_found',
             method=request.method,
             path=request.path, 
             remote_addr=request.remote_addr
@@ -178,7 +164,7 @@ def register_error_handlers(app):
         """обработка 405 (Method not allowed)"""
 
         logger.warning(
-            '405 Method Not Allowed',
+            'method_not_allowed',
             method=request.method,
             path=request.path, 
             allowed_methods=getattr(error, 'valid_methods', [])
@@ -200,7 +186,7 @@ def register_error_handlers(app):
         """Обработка 429 (Слишком много запросов)"""
 
         logger.warning(
-            '429 Rate Limit Exceeded',
+            'rate_limit_exceeded',
             method=request.method, 
             path=request.path, 
             remote_addr=request.remote_addr
@@ -223,8 +209,10 @@ def register_error_handlers(app):
         Обработка всех непредвиденных исключений
         """
         logger.error(
-            "Unhandled exception",
-            error_message=str(error), 
+            "unhandled_exception",
+            error_message=str(error),
+            error_type=error.__class__.__name__, 
+            
             path=request.path, 
             method=request.method, 
             remote_addr=request.remote_addr,
@@ -232,16 +220,15 @@ def register_error_handlers(app):
         )
         
         # В production режиме не показываем детали ошибки
-        is_production = os.environ.get('FLASK_ENV') == 'PROD'
+        is_production = not current_app.debug
         
-
         response = create_error_response(
             error_code="INTERNAL_SERVER_ERROR",
             message="Внутренняя ошибка сервера" if is_production else str(error),
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            details=None if is_production else {
+            details= {
                 "path": request.path,
-                "exception_type": error.__class__.__name__
+                "exception_type": error.__class__.__name__ if not is_production else None
             }
         )
         return response
