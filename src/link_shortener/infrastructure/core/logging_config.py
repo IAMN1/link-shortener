@@ -3,20 +3,18 @@ import logging
 import logging.handlers
 import os
 from typing import Any, Dict, Optional
-from flask import Flask
+from flask import Flask, request, has_request_context
 
-from link_shortener.core.config import BaseConfig
 import structlog
-
 
 class StructLogConfig:
     """
     Класс для хранения и управления конфигурациями логирования
-     с помщью structlog с поддержкой flask контекста .
-    Для подтягивания необходимых данных из конфига flask (DRY)
+    с помщью structlog с поддержкой flask контекста.
     """
 
     def __init__(self, flask_cfg: Dict[str, Any]):
+        from link_shortener.infrastructure.config.base import BaseConfig
         self.log_dir: str = flask_cfg.get('LOG_DIR', BaseConfig.LOG_DIR)
         self.log_file_name: str = flask_cfg.get('LOG_FILENAME', BaseConfig.LOG_FILENAME)
         self.log_date_format: str = flask_cfg.get('LOG_DATE_FORMAT', BaseConfig.LOG_DATE_FORMAT)
@@ -25,7 +23,7 @@ class StructLogConfig:
         self.log_to_console: bool = flask_cfg.get('LOG_TO_CONSOLE', BaseConfig.LOG_TO_CONSOLE)
         self.log_to_file: bool = flask_cfg.get('LOG_TO_FILE', BaseConfig.LOG_TO_FILE)
         self.debug: bool = flask_cfg.get('DEBUG', BaseConfig.DEBUG)
-        self.log_level = flask_cfg.get('LOG_LEVEL', logging.INFO)
+        self.log_level = logging.DEBUG if self.debug else logging.INFO
 
     @property
     def should_log_to_file(self) -> bool:
@@ -49,13 +47,24 @@ class StructLogConfig:
 
         return os.path.join(self.log_dir, filename)
 
+def _add_request_context(logger, method_name, event_dict):
+    """Добавление контекста запроса в логи"""
+    if has_request_context():
+        event_dict['request_id'] = getattr(request, 'request_id', None)
+        event_dict['request_path'] = request.path
+        event_dict['request_method'] = request.method
+        event_dict['remote_addr'] = request.remote_addr
+    return event_dict
+
 def _setup_structlog(config: StructLogConfig):
     """Настройка structlog"""
 
     processors = [
-            structlog.stdlib.add_log_level,
+            structlog.stdlib.filter_by_level,
             structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
             structlog.processors.TimeStamper(fmt=config.log_date_format),
+            _add_request_context,
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
         ]
@@ -68,8 +77,9 @@ def _setup_structlog(config: StructLogConfig):
         
     structlog.configure(
         processors=processors,
-        wrapper_class=structlog.stdlib.BoundLogger,
+        context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
 
@@ -94,10 +104,9 @@ def setup_logging(app: Flask) -> None:
     if log_config.should_log_to_file:
         os.makedirs(log_config.log_dir, exist_ok=True)
     
-    # Настройка logging как транспорта
+    # Настройка root logging как транспорта
     root_logger = logging.getLogger()
     root_logger.setLevel(log_config.log_level)
-    
     # очищаем существующие обработчики (чтобы не дублировать логи)
     root_logger.handlers.clear()
 
@@ -145,10 +154,10 @@ def setup_logging(app: Flask) -> None:
     logger.info(
         'structlog_initialized',
         log_level=log_config.log_level,
+        debug_mode=log_config.debug,
         log_to_console=log_config.log_to_console,
         log_to_file=log_config.log_to_file,
         log_dir=log_config.log_dir if log_config.log_to_file else None,
-        debug_mode=log_config.debug,
     )
 
 
@@ -164,8 +173,3 @@ def get_logger(name: str = None) -> structlog.BoundLogger:
         structlog.BoundLogger: logger with setup parameters
     """
     return structlog.get_logger(name)
-
-
-
-
-
