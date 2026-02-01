@@ -1,17 +1,19 @@
 
 import hashlib
-import secrets
+import math
 import string
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
+
+from link_shortener.domain.intefaces.abc_code_generator import ICodeGenerator
 
 BASE_62_ALPHABET = string.ascii_lowercase + string.ascii_uppercase + string.digits
 ALPHABET_LENGTH = len(BASE_62_ALPHABET)
 
 
 
-class HashBasedGenerator():
+class HashBasedGenerator(ICodeGenerator):
     """
-    Генератор на основе хеширования URL
+    Реализация генератора коротких ссылок на основе хеширования URL
     - Один Url = один код
     - Криптографически безопасный
     - Поддерживает дедупликацию
@@ -26,7 +28,7 @@ class HashBasedGenerator():
             pepper (Optional[str], optional): Секретный ключь для усиления безопасности. Defaults to None.
         """
         self.code_length = code_length
-        self.pepper = pepper or secrets.token_hex(32)
+        self.pepper = pepper
     
 
     def generate_code(self, normalized_original_url: str) -> str:
@@ -52,16 +54,14 @@ class HashBasedGenerator():
         Вычисление хэша для дедупликации (без перца)
 
         Args:
-            url (str): URL для дедупликации
+            url (str): Нормализованный URL для дедупликации
 
         Returns:
             str: Хэш в Hex формате
         """
         return self._calculate_hash(normalized_original_url, with_pepper=False, as_hex=True)
 
-    def _calculate_hash(
-            self, normalized_original_url: str, 
-            with_pepper: bool = False, as_hex: bool = False) -> Union[bytes, str]:
+    def _calculate_hash(self, normalized_original_url: str, with_pepper: bool = False, as_hex: bool = False) -> Union[bytes, str]:
         """
         Вычисление хэша URL с использованием перца
 
@@ -118,9 +118,13 @@ class HashBasedGenerator():
 
     
     @staticmethod
-    def calculate_entropy(code_length: int) -> tuple:
+    def calculate_entropy(code_length: int) -> Tuple[float, int]:
         """
         Расчет энтропии для оценки безопасности
+
+        Пример расчета:
+            Для 7 символов: 62^7 = 3.5 триллиона комбинаций
+            Для 8 символов: 62^8 = 218 триллионов комбинаций
 
         Args:
             code_length (int): длина короткого кода
@@ -128,13 +132,10 @@ class HashBasedGenerator():
         Returns:
             tuple: энтропия в битах, количство вариантов 
         """
-        import math
+        
         bits = math.log2(62 ** code_length)
         variants = code_length * (62 ** code_length)
         return bits, variants
-    
-    # Пример расчета:
-    # Для 7 символов: 62^7 = 3.5 триллиона комбинаций
-    # Для 8 символов: 62^8 = 218 триллионов комбинаций
+
 
     
