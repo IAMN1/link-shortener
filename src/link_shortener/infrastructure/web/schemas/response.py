@@ -168,8 +168,8 @@ class BatchURLSResponse(BaseModel):
                         "error": "Неверный формат URL"
                     }
                 ],
-                "total": 2,
-                "successful": 1,
+                "total": 3,
+                "successful": 2,
                 "failed": 1
             }
         }
