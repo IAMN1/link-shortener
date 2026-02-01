@@ -1,21 +1,28 @@
 import re
+from typing import Tuple
 from urllib.parse import urlparse, urlunparse
 import validators
-from src.link_shortener.core.config import BaseConfig
 
-class UrlValidator:
+from link_shortener.domain.intefaces.abc_url_validator import IUrlValidator
+
+class UrlValidator(IUrlValidator):
     """
-    Класс валидатор для проверки безопасности
+    Реализация валидатора URL
+    - Обеспечивает проверку безопасности
+    - Обеспечивает нормализацию url адресов
     """
 
     DANGEROUS_SHEMES = ['javascript', 'data', 'file', 'vbscript']
     IP_PATTERN = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
     OWN_DOMAINS = ['localhost', '127.0.0.1']
 
-    @classmethod
-    def is_valid_url(cls, url: str) -> tuple[bool, str]:
+    def __init__(self, max_url_length: int = 2048, allowed_schemes: Tuple[str, ...] = ('http', 'https')):
+        self.max_url_length = max_url_length
+        self.allowed_schemes = allowed_schemes
+
+    def is_valid_url(self, url: str) -> tuple[bool, str]:
         """
-        Проверка URL на валидность и безопасность
+        Метод проверки URL на валидность и безопасность
 
         Args:
             url (str): ссылка для проверки
@@ -25,50 +32,48 @@ class UrlValidator:
               не удачи или нормализованной ссылкой в случае успеха
         """
         
-        # проверка длинны ссылки
-        if len(url) > BaseConfig.MAX_URL_LENGTH:
-            return False, f'URL длинна превышаем максимальное количество символов {BaseConfig.MAX_URL_LENGTH}'
+        # 1. Проверка длинны ссылки
+        if len(url) > self.max_url_length:
+            return False, f'URL длинна превышаем максимальное количество символов {self.max_url_length}'
 
 
         if not validators.url(url):
             return False, 'Некорректный URL'
         
-        # URL parse
+        # 2. URL parse
         try:
             parsed = urlparse(url)
         except Exception:
             return False, "Не удалось разобрать URL"
         
-        # Проверка схемы
+        # 3. Проверка схемы
         if not parsed.scheme:
             return False, 'URL должен содержать схему(http:// или https://)'
         
-        if parsed.scheme.lower() in cls.DANGEROUS_SHEMES:
+        if parsed.scheme.lower() in self.DANGEROUS_SHEMES:
             return False, f'Опасная схема URL: {parsed.scheme}'
         
-        if parsed.scheme.lower() not in BaseConfig.ALLOWED_SHEMES:
-            return False, f'Недопустимая схема! Разрешены: {''.join(BaseConfig.ALLOWED_SHEMES)}'
+        if parsed.scheme.lower() not in self.allowed_schemes:
+            return False, f'Недопустимая схема! Разрешены: {''.join(self.allowed_schemes)}'
         
-        
-        # проверка домена
+        # 4. проверка домена
         if not parsed.netloc:
             return False, 'URL должен содержать домен!'
         
-        # Проверка на IP
-        if cls.IP_PATTERN.match(parsed.netloc.split(':')[0]):
+        # 5. Проверка на IP
+        if self.IP_PATTERN.match(parsed.netloc.split(':')[0]):
             return False, 'URL с IP-адресом вместо домена не разрешены!'
         
-        # проверка ссылок с наши домены (предотвращение циклов)
-        if any(domain in parsed.netloc for domain in cls.OWN_DOMAINS):
+        # 6. проверка ссылок с наши домены (предотвращение циклов)
+        if any(domain in parsed.netloc for domain in self.OWN_DOMAINS):
             return False, 'Нельзя сокращать ссылки на этот сервис!'
         
-        normalized_url = cls.normalize_url(url)
+        normalized_url = self.normalize_url(url)
         return True, normalized_url
     
-    @staticmethod
-    def normalize_url(url: str) -> str:
+    def normalize_url(self, url: str) -> str:
         """
-        Нормализация URL для устранения дубликатов
+        Метод производящий нормализацию URL для устранения дубликатов
 
         Args:
             url (str): ссылка
@@ -96,10 +101,9 @@ class UrlValidator:
         
         return urlunparse(parsed)
     
-    @classmethod
-    def extract_domain(cls, url: str) -> str:
+    def extract_domain(self, url: str) -> str:
         """
-        Извлечение домена
+        Метод извлечения домена
 
         Args:
             url (str): ссылка
