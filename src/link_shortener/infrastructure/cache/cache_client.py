@@ -3,14 +3,15 @@ from typing import Any, Dict, List, Optional
 from redis import ConnectionPool, Redis
 from redis.exceptions import ConnectionError, TimeoutError, RedisError
 
-from link_shortener.core.logging_config import get_logger
+from link_shortener.domain.intefaces.abc_cache import ICacheClient
+from link_shortener.infrastructure.core.logging_config import get_logger
 
 
 logger = get_logger(__name__)
 
-class CacheClient:
+class RedisCacheClient(ICacheClient):
     """
-    Клиент для работы с Redis кэшем
+    Реализация клиента для работы с Redis кэшем
     Обеспечивает безопасное подключение, обработку ошибок и логирование
 
     Особенности клиента:
@@ -422,22 +423,5 @@ class CacheClient:
             self._client = None
             logger.info('redis_cache_connection_closed')
 
-def init_cache(app_config) -> CacheClient:
-    """
-    Инициализация кэш-клиента
-    
-    Args:
-        app_config: Конфигурация приложения
-        
-    Returns:
-        Экземпляр CacheClient
-    """
-    cache_client = CacheClient(app_config)
-    if cache_client and cache_client._is_connected:
-        logger.info('Кэш Redis успешно инициализирован')
-        logger.info(f"Статистика кэша: {cache_client.get_stats()}")
-    else:
-        logger.warning("Кэш Redis не доступен, работаем без кэширования")
-    return cache_client
 
 
