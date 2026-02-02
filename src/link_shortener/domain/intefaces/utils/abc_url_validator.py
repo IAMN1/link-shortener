@@ -1,3 +1,7 @@
+"""
+( Порт / Интерфейс ) для валидации URL адресов.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Tuple
 
