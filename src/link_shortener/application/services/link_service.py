@@ -2,15 +2,15 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from link_shortener.domain.events.link_events import UrlAccessed, UrlCreated
-from link_shortener.domain.intefaces.abc_code_generator import ICodeGenerator
-from link_shortener.domain.intefaces.abc_url_validator import IUrlValidator
+from link_shortener.domain.intefaces.utils.abc_code_generator import ICodeGenerator
+from link_shortener.domain.intefaces.utils.abc_url_validator import IUrlValidator
 from link_shortener.domain.value_objects.cache_strategy import HashCahcheStrategy, RedirectCacheStrategy, StatsCacheStrategy
 from link_shortener.infrastructure.core.audit_logger import AuditLogger
 from link_shortener.infrastructure.core.logging_config import get_logger
 from link_shortener.core.exceptions import NotFoundError, ServiceError, ValidationError
 from link_shortener.domain.entities.link import Link
-from link_shortener.domain.intefaces.abc_cache import ICacheClient
-from link_shortener.domain.intefaces.abc_repository import ILinkRepository
+from link_shortener.domain.intefaces.cache.abc_cache import ICacheClient
+from link_shortener.domain.intefaces.database.abc_repository import ILinkRepository
 
 
 

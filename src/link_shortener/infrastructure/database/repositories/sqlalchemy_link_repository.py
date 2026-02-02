@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from link_shortener.core.exceptions import DatabaseError, DatabaseIntegrityError
 from link_shortener.infrastructure.core.logging_config import get_logger
 from link_shortener.domain.entities.link import Link
-from link_shortener.domain.intefaces.abc_repository import ILinkRepository
+from link_shortener.domain.intefaces.database.abc_repository import ILinkRepository
 from link_shortener.infrastructure.database.database_manager import Database
 from link_shortener.infrastructure.database.models import TableURL
 

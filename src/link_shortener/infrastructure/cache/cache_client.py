@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 from redis import ConnectionPool, Redis
 from redis.exceptions import ConnectionError, TimeoutError, RedisError
 
-from link_shortener.domain.intefaces.abc_cache import ICacheClient
+from link_shortener.domain.intefaces.cache.abc_cache import ICacheClient
 from link_shortener.infrastructure.core.logging_config import get_logger
 
 
