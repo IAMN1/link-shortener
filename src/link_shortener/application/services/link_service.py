@@ -1,7 +1,11 @@
-from typing import Dict, List
+from datetime import datetime
+from typing import Dict, List, Optional
 
+from link_shortener.domain.events.link_events import UrlAccessed, UrlCreated
 from link_shortener.domain.intefaces.abc_code_generator import ICodeGenerator
 from link_shortener.domain.intefaces.abc_url_validator import IUrlValidator
+from link_shortener.domain.value_objects.cache_strategy import HashCahcheStrategy, RedirectCacheStrategy, StatsCacheStrategy
+from link_shortener.infrastructure.core.audit_logger import AuditLogger
 from link_shortener.infrastructure.core.logging_config import get_logger
 from link_shortener.core.exceptions import NotFoundError, ServiceError, ValidationError
 from link_shortener.domain.entities.link import Link
@@ -13,7 +17,7 @@ from link_shortener.domain.intefaces.abc_repository import ILinkRepository
 logger = get_logger(__name__)
 
 class LinkService:
-    def __init__(self, repository: ILinkRepository, base_url: str, url_validator: IUrlValidator, code_generator: ICodeGenerator, cache_client: ICacheClient, cache_ttl: int = 3600, cache_ttl_stats: int = 300, batch_limit: int = 100):
+    def __init__(self, repository: ILinkRepository, base_url: str, url_validator: IUrlValidator, code_generator: ICodeGenerator, cache_client: ICacheClient, cache_ttl: int = 3600, cache_ttl_stats: int = 300, batch_limit: int = 100, audit_logger: Optional[AuditLogger] = None):
         self.repository = repository
         self.base_url = base_url
         self.cache = cache_client
@@ -22,14 +26,20 @@ class LinkService:
         self.url_validator=url_validator
         self.cache_ttl_stats = cache_ttl_stats
         self.batch_limit = batch_limit
+        self.audit_logger = audit_logger
 
-        self.CACHE_PREFIX_REDIRECT = "redirect:"
-        self.CACHE_PREFIX_HASH = "hash:"
-        self.CACHE_KEY_STATS = "service_stats"
+        self.redirect_strategy = RedirectCacheStrategy()
+        self.hash_strategy = HashCahcheStrategy()
+        self.stats_strategy = StatsCacheStrategy()
 
-        logger.info('LinkService_initialized', base_url=self.base_url, cache_enabled=self.cache is not None)
+        logger.info(
+            'LinkService_initialized',
+            base_url=self.base_url,
+            cache_enabled=self.cache is not None,
+            audit_logger=self.audit_logger is not None
+        )
    
-    def create_short_url(self, original_url: str) -> Dict:
+    def create_short_url(self, original_url: str, user_ip: str = None, user_agent: str = None) -> Dict:
         """
         Создание короткой URL
 
@@ -53,14 +63,29 @@ class LinkService:
             logger.debug('url_hash_generated', hash=url_hash[:10])
             
             # 3. Проверка кэша по хэшу Url на дедупликацию
-            cache_key_hash = f'{self.CACHE_PREFIX_HASH}{url_hash}'
+            cache_key_hash = self.hash_strategy.get_key(url_hash)
             if self.cache:
+                
                 cached_code = self.cache.get(cache_key_hash)
+                
                 if cached_code:
-                    logger.info('Найден код ссылки в кэше дедупликации', hash=url_hash[:10])
+                    
+                    logger.debug('Найден код ссылки в кэше дедупликации', hash=url_hash[:10])
                     existing_link = self.repository.get_by_short_code(cached_code)
+                    
                     if existing_link:
-                        logger.info('Возврат ссылки из кэша', short_code=cached_code)
+                        # Аудит логирование доступа к существующей ссылке
+                        event = UrlAccessed(
+                            timestamp=datetime.now(),
+                            short_code=existing_link.short_code,
+                            original_url=existing_link.original_url,
+                            current_clicks=existing_link.clicks,
+                            user_ip=user_ip,
+                            user_agent=user_agent
+                        )
+                        self.audit_logger.log_url_accessed(event)
+
+                        logger.info('Возвращена существующая ссылка', short_code=existing_link.short_code, clicks=existing_link.clicks)
                         return self._format_url_response(existing_link, is_new=False)
 
             # 4. Генерация короткого кода для ссылки
@@ -68,7 +93,7 @@ class LinkService:
             logger.debug('short_code_generated', short_code=short_code)
 
             # 5. Сохранение в бд или получение, если уже существует запись с таким хэшем
-            short_link, is_created = self.repository.create_or_get(
+            link, is_created = self.repository.create_or_get(
                 url_hash=url_hash,
                 source_url=original_url,
                 short_code=short_code
@@ -77,7 +102,19 @@ class LinkService:
             if is_created:
                 logger.info('Короткая ссылка успешно создана', url_hash=url_hash[:10], short_code=short_code)
                 
-                # 6. Кэширование короткого кода для дедупликации (hash: short_code)
+                # Аудит логирование создания ссылки
+                event = UrlCreated(
+                    timestamp=datetime.now(),
+                    url_hash=link.url_hash,
+                    original_url=link.original_url,
+                    short_code=link.short_code,
+                    is_new=is_created,
+                    user_ip=user_ip,
+                    user_agent=user_agent
+                )
+                self.audit_logger.log_url_created(event)
+
+                # 7. Кэширование короткого кода для дедупликации (hash: short_code)
                 if self.cache:
                     is_cached_by_url_hash = self.cache.set(cache_key_hash, short_code, ttl=self.cache_ttl)
                     
@@ -86,9 +123,20 @@ class LinkService:
                     else:
                         logger.warning('Возникли проблемы с кэшированием данных', short_code=short_code, url=url_or_message)
             else:
-                logger.info('Найдена существующая ссылка', short_code=short_code, clicks_count=short_link.clicks)
+                logger.info('Найдена существующая ссылка', short_code=short_code, clicks_count=link.clicks)
+                
+                # Аудит логирование доступа к существующей ссылке
+                event = UrlAccessed(
+                    timestamp=datetime.now(),
+                    short_code=link.short_code,
+                    original_url=link.original_url,
+                    current_clicks=link.clicks,
+                    user_ip=user_ip,
+                    user_agent=user_agent
+                )
+                self.audit_logger.log_url_accessed(event)
 
-            return self._format_url_response(short_link, is_new=is_created)
+            return self._format_url_response(link, is_new=is_created)
         
         except ValidationError:
             logger.error('Ошибка валидации URL', original_url=original_url)
@@ -103,13 +151,13 @@ class LinkService:
             )
             raise ServiceError("Внутренняя ошибка при создании короткой ссылки", "SERVICE_ERROR")
     
-    def get_original_url_for_refirect(self, short_code: str) -> str:
+    def get_original_url_for_refirect(self, short_code: str, user_ip: str = None, user_agent: str = None) -> str:
         """Получение оригинального url для редиректа"""
         try:
             logger.info('Начало редиректа по короткому коду', short_code=short_code)
 
             # 1. Проверка кэша редиректа
-            cache_key_redirect = f'{self.CACHE_PREFIX_REDIRECT}{short_code}'
+            cache_key_redirect = self.redirect_strategy.get_key(short_code)
             if self.cache:
                 cached_link = self.cache.get(cache_key_redirect)
                 if cached_link:
@@ -121,7 +169,19 @@ class LinkService:
                         logger.info('Счетчик перехода по ссылке обновлен')
                     else:
                         logger.warning('Не дуалось обновить счетчик перехода по ссылке', short_code=short_code)
-                    return cached_link
+                
+                event = UrlAccessed(
+                    timestamp=datetime.now(),
+                    short_code=short_code,
+                    original_url=cached_link,
+                    from_cache=True,
+                    current_clicks=None,
+                    user_ip=user_ip,
+                    user_agent=user_agent,
+                )
+                self.audit_logger.log_url_accessed(event)
+                
+                return cached_link
             
             # 2. Извлечение из БД если нет данных в кэше
             link = self.repository.get_by_short_code(short_code)
@@ -144,6 +204,18 @@ class LinkService:
             
 
             logger.info('Ссылка для редиректа получена', short_code=short_code, original_url=link.original_url[:50])
+            
+            event = UrlAccessed(
+                timestamp=datetime.now(),
+                short_code=link.short_code,
+                original_url=link.original_url,
+                current_clicks=link.clicks,
+                from_cache=False,
+                user_ip=user_ip,
+                user_agent=user_agent
+            )
+            self.audit_logger.log_url_accessed(event)
+            
             return link.original_url
             
         except (NotFoundError):
@@ -158,7 +230,7 @@ class LinkService:
             )
             raise ServiceError('Внутрення ошибка при получении ссылки для редиректа')
 
-    def get_url_info(self, short_code: str) -> Dict:
+    def get_url_info(self, short_code: str, user_ip: str = None, user_agent: str = None) -> Dict:
         """
         Получение информации по короткому коду о ссылке
         Данные берутся всегда из БД
@@ -179,6 +251,17 @@ class LinkService:
             if not link:
                 logger.warning('Запись в базе данных не найдена')
                 raise NotFoundError(f'Короткая ссылка c {short_code} не найдена', 'URL_NOT_FOUND')
+
+            event = UrlAccessed(
+                timestamp=datetime.now(),
+                short_code=link.short_code,
+                original_url=link.original_url,
+                current_clicks=link.clicks,
+                from_cache=False,
+                user_ip=user_ip,
+                user_agent=user_agent
+            )
+            self.audit_logger.log_url_accessed(event)
 
             logger.info('Информация о ссылке найдена в базе данных', url_hash=link.url_hash[:10], short_code=short_code, from_cache=False)
 
@@ -203,7 +286,7 @@ class LinkService:
             )
             raise ServiceError('Внутрення ошибка при получении информации о ссылке', 'SERVICE_ERROR')
     
-    def batch_create(self, urls: List[str]) -> List[Dict]:
+    def batch_create(self, urls: List[str], user_ip: str = None, user_agent: str = None) -> List[Dict]:
         """
         Пакетное создание ссылок
 
@@ -274,7 +357,7 @@ class LinkService:
 
             ## 2.1 Проверка в кэше
             if self.cache and valid_data:
-                cache_keys = [f'{self.CACHE_PREFIX_HASH}{hash}' for hash in hashes_to_check]
+                cache_keys = [self.hash_strategy.get_key(hash) for hash in hashes_to_check]
                 
                 cached_results = self.cache.get_many(cache_keys)
 
@@ -293,17 +376,29 @@ class LinkService:
 
                 existing_links_in_db = self.repository.get_by_hashes(hashes_to_check)
                 
-                for links in existing_links_in_db:
+                for link in existing_links_in_db:
 
-                    existing_hashes.add(links.url_hash)
+                    existing_hashes.add(link.url_hash)
                     
                     results.append({
                         'success': True,
                         'already_exists': True,
-                        'source_url': links.original_url,
-                        'short_url': f'{self.base_url}{links.short_code}',
-                        'short_code': links.short_code,
+                        'source_url': link.original_url,
+                        'short_url': f'{self.base_url}{link.short_code}',
+                        'short_code': link.short_code,
                     })
+
+                    # Аудит доступа к ссылкам
+                    event = UrlAccessed(
+                        timestamp=datetime.now(),
+                        short_code=link.short_code,
+                        original_url=link.original_url,
+                        current_clicks=link.clicks,
+                        from_cache=False,
+                        user_ip=user_ip,
+                        user_agent=user_agent
+                    )
+                    self.audit_logger.log_url_accessed(event)
 
             logger.debug('Проверка дедупликации завершена', total_for_check=len(hash_to_data), founded_in_cache_or_db=existing_hashes)
 
@@ -321,7 +416,6 @@ class LinkService:
             # 3. Пакетное сохранение в БД
             if new_links:
                 created_links = self.repository.bulk_create(new_links)
-
                 logger.debug('Пакетное сохранение ссылок в базу данных завершено', saved_links_count=len(created_links))
             
             # 4. Пакетное кеширование
@@ -332,8 +426,8 @@ class LinkService:
                 cache_data_redirect = {}
 
                 for link in created_links:
-                    cache_key_hash = f'{self.CACHE_PREFIX_HASH}{link.url_hash}'
-                    cache_key_redirect = f'{self.CACHE_PREFIX_REDIRECT}{link.short_code}'
+                    cache_key_hash = self.hash_strategy.get_key(link.url_hash)
+                    cache_key_redirect = self.redirect_strategy.get_key(link.short_code)
 
                     cache_data_deduplication[cache_key_hash] = link.short_code
                     cache_data_redirect[cache_key_redirect] = link.original_url
@@ -355,6 +449,18 @@ class LinkService:
                         'short_code': link.short_code,
                     }
                 )
+
+                # Аудит создания ссылок
+                event = UrlCreated(
+                    timestamp=datetime.now(),
+                    url_hash=link.url_hash,
+                    original_url=link.original_url,
+                    short_code=link.short_code,
+                    is_new=True,
+                    user_ip=user_ip,
+                    user_agent=user_agent
+                )
+                self.audit_logger.log_url_created(event)
 
             # 6 расчет статистики обработки ссылок
             total_processed = len(results)
@@ -378,10 +484,6 @@ class LinkService:
 
             return response
         
-        # TODO добавить обрабтку конкретных возможных ошибок
-        # 
-        # 
-        # 
         except Exception as e:
             logger.error(
                 'Непредвиденная ошибка при пакетной генерации коротких ссылок',
@@ -405,7 +507,7 @@ class LinkService:
         try:
             # 1. Попытка получения данных из кэша
             if self.cache:
-                cached_stats = self.cache.get(self.CACHE_KEY_STATS)
+                cached_stats = self.cache.get(self.stats_strategy.get_key())
                 if cached_stats:
                     logger.info('Статистика получена из кэша')
                     return cached_stats
@@ -436,7 +538,7 @@ class LinkService:
 
             # 3. Кэширование статистики
             if self.cache:
-                is_cached_stats = self.cache.set(self.CACHE_KEY_STATS, result, self.cache_ttl_stats)
+                is_cached_stats = self.cache.set(self.stats_strategy.get_key(), result, self.cache_ttl_stats)
                 if is_cached_stats:
                     logger.debug('Общая статистика успешно закэширована')
                 else:
