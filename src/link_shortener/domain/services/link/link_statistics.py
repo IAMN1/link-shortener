@@ -67,7 +67,7 @@ class LinkStatistics(BaseService):
 
         # 5. Кэширование статистики
         if self._cache_manager and self._stats_strategy:
-            success = self._cache_manager.cache_stats(result, self._stats_strategy, self._cache_ttl)
+            success = self._cache_manager.cache_service_stats(result, self._stats_strategy, self._cache_ttl)
             if success:
                 self._log_debug('Статистика успешно закэширована')
         

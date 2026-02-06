@@ -35,7 +35,7 @@ class RedirectCacheStrategy(CacheKeyStrategy):
 @dataclass
 class InfoCacheStrategy(CacheKeyStrategy):
     """
-    Стратегия используется для получения полной информации о ссылке
+    Стратегия используется для кэширования или получения полной информации о ссылке
     short_code -> link
     """
     prefix: str = 'link:info:'
@@ -46,8 +46,8 @@ class InfoCacheStrategy(CacheKeyStrategy):
 @dataclass
 class StatsCacheStrategy(CacheKeyStrategy):
     """
-    Стратегия для ключей статистики
-    Используется для возврата статистики из кэша
+    Стратегия для ключей статистики использования сервиса
+    Используется для кэширования или возврата статистики из кэша
     """
     prefix: str = 'link:stats:'
 
