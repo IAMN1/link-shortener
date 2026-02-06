@@ -55,7 +55,7 @@ class LinkRedirector(BaseService):
             
             # обновление счетчика переходов по ссылке
             self._repository.increment_clicks(short_code)
-
+            # or
             # Обновление кэшированных данных
             self._update_update_link_data(short_code)
             

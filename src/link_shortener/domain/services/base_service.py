@@ -1,6 +1,6 @@
 from typing import Optional
 
-from interfaces.logger.abc_logger import ILogger
+from ..interfaces.logger.abc_logger import ILogger
 
 
 class BaseService:

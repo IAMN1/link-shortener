@@ -19,7 +19,7 @@ class CacheManager(BaseService):
         self._cache_client = cache_client
     
 
-    def link_to_dict(self, link: Link) -> Dict[str, Any]:
+    def _link_to_dict(self, link: Link) -> Dict[str, Any]:
         """Конвертация Link в словарь для кэширования"""
         return {
             'id': link.id,
@@ -34,7 +34,7 @@ class CacheManager(BaseService):
             )
         }
     
-    def dict_to_link(self, data: Dict[str, Any]) -> Link:
+    def _dict_to_link(self, data: Dict[str, Any]) -> Link:
         """Конвертация из словаря из кэша в LINK сущность"""
         return Link(
             id=data['id'],
@@ -58,7 +58,7 @@ class CacheManager(BaseService):
 
         if cached_data:
             try:
-                return self.dict_to_link(cached_data)
+                return self._dict_to_link(cached_data)
             except Exception as e:
                 self._log_error('Ошибка десериализации из кэша', error=str(e))
         return None
@@ -73,7 +73,7 @@ class CacheManager(BaseService):
 
         if cached_data:
             try:
-                return self.dict_to_link(cached_data)
+                return self._dict_to_link(cached_data)
             except Exception as e:
                 self._log_error('Ошибка десериализации из кэша', error=str(e))
         return None
@@ -89,7 +89,7 @@ class CacheManager(BaseService):
         links = []
         for key, data in cached_data.items():
             try:
-                links.append(self.dict_to_link(data))
+                links.append(self._dict_to_link(data))
             except Exception as e:
                 self._log_error('Ошибка десериализации', error=str(e), key=key)
         return links
@@ -99,7 +99,7 @@ class CacheManager(BaseService):
         if not self._cache_client:
             return False
 
-        link_dict = self.link_to_dict(link)
+        link_dict = self._link_to_dict(link)
         cache_data = {}
 
         for name, strategy in strategies.items():
@@ -118,8 +118,8 @@ class CacheManager(BaseService):
         
         return False
     
-    def cache_stats(self, stats: Dict[str, Any], strategy: Optional[CacheKeyStrategy] = None, ttl: int = 300) -> bool:
-        """Кэширование статистики сервиса ссылок"""
+    def cache_service_stats(self, stats: Dict[str, Any], strategy: Optional[CacheKeyStrategy] = None, ttl: int = 300) -> bool:
+        """Кэширование статистики использования сервиса ссылок"""
         if not self._cache_client or not strategy:
             return False
         
@@ -149,7 +149,7 @@ class CacheManager(BaseService):
         return success
     
     def get_service_stats(self, strategy: Optional[CacheKeyStrategy] = None) -> Optional[Dict[str, Any]]:
-        """Получение статистики"""
+        """Получение статистики использования сервиса ссылок"""
         if not self._cache_client or not strategy:
             return None
         cache_key = strategy.get_key()
