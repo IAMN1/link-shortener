@@ -17,3 +17,5 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
+test-results/
+coverage.xml
