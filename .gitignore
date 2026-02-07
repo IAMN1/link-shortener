@@ -12,3 +12,10 @@ wheels/
 .env
 
 *.db
+
+# Pytest-generated files
+.pytest_cache/
+.coverage
+htmlcov/
+test-results/
+coverage.xml
