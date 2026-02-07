@@ -1,4 +1,5 @@
 
+from itertools import chain
 from typing import List, Optional, Tuple
 
 from ...interfaces.database.abc_repository import ILinkRepository
@@ -158,7 +159,7 @@ class BatchLinkProcessor(BaseService):
             db_links = []
         
         # 3. Формирование результатов для найденных ссылок в кэше и базе данных
-        for link in cached_links + db_links:
+        for link in chain(cached_links, db_links):
             data = hash_to_data[link.url_hash]
             results.append(BatchResultItem(
                 success=True,
@@ -174,6 +175,7 @@ class BatchLinkProcessor(BaseService):
             del hash_to_data[link.url_hash]
         
         # 4. Генерация новых ссылок
+        created_links = []
         if hash_to_data:
             new_links_data = []
             for hash_, data in hash_to_data.items():
@@ -191,6 +193,7 @@ class BatchLinkProcessor(BaseService):
                     success=True,
                     data=BatchLinkData(
                         url=data.url,
+                        url_hash=data.url_hash,
                         short_code=data.short_code,
                         clicks=data.clicks
                     ),
@@ -198,9 +201,13 @@ class BatchLinkProcessor(BaseService):
                     from_cache=False
                 ))
             
-            # Кэширование новых ссылок
-            if self._cache_manager and self._hash_strategy and self._redirect_strategy:
-                self._cache_new_links(created_links)
+        # Кэширование новых ссылок и ссылок из бд
+        if self._cache_manager and self._hash_strategy and self._redirect_strategy:
+            links_to_cache = []
+            links_to_cache.extend(db_links)
+            links_to_cache.extend(created_links)
+            if links_to_cache:
+                self._cache_new_links(links_to_cache)
         
         return results
     
@@ -215,16 +222,15 @@ class BatchLinkProcessor(BaseService):
         if not self._cache_manager or not links:
             return
         
-        for link in links:
-            strategies = {}
+        strategies = {}
 
-            if self._hash_strategy:
-                strategies['hash'] = self._hash_strategy
-            if self._redirect_strategy:
-                strategies['redirect'] = self._redirect_strategy
-            
-            if strategies:
-                self._cache_manager.cache_link(link, strategies, self._cache_ttl)
+        if self._hash_strategy:
+            strategies['hash'] = self._hash_strategy
+        if self._redirect_strategy:
+            strategies['redirect'] = self._redirect_strategy
+        
+        if strategies:
+            self._cache_manager.cache_links(links, strategies, self._cache_ttl)
     
     def _create_summary(self, results: List[BatchResultItem]) -> BatchProcessingSummary:
         """Создание сводки по резульатам операции пакетного создания ссылок"""

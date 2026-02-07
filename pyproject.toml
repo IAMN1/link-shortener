@@ -23,4 +23,33 @@ dev = [
     "mypy>=1.19.1",
     "pylint>=4.0.4",
     "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+    "--cov=src/link_shortener",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--junitxml=test-results/junit.xml"
+]
+
+markers = [
+    "unit: unit tests (fast, isolated)",
+    "integration: integration tests (require external services)",
+    "e2e: end-to-end tests (full system)",
+    "slow: slow running tests",
+    "database: tests that use database",
+    "cache: tests that use cache",
+    "api: tests for API endpoints",
 ]

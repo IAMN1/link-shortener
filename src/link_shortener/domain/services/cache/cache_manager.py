@@ -115,9 +115,52 @@ class CacheManager(BaseService):
             
         if cache_data:
             return self._cache_client.set_many(cache_data, ttl)
-        
         return False
     
+    def cache_links(self, links: List[Link], strategies: Dict[str, CacheKeyStrategy], ttl: int = 3600) -> bool:
+        """массовое кэширование ссылок за один запрос"""
+        success = False
+        if not self._cache_client or not links:
+            return success
+        
+        start_time = datetime.now()
+        link_count = len(links)
+        strategy_count = len(strategies)
+
+        self._log_info(
+            'Начало массового кэширования ссылок',
+            link_count=link_count,
+            strategy_count=strategy_count,
+            estimated_keys=link_count * strategy_count
+        )
+
+        cache_data = {}
+
+        for link in links:
+            link_dict = self._link_to_dict(link)
+            for name, strategy in strategies.items():
+                if name == 'hash':
+                    cache_key = strategy.get_key(link.url_hash)
+                    cache_data[cache_key] = link_dict
+                elif name == 'redirect':
+                    cache_key = strategy.get_key(link.short_code)
+                    cache_data[cache_key] = link.original_url
+                elif name == 'info':
+                    cache_key = strategy.get_key(link.short_code)
+                    cache_data[cache_key] = link_dict
+        if cache_data:
+            success = self._cache_client.set_many(cache_data, ttl)
+        
+        duration = (datetime.now() - start_time).total_seconds()
+        self._log_info(
+            'Завершение массового кэширования',
+            success=success,
+            duration_seconds=duration,
+            links_per_second=link_count / duration if duration > 0 else 0
+        )
+        
+        return success
+
     def cache_service_stats(self, stats: Dict[str, Any], strategy: Optional[CacheKeyStrategy] = None, ttl: int = 300) -> bool:
         """Кэширование статистики использования сервиса ссылок"""
         if not self._cache_client or not strategy:
