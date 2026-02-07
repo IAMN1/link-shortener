@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional
 
-from src.link_shortener.core.exceptions import NotFoundError
+from src.link_shortener.domain.exceptions import LinkNotFoundError
+
 
 from ..base_service import BaseService
 from ...entities.link import Link
@@ -55,12 +56,12 @@ class LinkInformation(BaseService):
                 try:
                     return LinkInfoResult(**cached_info)
                 except Exception as e:
-                    self.log_error('Ошибка десериализации из кэша', short_code=short_code, error=str(e))
+                    self._log_error('Ошибка десериализации из кэша', short_code=short_code, error=str(e))
         
         # 2. Получение из бд
         link = self._repository.get_by_short_code(short_code)
         if not link:
-            raise NotFoundError(f'Ссылка с кодом ({short_code}) не найдена!')
+            raise LinkNotFoundError(f'Ссылка с кодом ({short_code}) не найдена!')
         
         # 3. Формирование результата
         result = self._link_to_info_result(link)
@@ -76,6 +77,8 @@ class LinkInformation(BaseService):
     def _link_to_info_result(self, link: Link) -> LinkInfoResult:
         """Конвертация Link сущности в LinkInfoResult"""
         return LinkInfoResult(
+            id=link.id,
+            url_hash=link.url_hash,
             short_code=link.short_code,
             original_url=link.original_url,
             clicks=link.clicks,

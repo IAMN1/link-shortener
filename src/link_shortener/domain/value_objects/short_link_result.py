@@ -26,6 +26,8 @@ class RedirectResult:
 @dataclass(frozen=True)
 class LinkInfoResult:
     """Value object для информации о ссылки"""
+    id: str
+    url_hash: str
     short_code: str
     original_url: str
     clicks: int
