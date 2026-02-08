@@ -1,11 +1,11 @@
 from typing import Any, Dict, Optional
 
-from src.link_shortener.domain.exceptions import LinkNotFoundError
-
 
 from ..base_service import BaseService
+from ...exceptions import LinkNotFoundError, ValidationError
 from ...entities.link import Link
 from ..cache.cache_manager import CacheManager
+from ...interfaces.utils.abc_code_extractor import IShortCodeExtractor
 from ...interfaces.database.abc_repository import ILinkRepository
 from ...interfaces.logger.abc_logger import ILogger
 from ...value_objects.cache_strategy import InfoCacheStrategy
@@ -20,41 +20,79 @@ class LinkInformation(BaseService):
     def __init__(
         self,
         repository: ILinkRepository,
+        short_code_extractor: IShortCodeExtractor,
         cache_manager: Optional[CacheManager] = None,
         info_strategy: Optional[InfoCacheStrategy] = None,
         cache_ttl: int = 300,
         logger: Optional[ILogger] = None
     ):
         super().__init__(logger)
+        self._code_extractor = short_code_extractor
         self._repository = repository
         self._cache_manager = cache_manager
         self._info_strategy = info_strategy
         self._cache_ttl = cache_ttl
     
-    def get_link_info(self, short_code: str) -> LinkInfoResult:
+    def extract_short_code(self, short_url: str) -> str:
+        """
+        Извлекает короткий код из короткой ссылки
+        
+        Args:
+            short_url: Полная короткая ссылка
+            
+        Returns:
+            str: Короткий код
+            
+        Raises:
+            ValidationError: Если ссылка имеет неверный формат
+        """
+        is_valid, error_message = self._code_extractor.validate_short_url_format(short_url)
+        if not is_valid:
+            raise ValidationError(
+                message=error_message,
+                code='INVALID_SHORT_URL_FORMAT',
+                field='short_url',
+                value=short_url
+            )
+        
+        short_code = self._code_extractor.extract_code_from_url(short_url)
+        if not short_code:
+            raise ValidationError(
+                message='Не удалось извлечь короткий код из ссылки',
+                code='SHORT_CODE_EXTRACTION_FAILED',
+                field='short_url',
+                value=short_url
+            )
+        
+        return short_code
+    
+    def get_link_info(self, short_url: str) -> LinkInfoResult:
         """
         Получает полную информацию о ссылке
 
         Args:
-            short_code (str): короткий код ссылки
+            short_url (str): Cокращенная ссылка
 
         Returns:
             LinkInfoResult: Полная информация о ссылке
         
         Raises:
             NotFoundError: если ссылка не найдена
+            LinkNotFoundError: если ссылка не найдена
         """
-        self._log_debug('получение информации о ссылке', short_code=short_code)
+        self._log_debug('получение информации о ссылке', short_url=short_url)
+        
+        short_code = self.extract_short_code(short_url)
 
         # 1. Получение из кэша
-        cached_info = None
+        cached_link = None
         if self._cache_manager and self._info_strategy:
-            cached_info = self._cache_manager.get_link_by_short_code(short_code, self._info_strategy)
+            cached_link = self._cache_manager.get_link_info(short_code, self._info_strategy)
 
-            if cached_info:
+            if cached_link:
                 self._log_debug('информация найдена в кэше', short_code=short_code)
                 try:
-                    return LinkInfoResult(**cached_info)
+                    return self._link_to_info_result(cached_link)
                 except Exception as e:
                     self._log_error('Ошибка десериализации из кэша', short_code=short_code, error=str(e))
         
@@ -82,7 +120,7 @@ class LinkInformation(BaseService):
             short_code=link.short_code,
             original_url=link.original_url,
             clicks=link.clicks,
-            created_at=link.created_at,
+            created_at=link.created_at.isoformat(),
             last_accessed=(
                 link.last_accessed.isoformat()
                 if link.last_accessed else None
