@@ -1,16 +1,19 @@
-
 from itertools import chain
 from typing import List, Optional, Tuple
 
+from ...entities.link import Link
 from ...interfaces.database.abc_repository import ILinkRepository
 from ...interfaces.logger.abc_logger import ILogger
 from ...interfaces.utils.abc_code_generator import ICodeGenerator
 from ...interfaces.utils.abc_url_validator import IUrlValidator
-from ..cache.cache_manager import CacheManager
-from ..base_service import BaseService
-from ...entities.link import Link
 from ...value_objects.cache_strategy import HashCacheStrategy, RedirectCacheStrategy
-from ...value_objects.short_link_result import BatchLinkData, BatchProcessingSummary, BatchResultItem
+from ...value_objects.short_link_result import (
+    BatchLinkData,
+    BatchProcessingSummary,
+    BatchResultItem,
+)
+from ..base_service import BaseService
+from ..cache.cache_manager import CacheManager
 
 
 class BatchLinkProcessor(BaseService):
@@ -26,7 +29,7 @@ class BatchLinkProcessor(BaseService):
         redirect_strategy: Optional[RedirectCacheStrategy] = None,
         cache_ttl: int = 3600,
         batch_limit: int = 100,
-        logger: Optional[ILogger] = None
+        logger: Optional[ILogger] = None,
     ):
         super().__init__(logger)
         self._repository = repository
@@ -38,7 +41,9 @@ class BatchLinkProcessor(BaseService):
         self._redirect_strategy = redirect_strategy
         self._cache_ttl = cache_ttl
 
-    def batch_create(self, urls: List[str]) -> Tuple[List[BatchResultItem], BatchProcessingSummary]:
+    def batch_create(
+        self, urls: List[str]
+    ) -> Tuple[List[BatchResultItem], BatchProcessingSummary]:
         """
         Пакетное создание коротких ссылок
 
@@ -49,16 +54,16 @@ class BatchLinkProcessor(BaseService):
             Tuple: (Результат обработки, сводка)
         """
 
-        self._log_info('Начало пакетной обработки ссылок', urls_count=len(urls))
+        self._log_info("Начало пакетной обработки ссылок", urls_count=len(urls))
 
         if len(urls) > self._batch_limit:
             self._log_warning(
-                'Превышен досутпный лимит ссылок для пакетной обработки!' \
-                ' Список будет урезан до лимита',
+                "Превышен досутпный лимит ссылок для пакетной обработки!"
+                " Список будет урезан до лимита",
                 limit=self._batch_limit,
-                requested_to_processing=len(urls)
+                requested_to_processing=len(urls),
             )
-        urls = urls[:self._batch_limit]
+        urls = urls[: self._batch_limit]
 
         # подготовка данных
         validation_results = self._validate_and_prepare_urls(urls)
@@ -74,10 +79,10 @@ class BatchLinkProcessor(BaseService):
                 failed=len(urls),
                 new=0,
                 existing=0,
-                from_cache=0
+                from_cache=0,
             )
             return invalid_results, summary
-        
+
         # Обработка валидных URL
         processing_results = self._process_valid_urls([d.data for d in valid_data])
 
@@ -87,10 +92,10 @@ class BatchLinkProcessor(BaseService):
         # Формирование сводки
         summary = self._create_summary(all_res)
 
-        self._log_info('Пакетная обработка завершена', summary=summary)
+        self._log_info("Пакетная обработка завершена", summary=summary)
 
         return all_res, summary
-    
+
     def _validate_and_prepare_urls(self, urls: List[str]) -> List[BatchResultItem]:
         """Валитдация и подготовка URL"""
         results = []
@@ -104,37 +109,41 @@ class BatchLinkProcessor(BaseService):
                             success=False,
                             data=BatchLinkData(url=url),
                             error=result,
-                            is_new=None
+                            is_new=None,
                         )
                     )
                     continue
-                
+
                 normalized_url = result
-                url_hash = self._code_generator.calculate_deduplication_hash(normalized_url)
+                url_hash = self._code_generator.calculate_deduplication_hash(
+                    normalized_url
+                )
                 short_code = self._code_generator.generate_code(normalized_url)
 
                 results.append(
                     BatchResultItem(
                         success=True,
-                        data = BatchLinkData(
-                            url=url,
-                            url_hash=url_hash,
-                            short_code=short_code
+                        data=BatchLinkData(
+                            url=url, url_hash=url_hash, short_code=short_code
                         ),
                         is_new=True,
-                        from_cache=False
+                        from_cache=False,
                     )
                 )
             except Exception as e:
-                results.append(BatchResultItem(
-                    success=False,
-                    data=BatchLinkData(url=url),
-                    error=f'Ошибка обработки: {str(e)}'
-                ))
+                results.append(
+                    BatchResultItem(
+                        success=False,
+                        data=BatchLinkData(url=url),
+                        error=f"Ошибка обработки: {str(e)}",
+                    )
+                )
 
         return results
-    
-    def _process_valid_urls(self, valid_data: List[BatchLinkData]) -> List[BatchResultItem]:
+
+    def _process_valid_urls(
+        self, valid_data: List[BatchLinkData]
+    ) -> List[BatchResultItem]:
         """
         Обработка валидации URL
         Проверяет валидные URL на наличии в кэше и базе данных
@@ -149,7 +158,8 @@ class BatchLinkProcessor(BaseService):
 
         # 2. Проверка в Базе данных для отсавшихся хэшей
         remaining_hashes = [
-            h for h in hash_to_data.keys()
+            h
+            for h in hash_to_data.keys()
             if h not in [c.url_hash for c in cached_links]
         ]
 
@@ -157,50 +167,56 @@ class BatchLinkProcessor(BaseService):
             db_links = self._repository.get_by_hashes(remaining_hashes)
         else:
             db_links = []
-        
+
         # 3. Формирование результатов для найденных ссылок в кэше и базе данных
         for link in chain(cached_links, db_links):
             data = hash_to_data[link.url_hash]
-            results.append(BatchResultItem(
-                success=True,
-                data=BatchLinkData(
-                    url=data.url,
-                    url_hash=data.url_hash,
-                    short_code=data.short_code,
-                    clicks=data.clicks
-                ),
-                is_new=False,
-                from_cache=(link in cached_links)
-            ))
-            del hash_to_data[link.url_hash]
-        
-        # 4. Генерация новых ссылок
-        created_links = []
-        if hash_to_data:
-            new_links_data = []
-            for hash_, data in hash_to_data.items():
-                new_links_data.append({
-                    'url_hash': hash_,
-                    'original_url': data.url,
-                    'short_code': data.short_code
-                })
-            
-            created_links = self._repository.bulk_create(new_links_data)
-
-            for link in created_links:
-                data = hash_to_data[link.url_hash]
-                results.append(BatchResultItem(
+            results.append(
+                BatchResultItem(
                     success=True,
                     data=BatchLinkData(
                         url=data.url,
                         url_hash=data.url_hash,
                         short_code=data.short_code,
-                        clicks=data.clicks
+                        clicks=data.clicks,
                     ),
-                    is_new=True,
-                    from_cache=False
-                ))
-            
+                    is_new=False,
+                    from_cache=(link in cached_links),
+                )
+            )
+            del hash_to_data[link.url_hash]
+
+        # 4. Генерация новых ссылок
+        created_links = []
+        if hash_to_data:
+            new_links_data = []
+            for hash_, data in hash_to_data.items():
+                new_links_data.append(
+                    {
+                        "url_hash": hash_,
+                        "original_url": data.url,
+                        "short_code": data.short_code,
+                    }
+                )
+
+            created_links = self._repository.bulk_create(new_links_data)
+
+            for link in created_links:
+                data = hash_to_data[link.url_hash]
+                results.append(
+                    BatchResultItem(
+                        success=True,
+                        data=BatchLinkData(
+                            url=data.url,
+                            url_hash=data.url_hash,
+                            short_code=data.short_code,
+                            clicks=data.clicks,
+                        ),
+                        is_new=True,
+                        from_cache=False,
+                    )
+                )
+
         # Кэширование новых ссылок и ссылок из бд
         if self._cache_manager and self._hash_strategy and self._redirect_strategy:
             links_to_cache = []
@@ -208,30 +224,30 @@ class BatchLinkProcessor(BaseService):
             links_to_cache.extend(created_links)
             if links_to_cache:
                 self._cache_new_links(links_to_cache)
-        
+
         return results
-    
+
     def _check_cache_for_hashes(self, url_hashes: List[str]) -> List[Link]:
         """проверка наличия ссылок в кэше"""
         if not self._cache_manager or not self._hash_strategy:
             return []
         return self._cache_manager.get_link_by_hashes(url_hashes, self._hash_strategy)
-    
+
     def _cache_new_links(self, links: List[Link]) -> None:
         """Кэширование новых ссылок"""
         if not self._cache_manager or not links:
             return
-        
+
         strategies = {}
 
         if self._hash_strategy:
-            strategies['hash'] = self._hash_strategy
+            strategies["hash"] = self._hash_strategy
         if self._redirect_strategy:
-            strategies['redirect'] = self._redirect_strategy
-        
+            strategies["redirect"] = self._redirect_strategy
+
         if strategies:
             self._cache_manager.cache_links(links, strategies, self._cache_ttl)
-    
+
     def _create_summary(self, results: List[BatchResultItem]) -> BatchProcessingSummary:
         """Создание сводки по резульатам операции пакетного создания ссылок"""
         total = len(results)
@@ -247,5 +263,5 @@ class BatchLinkProcessor(BaseService):
             failed=failed,
             new=new,
             existing=existing,
-            from_cache=from_cache
+            from_cache=from_cache,
         )

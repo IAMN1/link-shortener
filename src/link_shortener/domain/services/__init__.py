@@ -6,13 +6,12 @@ from .link.link_information import LinkInformation
 from .link.link_redirector import LinkRedirector
 from .link.link_statistics import LinkStatistics
 
-
 __all__ = [
-    'BaseService',
-    'CacheManager',
-    'BatchLinkProcessor',
-    'ShortLinkCreator',
-    'LinkInformation',
-    'LinkRedirector',
-    'LinkStatistics',
+    "BaseService",
+    "CacheManager",
+    "BatchLinkProcessor",
+    "ShortLinkCreator",
+    "LinkInformation",
+    "LinkRedirector",
+    "LinkStatistics",
 ]
