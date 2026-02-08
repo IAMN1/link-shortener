@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
 
-from src.link_shortener.domain.entities.link import Link
 
+from ....domain.entities.link import Link
 from ..cache.cache_manager import CacheManager
 from ..base_service import BaseService
 from ...interfaces.database.abc_repository import ILinkRepository
@@ -71,7 +71,7 @@ class LinkStatistics(BaseService):
             if success:
                 self._log_debug('Статистика успешно закэширована')
         
-        self.info('Статистика получена', total_urls=total_urls, total_clicks=total_clicks)
+        self._log_info('Статистика получена', total_urls=total_urls, total_clicks=total_clicks)
         
         return result
 
