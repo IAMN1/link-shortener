@@ -5,7 +5,7 @@ from ...entities.link import Link
 from ...interfaces.cache.abc_cache import ICacheClient
 from ...interfaces.logger.abc_logger import ILogger
 from ..base_service import BaseService
-from ...value_objects.cache_strategy import CacheKeyStrategy
+from ...value_objects.cache_strategy import CacheKeyStrategy, InfoCacheStrategy, RedirectCacheStrategy
 
 # TODO Дописать получение статистики get_service_stats
 # в данных есть вложенные значения!
@@ -49,29 +49,79 @@ class CacheManager(BaseService):
             )
         )
     
-    def get_link_by_short_code(self, short_code: str, strategy: Optional[CacheKeyStrategy] = None) -> Optional[Link]:
-        """Получение ссылки из кэша по хэшу"""
+    def get_original_url(self, short_code: str, strategy: Optional[RedirectCacheStrategy] = None) -> Optional[str]:
+        """
+        Получение оригинального URL из кэша для редиректа
+        
+        Args: 
+            short_code: Короткий код ссылки
+            strategy: Стратегия редиректа
+        
+        Returns:
+            Оригинальный URL или None
+        """
+        result = None
         if not self._cache_client or not strategy:
-            return None
+            return result
+        
         cache_key = strategy.get_key(short_code)
         cached_data = self._cache_client.get(cache_key)
 
-        if cached_data:
+        if isinstance(cached_data, str):
+            result = cached_data
+        
+        elif isinstance(cached_data, dict):
+            self._log_warning(
+                'В кэше для редиректа найден словарь вместо строки',
+                short_code=short_code
+            )
+            result = cached_data.get('original_url', None)
+        
+        return result
+
+    def get_link_info(self, short_code: str, strategy: Optional[InfoCacheStrategy] = None) -> Optional[Link]:
+        """
+        Получение ссылки из кэша
+        
+        Args:
+            short_code: Короткий код ссылки
+            strategy: Стратегия информации
+            
+        Returns:
+            Объект Link или None
+        """
+        result = None
+        if not self._cache_client or not strategy:
+            return result
+        cache_key = strategy.get_key(short_code)
+        cached_data = self._cache_client.get(cache_key)
+
+        if isinstance(cached_data, dict):
             try:
-                return self._dict_to_link(cached_data)
+                result = self._dict_to_link(cached_data)
             except Exception as e:
                 self._log_error('Ошибка десериализации из кэша', error=str(e))
-        return None
+            
+        return result
 
     def get_link_by_hash(self, url_hash: str, strategy: Optional[CacheKeyStrategy] = None) -> Optional[Link]:
-        """Получение ссылки из кэша по хэшу"""
+        """
+        Получение ссылки из кэша по хэшу
+        
+        Args:
+            url_hash: Хэш URL
+            strategy: Стратегия хэширования
+            
+        Returns:
+            Объект Link или None
+        """
         if not self._cache_client or not strategy:
             return None
         
         cache_key = strategy.get_key(url_hash)
         cached_data = self._cache_client.get(cache_key)
 
-        if cached_data:
+        if isinstance(cached_data, dict):
             try:
                 return self._dict_to_link(cached_data)
             except Exception as e:
@@ -79,7 +129,15 @@ class CacheManager(BaseService):
         return None
 
     def get_link_by_hashes(self, url_hashes: List[str], strategy: Optional[CacheKeyStrategy] = None) -> List[Link]:
-        """получение нескольких ссылок по хэшам"""
+        """Получение нескольких ссылок по хэшам
+        
+        Args:
+            url_hashes: Список хэшей URL
+            strategy: Стратегия хэширования
+            
+        Returns:
+            Список объектов Link
+        """
         if not self._cache_client or not strategy:
             return []
         
@@ -88,10 +146,11 @@ class CacheManager(BaseService):
 
         links = []
         for key, data in cached_data.items():
-            try:
-                links.append(self._dict_to_link(data))
-            except Exception as e:
-                self._log_error('Ошибка десериализации', error=str(e), key=key)
+            if isinstance(data, dict):
+                try:
+                    links.append(self._dict_to_link(data))
+                except Exception as e:
+                    self._log_error('Ошибка десериализации', error=str(e), key=key)
         return links
 
     def cache_link(self, link: Link, strategies: Dict[str, CacheKeyStrategy], ttl: int = 3600) -> bool:
