@@ -1,13 +1,14 @@
 """
-(Порт / Интерфейс) для кэширования. 
+(Порт / Интерфейс) для кэширования.
 """
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
+
 class ICacheClient(ABC):
     """Абстракция для кэширования"""
-    
+
     @abstractmethod
     def get(self, key: str) -> Optional[Any]:
         """Получение значения из кэша"""
