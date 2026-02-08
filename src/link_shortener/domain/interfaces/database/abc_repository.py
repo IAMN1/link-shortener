@@ -13,10 +13,12 @@ class ILinkRepository(ABC):
         pass
 
     @abstractmethod
-    def create_or_get(self, source_url: str, url_hash: str, short_code: str) -> Tuple[Link, bool]:
+    def create_or_get(
+        self, source_url: str, url_hash: str, short_code: str
+    ) -> Tuple[Link, bool]:
         """Создает или получает существующую ссылку"""
         pass
-    
+
     @abstractmethod
     def bulk_create(self, links_data: List[Dict]) -> List[Link]:
         """Пакетное создание ссылок"""

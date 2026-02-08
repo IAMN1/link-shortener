@@ -8,14 +8,14 @@ from typing import Any, Optional
 
 class ILogger(ABC):
     """Интерфейс для логирования"""
-    
+
     @abstractmethod
-    def bind(self, **kwargs: Any) -> 'ILogger':
+    def bind(self, **kwargs: Any) -> "ILogger":
         """
         Привязывает контекст к логгеру и возвращает новый экземпляр
         """
         pass
-    
+
     @abstractmethod
     def log(self, level: str, message: str, **kwargs: Any) -> None:
         """обощенное логирование"""
@@ -42,7 +42,8 @@ class ILogger(ABC):
         pass
 
     @abstractmethod
-    def exception(self, message: str, exc_info: Optional[Exception]= None, **kwargs: Any) -> None:
+    def exception(
+        self, message: str, exc_info: Optional[Exception] = None, **kwargs: Any
+    ) -> None:
         """Запись исключения с трассировкой"""
         pass
-

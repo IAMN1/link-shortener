@@ -17,7 +17,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "autopep8>=2.3.2",
     "bandit>=1.9.2",
+    "black>=26.1.0",
     "flake8>=7.3.0",
     "isort>=7.0.0",
     "mypy>=1.19.1",
@@ -53,3 +55,18 @@ markers = [
     "cache: tests that use cache",
     "api: tests for API endpoints",
 ]
+
+[tool.flake8]
+max-line-length = 88
+ignore = "E203, W503"
+
+[tool.pylint.'MESSAGES CONTROL']
+disable = """
+    W0107,  # unnecessary-pass (нормально для абстрактных методов)
+    W0511,  # fixme (можно оставить TODO)
+    R0801,  # duplicate-code (фальшивые срабатывания)
+"""
+
+[tool.pylint.'MASTER']
+fail-under = 9.0
+ignore-patterns = ["test_.*", "_test.*"]
