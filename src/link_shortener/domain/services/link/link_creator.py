@@ -68,14 +68,13 @@ class ShortLinkCreator(BaseService):
         if self._cache_manager and self._hash_strategy:
             cached_link = self._cache_manager.get_link_by_hash(url_hash, self._hash_strategy)
         
-        # 4. возврат из кэша, если нашли
-        if cached_link:
-            self._log_info('Ссылка найдена в кэше', short_code=cached_link.short_code)
-            return ShortLinkCreationResult(
-                link=cached_link,
-                is_new=False,
-                from_cache=True
-            )
+            if cached_link:
+                self._log_info('Ссылка найдена в кэше', short_code=cached_link.short_code)
+                return ShortLinkCreationResult(
+                    link=cached_link,
+                    is_new=False,
+                    from_cache=True
+                )
         
         # 5. Поиск в репозитории
         existing_link = self._repository.get_by_hash(url_hash)
@@ -84,10 +83,12 @@ class ShortLinkCreator(BaseService):
             
             # Кэширование найденной ссылки
             if self._cache_manager and self._hash_strategy and self._redirect_strategy:
+                
                 strategies = {
                     'hash': self._hash_strategy,
                     'redirect': self._redirect_strategy
                 }
+                
                 self._cache_manager.cache_link(existing_link, strategies, self.cache_ttl)
             
             return ShortLinkCreationResult(
