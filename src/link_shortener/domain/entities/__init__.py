@@ -2,4 +2,4 @@
 
 from .link import Link
 
-__all__ = ['Link']
+__all__ = ["Link"]

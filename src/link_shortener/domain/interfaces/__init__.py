@@ -7,9 +7,9 @@ from .utils.abc_code_generator import ICodeGenerator
 from .utils.abc_url_validator import IUrlValidator
 
 __all__ = [
-    'ICacheClient',
-    'ILinkRepository',
-    'ILogger',
-    'ICodeGenerator',
-    'IUrlValidator'
+    "ICacheClient",
+    "ILinkRepository",
+    "ILogger",
+    "ICodeGenerator",
+    "IUrlValidator",
 ]
