@@ -28,7 +28,7 @@ class BaseConfig:
     PORT: int = int(os.environ.get('PORT', 5000))
     BASE_LINK: str = f'{HOST}:{PORT}/'
 
-    ALLOWED_SHEMES: List[str] = ['http', 'https', 'ftp']
+    ALLOWED_SHEMES: List[str] = ['http', 'https']
     MAX_URL_LENGTH: int = 2048
     SHORT_CODE_LENGTH = 7
 
@@ -57,13 +57,15 @@ class BaseConfig:
             return int(os.environ.get('DATABASE_POOL_RECYCLE', 3600))
         return 0
 
-    # ========== Redis cache settings ==========
-    REDIS_ENABLED: int = os.environ.get('REDIS_ENABLED', False)
-    REDIS_URL: str = os.environ.get('REDIS_URL', '-')
-    REDIS_CACHE_TTL: int = int(os.environ.get('REDIS_CACHE_TTL', 0))
-    REDIS_CACHE_TTL_STATS: int = int(os.environ.get('REDIS_CACHE_TTL_STATS', 0))
-    REDIS_CACHE_PREFIX: str = os.environ.get('REDIS_CACHE_PREFIX', 'link_shortener')
+    # ========== Cache settings ==========
+    CACHE_LINK_PREFIX: str = os.environ.get('CACHE_LINK_PREFIX', 'link_shortener')
+    CACHE_LINK_TTL: int = int(os.environ.get('CACHE_LINK_TTL', 0)) #3600 def???
+    CACHE_STATS_TTL: int = int(os.environ.get('CACHE_STATS_TTL', 0)) # 300 def???
     
+    # ========== Redis cache settings ==========
+    REDIS_ENABLED: bool = os.environ.get('REDIS_ENABLED', False)
+    REDIS_URL: str = os.environ.get('REDIS_URL', '-')
+
     @property
     def REDIS_HOST(self) -> Optional[str]:
         try:
