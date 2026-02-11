@@ -3,15 +3,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+from ..value_objects.original_url import OriginalUrl
+from ..value_objects.short_code import ShortCode
+from ..value_objects.url_hash import UrlHash
+
 
 @dataclass
 class Link:
     """Доменная сущность ссылки c бизнес-логикой"""
 
     id: str
-    url_hash: str
-    short_code: str
-    original_url: str
+    url_hash: UrlHash
+    short_code: ShortCode
+    original_url: OriginalUrl
     created_at: datetime
     clicks: int = 0
     last_accessed: Optional[datetime] = None
@@ -19,9 +23,9 @@ class Link:
     @classmethod
     def create(
         cls,
-        url_hash: str,
-        short_code: str,
-        original_url: str,
+        url_hash: UrlHash,
+        short_code: ShortCode,
+        original_url: OriginalUrl,
         link_id: Optional[str] = None,
     ) -> "Link":
         """Фабричный метод для создания новой ссылки"""
@@ -52,8 +56,8 @@ class Link:
         return age.days <= days
 
     def get_short_url(self, base_url: str) -> str:
-        """Бизнес правило: получение короткого URL (на уровне приложения)"""
-        return f"{base_url}{self.short_code}"
+        """Бизнес правило: формирования короткого URL"""
+        return f"{base_url}/{self.short_code}"
 
     def __eq__(self, other: object) -> bool:
         """Проверка равенства ссылок (по ID)"""
