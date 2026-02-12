@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -23,7 +23,7 @@ class ShortLinkResponse:
     def from_link(
         cls, 
         link: Link, 
-        base_url: str = "http://localhost:5000",
+        base_url: str,
         is_new: bool = False,
         from_cache: bool = False
     ) -> "ShortLinkResponse":
@@ -107,7 +107,7 @@ class BatchCreateResponse:
     from_db_count: int = 0
     new_count: int = 0
     processing_time_seconds: float = 0.0
-    created_at: datetime = datetime.now()
+    created_at: datetime = field(default_factory=datetime.now)
 
     @classmethod
     def from_results(cls, results: List[BatchItemResponse]) -> "BatchCreateResponse":
@@ -125,7 +125,8 @@ class BatchCreateResponse:
             failed=failed,
             from_cache_count=from_cache_count,
             from_db_count=from_db_count,
-            new_count=new_count
+            new_count=new_count,
+            created_at=datetime.now()
         )
     
     @classmethod
@@ -171,3 +172,43 @@ class ServiceStatsResponse:
             "avg_clicks_per_url": round(self.avg_clicks_per_url, 2),
             "popular_links": [link.to_dict() for link in self.popular_links]
         }
+
+@dataclass
+class ExtendedLinkInfoReponse:
+    """DTO Для расширенной информации о ссылке"""
+    short_code: str
+    short_url: str
+    original_url: str
+    clicks: int
+    created_at: datetime
+    last_accessed: Optional[datetime]
+    is_popular: bool
+    is_recent: bool
+    age_days: int
+    clicks_per_day: float
+    last_access_days_ago: Optional[int]
+
+    @classmethod
+    def from_link(cls, link: Link, base_url: str) -> 'ExtendedLinkInfoReponse':
+        """конвертация из ссылки в DTO"""
+        
+        age_days = (datetime.now() - link.created_at).days
+        clicks_per_day = round(link.clicks / max(age_days, 1), 2) if link.clicks > 0 else 0.0
+        last_access_days_ago = (
+            (datetime.now() - link.last_accessed).days if link.last_accessed else None
+        )
+
+        return cls(
+            short_code=str(link.short_code.value),
+            short_url=link.get_short_url(base_url),
+            original_url=str(link.original_url.value),
+            clicks=link.clicks,
+            created_at=link.created_at,
+            last_accessed=link.last_accessed,
+            is_popular=link.is_popular(),
+            is_recent=link.is_recent(),
+            age_days=age_days,
+            clicks_per_day=clicks_per_day,
+            last_access_days_ago=last_access_days_ago
+        )
+        
