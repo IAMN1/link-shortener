@@ -22,7 +22,7 @@ class OriginalUrl:
         if parsed.scheme not in ['http', 'https']:
             raise ValueError(f'Unsupported URL scheme: {parsed.scheme}')
         
-        if parsed.netloc:
+        if not parsed.netloc:
             raise ValueError('URL must have a domain!')
     
     def __str__(self) -> str:
