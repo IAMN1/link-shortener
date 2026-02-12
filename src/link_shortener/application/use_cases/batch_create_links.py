@@ -368,7 +368,7 @@ class BatchCreateLinksUseCase:
                 new_code = self.shortening_policy.generate_code(suffixed_url)
 
                 # Проверка нового кода
-                if new_code and existing_codes_map and existing_codes_map[new_code] is not None:
+                if new_code and existing_codes_map.get(new_code) is not None:
                     # При новой коллизии возвращение в очередь
                     processing_queue.append((url_hash, new_code))
                 else:
