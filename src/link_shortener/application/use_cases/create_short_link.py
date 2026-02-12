@@ -57,7 +57,7 @@ class CreateShortLinkUseCase:
             if cached_link:
                 if self.logger:
                     self.logger.debug('Cache hit for Url,', url=url[:50], hash=url_hash.value[:10])
-                return ShortLinkResponse.from_link(cached_link, from_cache=True)
+                return ShortLinkResponse.from_link(cached_link, base_url=self.base_url, from_cache=True)
             
             # 4. Проверка репозитория
             existing_link = self.repository.find_by_hash(url_hash)
@@ -66,7 +66,7 @@ class CreateShortLinkUseCase:
                     self.logger.debug('Found in repository', hash=url_hash.value[:10])
                 # Кэширование
                 self.cache.save(existing_link)
-                return ShortLinkResponse.from_link(link=cached_link, from_cache=True)
+                return ShortLinkResponse.from_link(link=existing_link, base_url=self.base_url, is_new=False, from_cache=False)
             
             # 5. Генерация кода
             short_code = self.shortening_policy.generate_code(original_url)
@@ -78,14 +78,14 @@ class CreateShortLinkUseCase:
                 original_url=original_url
             )
 
-            # 7. Сохранение в репозиторий и кэщ
+            # 7. Сохранение в репозиторий и кэш
             saved_link = self.repository.save(new_link)
             self.cache.save(saved_link)
 
             if self.logger:
                 self.logger.info(
                     'Short link created successfully',
-                    short_code=short_code
+                    short_code=short_code.value
                 )
             
             return ShortLinkResponse.from_link(
