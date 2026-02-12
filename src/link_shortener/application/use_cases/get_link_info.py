@@ -113,7 +113,7 @@ class GetLinkInfoUseCase:
             
             # Добавляем дополнительную статистику
             short_code = ShortCode(short_code_str)
-            link = self.repository.find_by_short_code(short_code)
+            link = self.repository.find_by_code(short_code)
             
             if not link:
                 raise LinkNotFoundError(short_code_str)
