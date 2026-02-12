@@ -9,7 +9,7 @@ class LinkModel(Base):
     """
     __tablename__ = 'urls'
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
     url_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     original_url: Mapped[str] = mapped_column(String(2048), nullable=False)
     short_code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False, index=True)
