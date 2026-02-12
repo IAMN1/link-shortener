@@ -60,7 +60,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             data_dict = json.loads(data.decode('utf-8'))
             
             last_accesed = None
-            if data_dict.get('last_accesed'):
+            if data_dict.get('last_accessed'):
                 last_accesed = datetime.fromisoformat(data_dict['last_accessed'])
             
             return Link(
