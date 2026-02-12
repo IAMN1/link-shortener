@@ -120,7 +120,7 @@ class GetLinkInfoUseCase:
             
             # Дополнительные метрики
             extended_info = {
-                **response.dict(),
+                **response.to_dict(),
                 'is_popular': link.is_popular(),
                 'is_recent': link.is_recent(),
                 'age_days': (datetime.now() - link.created_at).days,
