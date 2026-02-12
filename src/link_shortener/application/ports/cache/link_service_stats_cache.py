@@ -11,7 +11,7 @@ class StatsCache(ABC):
         pass
 
     @abstractmethod
-    def save_stats(slef, stats: dict) -> None:
+    def save_stats(self, stats: dict) -> None:
         """Сохранение статистики"""
         pass
 
