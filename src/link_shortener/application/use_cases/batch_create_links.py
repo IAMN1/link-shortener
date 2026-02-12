@@ -208,7 +208,8 @@ class BatchCreateLinksUseCase:
         
         if not groups_not_in_cache:
 
-            results.extend(cache_results.extend(invalid_results))
+            results.extend(cache_results)
+            results.extend(invalid_results)
             return results
         
         # 4. Batch запрос к БД для групп ненайденных в кэше
@@ -243,7 +244,9 @@ class BatchCreateLinksUseCase:
             if links_to_cache_from_db:
                 self.cache.save_many(links_to_cache_from_db)
             
-            results.extend(cache_results.extend(db_results.extend(invalid_results)))
+            results.extend(cache_results)
+            results.extend(db_results)
+            results.extend(invalid_results)
             return results
         
         # 6. создание новых ссылок
@@ -281,13 +284,10 @@ class BatchCreateLinksUseCase:
         new_results = self._create_new_link_results(groups_to_create, saved_links)
 
         # 10. Объединение всех результатов
-        results.extend(
-            cache_results.extend(
-                db_results.extend(
-                    new_results.extend(invalid_results)
-                )
-            )
-        )
+        results.extend(cache_results)
+        results.extend(db_results)
+        results.extend(new_results)
+        results.extend(invalid_results)
         return results
 
     def _create_new_links_batch(self, groups: List[Dict]) -> List[Link]:
