@@ -66,7 +66,7 @@ class CreateShortLinkUseCase:
                     self.logger.debug('Found in repository', hash=url_hash.value[:10])
                 # Кэширование
                 self.cache.save(existing_link)
-                return ShortLinkResponse.from_link(cached_link, from_cache=True)
+                return ShortLinkResponse.from_link(link=cached_link, from_cache=True)
             
             # 5. Генерация кода
             short_code = self.shortening_policy.generate_code(original_url)
@@ -89,7 +89,7 @@ class CreateShortLinkUseCase:
                 )
             
             return ShortLinkResponse.from_link(
-                saved_link,
+                link=saved_link,
                 base_url=self.base_url,
                 is_new=True
             )
