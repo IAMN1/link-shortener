@@ -24,7 +24,6 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
 
         # TTL
         self._expiry: Dict[str, float] = {}
-        self.prefix = config.get('CACHE_PREFIX', 'link_shortener')
         self.link_ttl = config.get('CACHE_LINK_TTL', 3600)
         self.stats_ttl = config.get('CACHE_STATS_TTL', 300)
         
@@ -46,7 +45,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         
         for key in expired_keys:
             # Очистка хранилищ редиректа и ссылок
-            if key_type is None or key.startswith(f'{self.prefix}:{key_type}'):
+            if key_type is None or key.startswith(f'{self.key_gen.prefix}{key_type}'):
                 
                 if key in self._links:
                     del self._links[key]
