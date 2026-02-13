@@ -33,9 +33,6 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         self.client = redis.from_url(redis_url)
         self.config = config
         self.key_gen = CacheKeyGenerator(config)
-
-        # TODO немного изменить, возможно стоит передавать не конфиг
-        # а уже сразу извлеченные настройки из конфига
         self.ttl = config.get("CACHE_LINK_TTL", 3600)
         self.stats_ttl = config.get("CACHE_STATS_TTL", 300)
     
@@ -59,9 +56,9 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         try:
             data_dict = json.loads(data.decode('utf-8'))
             
-            last_accesed = None
+            last_accessed = None
             if data_dict.get('last_accessed'):
-                last_accesed = datetime.fromisoformat(data_dict['last_accessed'])
+                last_accessed = datetime.fromisoformat(data_dict['last_accessed'])
             
             return Link(
                 id=data_dict['id'],
@@ -70,7 +67,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                 original_url=OriginalUrl(data_dict['original_url']),
                 created_at=datetime.fromisoformat(data_dict['created_at']),
                 clicks=data_dict['clicks'],
-                last_accessed=last_accesed
+                last_accessed=last_accessed
             )
         except Exception:
             return None
@@ -136,13 +133,13 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         for link in links:
             hash_key = self.key_gen.for_url_hash(link.url_hash.value)
             code_key = self.key_gen.for_short_code(link.short_code.value)
-            redirect = self.key_gen.for_redirect(link.short_code.value)
+            redirect_key = self.key_gen.for_redirect(link.short_code.value)
 
             data = self._serialize(link)
             
             pipeline.setex(hash_key, self.ttl, data)
             pipeline.setex(code_key, self.ttl, data)
-            pipeline.setex(redirect, self.ttl, link.original_url.value)
+            pipeline.setex(redirect_key, self.ttl, link.original_url.value)
         
         pipeline.execute()
     
@@ -155,19 +152,19 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         data = self.client.get(code_key)
         
         if not data:
-            raise KeyError(f'Link with code ({short_code}) not found in cache')
+            return
         
         link = self._deserialize(data)
 
         # Генерация ключей других уровней
         hash_key = self.key_gen.for_url_hash(link.url_hash.value)
-        redirect = self.key_gen.for_redirect(short_code.value)
+        redirect_key = self.key_gen.for_redirect(short_code.value)
         
         # Полное удаление на всех уровнях
         pipeline = self.client.pipeline()
         pipeline.delete(hash_key)
         pipeline.delete(code_key)
-        pipeline.delete(redirect)
+        pipeline.delete(redirect_key)
         
         pipeline.execute()
     
