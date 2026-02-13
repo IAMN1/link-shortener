@@ -55,10 +55,6 @@ class Link:
         age = datetime.now() - self.created_at
         return age.days <= days
 
-    def get_short_url(self, base_url: str) -> str:
-        """Бизнес правило: формирования короткого URL"""
-        return f"{base_url}/{self.short_code}"
-
     def __eq__(self, other: object) -> bool:
         """Проверка равенства ссылок (по ID)"""
         if not isinstance(other, Link):
