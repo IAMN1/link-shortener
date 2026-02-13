@@ -9,7 +9,7 @@ from domain.entities.link import Link
 from domain.value_objects.short_code import ShortCode
 from domain.value_objects.url_hash import UrlHash
 from domain.value_objects.original_url import OriginalUrl
-from src.link_shortener.infrastructure.database.models import LinkModel
+from database.models import LinkModel
 
 class SQLAlchemyLinkRepository(LinkRepository):
     """
