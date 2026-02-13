@@ -7,9 +7,9 @@ from application.ports.cache.link_cache import LinkCache
 from domain.value_objects.short_code import ShortCode
 from domain.value_objects.url_hash import UrlHash
 from domain.value_objects.original_url import OriginalUrl
-from src.link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
-from src.link_shortener.application.ports.cache.redirect_cache import RedirectCache
-from src.link_shortener.infrastructure.cache.cache_key_generator import CacheKeyGenerator
+from application.ports.cache.link_service_stats_cache import StatsCache
+from application.ports.cache.redirect_cache import RedirectCache
+from ..cache.cache_key_generator import CacheKeyGenerator
 
 
 class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
