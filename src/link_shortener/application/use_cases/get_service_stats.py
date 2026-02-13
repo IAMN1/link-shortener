@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from ..dtos.responses import ServiceStatsResponse
+from ..dtos.responses import ServiceStatsResponse, StatsItemResponse
 
 from ..ports.cache.link_service_stats_cache import StatsCache
 from ..ports.logger.logger import Logger
@@ -14,6 +14,7 @@ class GetServiceStatsUseCase:
     Use case: Получения статистики сервиса
     """
     repository: LinkRepository
+    base_url: str
     cache: StatsCache
     logger: Optional[Logger]
     cache_ttl: int = 300
@@ -31,6 +32,15 @@ class GetServiceStatsUseCase:
             if cached_stats:
                 if self.logger:
                     self.logger.info("Stats cache hit")
+
+                    # Конвертация словаря популярных ссылок в DTO
+                    popular_links = [
+                        StatsItemResponse(**item) 
+                        for item in cached_stats['popular_links']
+                    ]
+
+                    cached_stats['popular_links'] = popular_links
+
                     return ServiceStatsResponse(**cached_stats)
             
             # 2. получение из репозитория
@@ -41,25 +51,26 @@ class GetServiceStatsUseCase:
             total_clicks = stats_data.get('total_clicks', 0)
             avg_clicks = total_clicks / total_urls if total_urls > 0 else 0
             
-            popular_links = stats_data.get('popular_links', [])
+            popular_links = stats_data.get('popular_links', [])[:10]
 
             response = ServiceStatsResponse(
                 total_urls=total_urls,
                 total_clicks=total_clicks,
                 avg_clicks_per_url=round(avg_clicks, 2),
                 popular_links=[
-                    {
-                        'short_code': str(link.short_code),
-                        'original_url': str(link.original_url),
-                        'clicks': link.clicks,
-                        'created_at': link.created_at
-                    }
-                    for link in popular_links[:10]
+                    StatsItemResponse(
+                        short_code=str(link.short_code.value),
+                        short_url=link.get_short_url(self.base_url),
+                        original_url=str(link.original_url.value),
+                        clicks=link.clicks,
+                        created_at=link.created_at
+                    )
+                    for link in popular_links
                 ]
             )
 
             # 4. кэширование результата
-            self.cache.save_stats(response.dict())
+            self.cache.save_stats(response.to_dict())
 
             if self.logger:
                 self.logger.info(
