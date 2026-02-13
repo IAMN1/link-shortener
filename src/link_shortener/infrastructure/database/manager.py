@@ -3,20 +3,21 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
-# DatabaseManager
-class Database:
+from infrastructure.database.base import Base
+
+
+class DatabaseManager:
     """Класс для управления подключением к Базе Данных"""
 
     def __init__(self, database_url: str, echo: bool = False):
         
         self.database_url = database_url
         self.echo = echo
-        
         self.engine = None
         self._session_factory = None
     
 
-    def connect(self) -> 'Database':
+    def connect(self) -> 'DatabaseManager':
         """Подключение к базе данных"""
         self.engine = create_engine(
             self.database_url,
@@ -30,7 +31,7 @@ class Database:
             bind=self.engine
         )
 
-        from infrastructure.database.base import Base
+        # TODO в будущем подумать об alembic и тд
         Base.metadata.create_all(bind=self.engine)
 
         return self
@@ -51,7 +52,7 @@ class Database:
         Автоматически закрывает сессию и откатывавет в случае возникновения ошибки
         """
         if not self._session_factory:
-            raise RuntimeError('База данных не инициализирована. Сначала вызовите Connect()')
+            raise RuntimeError('Database not initialized. Call connect() first.')
         
 
         session = self._session_factory()
@@ -71,7 +72,7 @@ class Database:
         ВНИМАНИЕ: Вызывающий код должен сам закрывать сесиию!
         """
 
-        if not self._session_factory():
-            raise RuntimeError('База данных не инициализирована. Сначала вызовите Connect()')
+        if not self._session_factory:
+            raise RuntimeError('Database not initialized. Call connect() first.')
 
-        return self._session_factory
+        return self._session_factory()
