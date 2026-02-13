@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, urlparse
 
 
 @dataclass(frozen=True)
@@ -34,11 +34,16 @@ class OriginalUrl:
     
     def normalize(self) -> str:
         """Бизнес метод: нормализации URL"""
+
         parsed = urlparse(self.value)
-        normalized = parsed._replace(
+
+        normalized = ParseResult(
             scheme=parsed.scheme.lower(),
             netloc=parsed.netloc.lower(),
-            fragment=""
-        )
-        return normalized.geturl()
+            path=parsed.path,
+            params=parsed.params,
+            query=parsed.query,
+            fragment="",
+        ).geturl()
+        return normalized
     
