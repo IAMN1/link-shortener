@@ -28,9 +28,12 @@ class ShortLinkResponse:
         from_cache: bool = False
     ) -> "ShortLinkResponse":
         """Фабричный метод для создания DTO из доменной сущности"""
+
+        short_url = f'{base_url.rstrip('/')}/{link.short_code.value}'
+        
         return cls(
             short_code=str(link.short_code.value),
-            short_url=link.get_short_url(base_url),
+            short_url=short_url,
             original_url=str(link.original_url.value),
             clicks=link.clicks,
             created_at=link.created_at,
