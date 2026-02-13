@@ -27,7 +27,7 @@ class BatchCreateLinksUseCase:
     shortening_policy: ShorteningPolicy
     logger: Optional[Logger]
     batch_limit: int = 100
-    max_workers: int = 10
+    max_workers: int = 10 # not used, kept for compatibility
 
     def execute(self, urls: List[str]) -> BatchCreateResponse:
         """
@@ -111,7 +111,7 @@ class BatchCreateLinksUseCase:
         """группирование URL по их хэшам"""
         
         groups = {}
-        invalid_urls = []
+        invalid_counter = 0
 
         for url in urls:
             try:
@@ -132,10 +132,18 @@ class BatchCreateLinksUseCase:
                 groups[hash_key]['urls'].append(url)
             
             except ValueError as e:
-                invalid_urls.append({
-                    'url': url,
+
+                error_key = f'invalid_{invalid_counter}'
+                invalid_counter += 1
+
+                # Добавление групп для невалидных URL
+                groups[error_key] = {
+                    'hash': None,
+                    'original_url': None,
+                    'urls': [url],
+                    'is_valid': False,
                     'error': str(e)
-                })
+                }
 
                 if self.logger:
                     self.logger.warning(
@@ -143,17 +151,6 @@ class BatchCreateLinksUseCase:
                         url=url[:50],
                         error=str(e)
                     )
-
-        # Добавление группы для невалидных URL
-        for invalid in invalid_urls:
-            error_key = f'error_{hash(invalid["url"])}'
-            groups[error_key] = {
-                'hash': None,
-                'original_url': None,
-                'urls': [invalid['url']],
-                'is_valid': False,
-                'error': invalid['error']
-            }
 
         return groups
     
@@ -216,7 +213,7 @@ class BatchCreateLinksUseCase:
         missing_hashes = [group['hash'] for group in groups_not_in_cache]
         db_link_map = self.repository.find_by_hashes(missing_hashes)
 
-        # 5. Определение групп, требующих сохдания новых ссылок
+        # 5. Определение групп, требующих создания новых ссылок
         groups_to_create = []
         db_results = []
         links_to_cache_from_db = []
@@ -261,13 +258,12 @@ class BatchCreateLinksUseCase:
                         url=url,
                         error='Failed to create short URL'
                     ))
-            results.extend(
-                cache_results.extend(
-                    db_results.extend(
-                        error_results.extend(invalid_results)
-                    )
-                )
-            )
+
+            results.extend(cache_results)
+            results.extend(db_results)
+            results.extend(error_results)
+            results.extend(invalid_results)
+
             return results
         
         # 7. Batch сохранение новых ссылок в БД
@@ -275,7 +271,8 @@ class BatchCreateLinksUseCase:
 
         # 8. Batch кэширование всех новых ссылок
         links_to_cache = []
-        links_to_cache.extend(links_to_cache_from_db.extend(saved_links))
+        links_to_cache.extend(links_to_cache_from_db)
+        links_to_cache.extend(saved_links)
 
         if links_to_cache:
             self.cache.save_many(links_to_cache)
@@ -345,40 +342,48 @@ class BatchCreateLinksUseCase:
         # Очередь для обработки
         processing_queue = deque(hash_to_code.items())
 
+        occupied_codes = set(existing_codes_map.keys())
+
         while processing_queue:
             url_hash, short_code = processing_queue.popleft()
 
-            # Если код уже существует и не является текущей ссылкой
-            existing_link = existing_codes_map.get(short_code)
-            if existing_link and existing_link.url_hash != url_hash:
-                # Возникла коллизия, пытаемся сгенерировать новый код
-                attempt_key = (url_hash, short_code)
-                collision_attempts[attempt_key] += 1
+            if short_code in occupied_codes:
+                # Если код уже существует и не является текущей ссылкой
+                existing_link = existing_codes_map.get(short_code)
+                if existing_link and existing_link.url_hash != url_hash:
+                    # Возникла коллизия, пытаемся сгенерировать новый код
+                    attempt_key = (url_hash, short_code)
+                    collision_attempts[attempt_key] += 1
 
-                if collision_attempts[attempt_key] > max_attempts:
-                    # Превышено количество попыток = пропуск
-                    continue
-                
-                # Генерация кода с добавленным суффиксом
-                group = hash_to_group[url_hash]
-                original_url = group['original_url']
-                attempt = collision_attempts[attempt_key]
-                suffixed_url = OriginalUrl(f'{original_url}#batch_{attempt}')
+                    if collision_attempts[attempt_key] > max_attempts:
+                        # Превышено количество попыток = пропуск
+                        continue
+                    
+                    # Генерация кода с добавленным суффиксом
+                    group = hash_to_group[url_hash]
+                    original_url = group['original_url']
+                    attempt = collision_attempts[attempt_key]
+                    suffixed_url = OriginalUrl(f'{original_url}#batch_{attempt}')
 
-                new_code = self.shortening_policy.generate_code(suffixed_url)
+                    new_code = self.shortening_policy.generate_code(suffixed_url)
 
-                # Проверка нового кода
-                if new_code and existing_codes_map.get(new_code) is not None:
-                    # При новой коллизии возвращение в очередь
-                    processing_queue.append((url_hash, new_code))
+                    # Проверка нового кода
+                    if new_code and new_code not in occupied_codes:
+                        # В случае, если новый код не вызывает коллизию
+                        resolved[url_hash] = new_code
+                        occupied_codes.add(new_code)
+
+                    else:
+                        # При новой коллизии возвращение в очередь
+                        processing_queue.append((url_hash, new_code))
                 else:
-                    # В случае, если новый код не вызывает коллизию
-                    resolved[url_hash] = new_code
-                    existing_codes_map[new_code] = None # Теперь код занят
+                    # code exists but it's the same URL -> treat as resolved
+                    resolved[url_hash] = short_code
+                    occupied_codes.add(short_code)
             else:
                 # Код является уникальным
                 resolved[url_hash] = short_code
-                existing_codes_map[short_code] = None # Пометка что код занят
+                occupied_codes.add(short_code)
         
         return resolved
     
