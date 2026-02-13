@@ -112,6 +112,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
             code_key = self.key_gen.for_short_code(link.short_code.value)
             redirect_key = self.key_gen.for_redirect(link.short_code.value)
 
+            self._links[hash_key] = link
             self._links[code_key] = link
             self._redirects[redirect_key] = link.original_url.value
 
@@ -139,6 +140,8 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
                 key_redirect = self.key_gen.for_redirect(short_code.value)
                 
                 del self._links[key_code]
+                if key_hash in self._links:
+                    del self._links[key_hash]
                 if key_redirect in self._redirects:
                     del self._redirects[key_redirect]
             
