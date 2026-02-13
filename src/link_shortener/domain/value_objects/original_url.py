@@ -36,11 +36,12 @@ class OriginalUrl:
         """Бизнес метод: нормализации URL"""
 
         parsed = urlparse(self.value)
+        path = parsed.path if parsed.path else '/'
 
         normalized = ParseResult(
             scheme=parsed.scheme.lower(),
             netloc=parsed.netloc.lower(),
-            path=parsed.path,
+            path=path,
             params=parsed.params,
             query=parsed.query,
             fragment="",
