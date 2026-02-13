@@ -64,7 +64,7 @@ class SQLAlchemyLinkRepository(LinkRepository):
 
         return self._to_domain(link_model) if link_model else None
     
-    def find_by_codes(self, short_codes: List[ShortCode]) -> Dict[ShortCode, Optional[List[Link]]]:
+    def find_by_codes(self, short_codes: List[ShortCode]) -> Dict[ShortCode, Optional[Link]]:
         """Пакетный поиск по ссылок по кодам"""
         code_values = [sc.value for sc in short_codes]
         link_models = self.session.query(LinkModel)\
