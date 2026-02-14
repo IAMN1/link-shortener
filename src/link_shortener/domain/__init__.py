@@ -1,21 +1,21 @@
 from .entities.link import Link
-from .policies.shortening_policy import ShorteningPolicy, HashBasedShorteningPolicy
+from .exceptions import DomainError, LinkNotFoundError, ValidationError
+from .policies.impl.hash_based import HashBasedShorteningPolicy
+from .policies.shortening_policy import ShorteningPolicy
 from .repositories.link_repository import LinkRepository
 from .value_objects.original_url import OriginalUrl
 from .value_objects.short_code import ShortCode
 from .value_objects.url_hash import UrlHash
-from .exceptions import DomainError, ValidationError, LinkNotFoundError
-
 
 __all__ = [
-    'Link',
-    'ShorteningPolicy',
-    'HashBasedShorteningPolicy',
-    'LinkRepository',
-    'OriginalUrl',
-    'ShortCode',
-    'UrlHash',
-    'DomainError',
-    'ValidationError',
-    'LinkNotFoundError',
+    "Link",
+    "ShorteningPolicy",
+    "HashBasedShorteningPolicy",
+    "LinkRepository",
+    "OriginalUrl",
+    "ShortCode",
+    "UrlHash",
+    "DomainError",
+    "ValidationError",
+    "LinkNotFoundError",
 ]
