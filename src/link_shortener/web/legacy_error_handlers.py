@@ -1,15 +1,14 @@
-from http import HTTPStatus
 import traceback
+from http import HTTPStatus
 from typing import Any, Dict, Optional, Tuple
 
 from flask import current_app, request
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from link_shortener.core.exceptions import AppException
 from link_shortener.infrastructure.core.logging_config import get_logger
 from link_shortener.infrastructure.web.schemas.common import ErrorResponse
-
+from src.link_shortener.web.exceptions import AppException
 
 logger = get_logger(__name__)
 

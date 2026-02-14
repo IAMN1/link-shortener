@@ -1,18 +1,23 @@
 from flask import Flask, g, redirect
 from flask_cors import CORS
 
-
 from link_shortener.application.services.link_service import LinkService
-from link_shortener.infrastructure.web.error_handlers import register_error_handlers
-from link_shortener.infrastructure.core.logging_config import setup_logging
 from link_shortener.infrastructure.cache.cache_client import RedisCacheClient
-from link_shortener.infrastructure.database.database_manager import Database
-from link_shortener.infrastructure.database.repositories.sqlalchemy_link_repository import SQLAlchemyLinkRepository
-from link_shortener.infrastructure.utils.short_code_generator import HashBasedGenerator
+from link_shortener.infrastructure.core.logging_config import setup_logging
+from link_shortener.infrastructure.database.repositories.sqlalchemy_link_repository import \
+    SQLAlchemyLinkRepository
+from link_shortener.infrastructure.utils.short_code_generator import \
+    HashBasedGenerator
 from link_shortener.infrastructure.utils.url_validators import UrlValidator
 from link_shortener.infrastructure.web.api.v1 import create_api_v1_blueprint
-from link_shortener.infrastructure.web.frontend import create_frontend_blueprint
-from link_shortener.infrastructure.web.middleware.request_logging import init_middleware_request_logging
+from link_shortener.infrastructure.web.error_handlers import \
+    register_error_handlers
+from link_shortener.infrastructure.web.frontend import \
+    create_frontend_blueprint
+from link_shortener.infrastructure.web.middleware.request_logging import \
+    init_middleware_request_logging
+from src.link_shortener.infrastructure.database.manager import Database
+
 
 def create_app(config = None):
     """

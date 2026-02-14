@@ -3,7 +3,7 @@ from http import HTTPStatus
 
 # ========== APPLICATION ERRORS ==========
 class AppException(Exception):
-    """Базовый класс исключений приложения"""
+    """Базовый класс для web-исключений с HTTP статусом"""
     def __init__(self, message: str, code: str = None, status_code: int = HTTPStatus.INTERNAL_SERVER_ERROR):
         super().__init__(message)
         self.message = message
