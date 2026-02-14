@@ -1,12 +1,14 @@
 from dataclasses import dataclass
 from typing import List
 
-from ..dtos.responses import BatchCreateResponse, ServiceStatsResponse, ShortLinkResponse
-from ..use_cases.batch_create_links import BatchCreateLinksUseCase
-from ..use_cases.create_short_link import CreateShortLinkUseCase
-from ..use_cases.get_link_info import GetLinkInfoUseCase
-from ..use_cases.get_service_stats import GetServiceStatsUseCase
-from ..use_cases.redirect_link import RedirectLinkUseCase
+from link_shortener.application import (BatchCreateLinksUseCase,
+                                        BatchCreateResponse,
+                                        CreateShortLinkUseCase,
+                                        GetLinkInfoUseCase,
+                                        GetServiceStatsUseCase,
+                                        RedirectLinkUseCase,
+                                        ServiceStatsResponse,
+                                        ShortLinkResponse)
 
 
 @dataclass
@@ -25,7 +27,7 @@ class LinkService:
     def create_short_link(self, url: str) -> ShortLinkResponse:
         """Создание сокращенной ссылки"""
         return self.create_short_link_use_case.execute(url)
-    
+
     def get_link_info(self, short_code: str) -> ShortLinkResponse:
         """Получение информации о ссылке"""
         return self.get_link_info_use_case.execute(short_code)
@@ -33,7 +35,7 @@ class LinkService:
     def redirect(self, short_code: str) -> str:
         """Редирект на оригинальный URL"""
         return self.redirect_link_use_case.execute(short_code)
-    
+
     def batch_create_short_links(self, urls: List[str]) -> BatchCreateResponse:
         """Пакетное создание сокращенных ссылок"""
         return self.batch_create_links_use_case.execute(urls)
