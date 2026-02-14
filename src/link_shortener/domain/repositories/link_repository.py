@@ -25,7 +25,9 @@ class LinkRepository(ABC):
         pass
 
     @abstractmethod
-    def find_by_codes(self, short_codes: List[ShortCode]) -> Dict[ShortCode, Optional[Link]]:
+    def find_by_codes(
+        self, short_codes: List[ShortCode]
+    ) -> Dict[ShortCode, Optional[Link]]:
         """Пакетный поиск ссылкок по кодам"""
         pass
 
@@ -35,7 +37,9 @@ class LinkRepository(ABC):
         pass
 
     @abstractmethod
-    def find_by_hashes(self, url_hashes: List[UrlHash]) -> Dict[UrlHash, Optional[Link]]:
+    def find_by_hashes(
+        self, url_hashes: List[UrlHash]
+    ) -> Dict[UrlHash, Optional[Link]]:
         """Пакетный поиск поиск ссылок по хэшам"""
         pass
 
@@ -45,14 +49,14 @@ class LinkRepository(ABC):
         pass
 
     @abstractmethod
-    def increment_clicks_batch(self, short_codes: List[ShortCode]) ->  None:
+    def increment_clicks_batch(self, short_codes: List[ShortCode]) -> None:
         """Пакетное увеличение счетчика кликов"""
         pass
 
     @abstractmethod
     def get_stats(self) -> dict:
         """
-        Получение статистики по ссылке 
+        Получение статистики по ссылке
         (с полной информацией о ней)
         """
         pass
