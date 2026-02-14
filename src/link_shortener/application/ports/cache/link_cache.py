@@ -1,11 +1,7 @@
-
-
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
-from domain.entities.link import Link
-from domain.value_objects.short_code import ShortCode
-from domain.value_objects.url_hash import UrlHash
+from link_shortener.domain import Link, ShortCode, UrlHash
 
 
 class LinkCache(ABC):
@@ -27,7 +23,7 @@ class LinkCache(ABC):
     def get_by_hashes(self, url_hashes: List[UrlHash]) -> Dict[UrlHash, Optional[Link]]:
         """Получение ссылок по хэшам (пакетная обработка)"""
         pass
-    
+
     @abstractmethod
     def save(self, link: Link) -> None:
         """Сохранение ссылки в кэш"""
@@ -42,4 +38,3 @@ class LinkCache(ABC):
     def delete(self, short_code: ShortCode) -> None:
         """Удаление ссылки из кэша по короткому коду."""
         pass
-
