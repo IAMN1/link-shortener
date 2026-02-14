@@ -3,9 +3,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from ..value_objects.original_url import OriginalUrl
-from ..value_objects.short_code import ShortCode
-from ..value_objects.url_hash import UrlHash
+from link_shortener.domain.value_objects.original_url import OriginalUrl
+from link_shortener.domain.value_objects.url_hash import UrlHash
+from link_shortener.domain.value_objects.short_code import ShortCode
+
 
 
 @dataclass

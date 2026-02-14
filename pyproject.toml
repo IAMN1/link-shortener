@@ -28,6 +28,10 @@ dev = [
     "pytest-cov>=7.0.0",
 ]
 
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["link_shortener", "link_shortener.*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
-from ..value_objects.short_code import ShortCode
-from ..value_objects.url_hash import UrlHash
+from link_shortener.domain.entities.link import Link
+from link_shortener.domain.value_objects.short_code import ShortCode
+from link_shortener.domain.value_objects.url_hash import UrlHash
 
-from ..entities.link import Link
 
 class LinkRepository(ABC):
     """Интерфейс для работы с хранилизем ссылок"""
