@@ -1,6 +1,10 @@
 from dataclasses import dataclass
 
-from link_shortener.application import LinkCache, Logger, ShortLinkResponse
+
+from link_shortener.application.dtos.responses import ShortLinkResponse
+from link_shortener.application.ports.cache.link_cache import LinkCache
+from link_shortener.application.ports.logger.logger import Logger
+
 from link_shortener.domain import (Link, LinkRepository, OriginalUrl,
                                    ShortCode, ShorteningPolicy)
 
