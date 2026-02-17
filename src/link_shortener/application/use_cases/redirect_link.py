@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 
-from link_shortener.application import LinkCache, Logger, RedirectCache
+
+from link_shortener.application.ports.cache.link_cache import LinkCache
+from link_shortener.application.ports.cache.redirect_cache import RedirectCache
+from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
 
 
@@ -92,7 +95,7 @@ class RedirectLinkUseCase:
 
         except ValueError as e:
             self.logger.error(
-                "Invalid short code format", code=short_code.value, error=str(e)
+                "Invalid short code format", code=short_code_str, error=str(e)
             )
             raise ValueError(f"Invalid short code: {str(e)}")
 
@@ -112,18 +115,24 @@ class RedirectLinkUseCase:
 
         try:
             link = self.repository.find_by_code(short_code)
-            if link:
-                link.increment_clicks()
-                self.repository.increment_clicks(short_code)
-
-                # Обновление кэша
-                self.link_cache.save(link)
-
-                self.logger.debug(
-                    "Background click increment completed",
-                    short_code=short_code.value,
-                    new_clicks=link.clicks,
+            if not link:
+                self.logger.error(
+                    "Background click increment failed: link not found",
+                    short_code=short_code.value
                 )
+                return
+            
+            link.increment_clicks()
+            self.repository.increment_clicks(short_code)
+
+            # Обновление кэша
+            self.link_cache.save(link)
+
+            self.logger.debug(
+                "Background click increment completed",
+                short_code=short_code.value,
+                new_clicks=link.clicks,
+            )
 
         except Exception as e:
             self.logger.error(
