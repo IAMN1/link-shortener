@@ -71,7 +71,7 @@ class BatchItemResponse:
     processing_time_ms: Optional[float] = None
 
     @classmethod
-    def success(
+    def success_(
         cls,
         url: str,
         short_code: str,
