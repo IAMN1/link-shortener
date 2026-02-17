@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 
-from link_shortener.application import (ExtendedLinkInfoResponse, LinkCache,
-                                        Logger, ShortLinkResponse)
+
+from link_shortener.application.dtos.responses import ExtendedLinkInfoResponse, ShortLinkResponse
+from link_shortener.application.ports.cache.link_cache import LinkCache
+from link_shortener.application.ports.logger.logger import Logger
+
 from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
 
 
@@ -115,7 +118,7 @@ class GetExtendLinkInfoUseCase:
             if cached_link:
                 self.logger.info("Cache hit for code", code=short_code.value)
                 return ExtendedLinkInfoResponse.from_link(
-                    cached_link, base_url=self.base_url, is_new=False, from_cache=True
+                    cached_link, base_url=self.base_url
                 )
 
             # 3. Получение из репозитория
