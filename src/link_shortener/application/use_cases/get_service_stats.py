@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from link_shortener.application import (Logger, ServiceStatsResponse,
-                                        StatsCache, StatsItemResponse)
+
+from link_shortener.application.dtos.responses import ServiceStatsResponse, StatsItemResponse
+from link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
+from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.domain import LinkRepository
 
 
@@ -68,7 +70,7 @@ class GetServiceStatsUseCase:
                 popular_links=[
                     StatsItemResponse(
                         short_code=str(link.short_code.value),
-                        short_url=link.get_short_url(self.base_url),
+                        short_url=f"{self.base_url.rstrip('/')}/{link.short_code.value}",
                         original_url=str(link.original_url.value),
                         clicks=link.clicks,
                         created_at=link.created_at,
