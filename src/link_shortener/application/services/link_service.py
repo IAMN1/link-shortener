@@ -1,14 +1,12 @@
 from dataclasses import dataclass
 from typing import List
 
-from link_shortener.application import (BatchCreateLinksUseCase,
-                                        BatchCreateResponse,
-                                        CreateShortLinkUseCase,
-                                        GetLinkInfoUseCase,
-                                        GetServiceStatsUseCase,
-                                        RedirectLinkUseCase,
-                                        ServiceStatsResponse,
-                                        ShortLinkResponse)
+from link_shortener.application.dtos.responses import BatchCreateResponse, ServiceStatsResponse, ShortLinkResponse
+from link_shortener.application.use_cases.batch_create_links import BatchCreateLinksUseCase
+from link_shortener.application.use_cases.create_short_link import CreateShortLinkUseCase
+from link_shortener.application.use_cases.get_link_info import GetLinkInfoUseCase
+from link_shortener.application.use_cases.get_service_stats import GetServiceStatsUseCase
+from link_shortener.application.use_cases.redirect_link import RedirectLinkUseCase
 
 
 @dataclass
