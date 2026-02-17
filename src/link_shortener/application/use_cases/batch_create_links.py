@@ -3,8 +3,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from link_shortener.application import (BatchCreateResponse, BatchItemResponse,
-                                        LinkCache, Logger)
+
+from link_shortener.application.dtos.responses import BatchCreateResponse, BatchItemResponse
+from link_shortener.application.ports.cache.link_cache import LinkCache
+from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.domain import (Link, LinkRepository, OriginalUrl,
                                    ShortCode, ShorteningPolicy, UrlHash)
 
@@ -169,7 +171,7 @@ class BatchCreateLinksUseCase:
                 # найдено в кэше
                 for url in group["urls"]:
                     cache_results.append(
-                        BatchItemResponse.success(
+                        BatchItemResponse.success_(
                             url=url,
                             short_code=str(cached_link.short_code.value),
                             original_url=str(cached_link.original_url.value),
@@ -205,7 +207,7 @@ class BatchCreateLinksUseCase:
 
                 for url in group["urls"]:
                     db_results.append(
-                        BatchItemResponse.success(
+                        BatchItemResponse.success_(
                             url=url,
                             short_code=str(db_link.short_code.value),
                             original_url=str(db_link.original_url.value),
@@ -215,9 +217,6 @@ class BatchCreateLinksUseCase:
                     )
             else:
                 groups_to_create.append(group)
-
-        if links_to_cache_from_db:
-            self.cache.save_many(links_to_cache_from_db)
 
         if not groups_to_create:
             results.extend(cache_results)
@@ -393,7 +392,7 @@ class BatchCreateLinksUseCase:
 
             # Первый URL в группе = новая ссылка
             results.append(
-                BatchItemResponse.success(
+                BatchItemResponse.success_(
                     url=str(saved_link.original_url.value),
                     short_code=str(saved_link.short_code.value),
                     original_url=str(saved_link.original_url.value),
@@ -405,7 +404,7 @@ class BatchCreateLinksUseCase:
             # Остальные URL в группе = дубликаты первой ссылки
             for url in group["urls"][1:]:
                 results.append(
-                    BatchItemResponse.success(
+                    BatchItemResponse.success_(
                         url=url,
                         short_code=str(saved_link.short_code.value),
                         original_url=str(saved_link.original_url.value),
