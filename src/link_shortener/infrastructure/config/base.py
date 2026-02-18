@@ -106,15 +106,18 @@ class BaseConfig:
         """Проверка конфигурации на корректность"""
         errors = []
 
-        if self.SECRET_KEY == self._DEFAULT_SECRET_KEY:
-            errors.append(
-                "SECRET_KEY используется значение по умолчанию — замените его в .env"
-            )
+        # Пропуск проверки секретов в режиме разработки/тестирования
+        if not self.DEBUG and not self.TESTING:
+            
+            if self.SECRET_KEY == self._DEFAULT_SECRET_KEY:
+                errors.append(
+                    "SECRET_KEY используется значение по умолчанию — замените его в .env"
+                )
 
-        if self.SHORT_CODE_SECRET_PEPPER == self._DEFAULT_PEPPER:
-            errors.append(
-                "SHORT_CODE_PEPPER используется значение по умолчанию — замените его в .env"
-            )
+            if self.SHORT_CODE_SECRET_PEPPER == self._DEFAULT_PEPPER:
+                errors.append(
+                    "SHORT_CODE_PEPPER используется значение по умолчанию — замените его в .env"
+                )
 
         for scheme in self.ALLOWED_SCHEMES:
             if scheme not in ["http", "https"]:
