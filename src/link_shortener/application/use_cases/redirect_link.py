@@ -125,8 +125,8 @@ class RedirectLinkUseCase:
             link.increment_clicks()
             self.repository.increment_clicks(short_code)
 
-            # Обновление кэша
-            self.link_cache.save(link)
+            # Сначала инвалидация, следующий запрос закэширует
+            self.link_cache.delete(short_code)
 
             self.logger.debug(
                 "Background click increment completed",
