@@ -22,7 +22,7 @@ class TestingConfig(BaseConfig):
     BATCH_CREATE_LIMIT: int = 200
 
     # ========== Database settings ==========
-    DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///test.db")
+    DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
 
     # ========== Redis cache settings ==========
     REDIS_ENABLED: bool = False
