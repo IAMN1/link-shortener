@@ -1,17 +1,12 @@
-from typing import Any, Dict
-
-
 class CacheKeyGenerator:
     """Генератор ключей для кэша"""
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.prefix = config.get("CACHE_LINK_PREFIX", "link_shortener")
+    def __init__(self, prefix: str = "link_shortener"):
+        self.prefix = prefix
 
     def _build_key(self, *parts: str) -> str:
         """Построение ключа с префиксом"""
-        key_parts = [self.prefix] + list(parts)
-        return ":".join(key_parts)
+        return ":".join([self.prefix] + list(parts))
 
     def for_redirect(self, short_code: str) -> str:
         """

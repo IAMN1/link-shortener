@@ -12,9 +12,10 @@ from link_shortener.infrastructure.cache.cache_key_generator import (
 class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
     """In-memory cache реализация для тестов и разработки"""
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.key_gen = CacheKeyGenerator(config)
+    def __init__(
+        self, prefix: str, link_ttl: int = 3600, stats_ttl: int = 300
+    ):
+        self.key_gen = CacheKeyGenerator(prefix=prefix)
 
         # Хранилища
         self._links: Dict[str, Link] = {}  # code -> link
@@ -23,8 +24,8 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
 
         # TTL
         self._expiry: Dict[str, float] = {}
-        self.link_ttl = config.get("CACHE_LINK_TTL", 3600)
-        self.stats_ttl = config.get("CACHE_STATS_TTL", 300)
+        self.link_ttl = link_ttl
+        self.stats_ttl = stats_ttl
 
         self._lock = RLock()
 

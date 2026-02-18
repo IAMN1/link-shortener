@@ -26,12 +26,13 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
 
     """
 
-    def __init__(self, redis_url: str, config: Dict[str, Any]):
+    def __init__(
+        self, redis_url: str, prefix: str, link_ttl: int = 3600, stats_ttl: int = 300
+    ):
         self.client = redis.from_url(redis_url)
-        self.config = config
-        self.key_gen = CacheKeyGenerator(config)
-        self.ttl = config.get("CACHE_LINK_TTL", 3600)
-        self.stats_ttl = config.get("CACHE_STATS_TTL", 300)
+        self.key_gen = CacheKeyGenerator(prefix=prefix)
+        self.ttl = link_ttl
+        self.stats_ttl = stats_ttl
 
     def _serialize(self, link: Link) -> bytes:
         """Сериализация ссылки для Redis"""
