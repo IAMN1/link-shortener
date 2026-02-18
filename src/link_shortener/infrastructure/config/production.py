@@ -56,7 +56,7 @@ class ProductionConfig(BaseConfig):
         url = os.environ.get("DATABASE_URL")
         if not url:
             raise ValueError(
-                "DATABASE_URL должен быть установлен в переменных среды коружения"
+                "DATABASE_URL должен быть установлен в переменных среды окружения"
             )
 
         return url
@@ -78,3 +78,13 @@ class ProductionConfig(BaseConfig):
         if not url:
             raise ValueError("REDIS_URL должен быть установлен в переменных окружения")
         return url
+    
+    def validate(self) -> None:
+        """Проверка окружения для продакшена"""
+        super().validate()
+        # Принудительный вызов свойств, 
+        # чтобы убедиться, что переменные окружения заданы
+        _ = self.SECRET_KEY
+        _ = self.SHORT_CODE_SECRET_PEPPER
+        _ = self.DATABASE_URL
+        _ = self.REDIS_URL
