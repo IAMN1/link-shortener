@@ -127,6 +127,10 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
 
     def save_many(self, links: List[Link]) -> None:
         """Кэширование нескольких ссылок на всех уровнях"""
+        
+        if not links:
+            return
+        
         pipeline = self.client.pipeline()
 
         for link in links:
