@@ -1,11 +1,12 @@
 import time
-from threading import Lock
+from threading import RLock
 from typing import Any, Dict, List, Optional
 
 from link_shortener.application import LinkCache, RedirectCache, StatsCache
 from link_shortener.domain import Link, ShortCode, UrlHash
-from link_shortener.infrastructure.cache.cache_key_generator import \
+from link_shortener.infrastructure.cache.cache_key_generator import (
     CacheKeyGenerator
+)
 
 
 class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
@@ -25,7 +26,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         self.link_ttl = config.get("CACHE_LINK_TTL", 3600)
         self.stats_ttl = config.get("CACHE_STATS_TTL", 300)
 
-        self._lock = Lock()
+        self._lock = RLock()
 
     def _is_expired(self, key: str) -> bool:
         """Проверка, истечения TLL ключа"""
