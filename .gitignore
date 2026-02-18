@@ -11,7 +11,9 @@ wheels/
 
 .env
 
+#  dev/tests and other Databases
 *.db
+:memory
 
 # Pytest-generated files
 .pytest_cache/
