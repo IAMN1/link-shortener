@@ -23,6 +23,19 @@ class TestLink:
     """
     Tests for the Link domain entity and its business rules.
     """
+
+    def test_create_with_custom_id(self, valid_url_hash, valid_short_code, valid_original_url):
+        """Should create link with custom ID when provided."""
+        
+        custom_id = 'custom-123'
+        link = Link.create(
+            url_hash=valid_url_hash,
+            short_code=valid_short_code,
+            original_url=valid_original_url,
+            link_id=custom_id
+        )
+        assert link.id == custom_id
+
     def test_create_link_sets_defaults(
         self,
         sample_link: Link,

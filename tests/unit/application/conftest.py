@@ -10,35 +10,35 @@ import pytest
 
 @pytest.fixture
 def shortening_policy():
-    """Hash-based shortening policy with default code length 7."""
+    """Provide a hash-based shortening policy with default code length 7."""
     return HashBasedShorteningPolicy(code_length=7)
 
 @pytest.fixture
 def mock_link_repository():
-    """Mock for LinkRepository."""
+    """Provide a mock for LinkRepository."""
     return Mock(spec=LinkRepository)
 
 @pytest.fixture
 def mock_link_cache():
-    """Mock for LinkCache."""
+    """Provide a mock for LinkCache."""
     return Mock(spec=LinkCache)
 
 @pytest.fixture
 def mock_redirect_cache():
-    """Mock for RedirectCache."""
+    """Provide a mock for RedirectCache."""
     return Mock(spec=RedirectCache)
 
 @pytest.fixture
 def mock_stats_cache():
-    """Mock for StatsCache."""
+    """Provide a mock for StatsCache."""
     return Mock(spec=StatsCache)
 
 @pytest.fixture
 def mock_logger():
-    """Mock for Logger."""
+    """Provide a mock for Logger."""
     return Mock(spec=Logger)
 
 @pytest.fixture
 def base_url():
-    """Base URL for short links."""
+    """Provide a base URL for short links."""
     return 'https://short.link'

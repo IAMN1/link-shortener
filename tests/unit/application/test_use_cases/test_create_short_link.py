@@ -189,3 +189,34 @@ class TestCreateShortLinkUseCase:
         assert mock_link_repository.find_by_code.call_count == 3
         mock_link_repository.save.assert_called_once()
         mock_link_cache.save.assert_called_once_with(saved_link)
+    
+
+    def test_collision_with_same_hash(
+        self, use_case, mock_link_cache, mock_link_repository, shortening_policy
+    ):
+        """
+        Если найденная в БД ссылка имеет тот же хэш (т.е. это та же ссылка),
+        use case должен вернуть её без повторной генерации кода.
+        """
+        url = "https://test.com"
+        original_url = OriginalUrl(url)
+        url_hash = shortening_policy.calculate_hash(original_url)
+        short_code = shortening_policy.generate_code_for_url(original_url)
+
+        existing_link = Link.create(
+            url_hash=url_hash,
+            short_code=short_code,
+            original_url=original_url
+        )
+
+        mock_link_cache.get_by_hash.return_value = None
+        mock_link_repository.find_by_hash.return_value = existing_link
+        # find_by_code не должен вызываться, т.к. мы нашли по хэшу
+        mock_link_repository.find_by_code.return_value = None  # не важно
+
+        response = use_case.execute(url)
+
+        assert response.short_code == short_code.value
+        assert response.is_new is False
+        mock_link_cache.save.assert_called_once_with(existing_link)
+        mock_link_repository.find_by_code.assert_not_called()

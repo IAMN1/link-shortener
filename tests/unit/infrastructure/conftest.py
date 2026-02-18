@@ -1,0 +1,56 @@
+from link_shortener.infrastructure.config.testing import TestingConfig
+from link_shortener.infrastructure.database.base import Base
+from link_shortener.infrastructure.database.manager import DatabaseManager
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+
+
+@pytest.fixture
+def test_config():
+    """Return a TestingConfig object for testing."""
+    return TestingConfig()
+
+@pytest.fixture
+def in_memory_db_engine():
+    """Create an in-memory SQLite engine and create tables."""
+
+    engine = create_engine('sqlite:///:memory:', echo=False)
+    Base.metadata.create_all(engine)
+    return engine
+
+@pytest.fixture
+def db_session(in_memory_db_engine):
+    """Provide a SQLAlchemy session for testing."""
+    
+    SessionLocal = sessionmaker(bind=in_memory_db_engine)
+    session = SessionLocal()
+    yield session
+    session.close()
+
+@pytest.fixture
+def db_manager(test_config):
+    """Provide a DatabaseManager for testing (in-memory)."""
+    
+    manager = DatabaseManager(test_config.DATABASE_URL, echo=False)
+    manager.connect()
+    manager.create_tables()
+    yield manager
+    manager.close()
+
+@pytest.fixture
+def mock_redis_client(mocker):
+    """Provides a mock for the redis.Redis client"""
+    
+    mock = mocker.MagicMock()
+
+    return mock
+
+@pytest.fixture
+def mock_structlog(mocker):
+    """Provides a mock for the structlog.get_logger"""
+
+    mock_logger = mocker.MagicMock()
+    mocker.patch('structlog.get_logger', return_value=mock_logger)
+    return mock_logger

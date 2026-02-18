@@ -7,10 +7,11 @@ import pytest
 
 
 """
-Файл содержит два класса:
- - TestGetLinkInfoUseCase для тестов use case: GetLinkInfoUseCase получения информации о ссылке
- - TestGetExtendLinkInfoUseCase - для тестов use case: GetExtendLinkInfoUseCase - получения
- более подробной информации о ссылке
+Unit tests for get_link_info use cases.
+
+Contains:
+- TestGetLinkInfoUseCase: tests for GetLinkInfoUseCase (basic info)
+- TestGetExtendLinkInfoUseCase: tests for GetExtendLinkInfoUseCase (extended info)
 """
 
 @pytest.fixture

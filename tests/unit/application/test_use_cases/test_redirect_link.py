@@ -9,7 +9,7 @@ import pytest
 def use_case(
     mock_link_repository, mock_link_cache, mock_redirect_cache, mock_logger
 ) -> RedirectLinkUseCase:
-    """Fixture for RedirectLinkUseCase."""
+    """Provide a RedirectLinkUseCase instance with mocked dependencies."""
 
     return RedirectLinkUseCase(
         repository=mock_link_repository,
@@ -22,7 +22,7 @@ def use_case(
 def sample_link(
     valid_original_url, valid_short_code, valid_url_hash
 ) -> Link:
-    """Fixture for a sample link."""
+    """Provide a sample Link for testing."""
     
     link = Link.create(
         url_hash=valid_url_hash,
@@ -64,7 +64,7 @@ class TestRedirectLinkUseCase:
         use_case._increment_clicks_sync.assert_called_once_with(sample_link.short_code)
 
     def test_redirect_from_L2_cache(
-        self, use_case, mock_link_cache, mock_redirect_cache, mock_link_repository, sample_link
+        self, use_case, mock_link_cache, mock_redirect_cache, sample_link
     ):
         """Should return URL from L2 (link) cache and save to L1 cache."""
 
@@ -142,7 +142,7 @@ class TestRedirectLinkUseCase:
         # Assert
         mock_link_repository.find_by_code.assert_called_once_with(sample_link.short_code)
         mock_link_repository.increment_clicks.assert_called_once_with(sample_link.short_code)
-        mock_link_cache.save.assert_called_once_with(sample_link)
+        mock_link_cache.delete.assert_called_once_with(sample_link.short_code)
         assert sample_link.clicks == 11 # было 10 стало 11
 
     def test_increment_clicks_sync_link_not_found(
@@ -161,7 +161,7 @@ class TestRedirectLinkUseCase:
         # Assert
         mock_link_repository.find_by_code.assert_called_once()
         mock_link_repository.increment_clicks.assert_not_called()
-        mock_link_cache.save.assert_not_called()
+        mock_link_cache.delete.assert_not_called()
         use_case.logger.error.assert_called_once()
 
     def test_increment_clicks_sync_exception_handling(
@@ -176,4 +176,4 @@ class TestRedirectLinkUseCase:
         use_case._increment_clicks_sync(sample_link.short_code)
 
         use_case.logger.error.assert_called_once()
-        mock_link_cache.save.assert_not_called()
+        mock_link_cache.delete.assert_not_called()
