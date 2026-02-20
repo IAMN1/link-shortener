@@ -9,6 +9,11 @@ class BaseConfig:
     DEBUG: bool = True
     TESTING: bool = False
 
+    # ========== Feature flags ==========
+    LOGGING_ENABLED: bool = True
+    AUDIT_ENABLED: bool = True
+    CACHE_ENABLED: bool = True
+
     # ========== logging settings ==========
     LOG_DIR: str = os.environ.get("LOG_DIR", "logs")
     # имя будет дополненно датой
@@ -39,6 +44,8 @@ class BaseConfig:
     ALLOWED_SCHEMES: List[str] = ["http", "https"]
     MAX_URL_LENGTH: int = 2048
     SHORT_CODE_LENGTH: int = 7
+    SHORT_CODE_MIN_LENGTH: int = 6
+    SHORT_CODE_MAX_LENGTH: int = 10
 
     # ========== Limits ==========
     MAX_REQUESTS_PER_MINUTE: int = 100
