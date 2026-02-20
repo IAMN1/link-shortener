@@ -10,11 +10,28 @@ from link_shortener.infrastructure.cache.cache_key_generator import (
 
 
 class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
-    """In-memory cache реализация для тестов и разработки"""
+    """
+    In-memory cache implementation with TTL support.
+
+    This cache stores data in Python dictionaries and uses a simple
+    expiration mechanism based on timestamps. Suitable for development,
+    testing, or when Redis is not available. All operations are thread-safe
+    using RLock.
+
+    Implements all three cache interfaces: LinkCache, RedirectCache, StatsCache.
+    """
 
     def __init__(
         self, prefix: str, link_ttl: int = 3600, stats_ttl: int = 300
     ):
+        """
+        Initialize the in-memory cache.
+
+        Args:
+            prefix: Prefix for cache keys (used by CacheKeyGenerator).
+            link_ttl: Time-to-live in seconds for link entries.
+            stats_ttl: Time-to-live in seconds for stats entries.
+        """
         self.key_gen = CacheKeyGenerator(prefix=prefix)
 
         # Хранилища
@@ -30,13 +47,18 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         self._lock = RLock()
 
     def _is_expired(self, key: str) -> bool:
-        """Проверка, истечения TLL ключа"""
+        """Check if a key has exceeded its TTL."""
         if key not in self._expiry:
             return False
         return time.time() > self._expiry[key]
 
     def _clean_expired(self, key_type: Optional[str] = None):
-        """Очистка истекших ключей"""
+        """
+        Remove expired keys from all stores.
+
+        If key_type is provided (e.g., "code", "hash", "redirect", "stats"),
+        only clean keys of that type (by key prefix). Otherwise, clean all.
+        """
         current_time = time.time()
         expired_keys = [
             key for key, expiry in self._expiry.items() if expiry < current_time
@@ -60,7 +82,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
                 del self._expiry[stats_key]
 
     def clear_all(self) -> None:
-        """Очистка всего кэша (для тестов)"""
+        """Clear all cached data (for testing purposes)."""
         with self._lock:
             self._links.clear()
             self._redirects.clear()
@@ -68,7 +90,10 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
             self._expiry.clear()
 
     def get_cache_info(self) -> Dict[str, Any]:
-        """Получить информацию о кэше"""
+        """
+        Return information about current cache state 
+        (for monitoring/debugging).
+        """
         with self._lock:
             self._clean_expired()
 
@@ -103,7 +128,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
             return result
 
     def save(self, link: Link) -> None:
-        """Сохранение ссылки"""
+        """Store a link under multiple keys (hash, code, and redirect)."""
         with self._lock:
             hash_key = self.key_gen.for_url_hash(link.url_hash.value)
             code_key = self.key_gen.for_short_code(link.short_code.value)
@@ -125,7 +150,10 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
                 self.save(link)
 
     def delete(self, short_code: ShortCode) -> None:
-        """Удаление всех данных ссылки"""
+        """
+        Delete all data associated with a short code 
+        (hash, code, redirect keys).
+        """
         with self._lock:
             # Удаление данных ссылки из кэша
             key_code = self.key_gen.for_short_code(short_code.value)
@@ -150,21 +178,19 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
 
     # ========== RedirectCache методы ==========
     def get_original_url(self, short_code: ShortCode) -> Optional[str]:
-        """Получение оригинальной ссылки"""
+
         with self._lock:
             self._clean_expired("redirect")
             key = self.key_gen.for_redirect(short_code.value)
             return self._redirects.get(key)
 
     def save_original_url(self, short_code: ShortCode, original_url: str) -> None:
-        """Сохранения оригинальной ссылки для редиректа"""
         key = self.key_gen.for_redirect(short_code.value)
         self._redirects[key] = original_url
         self._expiry[key] = time.time() + self.link_ttl
 
     # ========== StatsCache методы ==========
     def get_stats(self) -> Optional[Dict[str, Any]]:
-        """Получение сатистики по сервису"""
         with self._lock:
             self._clean_expired("stats")
             key = self.key_gen.for_stats()
@@ -179,7 +205,6 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
             self._expiry[key] = time.time() + self.stats_ttl
 
     def delete_stats(self) -> None:
-        """Удаление статистики"""
         with self._lock:
             self._stats = None
             key = self.key_gen.for_stats()

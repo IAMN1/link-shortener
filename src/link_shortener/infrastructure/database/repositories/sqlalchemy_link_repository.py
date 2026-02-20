@@ -2,43 +2,33 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
 
 from link_shortener.domain import (Link, LinkRepository, OriginalUrl,
                                    ShortCode, UrlHash)
 from link_shortener.infrastructure.database.models import LinkModel
-
+from link_shortener.infrastructure.database.manager import DatabaseManager
 
 class SQLAlchemyLinkRepository(LinkRepository):
     """
-    Реализация репозитория на SQLAlchemy
-    Производит конвертацию доменных сущностей в модели ДБ
+    SQLAlchemy implementation of the LinkRepository interface.
+
+    Converts between domain Link entities and database LinkModel objects.
+    Uses DatabaseManager for session handling.
     """
 
-    def __init__(self, session: Session):
-        self.session = session
+    def __init__(self, db_manager: DatabaseManager):
+        """
+        Initialize the repository.
+
+        Args:
+            db_manager: DatabaseManager instance that provides sessions.
+        """
+        self.db_manager = db_manager
 
     def save(self, link: Link) -> Link:
-        """Сохранение ссылки в БД"""
-        link_model = LinkModel(
-            id=link.id,
-            url_hash=link.url_hash.value,
-            short_code=link.short_code.value,
-            original_url=link.original_url.value,
-            created_at=link.created_at,
-            clicks=link.clicks,
-            last_accessed=link.last_accessed,
-        )
+        """Save a single link to the database."""
 
-        self.session.add(link_model)
-        self.session.flush()
-
-        return self._to_domain(link_model)
-
-    def save_many(self, links: List[Link]) -> List[Link]:
-        """Пакетное сохранение в БД"""
-        link_models = []
-        for link in links:
+        with self.db_manager.session() as session:
             link_model = LinkModel(
                 id=link.id,
                 url_hash=link.url_hash.value,
@@ -48,120 +38,179 @@ class SQLAlchemyLinkRepository(LinkRepository):
                 clicks=link.clicks,
                 last_accessed=link.last_accessed,
             )
-            link_models.append(link_model)
 
-        self.session.bulk_save_objects(link_models, return_defaults=False)
-        self.session.flush()
+            session.add(link_model)
+            session.flush()
 
-        return links
+            return self._to_domain(link_model)
+
+    def save_many(self, links: List[Link]) -> List[Link]:
+        """Bulk save multiple links."""
+
+        with self.db_manager.session() as session:
+            link_models = []
+            for link in links:
+                link_model = LinkModel(
+                    id=link.id,
+                    url_hash=link.url_hash.value,
+                    short_code=link.short_code.value,
+                    original_url=link.original_url.value,
+                    created_at=link.created_at,
+                    clicks=link.clicks,
+                    last_accessed=link.last_accessed,
+                )
+                link_models.append(link_model)
+
+            session.bulk_save_objects(link_models, return_defaults=False)
+            session.flush()
+
+            return links
 
     def find_by_code(self, short_code: ShortCode) -> Optional[Link]:
-        """Поиск ссылки по коду"""
-        link_model = (
-            self.session.query(LinkModel).filter_by(short_code=short_code.value).first()
-        )
+        """Find a link by its short code."""
 
-        return self._to_domain(link_model) if link_model else None
+        with self.db_manager.session() as session:
+            link_model = (
+                session.query(LinkModel)
+                .filter_by(short_code=short_code.value)
+                .first()
+            )
+            return self._to_domain(link_model) if link_model else None
 
     def find_by_codes(
         self, short_codes: List[ShortCode]
     ) -> Dict[ShortCode, Optional[Link]]:
-        """Пакетный поиск по ссылок по кодам"""
-        code_values = [sc.value for sc in short_codes]
-        link_models = (
-            self.session.query(LinkModel)
-            .filter(LinkModel.short_code.in_(code_values))
-            .all()
-        )
+        """Bulk find links by multiple short codes."""
 
-        # Преобразовываение в словарь для быстрого поиска
-        result = {
-            ShortCode(model.short_code): self._to_domain(model) for model in link_models
-        }
+        with self.db_manager.session() as session:
+            code_values = [sc.value for sc in short_codes]
+            link_models = (
+                session.query(LinkModel)
+                .filter(LinkModel.short_code.in_(code_values))
+                .all()
+            )
 
-        # Добавление None для ненайденых кодов
-        for code in short_codes:
-            result.setdefault(code, None)
+            # Build result dict
+            result = {
+                ShortCode(model.short_code): self._to_domain(model) 
+                for model in link_models
+            }
 
-        return result
+            # Ensure all requested codes are present
+            # (with None if not found)
+            for code in short_codes:
+                result.setdefault(code, None)
+
+            return result
 
     def find_by_hash(self, url_hash: UrlHash) -> Optional[Link]:
-        """Поиск ссылки по хэшу"""
-        link_model = (
-            self.session.query(LinkModel).filter_by(url_hash=url_hash.value).first()
-        )
+        """Find a link by its URL hash."""
 
-        return self._to_domain(link_model) if link_model else None
+        with self.db_manager.session() as session:
+            link_model = (
+                session.query(LinkModel)
+                .filter_by(url_hash=url_hash.value)
+                .first()
+            )
+
+            return self._to_domain(link_model) if link_model else None
 
     def find_by_hashes(
         self, url_hashes: List[UrlHash]
     ) -> Dict[UrlHash, Optional[Link]]:
-        """Пакетный поиск ссылок по хэшам"""
+        """Bulk find links by multiple URL hashes."""
 
-        hash_values = [h.value for h in url_hashes]
-        link_models = (
-            self.session.query(LinkModel)
-            .filter(LinkModel.url_hash.in_(hash_values))
-            .all()
-        )
+        with self.db_manager.session() as session:
+            hash_values = [h.value for h in url_hashes]
+            link_models = (
+                session.query(LinkModel)
+                .filter(LinkModel.url_hash.in_(hash_values))
+                .all()
+            )
 
-        # преобразование в словарь для быстрого поиска
-        result = {
-            UrlHash(model.url_hash): self._to_domain(model) for model in link_models
-        }
+            # преобразование в словарь для быстрого поиска
+            result = {
+                UrlHash(model.url_hash): self._to_domain(model) 
+                for model in link_models
+            }
 
-        # Добавление None для ненайденных хэшей
-        for url_hash in url_hashes:
-            result.setdefault(url_hash, None)
+            # Добавление None для ненайденных хэшей
+            for url_hash in url_hashes:
+                result.setdefault(url_hash, None)
 
-        return result
+            return result
 
     def increment_clicks(self, short_code: ShortCode) -> None:
-        """Увеличение счетчика кликов"""
-        self.session.query(LinkModel).filter_by(short_code=short_code.value).update(
-            {
-                LinkModel.clicks: LinkModel.clicks + 1,
-                LinkModel.last_accessed: datetime.now(),
-            },
-            synchronize_session=False,
-        )
+        """Increment click count for a given short code."""
+
+        with self.db_manager.session() as session:
+            session.query(LinkModel).filter_by(
+                short_code=short_code.value
+            ).update(
+                {
+                    LinkModel.clicks: LinkModel.clicks + 1,
+                    LinkModel.last_accessed: datetime.now(),
+                },
+                synchronize_session=False,
+            )
 
     def increment_clicks_batch(self, short_codes: List[ShortCode]) -> None:
-        """Пакетное увеличение счетчика кликов"""
-        code_values = [sc.value for sc in short_codes]
+        """Bulk increment click counts for multiple short codes."""
 
-        # Bulk_update для эффективности
-        self.session.query(LinkModel).filter(
-            LinkModel.short_code.in_(code_values)
-        ).update(
-            {
-                LinkModel.clicks: LinkModel.clicks + 1,
-                LinkModel.last_accessed: datetime.now(),
-            },
-            synchronize_session=False,
-        )
+        with self.db_manager.session() as session:
+            code_values = [sc.value for sc in short_codes]
+
+            # Bulk_update для эффективности
+            session.query(LinkModel).filter(
+                LinkModel.short_code.in_(code_values)
+            ).update(
+                {
+                    LinkModel.clicks: LinkModel.clicks + 1,
+                    LinkModel.last_accessed: datetime.now(),
+                },
+                synchronize_session=False,
+            )
 
     def get_stats(self) -> dict:
-        """Получить статистику"""
+        """Retrieve service statistics: 
+            - total URLs, 
+            - total clicks, 
+            - top 10 popular links.
+        """
 
-        total_urls = self.session.query(func.count(LinkModel.id)).scalar()
-        total_clicks = self.session.query(func.sum(LinkModel.clicks)).scalar() or 0
+        with self.db_manager.session() as session:
+            
+            total_urls = session.query(
+                func.count(LinkModel.id)
+            ).scalar()
+            
+            total_clicks = session.query(
+                func.sum(LinkModel.clicks)
+            ).scalar() or 0
 
-        popular_links = (
-            self.session.query(LinkModel)
-            .order_by(LinkModel.clicks.desc())
-            .limit(10)
-            .all()
-        )
+            popular_links = (
+                session.query(LinkModel)
+                .order_by(LinkModel.clicks.desc())
+                .limit(10)
+                .all()
+            )
 
-        return {
-            "total_urls": total_urls,
-            "total_clicks": total_clicks,
-            "popular_links": [self._to_domain(m) for m in popular_links],
-        }
+            return {
+                "total_urls": total_urls,
+                "total_clicks": total_clicks,
+                "popular_links": [self._to_domain(m) for m in popular_links],
+            }
 
     def _to_domain(self, link_model: LinkModel) -> Link:
-        """Конвертировать модель БД в доменную сущность"""
+        """
+        Convert a database model to a domain Link entity.
+
+        Args:
+            link_model: SQLAlchemy LinkModel instance.
+
+        Returns:
+            Domain Link object.
+        """
         return Link(
             id=link_model.id,
             url_hash=UrlHash(link_model.url_hash),

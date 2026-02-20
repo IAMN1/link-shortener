@@ -5,6 +5,8 @@ from link_shortener.infrastructure.config.base import BaseConfig
 
 
 class DevelopmentConfig(BaseConfig):
+    """Configuration for development environment."""
+
     DEBUG: bool = True
     TESTING: bool = False
 

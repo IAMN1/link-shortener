@@ -10,7 +10,10 @@ from link_shortener.infrastructure.config.testing import TestingConfig
 
 
 class ConfigFactory:
-    """Фабрика конфигураций"""
+    """
+    Factory for creating configuration objects 
+        based on environment name.
+    """
 
     CONFIG_MAP = {
         "development": DevelopmentConfig,
@@ -21,7 +24,22 @@ class ConfigFactory:
 
     @classmethod
     def create_config(cls, env: str = None) -> BaseConfig:
-        """Создание конфигурации по окружению"""
+        """
+        Create a configuration instance for the given environment.
+
+        If env is None, it reads from FLASK_ENV environment variable (default "development").
+        It also loads environment variables from a .env.{env} file if it exists,
+        falling back to .env.
+
+        Args:
+            env: Environment name (development, staging, production, testing).
+
+        Returns:
+            An instance of the appropriate configuration class.
+
+        Raises:
+            ValueError: If the environment name is unknown.
+        """
 
         if env is None:
             env = os.environ.get("FLASK_ENV", "development").lower()
@@ -50,5 +68,5 @@ class ConfigFactory:
 
 
 def get_config(env: str = None) -> BaseConfig:
-    """Получение конфигурации"""
+    """Convenience function to get configuration."""
     return ConfigFactory.create_config(env)

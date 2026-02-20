@@ -5,6 +5,8 @@ from link_shortener.infrastructure.config.base import BaseConfig
 
 
 class StagingConfig(BaseConfig):
+    """Configuration for staging environment (pre-production)."""
+
     DEBUG: bool = False
     TESTING: bool = False
 
@@ -19,16 +21,14 @@ class StagingConfig(BaseConfig):
     def SECRET_KEY(self) -> str:
         key = os.environ.get("SECRET_KEY")
         if not key:
-            raise ValueError("SECRET_KEY должен быть установлен в переменных окружения")
+            raise ValueError("SECRET_KEY must be set in environment")
         return key
 
     @property
     def SHORT_CODE_SECRET_PEPPER(self) -> str:
         pepper = os.environ.get("SHORT_CODE_PEPPER")
         if not pepper:
-            raise ValueError(
-                "SHORT_CODE_PEPPER должен быть установлен в переменных окружения"
-            )
+            raise ValueError("SHORT_CODE_PEPPER must be set in environment")
         return pepper
 
     # ========== Database settings ==========
@@ -36,9 +36,7 @@ class StagingConfig(BaseConfig):
     def DATABASE_URL(self) -> str:
         url = os.environ.get("DATABASE_URL")
         if not url:
-            raise ValueError(
-                "DATABASE_URL должен быть установлен в переменных окружения"
-            )
+            raise ValueError("DATABASE_URL must be set in environment")
         return url
 
     # ========== Redis cache settings ==========

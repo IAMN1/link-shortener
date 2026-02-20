@@ -4,12 +4,26 @@ from link_shortener.application import Logger
 
 
 class StandartLogger(Logger):
-    """Adapter for standard logging module."""
+    """
+    Adapter for the standard Python logging module.
+
+    This implementation wraps a standard logging.Logger and formats
+    structured data as key-value pairs appended to the message.
+    """
 
     def __init__(self, name: str = __name__, level: int = logging.INFO):
+        """
+        Initialize the logger.
+
+        Args:
+            name: Logger name.
+            level: Logging level.
+        """
         self._logger = logging.getLogger(name)
         self._logger.setLevel(level)
 
+        # Ensure there's at least a NullHandler 
+        #   to avoid "No handlers" warning
         if not self._logger.handlers:
             self._logger.addHandler(logging.NullHandler())
     

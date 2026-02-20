@@ -5,6 +5,8 @@ from link_shortener.infrastructure.config.base import BaseConfig
 
 
 class TestingConfig(BaseConfig):
+    """Configuration for testing environment."""
+
     TESTING: bool = True
     DEBUG: bool = False
 

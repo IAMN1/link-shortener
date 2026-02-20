@@ -10,11 +10,20 @@ from flask import Flask, has_request_context, request
 
 class StructLogConfig:
     """
-    Класс для хранения и управления конфигурациями логирования
-    с помщью structlog с поддержкой flask контекста.
+    Configuration holder for structlog settings.
+
+    Extracts logging-related configuration from Flask app config
+    and provides convenient access to log file paths and settings.
     """
 
     def __init__(self, flask_cfg: Dict[str, Any]):
+        """
+        Initialize from Flask config dictionary.
+
+        Args:
+            flask_cfg: Flask app.config dictionary.
+        """
+
         from link_shortener.infrastructure.config.base import BaseConfig
 
         self.log_dir: str = flask_cfg.get("LOG_DIR", BaseConfig.LOG_DIR)
@@ -37,17 +46,17 @@ class StructLogConfig:
 
     @property
     def should_log_to_file(self) -> bool:
-        """Свойство проверяющее необходимость логирования в файл"""
+        """Check if file logging is enabled and log directory is set."""
         return self.log_to_file and bool(self.log_dir)
 
     def get_log_file_path(self) -> Optional[str]:
         """
-        Возвращает полный путь к файлу лога
-        Собирает все части пути в одном файле
+        Construct full path to the log file with date in filename.
 
         Returns:
-            Optional[str]: Полный путь к файлу лога
+            Full path string or None if file logging is disabled.
         """
+
         if not self.should_log_to_file:
             return None
 
@@ -59,7 +68,16 @@ class StructLogConfig:
 
 
 def _add_request_context(logger, method_name, event_dict):
-    """Добавление контекста запроса в логи"""
+    """
+    Structlog processor that adds Flask request context to log entries.
+
+    If the code is running within a request context, adds:
+        - request_id (if set in g)
+        - request_path
+        - request_method
+        - remote_addr
+    """
+
     if has_request_context():
         event_dict["request_id"] = getattr(request, "request_id", None)
         event_dict["request_path"] = request.path
@@ -69,7 +87,12 @@ def _add_request_context(logger, method_name, event_dict):
 
 
 def _setup_structlog(config: StructLogConfig):
-    """Настройка structlog"""
+    """
+    Configure structlog with processors and renderer based on environment.
+
+    Args:
+        config: StructLogConfig instance.
+    """
 
     processors = [
         structlog.stdlib.filter_by_level,
@@ -98,15 +121,13 @@ def _setup_structlog(config: StructLogConfig):
 
 def setup_logging(app: Flask) -> None:
     """
-    Настройка structlog для Flask app
+    Set up structlog logging for the Flask application.
 
-    Основная настройка:
-    1. Structlog с цепочкой процессоров
-    2. Обработчики (в консоль и/или в файл)
-    3. Уровни логирования для сторонних библиотек
+    Configures structlog, adds console and/or rotating file handlers,
+    and sets log levels for third-party libraries.
 
     Args:
-        app (Flask): Flask application
+        app: Flask application instance.
     """
 
     log_config = StructLogConfig(app.config)
@@ -115,16 +136,16 @@ def setup_logging(app: Flask) -> None:
     if log_config.should_log_to_file:
         os.makedirs(log_config.log_dir, exist_ok=True)
 
-    # Настройка root logging как транспорта
+    # Configure root logger as a transport for structlog
     root_logger = logging.getLogger()
     root_logger.setLevel(log_config.log_level)
-    # очищаем существующие обработчики (чтобы не дублировать логи)
+    # Remove default handlers
     root_logger.handlers.clear()
 
-    # Настройка structlog
+    # Configure structlog
     _setup_structlog(log_config)
 
-    # CONSOLE HANDLER
+    # Console handler
     if log_config.log_to_console:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(log_config.log_level)
@@ -132,7 +153,7 @@ def setup_logging(app: Flask) -> None:
 
         root_logger.addHandler(console_handler)
 
-    # FILE HANDLER
+    # File handler (rotating)
     if log_config.should_log_to_file:
         file_path = log_config.get_log_file_path()
         if file_path:
@@ -149,7 +170,7 @@ def setup_logging(app: Flask) -> None:
 
             root_logger.addHandler(file_handler)
 
-    # LOGGERS FOR THIRD-PARTY LIBS
+    # Set log levels for third-party libraries
 
     # SQLAlchemy
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
@@ -158,9 +179,8 @@ def setup_logging(app: Flask) -> None:
     werkzeug_level = logging.INFO if log_config.debug else logging.WARNING
     logging.getLogger("werkzeug").setLevel(werkzeug_level)
 
-    # Flask logger for HTTP-requests (access logs)
 
-    # Логирование успешной настройки приложения
+    # Log successful initialization
     logger = structlog.get_logger(__name__)
     logger.info(
         "structlog_initialized",
@@ -174,13 +194,14 @@ def setup_logging(app: Flask) -> None:
 
 def get_logger(name: str = None) -> structlog.BoundLogger:
     """
-    Получение логгера с поддержкой structlog
-    для единого, централизованного управления логерами и их настройкой
+    Get a structlog logger with the given name.
+
+    This function centralizes logger creation, ensuring consistent configuration.
 
     Args:
-        name (str): Имя логгера (default: __name__ of module)
+        name: Logger name (usually __name__).
 
     Returns:
-        structlog.BoundLogger: logger with setup parameters
+        Structlog BoundLogger.
     """
     return structlog.get_logger(name)
