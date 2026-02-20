@@ -6,15 +6,17 @@ from link_shortener.application.ports.logger.null_logger import NullLogger
 
 class FailoverLogger(Logger):
     """
-    A logger that can switch between multiple underlying loggers
-      (primary, secondary, fallback) based on their availability. 
-    It periodically tries to upgrade to a better logger.
+    Logger that can switch between multiple underlying loggers
+    (primary, secondary, fallback) based on their availability.
+
+    It periodically attempts to upgrade to a higher-priority logger
+    and downgrades if the current logger fails.
     """
 
     def __init__(
         self, loggers: List[Tuple[Logger, str]], check_interval: float = 30.0
     ):
-        """_summary_
+        """Initialize the failover logger.
 
         Args:
             loggers (List[Tuple[Logger, str]]): List of (logger, name) 
@@ -132,7 +134,12 @@ class FailoverLogger(Logger):
 
     def _log_with_failover(self, method: str, message: str, **kwargs):
         """
-        Attempt to log with current logger; if fails, try to switch to next.
+        Attempt to log with current logger; if it fails, try to switch to next.
+
+        Args:
+            method: Logger method name (e.g., 'debug', 'info').
+            message: Log message.
+            **kwargs: Additional structured data.
         """
         with self._lock:
             attempts = 0

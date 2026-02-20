@@ -9,7 +9,16 @@ from link_shortener.infrastructure.database.base import Base
 
 class LinkModel(Base):
     """
-    Модель SQLAlchemy для хранения сокращенных ссылок
+    SQLAlchemy model for storing shortened links.
+
+    Attributes:
+        id: UUID primary key.
+        url_hash: SHA-256 hash of the normalized URL (unique, indexed).
+        original_url: The original long URL.
+        short_code: Generated short code (unique, indexed).
+        created_at: Timestamp of creation.
+        clicks: Number of times the link has been accessed.
+        last_accessed: Timestamp of the last access (nullable).
     """
 
     __tablename__ = "urls"

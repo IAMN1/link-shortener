@@ -2,6 +2,9 @@ from sqlalchemy.orm import DeclarativeBase
 
 
 class Base(DeclarativeBase):
-    """Базовый класс для SQLAlchemy моделей"""
+    """
+    Base class for all SQLAlchemy database models.
 
+    All model classes should inherit from this class.
+    """
     pass

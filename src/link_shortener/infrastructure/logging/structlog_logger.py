@@ -7,10 +7,18 @@ from link_shortener.application import Logger
 
 class StructLogger(Logger):
     """
-    Обертка над structlog.
+    Adapter for structlog, providing structured logging.
+
+    This implementation delegates all log calls to a structlog BoundLogger.
     """
 
     def __init__(self, name: Optional[str] = None):
+        """
+        Initialize the structlog logger.
+
+        Args:
+            name: Logger name (defaults to __name__ of caller if None).
+        """
         self.logger = structlog.get_logger(name or __name__)
 
     def debug(self, message: str, **kwargs: Any) -> None:

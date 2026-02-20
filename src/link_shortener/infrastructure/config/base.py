@@ -6,6 +6,13 @@ from urllib.parse import urlparse
 
 
 class BaseConfig:
+    """
+    Base configuration class for the application.
+
+    Contains default settings that can be overridden by environment variables.
+    Subclasses should override values for specific environments 
+        (development, production, etc.).
+    """
     DEBUG: bool = True
     TESTING: bool = False
 
@@ -14,7 +21,7 @@ class BaseConfig:
     AUDIT_ENABLED: bool = True
     CACHE_ENABLED: bool = True
 
-    # ========== logging settings ==========
+    # ========== Logging settings ==========
     LOG_DIR: str = os.environ.get("LOG_DIR", "logs")
     # имя будет дополненно датой
     LOG_FILENAME: str = "link_shortener"
@@ -38,7 +45,7 @@ class BaseConfig:
 
     @property
     def BASE_URL(self) -> str:
-        """Базовый URL (динамическое вычисление)"""
+        """Base URL of the service (used for constructing short URLs)."""
         return f"http://{self.HOST}:{self.PORT}/"
 
     ALLOWED_SCHEMES: List[str] = ["http", "https"]
@@ -56,18 +63,21 @@ class BaseConfig:
 
     @property
     def DATABASE_POOL_SIZE(self) -> int:
+        """Database connection pool size (for PostgreSQL)."""
         if self.DATABASE_URL.startswith("postgresql://"):
             return int(os.environ.get("DATABASE_POOL_SIZE", 20))
         return 0
 
     @property
     def DATABASE_MAX_OVERFLOW(self) -> int:
+        """Maximum overflow connections for pool (PostgreSQL)."""
         if self.DATABASE_URL.startswith("postgresql://"):
             return int(os.environ.get("DATABASE_MAX_OVERFLOW", 10))
         return 0
 
     @property
     def DATABASE_POOL_RECYCLE(self) -> int:
+        """Recycle connections after this many seconds (PostgreSQL)."""
         if self.DATABASE_URL.startswith("postgresql://"):
             return int(os.environ.get("DATABASE_POOL_RECYCLE", 3600))
         return 0
@@ -83,6 +93,7 @@ class BaseConfig:
 
     @property
     def REDIS_HOST(self) -> Optional[str]:
+        """Extract Redis host from REDIS_URL."""
         try:
             parsed = urlparse(self.REDIS_URL)
             return parsed.hostname
@@ -91,6 +102,7 @@ class BaseConfig:
 
     @property
     def REDIS_PORT(self) -> Optional[int]:
+        """Extract Redis port from REDIS_URL."""
         try:
             parsed = urlparse(self.REDIS_URL)
             return parsed.port or 6379
@@ -99,6 +111,7 @@ class BaseConfig:
 
     @property
     def REDIS_DB(self) -> Optional[int]:
+        """Extract Redis database number from REDIS_URL."""
         try:
             parsed = urlparse(self.REDIS_URL)
             path = parsed.path.strip("/")
@@ -110,31 +123,37 @@ class BaseConfig:
 
     # ========== Validation Configuration ==========
     def validate(self) -> None:
-        """Проверка конфигурации на корректность"""
+        """
+        Validate configuration settings.
+
+        Raises:
+            ValueError: If any setting is invalid.
+        """
+        
         errors = []
 
-        # Пропуск проверки секретов в режиме разработки/тестирования
+        # In non-debug/non-test modes, ensure secrets are not default
         if not self.DEBUG and not self.TESTING:
             
             if self.SECRET_KEY == self._DEFAULT_SECRET_KEY:
                 errors.append(
-                    "SECRET_KEY используется значение по умолчанию — замените его в .env"
+                    "SECRET_KEY is using default value – override in .env"
                 )
 
             if self.SHORT_CODE_SECRET_PEPPER == self._DEFAULT_PEPPER:
                 errors.append(
-                    "SHORT_CODE_PEPPER используется значение по умолчанию — замените его в .env"
+                    "SHORT_CODE_PEPPER is using default value – override in .env"
                 )
 
         for scheme in self.ALLOWED_SCHEMES:
             if scheme not in ["http", "https"]:
-                errors.append(f"Недопустимая схема URL: {scheme}")
+                errors.append(f"Invalid URL scheme: {scheme}")
 
         if self.MAX_URL_LENGTH > 2048:
-            errors.append("MAX_URL_LENGTH не должен превышать 2048 символов")
+            errors.append("MAX_URL_LENGTH should not exceed 2048")
 
         if self.REDIS_ENABLED and not self.REDIS_URL.startswith("redis://"):
-            errors.append('REDIS_URL должен начинаться с "redis://"')
+            errors.append('REDIS_URL must start with "redis://"')
 
         if errors:
-            raise ValueError("Ошибки в конфигурации:\n - " + "\n - ".join(errors))
+            raise ValueError("Configuration errors:\n - " + "\n - ".join(errors))

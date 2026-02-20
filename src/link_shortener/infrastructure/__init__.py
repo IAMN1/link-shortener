@@ -12,8 +12,10 @@ from .core.logging_config import StructLogConfig
 from .database.base import Base
 from .database.manager import DatabaseManager
 from .database.models import LinkModel
-from .database.repositories import sqlalchemy_link_repository
+from .database.repositories.sqlalchemy_link_repository import SQLAlchemyLinkRepository
 from .logging.structlog_logger import StructLogger
+from .logging.failover_logger import FailoverLogger
+from .logging.standart_logger import StandartLogger
 
 __all__ = [
     "CacheKeyGenerator",
@@ -31,6 +33,8 @@ __all__ = [
     "Base",
     "DatabaseManager",
     "LinkModel",
-    "sqlalchemy_link_repository",
+    "SQLAlchemyLinkRepository",
     "StructLogger",
+    "FailoverLogger",
+    "StandartLogger",
 ]
