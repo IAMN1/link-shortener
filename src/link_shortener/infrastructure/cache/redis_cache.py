@@ -1,12 +1,13 @@
 import json
+import time
 from typing import Any, Dict, List, Optional
-
-import redis
 
 from link_shortener.application import LinkCache, RedirectCache, StatsCache
 from link_shortener.domain import Link, OriginalUrl, ShortCode, UrlHash
 from link_shortener.infrastructure.cache.cache_key_generator import \
     CacheKeyGenerator
+import redis
+import logging
 
 
 class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
@@ -29,11 +30,90 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     def __init__(
         self, redis_url: str, prefix: str, link_ttl: int = 3600, stats_ttl: int = 300
     ):
-        self.client = redis.from_url(redis_url)
+        self.redis_url = redis_url
         self.key_gen = CacheKeyGenerator(prefix=prefix)
         self.ttl = link_ttl
         self.stats_ttl = stats_ttl
 
+        # Internal state for failover
+        self._client = None
+        self._available = False
+        self._last_attempt = 0.0
+        self._retry_internal = 10
+
+        self._connect()
+
+    def _connect(self):
+        """Initial connection attempt"""
+        try:
+            self._client = redis.from_url(
+                self.redis_url, socket_connect_timeout=2, socket_timeout=2
+            )
+            self._client.ping()
+            self._available = True
+            
+            logging.getLogger(__name__).info(
+                "Redis connected successfully."
+            )
+        except redis.RedisError as e:
+            logging.getLogger(__name__).error(
+                f"Redis connection failed: {e}. Running without cache."
+            )
+            self._available = False
+            self._client = None
+    
+    def _ensure_connection(self) -> bool:
+        """
+        Check if connection is alive 
+        if not, attempt to reconnect if retry interval elapsed.
+        Returns True if available.
+        """
+        if self._client is not None:
+            try:
+                self._client.ping()
+                self._available = True
+                return True
+            except redis.RedisError:
+                self._available = False
+
+        if self._available:
+            self._available = False
+            self._last_attempt = time.time()
+            return False
+        
+        if time.time() - self._last_attempt > self._retry_internal:
+            try:
+                self._client = redis.from_url(
+                    self.redis_url, socket_connect_timeout=2, socket_timeout=2
+                )
+                self._client.ping()
+                self._available = True
+
+                logging.getLogger(__name__).info("Redis connection restored.")
+                return True
+            
+            except redis.RedisError:
+                self._last_attempt = time.time()
+                return False
+        return False
+
+    def _execute(self, func, *args, **kwargs):
+        """Execute a Redis operation, return None on failure."""
+        if not self._ensure_connection():
+            return None
+        try:
+            return func(*args, **kwargs)
+        except redis.RedisError as e:
+            
+            logging.getLogger(__name__).error(f"Redis operation failed: {e}")
+            
+            self._available = False
+            
+            return None
+
+    # ------------------------------------------------------------------
+    # Serialization helpers
+    # ------------------------------------------------------------------
     def _serialize(self, link: Link) -> bytes:
         """Сериализация ссылки для Redis"""
         data = {
@@ -72,6 +152,9 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         except Exception:
             return None
 
+    # ------------------------------------------------------------------
+    # General methods
+    # ------------------------------------------------------------------
     def get_cache_info(self) -> Dict[str, Any]:
         """Получение информации об использовании кэша"""
         info = self.client.info()
@@ -84,18 +167,20 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             "keyspace_misses": info.get("keyspace_misses", 0),
         }
 
-    # ========== LinkCache ==========
+    # ------------------------------------------------------------------
+    # LinkCache methods
+    # ------------------------------------------------------------------
     def get_by_code(self, short_code: ShortCode) -> Optional[Link]:
         """Получить ссылку по короткому коду"""
         key = self.key_gen.for_short_code(short_code.value)
-        data = self.client.get(key)
+        data = self._execute(self._client.get, key)
 
         return self._deserialize(data) if data else None
 
     def get_by_hash(self, url_hash: UrlHash) -> Optional[Link]:
         """Получить ссылку по хэшу URL"""
         key = self.key_gen.for_url_hash(url_hash.value)
-        data = self.client.get(key)
+        data = self._execute(self._client.get, key)
 
         return self._deserialize(data) if data else None
 
@@ -103,7 +188,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         """Получить несколько ссылок по хэшам"""
 
         keys = [self.key_gen.for_url_hash(h.value) for h in url_hashes]
-        data_list = self.client.mget(keys)
+        data_list = self._execute(self._client.mget, keys) or []
 
         result = {}
         for url_hash, data in zip(url_hashes, data_list):
@@ -113,94 +198,142 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
 
     def save(self, link: Link) -> None:
         """Кэширование ссылки на всех уровнях"""
-        # Сохраняем по нескольким ключам для быстрого поиска
-        hash_key = self.key_gen.for_url_hash(link.url_hash.value)
-        code_key = self.key_gen.for_short_code(link.short_code.value)
-        redirect = self.key_gen.for_redirect(link.short_code.value)
+        if not self._ensure_connection():
+            return
+        try:
+            # Сохраняем по нескольким ключам для быстрого поиска
+            hash_key = self.key_gen.for_url_hash(link.url_hash.value)
+            code_key = self.key_gen.for_short_code(link.short_code.value)
+            redirect = self.key_gen.for_redirect(link.short_code.value)
 
-        data = self._serialize(link)
+            data = self._serialize(link)
 
-        pipeline = self.client.pipeline()
-        pipeline.setex(hash_key, self.ttl, data)
-        pipeline.setex(code_key, self.ttl, data)
-        pipeline.setex(redirect, self.ttl, link.original_url.value)
-        pipeline.execute()
+            pipeline = self._client.pipeline()
+            
+            pipeline.setex(hash_key, self.ttl, data)
+            pipeline.setex(code_key, self.ttl, data)
+            pipeline.setex(redirect, self.ttl, link.original_url.value)
+            
+            pipeline.execute()
+        
+        except redis.RedisError as e:
+            logging.getLogger(__name__).error(f"Redis save failed: {e}")
+            self._available = False
 
     def save_many(self, links: List[Link]) -> None:
         """Кэширование нескольких ссылок на всех уровнях"""
         
-        if not links:
+        if not links or not self._ensure_connection():
             return
         
-        pipeline = self.client.pipeline()
+        try:
+            pipeline = self._client.pipeline()
 
-        for link in links:
-            hash_key = self.key_gen.for_url_hash(link.url_hash.value)
-            code_key = self.key_gen.for_short_code(link.short_code.value)
-            redirect_key = self.key_gen.for_redirect(link.short_code.value)
+            for link in links:
+                hash_key = self.key_gen.for_url_hash(link.url_hash.value)
+                code_key = self.key_gen.for_short_code(link.short_code.value)
+                redirect_key = self.key_gen.for_redirect(link.short_code.value)
 
-            data = self._serialize(link)
+                data = self._serialize(link)
 
-            pipeline.setex(hash_key, self.ttl, data)
-            pipeline.setex(code_key, self.ttl, data)
-            pipeline.setex(redirect_key, self.ttl, link.original_url.value)
+                pipeline.setex(hash_key, self.ttl, data)
+                pipeline.setex(code_key, self.ttl, data)
+                pipeline.setex(redirect_key, self.ttl, link.original_url.value)
 
-        pipeline.execute()
+            pipeline.execute()
+
+        except redis.RedisError as e:
+            logging.getLogger(__name__).error(f"Redis save_many failed: {e}")
+            self._available = False
 
     def delete(self, short_code: ShortCode) -> None:
         """Удалить данных ссылки из кэша на всех уровнях"""
 
-        code_key = self.key_gen.for_short_code(short_code.value)
-        redirect_key = self.key_gen.for_redirect(short_code.value)
+        if not self._ensure_connection():
+            return
+        
+        try:
+            code_key = self.key_gen.for_short_code(short_code.value)
+            redirect_key = self.key_gen.for_redirect(short_code.value)
 
-        # Получение данных ссылки для создания ключей
-        hash_key = None
-        data = self.client.get(code_key)
-        if data:
-            link = self._deserialize(data)
-            if link:
-                # Генерация ключей других уровней
-                hash_key = self.key_gen.for_url_hash(link.url_hash.value)
+            # try to get link to find hash key
+            data = self._execute(self._client.get, code_key)
+            keys_to_delete = [code_key, redirect_key]
+            if data:
+                link = self._deserialize(data)
+                if link:
+                    keys_to_delete.append(
+                        self.key_gen.for_url_hash(
+                            link.url_hash.value
+                        )
+                    )
+            self._client.delete(*keys_to_delete)
+        except redis.RedisError as e:
+            logging.getLogger(__name__).error(f"Redis delete failed: {e}")
+            self._available = False
 
-        # Полное удаление на всех уровнях
-        pipeline = self.client.pipeline()
-
-        if hash_key:
-            pipeline.delete(hash_key)
-
-        pipeline.delete(code_key)
-        pipeline.delete(redirect_key)
-
-        pipeline.execute()
-
-    # ========== RedirectCache ==========
+    # ------------------------------------------------------------------
+    # RedirectCache methods
+    # ------------------------------------------------------------------
     def get_original_url(self, short_code: ShortCode) -> Optional[str]:
         """Получить оригинальный URL для редиректа"""
         key = self.key_gen.for_redirect(short_code.value)
-        data = self.client.get(key)
+        
+        data = self._execute(self._client.get, key)
 
         return data.decode("utf-8") if data else None
 
     def save_original_url(self, short_code: ShortCode, original_url: str) -> None:
         """Сохранить оригинальный URL для быстрого редиректа"""
-        key = self.key_gen.for_redirect(short_code.value)
-        self.client.setex(key, self.ttl, original_url)
+        if not self._ensure_connection():
+            return
+        
+        try:
+            key = self.key_gen.for_redirect(short_code.value)
+            self._client.setex(key, self.ttl, original_url)
+        except redis.RedisError as e:
+            logging.getLogger(__name__).error(
+                f"Redis save_original_url failed: {e}"
+            )
+            
+            self._available = False
 
-    # ========== StatsCache ==========
+    # ------------------------------------------------------------------
+    # StatsCache methods
+    # ------------------------------------------------------------------
     def get_stats(self) -> Optional[Dict[str, Any]]:
         """Получить статистику сервиса"""
         key = self.key_gen.for_stats()
-        data = self.client.get(key)
+        
+        data = self._execute(self._client.get, key)
 
         return json.loads(data.decode("utf-8")) if data else None
 
     def save_stats(self, stats: Dict[str, Any]) -> None:
         """Сохранить статистику сервиса"""
-        key = self.key_gen.for_stats()
-        data = json.dumps(stats)
-        self.client.setex(key, self.stats_ttl, data)
+        if not self._ensure_connection():
+            return
+        
+        try:
+            key = self.key_gen.for_stats()
+            
+            data = json.dumps(stats)
+            
+            self._client.setex(key, self.stats_ttl, data)
+
+        except redis.RedisError as e:
+            logging.getLogger(__name__).error(f"Redis save_stats failed: {e}")
+            self._available = False
 
     def delete_stats(self) -> None:
         """Удалить статистику"""
-        key = self.key_gen.for_stats()
-        self.client.delete(key)
+        if not self._ensure_connection():
+            return
+        
+        try:
+            key = self.key_gen.for_stats()
+            self._client.delete(key)
+
+        except redis.RedisError as e:
+            logging.getLogger(__name__).error(f"Redis delete_stats failed: {e}")
+            self._available = False
