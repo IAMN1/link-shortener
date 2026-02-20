@@ -6,7 +6,7 @@ from link_shortener.infrastructure.config.factory import get_config
 from link_shortener.infrastructure.core.logging_config import setup_logging
 from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.frontend_controller import FrontendController
-from link_shortener.web.dependency_ingection import Container
+from link_shortener.web.dependency_injection import Container
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
 

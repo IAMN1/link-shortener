@@ -1,14 +1,14 @@
 from flask import Flask, jsonify, render_template, request
 from pydantic import ValidationError as PydanticValidationError
 
-from src.link_shortener.application.ports.logger.logger import Logger
-from src.link_shortener.domain.exceptions import (
+from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.domain.exceptions import (
     DomainError, LinkNotFoundError
 )
-from src.link_shortener.domain.exceptions import (
+from link_shortener.domain.exceptions import (
     ValidationError as DomainValidationError
 )
-from src.link_shortener.web.schemas.responses import ErrorDetail, ErrorResponse
+from link_shortener.web.schemas.responses import ErrorDetail, ErrorResponse
 
 
 class ErrorHandlerMiddleware:
