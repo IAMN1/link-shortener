@@ -1,12 +1,14 @@
 from dataclasses import dataclass
+from typing import Optional
 
 
-from link_shortener.application.dtos.responses import ShortLinkResponse
-from link_shortener.application.ports.cache.link_cache import LinkCache
-from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application import(
+    ShortLinkResponse, LinkCache, AuditLogger, Logger
+)
 
-from link_shortener.domain import (Link, LinkRepository, OriginalUrl,
-                                   ShortCode, ShorteningPolicy)
+from link_shortener.domain import (
+    Link, LinkRepository, OriginalUrl, ShortCode, ShorteningPolicy
+)
 
 
 @dataclass
@@ -27,9 +29,12 @@ class CreateShortLinkUseCase:
     shortening_policy: ShorteningPolicy
     base_url: str
     logger: Logger
+    audit_logger: AuditLogger
     max_collision_attempts: int = 5
 
-    def execute(self, url: str) -> ShortLinkResponse:
+    def execute(
+        self, url: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None
+    ) -> ShortLinkResponse:
         """
         Основной сценарий использования
 
@@ -67,6 +72,7 @@ class CreateShortLinkUseCase:
             existing_link = self.repository.find_by_hash(url_hash)
             if existing_link:
                 self.logger.debug("Found in repository", hash=url_hash.value[:10])
+                
                 # Кэширование
                 self.cache.save(existing_link)
                 return ShortLinkResponse.from_link(
@@ -91,6 +97,8 @@ class CreateShortLinkUseCase:
             self.logger.info(
                 "Short link created successfully", short_code=short_code.value
             )
+            
+            self.audit_logger.log_url_created(saved_link, user_ip=user_ip, user_agent=user_agent)
 
             return ShortLinkResponse.from_link(
                 link=saved_link, base_url=self.base_url, is_new=True

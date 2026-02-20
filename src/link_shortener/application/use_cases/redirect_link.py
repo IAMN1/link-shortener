@@ -1,8 +1,11 @@
 from dataclasses import dataclass
+import threading
+from typing import Optional
 
 
 from link_shortener.application.ports.cache.link_cache import LinkCache
 from link_shortener.application.ports.cache.redirect_cache import RedirectCache
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
 
@@ -25,8 +28,9 @@ class RedirectLinkUseCase:
     link_cache: LinkCache
     redirect_cache: RedirectCache
     logger: Logger
+    audit_logger: AuditLogger
 
-    def execute(self, short_code_str: str) -> str:
+    def execute(self, short_code_str: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None) -> str:
         """
         Основной сценарий использования.
 
@@ -49,9 +53,9 @@ class RedirectLinkUseCase:
             cached_url = self.redirect_cache.get_original_url(short_code)
             if cached_url:
                 self.logger.info("Redirect cache hit (L1)", code=short_code.value)
-
-                # Увеличение счетчика переходов по ссылке
-                self._increment_clicks_sync(short_code)
+                
+                self._audit_and_update_async(short_code, user_ip, user_agent)
+                
                 return cached_url
 
             # 2. L2 кэш - (полная ссылка)
@@ -65,8 +69,7 @@ class RedirectLinkUseCase:
                 orig_url = cached_link.original_url.value
                 self.redirect_cache.save_original_url(short_code, orig_url)
 
-                # Увеличение счетчика переходов
-                self._increment_clicks_sync(short_code)
+                self._audit_and_update_async(short_code, user_ip, user_agent)
 
                 return orig_url
 
@@ -91,6 +94,8 @@ class RedirectLinkUseCase:
                 "Redirect successful", code=short_code.value, url=orig_url[:50]
             )
 
+            self.audit_logger.log_url_accessed(link, user_ip, user_agent)
+
             return orig_url
 
         except ValueError as e:
@@ -110,33 +115,60 @@ class RedirectLinkUseCase:
             )
             raise RuntimeError(f"Failed to redirect: {str(e)}")
 
-    def _increment_clicks_sync(self, short_code: ShortCode) -> None:
-        """Синхронное увеличение счетчика"""
+    def _audit_and_update_async(
+        self, short_code: ShortCode, user_ip: Optional[str], user_agent: Optional[str]
+    ) -> None:
+        """
+        Perform audit and click increment in background.
+        TODO: Replace with proper async task queue (Celery) later.
+        """
+        def task():
+            try:
+                link = self.link_cache.get_by_code(short_code)
+                if not link:
+                    link = self.repository.find_by_code(short_code)
+                
+                if link:
+                    self.audit_logger.log_url_accessed(link, user_ip, user_agent)
+                    
+                    self.repository.increment_clicks(short_code)
+                else:
+                    self.logger.error(
+                        "Background audit failed: link not found", 
+                        code=short_code.value
+                    )
 
-        try:
-            link = self.repository.find_by_code(short_code)
-            if not link:
-                self.logger.error(
-                    "Background click increment failed: link not found",
-                    short_code=short_code.value
+                # (old version)
+                # Инвалидация сылки их кэша, следующий запрос закэширует
+                # self.link_cache.delete(short_code)
+
+                # кэширование (обновление)
+                link.increment_clicks()
+                self.link_cache.save(link)
+
+
+                self.logger.debug(
+                    "Background click increment completed",
+                    short_code=short_code.value,
+                    new_clicks=link.clicks,
                 )
-                return
-            
-            link.increment_clicks()
-            self.repository.increment_clicks(short_code)
+                self.logger.debug(
+                    "Background audit completed",
+                    short_code=short_code.value,
+                    new_clicks=link.clicks,
+                )
 
-            # Сначала инвалидация, следующий запрос закэширует
-            self.link_cache.delete(short_code)
-
-            self.logger.debug(
-                "Background click increment completed",
-                short_code=short_code.value,
-                new_clicks=link.clicks,
-            )
-
-        except Exception as e:
-            self.logger.error(
-                "Background click increment failed",
-                short_code=short_code.value,
-                error=str(e),
-            )
+            except Exception as e:
+                self.logger.error(
+                    "Background click increment failed",
+                    short_code=short_code.value,
+                    error=str(e),
+                )
+                self.logger.error(
+                    "Background audit failed",
+                    short_code=short_code.value,
+                    error=str(e),
+                )
+        thread = threading.Thread(target=task)
+        thread.daemon = True
+        thread.start()
