@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
 
-from link_shortener.application.dtos.responses import ExtendedLinkInfoResponse, ShortLinkResponse
-from link_shortener.application.ports.cache.link_cache import LinkCache
-from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application import (
+    ExtendedLinkInfoResponse, ShortLinkResponse, LinkCache, Logger
+)
 
 from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
 
@@ -11,15 +11,14 @@ from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
 @dataclass
 class GetLinkInfoUseCase:
     """
-    Use case: Получения информации о ссылке.
-    Оркестрирует получение данных из кэша  и репозитория
+    Use case: Retrieve basic information about a short link.
 
-    Основной сценарий при использовании:
-    1. Валидирует код ссылки
-    2. Поиск ссылки в кэше по коду
-    3. Поиск ссылки в репозитории (если не нашли в кэше)
-    4. Кэширование для будущих запросов
-    5. Формирование ответа
+    Steps:
+    1. Validate the short code via ShortCode value object.
+    2. Check cache for the link by code.
+    3. If not in cache, query repository.
+    4. If found, cache it and return response.
+    5. If not found, raise LinkNotFoundError.
     """
 
     repository: LinkRepository
@@ -29,25 +28,25 @@ class GetLinkInfoUseCase:
 
     def execute(self, short_code_str: str) -> ShortLinkResponse:
         """
-        Основной сценарий использования
+        Execute the get link info use case.
 
         Args:
-            short_code_str: Короткий код ссылки
-
-        Returns:
-            ShortLinkResponse: Информация о ссылке
+            short_code_str (str): Short code as string.
 
         Raises:
-            ValueError: Если короткий код невалидный
-            LinkNotFoundError: Если ссылка не найдена
+            LinkNotFoundError: If link not found.
+            ValueError: If short code format is invalid.
+
+        Returns:
+            ShortLinkResponse: ShortLinkResponse with link details.
         """
         try:
-            # 1. Создание VO с валидацией
+            # Step 1: Validate short code
             short_code = ShortCode(short_code_str)
 
             self.logger.debug("Getting link info for", short_code=short_code.value)
 
-            # 2. Попытка получения из кэша
+            # Step 2: Check cache
             cached_link = self.cache.get_by_code(short_code)
             if cached_link:
 
@@ -57,18 +56,18 @@ class GetLinkInfoUseCase:
                     cached_link, base_url=self.base_url, is_new=False, from_cache=True
                 )
 
-            # 3. Получение из репозитория
+            # Step 3: Query repository
             link = self.repository.find_by_code(short_code)
             if not link:
                 self.logger.warning("Link not found", code=short_code.value)
                 raise LinkNotFoundError(short_code_str)
 
-            # 4. Кэширование для будущих запросов
+            # Step 4: Cache for future requests
             self.cache.save(link)
 
             self.logger.info("Found in repository", short_code=short_code.value)
 
-            # 5. Формирование ответа и возврат
+            # Step 5: Return response
             return ShortLinkResponse.from_link(link, self.base_url, from_cache=False)
 
         except ValueError as e:
@@ -87,7 +86,10 @@ class GetLinkInfoUseCase:
 
 @dataclass
 class GetExtendLinkInfoUseCase:
-    """Use case для получения расширенной информации о ссылке (с метриками)"""
+    """
+    Use case: Retrieve extended information about a short link,
+    including derived metrics like popularity, age, clicks per day.
+    """
 
     repository: LinkRepository
     cache: LinkCache
@@ -96,24 +98,27 @@ class GetExtendLinkInfoUseCase:
 
     def execute(self, short_code_str: str) -> ExtendedLinkInfoResponse:
         """
-        Расширенная версия с дополнительной статистикой.
+        Execute the extended info use case.
 
         Args:
-            short_code_str: Короткий код ссылки
+            short_code_str (str): Short code as string.
+
+        Raises:
+            LinkNotFoundError: If link not found.
+            ValueError: If short code format is invalid.
 
         Returns:
-            dict: Расширенная информация о ссылке
+            ExtendedLinkInfoResponse: ExtendedLinkInfoResponse with metrics.
         """
         try:
 
-            # 1. Создание VO с валидацией
             short_code = ShortCode(short_code_str)
 
             self.logger.debug(
                 "Getting extend link info for", short_code=short_code.value
             )
 
-            # 2. Попытка получения из кэша
+            # Check cache first
             cached_link = self.cache.get_by_code(short_code)
             if cached_link:
                 self.logger.info("Cache hit for code", code=short_code.value)
@@ -121,18 +126,17 @@ class GetExtendLinkInfoUseCase:
                     cached_link, base_url=self.base_url
                 )
 
-            # 3. Получение из репозитория
+            # Query repository
             link = self.repository.find_by_code(short_code)
             if not link:
                 self.logger.warning("Link not found", code=short_code.value)
                 raise LinkNotFoundError(short_code_str)
 
-            # 4. Кэширование для будущих запросов
+            # Cache for future
             self.cache.save(link)
 
             self.logger.info("Found in repository", short_code=short_code.value)
 
-            # Дополнительные метрики
             return ExtendedLinkInfoResponse.from_link(link, self.base_url)
 
         except ValueError as e:

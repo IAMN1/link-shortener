@@ -14,14 +14,17 @@ from link_shortener.domain import (
 @dataclass
 class CreateShortLinkUseCase:
     """
-    Use case: Создания короткой ссылки.
-    Оркестрирует доменные объекты и внешние системы
+    Use case: Create a single short link.
 
-    Основной сценарий при использовании:
-    1. Валидирует и нормализует через VO
-    2. Проверяет на дедупликацию (в БД и кэше)
-    3. Генерирует код для ссылки
-    4. Сохраняет ссылку
+    Steps:
+    1. Validate and normalize the input URL via OriginalUrl value object.
+    2. Compute the URL hash for deduplication.
+    3. Check cache for existing link by hash (fast path).
+    4. If not in cache, check repository.
+    5. If found, return cached/existing link.
+    6. If not found, generate a unique short code (handling collisions).
+    7. Create a new Link entity and save it to repository and cache.
+    8. Audit the creation event.
     """
 
     repository: LinkRepository
@@ -36,29 +39,34 @@ class CreateShortLinkUseCase:
         self, url: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None
     ) -> ShortLinkResponse:
         """
-        Основной сценарий использования
+        Execute the create short link use case.
 
         Args:
-            url (str): Ссылка для сокращения
+            url (str): The original URL to shorten.
+            user_ip (Optional[str], optional): Client IP address (for audit). 
+                Defaults to None.
+            user_agent (Optional[str], optional): Client User-Agent (for audit). 
+                Defaults to None.
+
+        Raises:
+            ValueError: If the URL is invalid.
+            RuntimeError: If code generation fails after max attempts.
 
         Returns:
-            ShortLinkResponse: Информация о ссылке
-
-        Riases:
-            ValueError: Если URL невалидный
+            ShortLinkResponse: ShortLinkResponse with link details
         """
         try:
-            # Создание VO c валидацией
+            # Step 1: Create value object – validation happens here
             original_url = OriginalUrl(url)
 
             self.logger.info(
                 "Starting short link creation", url=original_url.value[:50]
             )
 
-            # Вычисление хэша для дедупликации
+            # Step 2: Compute hash for deduplication
             url_hash = self.shortening_policy.calculate_hash(original_url)
 
-            # 1. Проверка кэша
+            # Step 3: Check cache
             cached_link = self.cache.get_by_hash(url_hash)
             if cached_link:
                 self.logger.debug(
@@ -68,12 +76,12 @@ class CreateShortLinkUseCase:
                     cached_link, base_url=self.base_url, from_cache=True
                 )
 
-            # 2. Проверка репозитория
+            # Step 4: Check repository
             existing_link = self.repository.find_by_hash(url_hash)
             if existing_link:
                 self.logger.debug("Found in repository", hash=url_hash.value[:10])
                 
-                # Кэширование
+                # Cache it for future requests
                 self.cache.save(existing_link)
                 return ShortLinkResponse.from_link(
                     link=existing_link,
@@ -82,15 +90,15 @@ class CreateShortLinkUseCase:
                     from_cache=False,
                 )
 
-            # 3. Генерация кода
+            # Step 5: Generate unique short code
             short_code = self._generate_unique_code(original_url)
 
-            # Создание доменной сущности
+            # Step 6: Create domain entity
             new_link = Link.create(
                 url_hash=url_hash, short_code=short_code, original_url=original_url
             )
 
-            # 4. Сохранение в репозиторий и кэш
+            # Step 7: Save to repository and cache
             saved_link = self.repository.save(new_link)
             self.cache.save(saved_link)
 
@@ -112,7 +120,12 @@ class CreateShortLinkUseCase:
             raise
 
     def _generate_unique_code(self, original_url: OriginalUrl) -> ShortCode:
-        """Генерация уникального кода с проверкой коллизии в репозитории"""
+        """
+        Generate a short code that is unique in the repository.
+
+        Attempts up to max_collision_attempts, each time adding a salt
+        to the input to produce a different code if collision occurs.
+        """
         attempt = 0
         while attempt < self.max_collision_attempts:
 
@@ -124,7 +137,8 @@ class CreateShortLinkUseCase:
                 or existing.url_hash
                 == self.shortening_policy.calculate_hash(original_url)
             ):
-                # коллизии нет или это та же самая ссылка (не должно произойти, но на всякий случай)
+                # No collision, or collision with the same URL 
+                # (shouldn't happen, but safe)
                 return code
 
             # Колизия
