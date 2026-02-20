@@ -7,56 +7,67 @@ from link_shortener.domain.value_objects.url_hash import UrlHash
 
 
 class LinkRepository(ABC):
-    """Интерфейс для работы с хранилизем ссылок"""
+    """Interface for link storage operations."""
 
     @abstractmethod
     def save(self, link: Link) -> Link:
-        """Сохранение ссылки"""
+        """Save a single link to the repository."""
         pass
 
     @abstractmethod
     def save_many(self, links: list[Link]) -> List[Link]:
-        """Пакетное сохранение нескольких ссылок"""
+        """Bulk save multiple links."""
         pass
 
     @abstractmethod
     def find_by_code(self, short_code: ShortCode) -> Optional[Link]:
-        """Поиск ссылки по коду"""
+        """Find a link by its short code."""
         pass
 
     @abstractmethod
     def find_by_codes(
         self, short_codes: List[ShortCode]
     ) -> Dict[ShortCode, Optional[Link]]:
-        """Пакетный поиск ссылкок по кодам"""
+        """
+        Bulk find links by short codes; 
+            returns a dict mapping code -> link or None.
+        """
         pass
 
     @abstractmethod
     def find_by_hash(self, url_hash: UrlHash) -> Optional[Link]:
-        """Поиск ссылки по хэшу URL"""
+        """Find a link by its URL hash (for deduplication)."""
         pass
 
     @abstractmethod
     def find_by_hashes(
         self, url_hashes: List[UrlHash]
     ) -> Dict[UrlHash, Optional[Link]]:
-        """Пакетный поиск поиск ссылок по хэшам"""
+        """
+        Bulk find links by URL hashes; 
+            returns dict mapping hash -> link or None.
+        """
         pass
 
     @abstractmethod
     def increment_clicks(self, short_code: ShortCode) -> None:
-        """Увеличение счетчика кликов по ссылке"""
+        """Increment click count for a given short code."""
         pass
 
     @abstractmethod
     def increment_clicks_batch(self, short_codes: List[ShortCode]) -> None:
-        """Пакетное увеличение счетчика кликов"""
+        """Bulk increment click counts for multiple short codes."""
         pass
 
     @abstractmethod
     def get_stats(self) -> dict:
         """
-        Получение статистики по ссылке
-        (с полной информацией о ней)
+        Retrieve service statistics.
+
+        Returns:
+            dict with keys: 
+                - 'total_urls', 
+                - 'total_clicks', 
+                - 'popular_links' (list of Link).
         """
         pass

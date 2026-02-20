@@ -9,11 +9,23 @@ from link_shortener.domain.value_objects.url_hash import UrlHash
 
 class HashBasedShorteningPolicy(ShorteningPolicy):
     """
-    Детерминированная реализация политики на основе хэширования.
-    Один URL = один код
+    Deterministic shortening policy based on hashing.
+    Same URL always produces the same short code 
+        (collisions handled by caller).
     """
 
     def __init__(self, code_length: int = 7, min_length: int = 6, max_length: int = 10):
+        """
+        Initialize the policy with length constraints.
+
+        Args:
+            code_length: Desired length of the short code.
+            min_length: Minimum allowed length.
+            max_length: Maximum allowed length.
+
+        Raises:
+            ValueError: If code_length is not within [min_length, max_length].
+        """
 
         if not (min_length <= code_length <= max_length):
             raise ValueError(
@@ -25,6 +37,15 @@ class HashBasedShorteningPolicy(ShorteningPolicy):
         self.max_length = max_length
 
     def calculate_hash(self, original_url: OriginalUrl) -> UrlHash:
+        """
+        Compute a SHA-256 hash of the normalized URL for deduplication.
+
+        Args:
+            original_url: The original URL to hash.
+
+        Returns:
+            UrlHash value object containing the hex digest.
+        """
 
         # Нормализация URL для дедупликации
         normalized = original_url.normalize()
@@ -33,11 +54,23 @@ class HashBasedShorteningPolicy(ShorteningPolicy):
         return UrlHash(url_hash)
 
     def generate_code(self, input_string: str) -> ShortCode:
+        """
+        Generate a short code deterministically from an input string.
 
-        # Детерминированная генерация на основе хэша URL
+        The method uses base64url encoding of a truncated SHA-256 hash.
+        The result is trimmed to `code_length`.
 
-        # Используем достаточно байт, чтобы после кодирования
-        # получить не менее min_length символов
+        Args:
+            input_string: String to base the code on (e.g., normalized URL).
+
+        Returns:
+            ShortCode value object.
+        """
+
+        # Calculate required bytes to get 
+        #   at least min_length characters after encoding.
+        # Each base64 character encodes 6 bits, 
+        #   so we need ceil(min_length * 6 / 8) bytes
         need_bytes = max(self.code_length, self.min_length) * 8 // 6 + 1
         hash_bytes = hashlib.sha256(input_string.encode()).digest()[:need_bytes]
         short_bytes = base64.urlsafe_b64encode(hash_bytes)

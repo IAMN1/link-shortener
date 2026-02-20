@@ -6,13 +6,17 @@ import re
 @dataclass(frozen=True)
 class OriginalUrl:
     """
-    Value object для оригинального URL.
-    Содержит бизнес правила валидации.
+    Value object representing an original URL.
+
+    Encapsulates validation rules and normalization logic.
+    Immutable.
     """
 
     value: str
 
     def __post_init__(self):
+        """Validate the URL upon creation."""
+
         self._validate_length()
         parsed = urlparse(self.value)
         self._validate_scheme(parsed)
@@ -24,10 +28,14 @@ class OriginalUrl:
     # ------------------------------------------------------------------
 
     def _validate_length(self) -> None:
+        """Ensure URL does not exceed maximum allowed length."""
+
         if len(self.value) > 2048:
             raise ValueError("URL too long (max 2048 characters)")
 
     def _validate_scheme(self, parsed) -> None:
+        """Check that scheme is present and allowed (http/https)."""
+
         parsed = urlparse(self.value)
         if not parsed.scheme:
             raise ValueError("URL must have a scheme (http:// or https://)")
@@ -36,6 +44,8 @@ class OriginalUrl:
             raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
 
     def _validate_netloc(self, parsed) -> None:
+        """Validate network location part (hostname and optional port)."""
+
         if not parsed.netloc:
             raise ValueError("URL must have a domain!")
         
@@ -43,36 +53,37 @@ class OriginalUrl:
         if not hostname:
             raise ValueError("URL must have a hostname")
         
+        # Validate port if present
         try:
             if parsed.port is not None and not (1 <= parsed.port <= 65535):
                 raise ValueError("Invalid port number")
         except ValueError as e:
             raise ValueError("Invalid port number") from e
-
-        # # Разбор хоста и порта
-        # host = parsed.netloc
-        # if ':' in host:
-        #     host, port_str = host.rsplit(":", 1)
-        #     if not port_str.isdigit() or not (1 <= int(port_str) <= 65535):
-        #         raise ValueError("Invalid port number")
         
         self._validate_host(hostname)
     
     def _validate_host(self, host: str) -> None:
-        """проверка корректности хоста (IP or domain name)"""
+        """
+        Validate hostname: can be IP, localhost, or a valid domain name.
 
-        # Если ip
+        Domain name rules: each label must contain 
+            only alphanumeric chars and hyphens,
+            cannot start or end with hyphen, 
+            and total length constraints.
+        """
+
+        # Check if it's a valid IP address
         try:
             ipaddress.ip_address(host)
-            return # IP is correct
+            return # IP is valid
         except ValueError:
             pass
         
-        # Если localhost
+        # Allow localhost
         if host == "localhost":
             return
 
-        # Для обычных доменных имен требуем хотя бы одну точку
+        # Domain name must contain at least one dot
         if '.' not in host:
             raise ValueError("Host must contain a dot (e.g., example.com)")
 
@@ -80,11 +91,11 @@ class OriginalUrl:
         if not host:
             raise ValueError("Empty host")
         
-        # Общаяя длинна не более 253
+        # Total length limit
         if len(host) > 253:
             raise ValueError("Host too long")
         
-        # Каждая метка
+        # Validate each label
         labels = host.split(".")
         for label in labels:
             
@@ -99,6 +110,8 @@ class OriginalUrl:
                 raise ValueError(f"Invalid characters in host label: {label}")
     
     def _validate_path(self, parsed) -> None:
+        """Ensure path does not contain control characters."""
+
         if parsed.path and any(ord(c) < 32 or ord(c) == 127 for c in parsed.path):
             raise ValueError("Path contains control characters")
 
@@ -110,12 +123,19 @@ class OriginalUrl:
         return self.value
 
     def get_domain(self) -> str:
-        """Бизнес метод: извлечение домена с портом"""
+        """Extract domain (hostname) from the URL."""
         parsed = urlparse(self.value)
         return parsed.hostname or ""
 
     def normalize(self) -> str:
-        """Бизнес метод: нормализации URL"""
+        """
+        Normalize the URL for consistent comparison and hashing.
+
+        Normalization includes:
+        - Lowercase scheme and netloc.
+        - Ensure path is at least '/'.
+        - Remove fragment.
+        """
 
         parsed = urlparse(self.value)
         path = parsed.path if parsed.path else "/"
