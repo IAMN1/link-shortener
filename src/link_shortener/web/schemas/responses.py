@@ -4,143 +4,255 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
-class ShortLinkResponseSchema(BaseModel):
-    """Схема ответа для короткой ссылки"""
+class ShortLinkResponse(BaseModel):
+    """Response schema for a short link (created or retrieved)."""
 
-    short_code: str = Field(..., description='Короткий код ссылки')
-    short_url: str = Field(..., description='Полная короткая ссылка')
-    original_url: str = Field(..., description='Оригинальный URL')
-    clicks: int = Field(..., description='Количество переходов')
-    created_at: datetime = Field(..., description='Дата создания')
-    last_accessed: Optional[datetime] = Field(None, description='Дата последнего перехода')
-    is_new: bool = Field(False, description='Была ли ссылка создана в этом запросе')
-    from_cache: bool = Field(False, description='Были ли данные получены из кэша')
+    short_code: str
+    short_url: str
+    original_url: str
+    clicks: int
+    created_at: datetime
+    last_accessed: Optional[datetime]
+    is_new: bool
+    from_cache: bool
 
     @field_serializer('created_at', 'last_accessed')
-    def serialize_dates(self, value: Optional[datetime], _info) -> str:
+    def serialize_dt(self, value: Optional[datetime]) -> Optional[str]:
+        """Serialize datetime fields to ISO format strings."""
         if value is None:
             return None
         return value.isoformat()
 
     model_config = ConfigDict(
         json_schema_extra={
-            'example': {
-                'short_code': 'aAbBcDE',
-                'short_url': 'https://domain.com/aAbBcDE',
-                'original_url': 'https://example.com/some/parameters',
-                'clicks': 0,
-                'created_at': '2026-01-17T10:30:00',
-                'last_accessed': None,
-                'is_new' : True,
-                'from_cache': False
+            "example": {
+                "short_code": "abc123",
+                "short_url": "https://short.xyz/abc123",
+                "original_url": "https://example.com/very/long/url",
+                "clicks": 42,
+                "created_at": "2026-02-20T12:00:00",
+                "last_accessed": "2026-02-20T15:30:00",
+                "is_new": False,
+                "from_cache": True
             }
         }
     )
 
     @classmethod
-    def from_dto(cls, dto) -> 'ShortLinkResponseSchema':
-        """создание схемы из DTO"""
-        return cls(**dto.dict()) 
+    def from_dto(cls, dto) -> 'ShortLinkResponse':
+        """Create a response schema from a ShortLinkResponse DTO."""
+        return cls(
+            short_code=dto.short_code,
+            short_url=dto.short_url,
+            original_url=dto.original_url,
+            clicks=dto.clicks,
+            created_at=dto.created_at,
+            last_accessed=dto.last_accessed,
+            is_new=dto.is_new,
+            from_cache=dto.from_cache
+        ) 
 
-class BatchItemResponseSchema(BaseModel):
-    """Схема ответа для одного элемента в пакетной обработке"""
+class BatchItemResponse(BaseModel):
+    """Response schema for a single item in batch creation response."""
 
-    success: bool = Field(..., description='Успешно ли обработан URL')
-    url: str = Field(..., description='Оригинальный URL')
-    short_code: Optional[str] = Field(None, description='Короткий код (если успешно)')
-    short_url: Optional[str] = Field(None, description='Короткая ссылка (если успешно)')
-    error: Optional[str] = Field(None, description='Сообщение об ошибке (если есть)')
-    is_new: Optional[bool] = Field(None, description='Новая ли ссылка')
-    from_cache: Optional[bool] = Field(None, description='Из кэша ли данные')
-    duplicate_of: Optional[str] = Field(None, description='URL, дубликатом которого является')
+    success: bool
+    url: str
+    short_code: Optional[str] = None
+    short_url: Optional[str] = None
+    error: Optional[str] = None
+    is_new: Optional[bool] = None
+    from_cache: Optional[bool] = None
+    duplicate_of: Optional[str] = None
 
-class BatchCreateResponseSchema(BaseModel):
-    """Схема ответа для пакетного создания ссылок"""
-    
-    results: List[BatchItemResponseSchema] = Field(..., description='Результаты обработки')
-    total: int = Field(..., description='Общее количество URL')
-    successful: int = Field(..., description='Количество успешно обработанных')
-    failed: int = Field(..., description='Количество неудачных')
-
-
-class StatsItemResponseSchema(BaseModel):
-    """Схема для элемента статистики"""
-    
-    short_code: str = Field(..., description='Короткий код')
-    short_url: str = Field(..., description='Короткая ссылка')
-    original_url: str = Field(..., description='Оригинальный URL (обрезанный)')
-    clicks: int = Field(..., description='Количество переходов')
-    created_at: datetime = Field(..., description='Дата создания')
-
-    @field_serializer('created_at', 'last_accessed')
-    def serialize_dates(self, value: Optional[datetime], _info) -> str:
-        if value is None:
-            return None
-        return value.isoformat()
-
-class ServiceStatsResponseSchema(BaseModel):
-    """Схема ответа для статистики сервиса"""
-    
-    total_urls: int = Field(..., description='Общее количество ссылок')
-    total_clicks: int = Field(..., description='Общее количество переходов')
-    avg_clicks_per_url: float = Field(..., description='Среднее количество переходов на ссылку')
-    popular_links: List[StatsItemResponseSchema] = Field(..., description='Популярные ссылки')
-
-
-class ErrorDetailSchema(BaseModel):
-    """Детали ошибки"""
-    
-    field: Optional[str] = Field(None, description='Поле, в котором ошибка')
-    message: str = Field(..., description='Сообщение об ошибке')
-    code: Optional[str] = Field(None, description='Код ошибки')
-
-
-class ErrorResponseSchema(BaseModel):
-    """Схема ответа об ошибке"""
-    
-    error: str = Field(..., description='Тип ошибки')
-    message: str = Field(..., description='Сообщение об ошибке')
-    details: Optional[List[ErrorDetailSchema]] = Field(None, description='Детали ошибки')
-    timestamp: datetime = Field(default_factory=datetime.now, description='Время ошибки')
-    
     model_config = ConfigDict(
-        json_schema_extra= {
-            'example': {
-                'error': "VALIDATION_ERROR",
-                'message': 'Ошибка валидации входных данных',
-                'details': '...',
-                'timestamp': '2026-01-17T10:30:00'
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "url": "https://example.com/long",
+                "short_code": "abc123",
+                "short_url": "https://short.xyz/abc123",
+                "is_new": False,
+                "from_cache": True,
+                "duplicate_of": None
             }
         }
     )
-    
-    @field_serializer('created_at', 'last_accessed')
-    def serialize_dates(self, value: Optional[datetime], _info) -> str:
-        if value is None:
-            return None
-        return value.isoformat()
 
     @classmethod
-    def from_exception(cls, exc: Exception) -> 'ErrorResponseSchema':
-        """Создание схемы из исключения"""
+    def from_dto(cls, dto) -> "BatchItemResponse":
+        """Create a response schema from a BatchItemResponse DTO."""
         return cls(
-            error=exc.__class__.__name__,
-            message=str(exc)
+            success=dto.success,
+            url=dto.url,
+            short_code=dto.short_code,
+            short_url=dto.short_url if hasattr(dto, 'short_url') else None,
+            error=dto.error,
+            is_new=dto.is_new,
+            from_cache=dto.from_cache,
+            duplicate_of=dto.duplicate_of
         )
+
+class BatchCreateResponse(BaseModel):
+    """Response schema for batch creation of short links."""
     
+    results: List[BatchItemResponse]
+    total: int
+    successful: int
+    failed: int
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "results": [
+                    {
+                        "success": True,
+                        "url": "https://example.com/1",
+                        "short_code": "abc123",
+                        "short_url": "https://short.xyz/abc123"
+                    },
+                    {
+                        "success": False,
+                        "url": "invalid-url",
+                        "error": "Invalid URL"
+                    }
+                ],
+                "total": 2,
+                "successful": 1,
+                "failed": 1
+            }
+        }
+    )
+
     @classmethod
-    def from_validation_error(cls, exc) -> 'ErrorResponseSchema':
-        """Создание схемы из ошибки валидации Pydantic"""
-        details = []
-        for error in exc.errors():
-            details.append(ErrorDetailSchema(
-                field=' -> '.join(str(loc) for loc in error['loc']),
-                message=error['msg'],
-                code=error['type']
-            ))
-        
+    def from_dto(cls, dto) -> "BatchCreateResponse":
+        """Create a response schema from a BatchCreateResponse DTO."""
         return cls(
-            error='VALIDATION_ERROR',
-            message='Ошибка валидации входных данных',
-            details=details
+            results=[BatchItemResponse.from_dto(item) for item in dto.items],
+            total=dto.total,
+            successful=dto.successful,
+            failed=dto.failed
         )
+
+class StatsItemResponse(BaseModel):
+    """Response schema for a single item in service statistics."""
+    
+    short_code: str
+    short_url: str
+    original_url: str
+    clicks: int
+    created_at: datetime
+
+    @field_serializer('created_at')
+    def serialize_dt(self, value: datetime) -> str:
+        """Serialize datetime to ISO format string."""
+        return value.isoformat()
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "short_code": "abc123",
+                "short_url": "https://short.xyz/abc123",
+                "original_url": "https://example.com/1",
+                "clicks": 100,
+                "created_at": "2026-02-20T12:00:00"
+            }
+        }
+    )
+
+    @classmethod
+    def from_dto(cls, dto) -> "StatsItemResponse":
+        """Create a response schema from a StatsItemResponse DTO."""
+        return cls(
+            short_code=dto.short_code,
+            short_url=dto.short_url,
+            original_url=dto.original_url,
+            clicks=dto.clicks,
+            created_at=dto.created_at
+        )
+
+class ServiceStatsResponse(BaseModel):
+    """Response schema for service-wide statistics."""
+    
+    total_urls: int
+    total_clicks: int
+    avg_clicks_per_url: float
+    popular_links: List[StatsItemResponse]
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "total_urls": 1_000,
+                "total_clicks": 15_000,
+                "avg_clicks_per_url": 15.0,
+                "popular_links": [
+                    {
+                        "short_code": "abc123",
+                        "short_url": "https://short.xyz/abc123",
+                        "original_url": "https://example.com/1",
+                        "clicks": 100,
+                        "created_at": "2026-02-20T12:00:00"
+                    }
+                ]
+            }
+        }
+    )
+
+    @classmethod
+    def from_dto(cls, dto) -> "ServiceStatsResponse":
+        """Create a response schema from a ServiceStatsResponse DTO."""
+        return cls(
+            total_urls=dto.total_urls,
+            total_clicks=dto.total_clicks,
+            avg_clicks_per_url=dto.avg_clicks_per_url,
+            popular_links=[
+                StatsItemResponse.from_dto(link)
+                for link in dto.popular_links
+            ]
+        )
+
+class ErrorDetail(BaseModel):
+    """Schema for detailed error information (field-level errors)."""
+
+    field: Optional[str] = None
+    message: str
+    code: Optional[str] = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "field": "url",
+                "message": "URL must be valid",
+                "code": "url_error"
+            }
+        }
+    )
+
+class ErrorResponse(BaseModel):
+    """Schema for error responses (both API and frontend)."""
+    
+    error: str
+    message: str
+    details: Optional[List[ErrorDetail]] = None
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+    @field_serializer('timestamp')
+    def serialize_dt(self, value: datetime) -> str:
+        """Serialize timestamp to ISO format string."""
+        return value.isoformat()
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "error": "VALIDATION_ERROR",
+                "message": "Request validation failed",
+                "details": [
+                    {
+                        "field": "url",
+                        "message": "URL must be valid",
+                        "code": "url_error"
+                    }
+                ],
+                "timestamp": "2026-02-20T12:00:00"
+            }
+        }
+    )
