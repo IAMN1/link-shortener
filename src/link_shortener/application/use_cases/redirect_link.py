@@ -13,15 +13,19 @@ from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
 @dataclass
 class RedirectLinkUseCase:
     """
-    Use Case: Редирект по короткой ссылке
+    Use case: Handle redirect by short code.
 
-    Основной сценарий при использовании:
-    1. Валидирует и нормализует код через VO
-    2. Получение из кэша для редиректа (L1 уровень)
-    3. Получение из общего кэша (L2, если не нашли в L1)
-    4. Получение из репозитория (если не нашли в кэше)
-    5. Увеличение счетчика переходов по ссылке
-    6. Кэширование на всех уровнях
+    Steps:
+    1. Validate short code.
+    2. Check L1 cache (redirect cache) for original URL.
+    3. If not in L1, check L2 cache (full link cache).
+    4. If not in L2, query repository.
+    5. Increment click count (asynchronously).
+    6. Cache URL in L1 and L2 for future requests.
+    7. Return original URL.
+
+    Click increment and audit are done asynchronously 
+        to not block the redirect response.
     """
 
     repository: LinkRepository
@@ -32,40 +36,47 @@ class RedirectLinkUseCase:
 
     def execute(self, short_code_str: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None) -> str:
         """
-        Основной сценарий использования.
+        Execute the redirect use case.
 
         Args:
-            short_code_str: Короткий код ссылки
-
-        Returns:
-            str: Оригинальный URL для редиректа
+            short_code_str (str): Short code as string.
+            user_ip (Optional[str], optional): Client IP (for audit). 
+                Defaults to None.
+            user_agent (Optional[str], optional): Client User-Agent (for audit). 
+                Defaults to None.
 
         Raises:
-            LinkNotFoundError: Если ссылка не найдена
+            LinkNotFoundError: If link not found.
+            ValueError: If short code format is invalid.
+            RuntimeError: _description_
+
+        Returns:
+            str: Original URL to redirect to.
         """
         try:
-            # Создание VO с валидацией
+            # Step 1: Validate short code
             short_code = ShortCode(short_code_str)
 
             self.logger.debug("Redirect requested for", code=short_code.value)
 
-            # 1. L1 кэш - только URL
+            # Step 2: Check L1 cache (fastest)
             cached_url = self.redirect_cache.get_original_url(short_code)
             if cached_url:
                 self.logger.info("Redirect cache hit (L1)", code=short_code.value)
                 
+                # Asynchronously update click count and audit
                 self._audit_and_update_async(short_code, user_ip, user_agent)
                 
                 return cached_url
 
-            # 2. L2 кэш - (полная ссылка)
+            # Step 3: Check L2 cache (full link)
             cached_link = self.link_cache.get_by_code(short_code)
             if cached_link:
                 self.logger.info(
                     "Link cache hit for redirect (L2)", code=short_code.value
                 )
 
-                # Сохранение в быстрый кэш для будущих запросов
+                # Store in L1 cache for future fast redirects
                 orig_url = cached_link.original_url.value
                 self.redirect_cache.save_original_url(short_code, orig_url)
 
@@ -73,7 +84,7 @@ class RedirectLinkUseCase:
 
                 return orig_url
 
-            # 3. Получение из репозитория
+            # Step 4: Query repository
             link = self.repository.find_by_code(short_code)
             if not link:
                 self.logger.warning(
@@ -83,11 +94,11 @@ class RedirectLinkUseCase:
 
             orig_url = str(link.original_url.value)
 
-            # 4. Увеличение счетчика переходов по ссылке
+            # Update the domain object (increment) for cache
             link.increment_clicks()
             self.repository.increment_clicks(short_code)
 
-            # 5. Кэширование на всех уровнях
+            # Step 6: Cache on all levels
             self.link_cache.save(link)
 
             self.logger.info(
@@ -119,44 +130,49 @@ class RedirectLinkUseCase:
         self, short_code: ShortCode, user_ip: Optional[str], user_agent: Optional[str]
     ) -> None:
         """
-        Perform audit and click increment in background.
         TODO: Replace with proper async task queue (Celery) later.
+
+        Perform audit logging and click increment in a background thread.
+
+        This is a temporary solution to avoid blocking the redirect response.
+        In production, this should be replaced with a proper task queue (e.g., Celery).
+
+        The thread:
+        - Fetches the link (from cache or repository).
+        - Audits the access.
+        - Increments click count in repository.
+        - Updates the cache with incremented count.
         """
         def task():
             try:
+                # Try to get link from cache first (fast)
                 link = self.link_cache.get_by_code(short_code)
                 if not link:
                     link = self.repository.find_by_code(short_code)
                 
                 if link:
+                    # Audit
                     self.audit_logger.log_url_accessed(link, user_ip, user_agent)
                     
+                    # Increment in repository
                     self.repository.increment_clicks(short_code)
-                else:
-                    self.logger.error(
-                        "Background audit failed: link not found", 
-                        code=short_code.value
+
+                    # Update local link object for cache
+                    link.increment_clicks()
+                    # Refresh cache with updated link
+                    self.link_cache.save(link)
+
+                    self.logger.debug(
+                        "Background click increment and audit completed",
+                        short_code=short_code.value,
+                        new_clicks=link.clicks,
                     )
 
-                # (old version)
-                # Инвалидация сылки их кэша, следующий запрос закэширует
-                # self.link_cache.delete(short_code)
-
-                # кэширование (обновление)
-                link.increment_clicks()
-                self.link_cache.save(link)
-
-
-                self.logger.debug(
-                    "Background click increment completed",
-                    short_code=short_code.value,
-                    new_clicks=link.clicks,
-                )
-                self.logger.debug(
-                    "Background audit completed",
-                    short_code=short_code.value,
-                    new_clicks=link.clicks,
-                )
+                else:
+                    self.logger.error(
+                        "Background task failed: link not found", 
+                        code=short_code.value
+                    )
 
             except Exception as e:
                 self.logger.error(
@@ -165,7 +181,7 @@ class RedirectLinkUseCase:
                     error=str(e),
                 )
                 self.logger.error(
-                    "Background audit failed",
+                    "Background task failed",
                     short_code=short_code.value,
                     error=str(e),
                 )

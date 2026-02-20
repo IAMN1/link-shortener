@@ -2,37 +2,44 @@ from dataclasses import dataclass
 from datetime import datetime
 
 
-from link_shortener.application.dtos.responses import ServiceStatsResponse, StatsItemResponse
-from link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
-from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application import (
+    ServiceStatsResponse, StatsItemResponse, StatsCache, Logger
+)
 from link_shortener.domain import LinkRepository
 
 
 @dataclass
 class GetServiceStatsUseCase:
     """
-    Use case: Получения статистики сервиса
+    Use case: Retrieve service-wide statistics.
+
+    Steps:
+    1. Attempt to get cached statistics.
+    2. If cache miss, query repository.
+    3. Compute derived metrics (avg clicks per URL).
+    4. Cache the result and return.
     """
 
     repository: LinkRepository
     base_url: str
     cache: StatsCache
     logger: Logger
-    cache_ttl: int = 300
+    cache_ttl: int = 300 # Not used directly; cache implementation handles TTL
 
     def execute(self) -> ServiceStatsResponse:
         """
-        Основной сценарий использования.
+        Execute the get service stats use case.
 
         Returns:
-            ServiceStatsResponse: Статистика сервиса
+            ServiceStatsResponse with aggregated statistics.
         """
         try:
-            # 1. Попытка получения данных из кэша
+            # 1. Check cache
             cached_stats = self.cache.get_stats()
             if cached_stats:
                 self.logger.info("Stats cache hit")
 
+                # Rehydrate popular_links from serialized data
                 popular_links = []
                 for item in cached_stats["popular_links"]:
                     created_at = datetime.fromisoformat(item["created_at"])
@@ -53,10 +60,10 @@ class GetServiceStatsUseCase:
                     popular_links=popular_links,
                 )
 
-            # 2. получение из репозитория
+            # 2. Cache miss – query repository
             stats_data = self.repository.get_stats()
 
-            # 3. формирование ответа
+            # 3. Build response
             total_urls = stats_data.get("total_urls", 0)
             total_clicks = stats_data.get("total_clicks", 0)
             avg_clicks = total_clicks / total_urls if total_urls > 0 else 0
@@ -79,7 +86,7 @@ class GetServiceStatsUseCase:
                 ],
             )
 
-            # 4. кэширование результата
+            # 4. Cache the result
             self.cache.save_stats(response.to_dict())
 
             self.logger.info(

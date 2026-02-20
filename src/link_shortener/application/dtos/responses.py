@@ -8,7 +8,16 @@ from link_shortener.domain import Link
 @dataclass
 class ShortLinkResponse:
     """
-    DTO для ответа при создании сокращенной ссылки
+    DTO for a short link response, used when a link is created or retrieved.
+
+    Attributes:
+        short_code: The generated short code.
+        short_url: The full short URL (base URL + short code).
+        original_url: The original long URL.        clicks: Number of times the link has been accessed.
+        created_at: Timestamp when the link was created.
+        last_accessed: Timestamp of the last access (if any).
+        is_new: True if the link was just created in this request.
+        from_cache: True if the data came from cache.
     """
 
     short_code: str
@@ -24,7 +33,18 @@ class ShortLinkResponse:
     def from_link(
         cls, link: Link, base_url: str, is_new: bool = False, from_cache: bool = False
     ) -> "ShortLinkResponse":
-        """Фабричный метод для создания DTO из доменной сущности"""
+        """
+        Create a DTO from a domain Link entity.
+
+        Args:
+            link: The domain Link object.
+            base_url: Base URL of the service (e.g., "https://short.xyz").
+            is_new: Whether this link was just created.
+            from_cache: Whether the data came from cache.
+
+        Returns:
+            ShortLinkResponse instance.
+        """
 
         short_url = f'{base_url.rstrip("/")}/{link.short_code.value}'
 
@@ -40,7 +60,12 @@ class ShortLinkResponse:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        """Конвертация в словарь для сериализации"""
+        """
+        Convert the DTO to a dictionary for JSON serialization.
+
+        Returns:
+            Dictionary with ISO-formatted datetime strings.
+        """
         return {
             "short_code": self.short_code,
             "short_url": self.short_url,
@@ -57,7 +82,22 @@ class ShortLinkResponse:
 
 @dataclass
 class BatchItemResponse:
-    """DTO для одного элемента пакетной обработки"""
+    """
+    DTO for a single item in a batch create response.
+
+    Attributes:
+        success: Whether processing this URL succeeded.
+        url: The original URL provided in the request.
+        short_code: Generated short code (if successful).
+        original_url: Normalized original URL (may differ from input if duplicates).
+        short_url: Full short URL (if successful).
+        clicks: Current click count (if link existed).
+        error: Error message (if failed).
+        is_new: True if a new link was created.
+        from_cache: True if data came from cache.
+        duplicate_of: If this URL is a duplicate of another, contains the original URL.
+        processing_time_ms: Optional processing time for this item.
+    """
 
     success: bool
     url: str
@@ -83,7 +123,22 @@ class BatchItemResponse:
         from_cache: bool = False,
         duplicate_of: Optional[str] = None,
     ) -> "BatchItemResponse":
-        """Фабричный метод для успешного результата"""
+        """
+        Factory method for a successful item.
+
+        Args:
+            url: Original input URL.
+            short_code: Generated short code.
+            original_url: Normalized original URL.
+            base_url: Base URL for building short URL.
+            clicks: Click count.
+            is_new: Whether this is a new link.
+            from_cache: Whether data came from cache.
+            duplicate_of: If duplicate, the original URL it duplicates.
+
+        Returns:
+            BatchItemResponse with success=True.
+        """
         short_url = f'{base_url.rstrip("/")}/{short_code}'
         return cls(
             url=url,
@@ -99,13 +154,35 @@ class BatchItemResponse:
 
     @classmethod
     def error_(cls, url: str, error: str) -> "BatchItemResponse":
-        """Фабричный метод для ошибки"""
+        """
+        Factory method for a failed item.
+
+        Args:
+            url: Original input URL.
+            error: Error message.
+
+        Returns:
+            BatchItemResponse with success=False
+        """
         return cls(success=False, url=url, error=error)
 
 
 @dataclass
 class BatchCreateResponse:
-    """DTO для ответа пакетного создания ссылок"""
+    """
+    DTO for the entire batch create response, including aggregated statistics.
+
+    Attributes:
+        items: List of individual item responses.
+        total: Total number of URLs processed.
+        successful: Number of successful items.
+        failed: Number of failed items.
+        from_cache_count: Number of items served from cache.
+        from_db_count: Number of items retrieved from database (not new).
+        new_count: Number of newly created links.
+        processing_time_seconds: Total processing time.
+        created_at: Timestamp of the response creation.
+    """
 
     items: List[BatchItemResponse]
     total: int = 0
@@ -119,6 +196,16 @@ class BatchCreateResponse:
 
     @classmethod
     def from_results(cls, results: List[BatchItemResponse]) -> "BatchCreateResponse":
+        """
+        Create a BatchCreateResponse by aggregating a list of item results.
+
+        Args:
+            results: List of BatchItemResponse objects.
+
+        Returns:
+            BatchCreateResponse with computed totals.
+        """
+
         total = len(results)
         successful = sum(1 for r in results if r.success)
         failed = total - successful
@@ -141,12 +228,22 @@ class BatchCreateResponse:
 
     @classmethod
     def empty(cls) -> "BatchCreateResponse":
+        """Return an empty response (no items)."""
         return cls(items=[])
 
 
 @dataclass
 class StatsItemResponse:
-    """DTO для элемента статистики"""
+    """
+    DTO for a single item in service statistics (popular links).
+
+        Attributes:
+            short_code: Short code.
+            short_url: Full short URL.
+            original_url: Original URL.
+            clicks: Click count.
+            created_at: Creation timestamp.
+    """
 
     short_code: str
     short_url: str
@@ -155,7 +252,7 @@ class StatsItemResponse:
     created_at: datetime
 
     def to_dict(self) -> Dict[str, Any]:
-        """Конвертация в словарь"""
+        """Convert to dictionary for serialization."""
         return {
             "short_code": self.short_code,
             "short_url": self.short_url,
@@ -167,7 +264,15 @@ class StatsItemResponse:
 
 @dataclass
 class ServiceStatsResponse:
-    """DTO для статистики сервиса"""
+    """
+    DTO for service-wide statistics.
+
+    Attributes:
+        total_urls: Total number of shortened URLs.
+        total_clicks: Sum of all clicks across all links.
+        avg_clicks_per_url: Average clicks per URL.
+        popular_links: List of most popular links (up to 10).
+    """
 
     total_urls: int
     total_clicks: int
@@ -175,7 +280,7 @@ class ServiceStatsResponse:
     popular_links: List[StatsItemResponse]
 
     def to_dict(self) -> Dict[str, Any]:
-        """Конвертация в словарь"""
+        """Convert to dictionary for serialization."""
         return {
             "total_urls": self.total_urls,
             "total_clicks": self.total_clicks,
@@ -186,7 +291,22 @@ class ServiceStatsResponse:
 
 @dataclass
 class ExtendedLinkInfoResponse:
-    """DTO Для расширенной информации о ссылке"""
+    """
+    DTO for extended link information including derived metrics.
+
+    Attributes:
+        short_code: Short code.
+        short_url: Full short URL.
+        original_url: Original URL.
+        clicks: Click count.
+        created_at: Creation timestamp.
+        last_accessed: Last access timestamp.
+        is_popular: Whether the link is considered popular (based on threshold).
+        is_recent: Whether the link was created recently.
+        age_days: Age in days.
+        clicks_per_day: Average clicks per day.
+        last_access_days_ago: Days since last access (if any).
+    """
 
     short_code: str
     short_url: str
@@ -202,7 +322,16 @@ class ExtendedLinkInfoResponse:
 
     @classmethod
     def from_link(cls, link: Link, base_url: str) -> "ExtendedLinkInfoResponse":
-        """конвертация из ссылки в DTO"""
+        """
+        Create an extended DTO from a domain Link entity.
+
+        Args:
+            link: Domain Link object.
+            base_url: Base URL of the service.
+
+        Returns:
+            ExtendedLinkInfoResponse with computed metrics.
+        """
 
         short_url = f'{base_url.rstrip("/")}/{link.short_code.value}'
 
