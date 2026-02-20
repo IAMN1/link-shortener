@@ -2,13 +2,16 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
+import uuid
 
 
-from link_shortener.application.dtos.responses import BatchCreateResponse, BatchItemResponse
-from link_shortener.application.ports.cache.link_cache import LinkCache
-from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.domain import (Link, LinkRepository, OriginalUrl,
-                                   ShortCode, ShorteningPolicy, UrlHash)
+from link_shortener.application import (
+    BatchCreateResponse, BatchItemResponse, LinkCache, Logger, AuditLogger
+)
+
+from link_shortener.domain import (
+    Link, LinkRepository, OriginalUrl, ShortCode, ShorteningPolicy, UrlHash
+)
 
 
 @dataclass
@@ -21,9 +24,12 @@ class BatchCreateLinksUseCase:
     cache: LinkCache
     shortening_policy: ShorteningPolicy
     logger: Logger
+    audit_logger: AuditLogger
     batch_limit: int = 100
 
-    def execute(self, urls: List[str]) -> BatchCreateResponse:
+    def execute(
+        self, urls: List[str], user_ip: Optional[str] = None, user_agent: Optional[str] = None
+    ) -> BatchCreateResponse:
         """
         Основной сценарий использования.
 
@@ -64,7 +70,7 @@ class BatchCreateLinksUseCase:
             )
 
             # 3. Batch-обработка групп
-            batch_results = self._process_groups_batch(url_groups)
+            batch_results = self._process_groups_batch(url_groups, user_ip, user_agent)
 
             # 4. Формирование итогового ответа
             response = BatchCreateResponse.from_results(batch_results)
@@ -132,7 +138,9 @@ class BatchCreateLinksUseCase:
 
         return groups
 
-    def _process_groups_batch(self, groups: Dict[str, Dict]) -> List[BatchItemResponse]:
+    def _process_groups_batch(
+        self, groups: Dict[str, Dict], user_ip: Optional[str] = None, user_agent: Optional[str] = None
+    ) -> List[BatchItemResponse]:
         """Batch-обработка групп URL"""
 
         results = []
@@ -218,37 +226,23 @@ class BatchCreateLinksUseCase:
             else:
                 groups_to_create.append(group)
 
-        if not groups_to_create:
-            results.extend(cache_results)
-            results.extend(db_results)
-            results.extend(invalid_results)
-            return results
-
         # 6. создание новых ссылок
-        new_links = self._create_new_links_batch(groups_to_create)
+        new_links = self._create_new_links_batch(groups_to_create) if groups_to_create else []
 
-        if not new_links:
-            # В случае, если создание новых ссылок провалилось
-            error_results = []
-            for group in groups_to_create:
-                for url in group["urls"]:
-                    error_results.append(
-                        BatchItemResponse.error_(
-                            url=url, error="Failed to create short URL"
-                        )
-                    )
+        saved_links = []
+        if new_links:
+            saved_links = self.repository.save_many(new_links)
 
-            results.extend(cache_results)
-            results.extend(db_results)
-            results.extend(error_results)
-            results.extend(invalid_results)
+            batch_id = str(uuid.uuid4())
+            for link in saved_links:
+                self.audit_logger.log_url_created(
+                    link,
+                    user_ip=user_ip,
+                    user_agent=user_agent,
+                    batch_id=batch_id
+                )
 
-            return results
-
-        # 7. Batch сохранение новых ссылок в БД
-        saved_links = self.repository.save_many(new_links)
-
-        # 8. Batch кэширование всех новых ссылок
+        # 7. Batch кэширование всех новых ссылок
         links_to_cache = []
         links_to_cache.extend(links_to_cache_from_db)
         links_to_cache.extend(saved_links)
@@ -256,10 +250,10 @@ class BatchCreateLinksUseCase:
         if links_to_cache:
             self.cache.save_many(links_to_cache)
 
-        # 9. Формирование результата для новых ссылок
+        # 8. Формирование результата для новых ссылок
         new_results = self._create_new_link_results(groups_to_create, saved_links)
 
-        # 10. Объединение всех результатов
+        # 9. Объединение всех результатов
         results.extend(cache_results)
         results.extend(db_results)
         results.extend(new_results)

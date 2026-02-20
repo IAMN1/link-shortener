@@ -9,7 +9,7 @@ class AuditLogger(ABC):
 
     @abstractmethod
     def log_url_created(
-        self, link: Link, user_ip: Optional[str] = None, **kwargs
+        self, link: Link, user_ip: Optional[str] = None, user_agent: Optional[str] = None, **kwargs
     ) -> None:
         pass
 

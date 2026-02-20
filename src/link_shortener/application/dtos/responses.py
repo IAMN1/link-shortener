@@ -63,6 +63,7 @@ class BatchItemResponse:
     url: str
     short_code: Optional[str] = None
     original_url: Optional[str] = None
+    short_url: str
     clicks: int = 0
     error: Optional[str] = None
     is_new: bool = False
@@ -76,17 +77,20 @@ class BatchItemResponse:
         url: str,
         short_code: str,
         original_url: str,
+        base_url: str,
         clicks: int = 0,
         is_new: bool = False,
         from_cache: bool = False,
         duplicate_of: Optional[str] = None,
     ) -> "BatchItemResponse":
         """Фабричный метод для успешного результата"""
+        short_url = f'{base_url.rstrip("/")}/{short_code}'
         return cls(
             url=url,
             success=True,
             short_code=short_code,
             original_url=original_url,
+            short_url=short_url,
             clicks=clicks,
             is_new=is_new,
             from_cache=from_cache,
