@@ -1,5 +1,10 @@
 from http import HTTPStatus
 
+"""
+TODO
+The file is not used anywhere, 
+I left it in the project as a template for further expansion of the project
+"""
 
 # ========== APPLICATION ERRORS ==========
 class AppException(Exception):
