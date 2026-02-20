@@ -3,7 +3,7 @@ import uuid
 
 from flask import Flask, Response, g, request
 
-from src.link_shortener.application import Logger
+from link_shortener.application import Logger
 
 
 class RequestLoggingMiddleware:
