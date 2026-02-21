@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from link_shortener.application.dtos.responses import BatchCreateResponse, ServiceStatsResponse, ShortLinkResponse
 from link_shortener.application.use_cases.batch_create_links import BatchCreateLinksUseCase
@@ -25,7 +25,9 @@ class LinkService:
     batch_create_links_use_case: BatchCreateLinksUseCase
     get_service_stats_use_case: GetServiceStatsUseCase
 
-    def create_short_link(self, url: str) -> ShortLinkResponse:
+    def create_short_link(
+        self, url: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None
+    ) -> ShortLinkResponse:
         """
         Create a short link for the given URL.
 
@@ -39,7 +41,9 @@ class LinkService:
         Returns:
             ShortLinkResponse: ShortLinkResponse DTO.
         """
-        return self.create_short_link_use_case.execute(url)
+        return self.create_short_link_use_case.execute(
+            url, user_ip, user_agent
+        )
 
     def get_link_info(self, short_code: str) -> ShortLinkResponse:
         """
@@ -55,7 +59,9 @@ class LinkService:
         """
         return self.get_link_info_use_case.execute(short_code)
 
-    def redirect(self, short_code: str) -> str:
+    def redirect(
+        self, short_code: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None
+    ) -> str:
         """
         Get the original URL for redirect (increments click count).
 
@@ -68,9 +74,13 @@ class LinkService:
         Returns:
             str: Original URL as string.
         """
-        return self.redirect_link_use_case.execute(short_code)
+        return self.redirect_link_use_case.execute(
+            short_code, user_ip, user_agent
+        )
 
-    def batch_create_short_links(self, urls: List[str]) -> BatchCreateResponse:
+    def batch_create_short_links(
+        self, urls: List[str], user_ip: Optional[str] = None, user_agent: Optional[str] = None
+    ) -> BatchCreateResponse:
         """
         Create short links for multiple URLs in batch.
 
@@ -84,7 +94,9 @@ class LinkService:
             BatchCreateResponse: BatchCreateResponse DTO 
                 with aggregated results.
         """
-        return self.batch_create_links_use_case.execute(urls)
+        return self.batch_create_links_use_case.execute(
+            urls, user_ip, user_agent
+        )
 
     def get_service_stats(self) -> ServiceStatsResponse:
         """
