@@ -1,5 +1,8 @@
 from typing import Dict, List, Optional
-from link_shortener.application import LinkCache, StatsCache, RedirectCache
+
+from link_shortener.application.ports.cache.link_cache import LinkCache
+from link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
+from link_shortener.application.ports.cache.redirect_cache import RedirectCache
 from link_shortener.domain import Link, ShortCode, UrlHash
 
 
