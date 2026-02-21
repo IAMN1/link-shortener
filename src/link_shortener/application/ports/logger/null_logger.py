@@ -1,5 +1,7 @@
 from typing import Any, Optional
-from link_shortener.application import Logger
+
+from link_shortener.application.ports.logger.logger import Logger
+
 
 
 class NullLogger(Logger):
