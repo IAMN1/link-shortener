@@ -33,6 +33,7 @@ class BatchCreateLinksUseCase:
     repository: LinkRepository
     cache: LinkCache
     shortening_policy: ShorteningPolicy
+    base_url: str
     logger: Logger
     audit_logger: AuditLogger
     batch_limit: int = 100
@@ -221,6 +222,7 @@ class BatchCreateLinksUseCase:
                             url=url,
                             short_code=str(cached_link.short_code.value),
                             original_url=str(cached_link.original_url.value),
+                            base_url=self.base_url,
                             clicks=cached_link.clicks,
                             from_cache=True,
                         )
@@ -258,6 +260,7 @@ class BatchCreateLinksUseCase:
                             url=url,
                             short_code=str(db_link.short_code.value),
                             original_url=str(db_link.original_url.value),
+                            base_url=self.base_url,
                             clicks=db_link.clicks,
                             is_new=False,
                         )
@@ -462,6 +465,7 @@ class BatchCreateLinksUseCase:
                     url=str(saved_link.original_url.value),
                     short_code=str(saved_link.short_code.value),
                     original_url=str(saved_link.original_url.value),
+                    base_url=self.base_url,
                     clicks=saved_link.clicks,
                     is_new=True,
                 )
@@ -474,6 +478,7 @@ class BatchCreateLinksUseCase:
                         url=url,
                         short_code=str(saved_link.short_code.value),
                         original_url=str(saved_link.original_url.value),
+                        base_url=self.base_url,
                         clicks=saved_link.clicks,
                         is_new=False,
                         duplicate_of=str(saved_link.original_url.value),
