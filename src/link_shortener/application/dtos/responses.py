@@ -103,7 +103,7 @@ class BatchItemResponse:
     url: str
     short_code: Optional[str] = None
     original_url: Optional[str] = None
-    short_url: str
+    short_url: Optional[str] = None
     clicks: int = 0
     error: Optional[str] = None
     is_new: bool = False
@@ -140,6 +140,7 @@ class BatchItemResponse:
             BatchItemResponse with success=True.
         """
         short_url = f'{base_url.rstrip("/")}/{short_code}'
+
         return cls(
             url=url,
             success=True,
@@ -164,7 +165,7 @@ class BatchItemResponse:
         Returns:
             BatchItemResponse with success=False
         """
-        return cls(success=False, url=url, error=error)
+        return cls(success=False, url=url, error=error, short_url=None)
 
 
 @dataclass
