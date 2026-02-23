@@ -19,7 +19,7 @@ class FrontendController:
         self.link_service = link_service
 
         self.bp = Blueprint(
-            'Frontend',
+            'frontend',
             __name__,
             template_folder="../templates",
             static_folder="../static",
@@ -38,6 +38,9 @@ class FrontendController:
         )
         self.bp.add_url_rule(
             '/info/<short_code>', view_func=self.info, methods=['GET']
+        )
+        self.bp.add_url_rule(
+            '/stats', view_func=self.stats, methods=['GET']
         )
 
     def _get_client_ip(self):
@@ -69,7 +72,7 @@ class FrontendController:
         try:
             # Получение IP и User-Agent для аудита
             user_ip = self._get_client_ip()
-            user_agent = request.user_agent.string if request.user_agent else None
+            user_agent = request.headers.get("User-Agent")
 
             result = self.link_service.create_short_link(
                 url, user_ip=user_ip, user_agent=user_agent
@@ -92,4 +95,13 @@ class FrontendController:
             return render_template('error.html', error='Link not found'), 404
         except Exception as e:
             current_app.logger.error(f"Frontend info error: {e}")
+            return render_template('error.html', error='Internal error'), 500
+
+    def stats(self):
+        """Render service statistics page."""
+        try:
+            stats = self.link_service.get_service_stats()
+            return render_template('stats.html', stats=stats)
+        except Exception as e:
+            current_app.logger.error(f"Frontend stats error: {e}")
             return render_template('error.html', error='Internal error'), 500
