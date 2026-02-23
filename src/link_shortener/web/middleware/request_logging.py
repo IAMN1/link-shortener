@@ -62,7 +62,7 @@ class RequestLoggingMiddleware:
                 duration = time.time() - g.start_time
                 
                 self.logger.info(
-                    "Request started",
+                    "Request completed",
                     status=response.status_code,
                     duration_ms=round(duration * 1000, 2),
                     request_id=getattr(g, "request_id", None)
