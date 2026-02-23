@@ -30,5 +30,3 @@ class TestStructLogger:
         assert args[0] == "exception message"
         assert isinstance(kwargs['exc_info'], ValueError)
         assert str(kwargs['exc_info']) == "Testing"
-
-

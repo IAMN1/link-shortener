@@ -10,14 +10,16 @@ import pytest
 
 @pytest.fixture
 def use_case(
-    mock_link_cache, mock_link_repository, shortening_policy, mock_logger
+    mock_link_cache, mock_link_repository, shortening_policy, mock_logger, mock_audit_logger, base_url
 ):
     """Fixture for BatchCreateLinksUseCase with default batch limit 100."""
     return BatchCreateLinksUseCase(
         repository=mock_link_repository,
         cache=mock_link_cache,
         shortening_policy=shortening_policy,
+        base_url=base_url,
         logger=mock_logger,
+        audit_logger=mock_audit_logger,
         batch_limit=100
     )
 
@@ -76,7 +78,7 @@ class TestBatchCreateLinksUseCase:
             assert item.error is not None
     
     def test_all_from_cache(
-        self, use_case, mock_link_cache, mock_link_repository, sample_urls, shortening_policy
+        self, use_case, mock_link_cache, mock_link_repository, sample_urls, shortening_policy, base_url
     ):
         """
         All URLs already in cache – should return with from_cache=True.
@@ -117,6 +119,7 @@ class TestBatchCreateLinksUseCase:
             assert item.success is True
             assert item.from_cache is True
             assert item.is_new is False
+            assert item.short_url.startswith(base_url)
         
         # Проверка, что кэш вызывался с правильными хэшами
         [shortening_policy.calculate_hash(OriginalUrl(url)) for url in sample_urls]
@@ -458,6 +461,20 @@ class TestBatchCreateLinksUseCase:
         assert response.failed == 2
         for item in response.items:
             assert item.success is False
-            assert item.error == "Failed to create short URL"
+            assert item.error == "Failed to save link"
 
         mock_link_repository.save_many.assert_not_called()
+
+    def test_execute_raises_runtime_error_on_unexpected_exception(
+        self, use_case, mock_link_cache
+    ):
+        """Should raise RuntimeError and log when unexpected exception occurs."""
+
+        # Arrange
+        mock_link_cache.get_by_hashes.side_effect = Exception("Unexpected error")
+        
+        # Act & Assert
+        with pytest.raises(RuntimeError, match="Batch processing failed: Unexpected error"):
+            use_case.execute(["https://test.com"])
+        
+        use_case.logger.exception.assert_called_once()

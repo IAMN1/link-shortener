@@ -7,12 +7,12 @@ import pytest
 
 
 @pytest.fixture
-def repo(db_session):
+def repo(db_manager):
     """
     Provide a SQLAlchemyLinkRepository 
     with a database session.
     """
-    return SQLAlchemyLinkRepository(db_session)
+    return SQLAlchemyLinkRepository(db_manager)
 
 
 # ------------------------------------------------------------------

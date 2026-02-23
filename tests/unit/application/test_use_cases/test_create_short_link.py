@@ -10,7 +10,7 @@ import pytest
 
 @pytest.fixture
 def use_case(
-    mock_link_repository, mock_link_cache, shortening_policy, mock_logger, base_url
+    mock_link_repository, mock_link_cache, shortening_policy, mock_logger, base_url, mock_audit_logger
 ): 
     """Fixture for CreateShortLinkUseCase."""
 
@@ -20,6 +20,7 @@ def use_case(
         shortening_policy=shortening_policy,
         base_url=base_url,
         logger=mock_logger,
+        audit_logger=mock_audit_logger,
         max_collision_attempts=3
     )
 
@@ -43,12 +44,14 @@ class TestCreateShortLinkUseCase:
     """Tests for the CreateShortLinkUseCase."""
 
     def test_happy_path_creates_new_link(
-        self, use_case, sample_link, mock_link_cache, mock_link_repository
+        self, use_case, sample_link, mock_link_cache, mock_link_repository, mock_audit_logger
     ):
         """Should create a new link when not found in cache or DB."""
         
         url = sample_link.original_url.value
-        
+        user_ip="127.0.0.1"
+        user_agent="Mozilla"
+
         mock_link_cache.get_by_hash.return_value = None
         mock_link_repository.find_by_hash.return_value = None
         mock_link_repository.find_by_code.return_value = None
@@ -56,7 +59,7 @@ class TestCreateShortLinkUseCase:
         mock_link_repository.save.return_value = sample_link
 
         # Act
-        response = use_case.execute(url)
+        response = use_case.execute(url, user_ip, user_agent)
 
         # Assert
         assert isinstance(response, ShortLinkResponse)
@@ -70,6 +73,9 @@ class TestCreateShortLinkUseCase:
         mock_link_repository.find_by_code.assert_called()
         mock_link_repository.save.assert_called_once()
         mock_link_cache.save.assert_called_once_with(sample_link)
+        mock_audit_logger.log_url_created.assert_called_once_with(
+            sample_link, user_ip=user_ip, user_agent=user_agent
+        )
 
     def test_cache_hit_returns_cached_link(
         self, use_case, sample_link, mock_link_repository, mock_link_cache
