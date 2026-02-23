@@ -101,7 +101,7 @@ def _setup_structlog(config: StructLogConfig):
         structlog.processors.TimeStamper(fmt=config.log_date_format),
         _add_request_context,
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
+
     ]
     if config.debug:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
