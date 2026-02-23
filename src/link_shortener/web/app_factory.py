@@ -27,6 +27,8 @@ def create_app(config=None) -> Flask:
         # Загрузка конфигурации
         env = os.environ.get("FLASK_ENV", "development")
         config = get_config(env)
+    else:
+        env = getattr(config, "ENV", 'custom')
 
     # Создание Flask приложения
     app = Flask(__name__)
