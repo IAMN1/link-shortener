@@ -142,6 +142,21 @@ class TestGetLinkInfoUseCase:
         # никаких обращений к кэшу или бд
         mock_link_cache.get_by_code.assert_not_called()
         mock_link_repository.find_by_code.assert_not_called()
+    
+    def get_link_info_repository_exception(
+        self, link_info_use_case, mock_link_cache, mock_link_repository
+    ):
+        """Should log and re-raise exception when repository fails."""
+
+        # Arrange
+        short_code_str = "abc123"
+        mock_link_cache.get_by_code.return_value = None
+        mock_link_repository.find_by_code.side_effect = Exception("DB error")
+
+        # Act & Assert
+        with pytest.raises(Exception, match="DB error"):
+            link_info_use_case.execute(short_code_str)
+        link_info_use_case.logger.error.assert_called_once()
 
 
 # ------------------------------------------------------------------
@@ -232,3 +247,18 @@ class TestGetExtendLinkInfoUseCase:
 
         assert response.last_access_days_ago is None
         assert response.clicks_per_day == 0.0
+
+    def test_get_extended_link_info_repository_exception(
+        self, extended_link_info_use_case, mock_link_cache, mock_link_repository
+    ):
+        """Should log and re-raise exception when repository fails."""
+
+        # Arrange
+        short_code_str = "abc123"
+        mock_link_cache.get_by_code.return_value = None
+        mock_link_repository.find_by_code.side_effect = Exception("DB error")
+
+        # Act & Assert
+        with pytest.raises(Exception, match="DB error"):
+            extended_link_info_use_case.execute(short_code_str)
+        extended_link_info_use_case.logger.error.assert_called_once()

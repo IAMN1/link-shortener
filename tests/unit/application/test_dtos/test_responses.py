@@ -79,7 +79,7 @@ class TestShortLinkResponse:
 class TestBatchItemResponse:
     """Tests for BatchItemResponse DTO."""
 
-    def test_success_factory(self):
+    def test_success_factory(self, base_url):
         """Should create success BatchItemResponse with given fields."""
 
         url = 'https://example.com'
@@ -89,6 +89,7 @@ class TestBatchItemResponse:
             url=url,
             short_code=short_code,
             original_url=original_url,
+            base_url=base_url,
             clicks=10,
             is_new=True,
             from_cache=False,
@@ -98,6 +99,7 @@ class TestBatchItemResponse:
         assert response.url == url
         assert response.short_code == short_code
         assert response.original_url == original_url
+        assert response.short_url == f"{base_url.rstrip("/")}/{short_code}"
         assert response.clicks == 10
         assert response.is_new is True
         assert response.from_cache is False
@@ -109,10 +111,13 @@ class TestBatchItemResponse:
         
         url = 'https://example.com'
         error = 'Invalid URL'
+
         response = BatchItemResponse.error_(url, error)
+
         assert response.success is False
         assert response.url == url
         assert response.error == error
+        assert response.short_url is None
 
 
 # ------------------------------------------------------------------
@@ -121,13 +126,14 @@ class TestBatchItemResponse:
 class TestBatchCreateResponse:
     """Tests for BatchCreateResponse DTO."""
 
-    def test_from_results_calculates_counts(self):
+    def test_from_results_calculates_counts(self, base_url):
         """Should calculate total, successful, failed, cache/db/new counts from items."""
         items = [
             BatchItemResponse.success_(
                 url='https://a.com',
                 short_code='a1',
                 original_url='https://a.com',
+                base_url=base_url,
                 clicks=0,
                 is_new=True,
                 from_cache=False
@@ -136,6 +142,7 @@ class TestBatchCreateResponse:
                 url='https://b.com',
                 short_code='b1',
                 original_url='https://b.com',
+                base_url=base_url,
                 clicks=5,
                 is_new=False,
                 from_cache=True
@@ -144,6 +151,7 @@ class TestBatchCreateResponse:
                 url='https://c.com',
                 short_code='c1',
                 original_url='https://c.com',
+                base_url=base_url,
                 clicks=2,
                 is_new=False,
                 from_cache=False  # из БД
@@ -236,4 +244,3 @@ class TestExtendLinkInfoResponse:
         assert response.last_access_days_ago == 1
         assert response.is_popular is False  # threshold 100
         assert response.is_recent is True    # days=7
-    

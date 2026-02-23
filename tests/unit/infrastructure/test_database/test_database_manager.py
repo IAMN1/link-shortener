@@ -75,6 +75,15 @@ class TestDatabaseManager:
             assert result == 1
         
         manager.close()
+    
+    def test_get_session_without_connect_raises(self):
+
+        # Arrange
+        manager = DatabaseManager('sqlite:///:memory:')
+
+        # Act & Assert
+        with pytest.raises(RuntimeError, match="Database not initialized"):
+            manager.get_session()
 
     def test_get_session_manual(self, test_config):
         """

@@ -1,14 +1,19 @@
 import json
+import time
+from unittest.mock import Mock
 from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
 from link_shortener.infrastructure.cache.redis_cache import Link, RedisLinkCache
 import pytest
+import redis
 
 
 @pytest.fixture
-def redis_cache(mock_redis_client):
+def redis_cache(mock_redis_client, monkeypatch):
     """Provide a RedisLinkCache instance with mocked Redis client."""
+
+    monkeypatch.setattr("redis.from_url", lambda *args, **kwargs: mock_redis_client)
 
     cache = RedisLinkCache(
         "redis://localhost:6379/0", 
@@ -16,8 +21,7 @@ def redis_cache(mock_redis_client):
         stats_ttl=300, 
         prefix="link_shortener"
     )
-    cache.client = mock_redis_client # подмена клиента моком
-    
+
     return cache
 
 
@@ -58,9 +62,10 @@ class TestRedisLinkCache:
         redis_cache.delete(short_code)
         
         # Assert
-        pipeline = mock_redis_client.pipeline.return_value
-        # должно быть удаление code и redirect ключей
-        assert pipeline.delete.call_count == 2
+        code_key = redis_cache.key_gen.for_short_code(short_code.value)
+        redirect_key = redis_cache.key_gen.for_redirect(short_code.value)
+        mock_redis_client.get.assert_called_once_with(code_key)
+        mock_redis_client.delete.assert_called_once_with(code_key, redirect_key)
 
     def test_delete_existing(self, redis_cache, mock_redis_client, sample_link):
         """Should delete all keys associated with a link."""
@@ -74,8 +79,46 @@ class TestRedisLinkCache:
         redis_cache.delete(short_code)
         
         # Assert
-        pipeline = mock_redis_client.pipeline.return_value
-        assert pipeline.delete.call_count == 3  # hash, code, redirect
+        code_key = redis_cache.key_gen.for_short_code(short_code.value)
+        redirect_key = redis_cache.key_gen.for_redirect(short_code.value)
+        hash_key = redis_cache.key_gen.for_url_hash(sample_link.url_hash.value)
+        mock_redis_client.get.assert_called_once_with(code_key)
+        mock_redis_client.delete.assert_called_once_with(code_key, redirect_key, hash_key)
+
+    def test_reconnect_after_interval(self, monkeypatch, mock_redis_client):
+        """Should attempt to reconnect after retry interval."""
+
+        # Arrange
+        mock_from_url = Mock(return_value=mock_redis_client)
+        monkeypatch.setattr(redis, "from_url", mock_from_url)
+
+        cache = RedisLinkCache(
+            "redis://localhost", 
+            prefix="test", 
+            link_ttl=3600, 
+            stats_ttl=300
+        )
+        assert cache._available is True
+        assert mock_from_url.call_count == 1
+
+        # Вызов ошибки
+        mock_redis_client.get.side_effect = redis.RedisError
+        mock_redis_client.ping.side_effect = redis.RedisError
+
+        cache.get_by_code(ShortCode("abc123"))
+        assert cache._available is False
+
+        # Перемещение времени вперед
+        cache._last_attempt = time.time() - 20 # > retry_interval (10)
+
+        # Убираем ошибки, подготавливаем успешное соединение
+        mock_redis_client.get.side_effect = None
+        mock_redis_client.ping.side_effect = None
+
+        # Следующий вызов должен переподключиться
+        cache.get_by_code(ShortCode("abc123"))
+        assert cache._available is True
+        assert mock_from_url.call_count == 2
 
     # =============== LinkCache методы =============================
     def test_get_by_code(self, redis_cache, mock_redis_client, sample_link):
@@ -120,6 +163,19 @@ class TestRedisLinkCache:
 
         # Assert
         assert result is None
+    
+    def test_get_by_code_redis_error(self, redis_cache, mock_redis_client):
+        """Should return None and mark unavailable on Redis error."""
+
+        # Arrange
+        mock_redis_client.get.side_effect = redis.RedisError("Connection error")
+
+        # Act
+        result = redis_cache.get_by_code(ShortCode("abc123"))
+
+        # Assert
+        assert result is None
+        assert redis_cache._available is False
 
     def test_get_by_hash(self, redis_cache, mock_redis_client, sample_link):
         """Should retrieve a link by URL hash."""
@@ -196,7 +252,7 @@ class TestRedisLinkCache:
         assert pipeline.setex.call_count == 3
         pipeline.execute.assert_called_once()
     
-    def test_save_many(slef, redis_cache, mock_redis_client, sample_link):
+    def test_save_many(self, redis_cache, mock_redis_client, sample_link):
         """Should save multiple links at once."""
         
         # Arrange
