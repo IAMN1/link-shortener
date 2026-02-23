@@ -176,12 +176,7 @@ class RedirectLinkUseCase:
 
             except Exception as e:
                 self.logger.error(
-                    "Background click increment failed",
-                    short_code=short_code.value,
-                    error=str(e),
-                )
-                self.logger.error(
-                    "Background task failed",
+                    "Background click increment and audit failed",
                     short_code=short_code.value,
                     error=str(e),
                 )
