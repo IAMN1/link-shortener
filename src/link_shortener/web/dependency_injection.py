@@ -208,6 +208,7 @@ class Container:
                 repository=self.get_repository(),
                 cache=self.get_cache(),
                 shortening_policy=self.get_shortening_policy(),
+                base_url=self.config.BASE_URL,
                 logger=self.get_logger(),
                 audit_logger=self.get_audit_logger(),
                 batch_limit=self.config.BATCH_CREATE_LIMIT
