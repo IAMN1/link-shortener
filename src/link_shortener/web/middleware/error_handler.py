@@ -128,7 +128,7 @@ class ErrorHandlerMiddleware:
             )
 
             self.logger.warning(
-                "Domain validation error", message=error.message, field=error.field
+                "Domain validation error", field=error.field, code=error.code
             )
 
             return jsonify(response.model_dump()), 400
@@ -136,6 +136,11 @@ class ErrorHandlerMiddleware:
         @self.app.errorhandler(LinkNotFoundError)
         def handle_link_not_found(error: LinkNotFoundError):
             """Handle case when a requested link is not found."""
+
+            if self._should_return_html():
+                return render_template(
+                    "error.html", error="Link not found"
+                ), 404
 
             response = ErrorResponse(
                 error=error.code,
@@ -173,7 +178,7 @@ class ErrorHandlerMiddleware:
                 message=str(error)
             )
 
-            self.logger.warning("Value error", message=str(error))
+            self.logger.warning("Value error", error=str(error))
 
             return jsonify(response.model_dump()), 400
         
