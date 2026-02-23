@@ -66,7 +66,7 @@ class ApiController:
             }), 400
         
         user_ip = self._get_client_ip()
-        user_agent = request.user_agent.string if request.user_agent else None
+        user_agent = request.headers.get("User-Agent")
 
         result_dto = self.link_service.create_short_link(
             validated.url,
@@ -84,9 +84,10 @@ class ApiController:
         """Handle GET /api/v1/links/<short_code> - get link info."""
         try:
             result_dto = self.link_service.get_link_info(short_code)
-        except LinkNotFoundError:
+        except LinkNotFoundError as e:
             return jsonify({
-                "error": "NOT_FOUND", "message": "Link not found"
+                "error": e.code, 
+                "message": e.message
             }), 404
 
         response_data = ShortLinkResponse.from_dto(result_dto)
@@ -103,8 +104,15 @@ class ApiController:
             return jsonify({
                 "error": "VALIDATION_ERROR", "details": e.errors()
             }), 400
-        
-        result_dto = self.link_service.batch_create_short_links(validated.urls)
+
+        user_ip = self._get_client_ip()
+        user_agent = request.headers.get("User-Agent")
+
+        result_dto = self.link_service.batch_create_short_links(
+            validated.urls,
+            user_ip=user_ip,
+            user_agent=user_agent
+        )
         response_data = BatchCreateResponse.from_dto(result_dto)
         
         return jsonify(response_data.model_dump()), 201
