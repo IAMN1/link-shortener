@@ -33,17 +33,16 @@ class OriginalUrl:
         if len(self.value) > 2048:
             raise ValueError("URL too long (max 2048 characters)")
 
-    def _validate_scheme(self, parsed) -> None:
+    def _validate_scheme(self, parsed: ParseResult) -> None:
         """Check that scheme is present and allowed (http/https)."""
 
-        parsed = urlparse(self.value)
         if not parsed.scheme:
             raise ValueError("URL must have a scheme (http:// or https://)")
 
         if parsed.scheme not in ["http", "https"]:
             raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
 
-    def _validate_netloc(self, parsed) -> None:
+    def _validate_netloc(self, parsed: ParseResult) -> None:
         """Validate network location part (hostname and optional port)."""
 
         if not parsed.netloc:
@@ -72,6 +71,10 @@ class OriginalUrl:
             and total length constraints.
         """
 
+        # Проврка как доменного имени
+        if not host:
+            raise ValueError("Empty host")
+
         # Check if it's a valid IP address
         try:
             ipaddress.ip_address(host)
@@ -86,10 +89,6 @@ class OriginalUrl:
         # Domain name must contain at least one dot
         if '.' not in host:
             raise ValueError("Host must contain a dot (e.g., example.com)")
-
-        # Иначе проврка как доменного имени
-        if not host:
-            raise ValueError("Empty host")
         
         # Total length limit
         if len(host) > 253:
@@ -101,7 +100,7 @@ class OriginalUrl:
             
             if not label:
                 raise ValueError ("Empty label in host")
-            if len(host) > 63:
+            if len(label) > 63:
                 raise ValueError("Label too long")
             
             # Допустимые символы:
