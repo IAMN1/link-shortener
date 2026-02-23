@@ -4,8 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from link_shortener.application import LinkCache, RedirectCache, StatsCache
 from link_shortener.domain import Link, OriginalUrl, ShortCode, UrlHash
-from link_shortener.infrastructure.cache.cache_key_generator import \
-    CacheKeyGenerator
+from link_shortener.infrastructure.cache.cache_key_generator import CacheKeyGenerator
 import redis
 import logging
 
@@ -84,6 +83,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             try:
                 self._client.ping()
                 self._available = True
+                self._last_attempt = time.time()
                 return True
             except redis.RedisError:
                 self._available = False
@@ -102,6 +102,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                 )
                 self._client.ping()
                 self._available = True
+                self._last_attempt = time.time()
 
                 logging.getLogger(__name__).info("Redis connection restored.")
                 return True
@@ -175,7 +176,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     # ------------------------------------------------------------------
     def get_cache_info(self) -> Dict[str, Any]:
         """Retrieve Redis server info (for monitoring)."""
-        info = self.client.info()
+        info = self._execute(lambda: self._client.info())
 
         return {
             "used_memory": info.get("used_memory_human", "N/A"),
