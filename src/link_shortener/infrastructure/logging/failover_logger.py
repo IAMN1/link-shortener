@@ -132,12 +132,12 @@ class FailoverLogger(Logger):
     def exception(self, message: str, exc_info=None, **kwargs):
         self._log_with_failover("exception", message, exc_info=exc_info, **kwargs)
 
-    def _log_with_failover(self, method: str, message: str, **kwargs):
+    def _log_with_failover(self, log_method: str, message: str, **kwargs):
         """
         Attempt to log with current logger; if it fails, try to switch to next.
 
         Args:
-            method: Logger method name (e.g., 'debug', 'info').
+            log_method: Logger method name (e.g., 'debug', 'info').
             message: Log message.
             **kwargs: Additional structured data.
         """
@@ -150,7 +150,7 @@ class FailoverLogger(Logger):
                 logger, name = self._loggers[self._current_index]
                 try:
                     
-                    getattr(logger, method)(message, **kwargs)
+                    getattr(logger, log_method)(message, **kwargs)
                     return
                 
                 except Exception as e:
@@ -158,7 +158,7 @@ class FailoverLogger(Logger):
                     #  so we use internal method)
 
                     self._log(
-                        f"Logger {name} failed for {method}: {e}. Attempting switch.", 
+                        f"Logger {name} failed for {log_method}: {e}. Attempting switch.", 
                         level="error"
                     )
                     if not self._switch_to_next():
