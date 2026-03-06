@@ -3,10 +3,10 @@ import time
 from typing import Any, Dict, List, Optional
 
 from link_shortener.application import LinkCache, RedirectCache, StatsCache
+from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.domain import Link, OriginalUrl, ShortCode, UrlHash
 from link_shortener.infrastructure.cache.cache_key_generator import CacheKeyGenerator
 import redis
-import logging
 
 
 class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
@@ -26,7 +26,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     """
 
     def __init__(
-        self, redis_url: str, prefix: str, link_ttl: int = 3600, stats_ttl: int = 300
+        self, redis_url: str, prefix: str, logger: Logger, link_ttl: int = 3600, stats_ttl: int = 300
     ):
         """
         Initialize Redis cache.
@@ -39,6 +39,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         """
         self.redis_url = redis_url
         self.key_gen = CacheKeyGenerator(prefix=prefix)
+        self.logger = logger
         self.ttl = link_ttl
         self.stats_ttl = stats_ttl
 
@@ -59,11 +60,11 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             self._client.ping()
             self._available = True
             
-            logging.getLogger(__name__).info(
+            self.logger.info(
                 "Redis connected successfully."
             )
         except redis.RedisError as e:
-            logging.getLogger(__name__).error(
+            self.logger.error(
                 f"Redis connection failed: {e}. Running without cache."
             )
             self._available = False
@@ -104,7 +105,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                 self._available = True
                 self._last_attempt = time.time()
 
-                logging.getLogger(__name__).info("Redis connection restored.")
+                self.logger.info("Redis connection restored.")
                 return True
             
             except redis.RedisError:
@@ -124,7 +125,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             return func(*args, **kwargs)
         except redis.RedisError as e:
             
-            logging.getLogger(__name__).error(f"Redis operation failed: {e}")
+            self.logger.error(f"Redis operation failed: {e}")
             
             self._available = False
             
@@ -231,7 +232,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             pipeline.execute()
         
         except redis.RedisError as e:
-            logging.getLogger(__name__).error(f"Redis save failed: {e}")
+            self.logger.error(f"Redis save failed: {e}")
             self._available = False
 
     def save_many(self, links: List[Link]) -> None:
@@ -256,7 +257,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             pipeline.execute()
 
         except redis.RedisError as e:
-            logging.getLogger(__name__).error(f"Redis save_many failed: {e}")
+            self.logger.error(f"Redis save_many failed: {e}")
             self._available = False
 
     def delete(self, short_code: ShortCode) -> None:
@@ -281,7 +282,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                     )
             self._client.delete(*keys_to_delete)
         except redis.RedisError as e:
-            logging.getLogger(__name__).error(f"Redis delete failed: {e}")
+            self.logger.error(f"Redis delete failed: {e}")
             self._available = False
 
     # ------------------------------------------------------------------
@@ -302,7 +303,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             key = self.key_gen.for_redirect(short_code.value)
             self._client.setex(key, self.ttl, original_url)
         except redis.RedisError as e:
-            logging.getLogger(__name__).error(
+            self.logger.error(
                 f"Redis save_original_url failed: {e}"
             )
             
@@ -330,7 +331,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             self._client.setex(key, self.stats_ttl, data)
 
         except redis.RedisError as e:
-            logging.getLogger(__name__).error(f"Redis save_stats failed: {e}")
+            self.logger.error(f"Redis save_stats failed: {e}")
             self._available = False
 
     def delete_stats(self) -> None:
@@ -342,5 +343,5 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             self._client.delete(key)
 
         except redis.RedisError as e:
-            logging.getLogger(__name__).error(f"Redis delete_stats failed: {e}")
+            self.logger.error(f"Redis delete_stats failed: {e}")
             self._available = False
