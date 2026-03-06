@@ -1,3 +1,4 @@
+import sys
 import threading
 from typing import List, Tuple
 from link_shortener.application import Logger
@@ -35,6 +36,10 @@ class FailoverLogger(Logger):
             daemon=True
         )
         self._thread.start()
+
+    def get_current_logger_name(self) -> str:
+        with self._lock:
+            return self._loggers[self._current_index][1]
 
     def _periodic_check(self):
         """
@@ -108,13 +113,7 @@ class FailoverLogger(Logger):
         """
         Internal logging for failover events (uses current logger, but safe).
         """
-        try:
-            
-            logger, _ = self._loggers[self._current_index]
-            
-            getattr(logger, level)(f"[FailoverLogger] {message}")
-        except Exception:
-            pass # nothing we can do unlucko :(
+        print(f"[FailoverLogger] {message}", file=sys.stderr)
 
     # =============== Logger interface methods ===================================
     def debug(self, message: str, **kwargs):
