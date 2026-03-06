@@ -1,8 +1,7 @@
 import logging
 import os
 import secrets
-from typing import List, Optional
-from urllib.parse import urlparse
+from typing import List
 
 
 class BaseConfig:
@@ -91,33 +90,6 @@ class BaseConfig:
     REDIS_ENABLED: bool = os.environ.get("REDIS_ENABLED", "false").lower() == "true"
     REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
-    @property
-    def REDIS_HOST(self) -> Optional[str]:
-        """Extract Redis host from REDIS_URL."""
-        try:
-            parsed = urlparse(self.REDIS_URL)
-            return parsed.hostname
-        except Exception:
-            return None
-
-    @property
-    def REDIS_PORT(self) -> Optional[int]:
-        """Extract Redis port from REDIS_URL."""
-        try:
-            parsed = urlparse(self.REDIS_URL)
-            return parsed.port or 6379
-        except Exception:
-            return None
-
-    @property
-    def REDIS_DB(self) -> Optional[int]:
-        """Extract Redis database number from REDIS_URL."""
-        try:
-            parsed = urlparse(self.REDIS_URL)
-            path = parsed.path.strip("/")
-            return int(path) if path.isdigit() else 0
-        except Exception:
-            return None
 
     # TODO add monitoring
 
