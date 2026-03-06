@@ -7,8 +7,8 @@ from flask_cors import CORS
 from link_shortener.infrastructure.cache.memory_cache import InMemoryLinkCache
 from link_shortener.infrastructure.cache.redis_cache import RedisLinkCache
 from link_shortener.infrastructure.config.factory import get_config
-from link_shortener.infrastructure.core.logging_config import setup_logging
-from link_shortener.infrastructure.logging.failover_logger import FailoverLogger
+from link_shortener.infrastructure.logging.config import setup_logging
+from link_shortener.infrastructure.logging.handlers.failover import FailoverLogger
 from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.frontend_controller import FrontendController
 from link_shortener.web.dependency_injection import Container
