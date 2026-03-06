@@ -1,14 +1,34 @@
 import os
 
-from flask import Flask, redirect, request
+import click
+from flask import Flask, redirect, request, current_app
+from flask.cli import with_appcontext
 from flask_cors import CORS
+from link_shortener.infrastructure.cache.memory_cache import InMemoryLinkCache
+from link_shortener.infrastructure.cache.redis_cache import RedisLinkCache
 from link_shortener.infrastructure.config.factory import get_config
 from link_shortener.infrastructure.core.logging_config import setup_logging
+from link_shortener.infrastructure.logging.failover_logger import FailoverLogger
 from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.frontend_controller import FrontendController
 from link_shortener.web.dependency_injection import Container
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
+
+
+@click.command
+@with_appcontext
+def init_db_command():
+    """Create database tables based on current models."""
+    container = current_app.container
+    db_manager = container.get_db_manager()
+
+    try:
+        db_manager.create_tables()
+        click.echo("Database tables created successfully.")
+    except Exception as e:
+        click.echo(f"Error creating tables: {e}", err=True)
+        raise
 
 
 def create_app(config=None) -> Flask:
@@ -37,11 +57,14 @@ def create_app(config=None) -> Flask:
     # Настройка логирования
     setup_logging(app)
 
+    app.cli.add_command(init_db_command)
+
     # CORS
     CORS(app)
 
     # Инициализация контейнера зависимостей
     container = Container(config)
+    app.container = container
 
     # Регистрация middleware
     RequestLoggingMiddleware(app, container.get_logger())
@@ -83,13 +106,38 @@ def create_app(config=None) -> Flask:
     @app.teardown_appcontext
     def shutdown_session(exception=None):
         """Close database connections when the app context ends."""
-        
-        if hasattr(container, '_db_manager') and container._db_manager:
-            container._db_manager.close()
+        container.close()
+
+    # Финальное логирвоание состояния приложения
+    logger = container.get_logger()
+    cache = container.get_cache()
+
+    # Определение типа кэша
+    if isinstance(cache, RedisLinkCache):
+        cache_type = "Redis"
+    elif isinstance(cache, InMemoryLinkCache):
+        cache_type = "InMemory"
+    else:
+        cache_type = "Disabled (NullCache)"
+    
+    # Определение активного логгера (Если это FailoverLogger)
+    if isinstance(logger, FailoverLogger):
+        active_logger = logger.get_current_logger_name()
+    else:
+        active_logger = type(logger).__name__
 
     # Логирование успешного запуска
-    app.logger.info(
-        "Application started", extra={"env": env}
+    logger.info(
+        "Application Fylly initialized",
+        env=env,
+        debug=app.config.get("DEBUG", False),
+        testing=app.config.get("TESTING", False),
+        active_logger=active_logger,
+        cache_type=cache_type,
+        redis_enabled=app.config.get("REDIS_ENABLED", False),
+        database_url=app.config.get("DATABASE_URL", "unknown"),
+        host=app.config.get("HOST", "unknown"),
+        port=app.config.get("PORT", "unknown"),
     )
 
     return app
