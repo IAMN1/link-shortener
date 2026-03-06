@@ -7,15 +7,15 @@ from .config.factory import ConfigFactory
 from .config.production import ProductionConfig
 from .config.staging import StagingConfig
 from .config.testing import TestingConfig
-from .core.audit_logger import AuditLogger, StructlogAuditLogger
-from .core.logging_config import StructLogConfig
+from .logging.handlers.audit import AuditLogger, StructlogAuditLogger
+from .logging.config import StructLogConfig
 from .database.base import Base
 from .database.manager import DatabaseManager
 from .database.models import LinkModel
 from .database.repositories.sqlalchemy_link_repository import SQLAlchemyLinkRepository
-from .logging.structlog_logger import StructLogger
-from .logging.failover_logger import FailoverLogger
-from .logging.standart_logger import StandartLogger
+from .logging.handlers.structlog import StructLogger
+from .logging.handlers.failover import FailoverLogger
+from .logging.handlers.standard import StandartLogger
 
 __all__ = [
     "CacheKeyGenerator",
