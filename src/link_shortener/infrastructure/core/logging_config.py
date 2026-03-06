@@ -4,8 +4,9 @@ import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+import flask
 import structlog
-from flask import Flask, has_request_context, request
+from flask import Flask, has_request_context
 
 
 class StructLogConfig:
@@ -79,10 +80,10 @@ def _add_request_context(logger, method_name, event_dict):
     """
 
     if has_request_context():
-        event_dict["request_id"] = getattr(request, "request_id", None)
-        event_dict["request_path"] = request.path
-        event_dict["request_method"] = request.method
-        event_dict["remote_addr"] = request.remote_addr
+        event_dict["request_id"] = getattr(flask.g, "request_id", None)
+        event_dict["request_path"] = flask.request.path
+        event_dict["request_method"] = flask.request.method
+        event_dict["remote_addr"] = flask.request.remote_addr
     return event_dict
 
 
