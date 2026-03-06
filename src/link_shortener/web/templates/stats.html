@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Статистика сервиса{% endblock %}
+{% block content %}
+<h2 class="hero__title">Статистика</h2>
+
+<div class="result-card" style="margin-bottom: 2rem;">
+    <div class="result-card__stats">
+        <div class="stat-item">
+            <div class="stat-item__value">{{ stats.total_urls }}</div>
+            <div class="stat-item__label">всего ссылок</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-item__value">{{ stats.total_clicks }}</div>
+            <div class="stat-item__label">всего переходов</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-item__value">{{ stats.avg_clicks_per_url }}</div>
+            <div class="stat-item__label">среднее переходов</div>
+        </div>
+    </div>
+</div>
+
+<h3>Популярные ссылки</h3>
+<div class="table-responsive">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Короткий код</th>
+                <th>Оригинальный URL</th>
+                <th>Переходы</th>
+                <th>Создана</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for link in stats.popular_links %}
+            <tr>
+                <td><a href="{{ url_for('frontend.info', short_code=link.short_code) }}">{{ link.short_code }}</a></td>
+                <td><a href="{{ link.original_url }}" target="_blank">{{ link.original_url | truncate(50) }}</a></td>
+                <td>{{ link.clicks }}</td>
+                <td>{{ link.created_at.strftime('%Y-%m-%d') }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-center">Нет данных</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<style>
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+}
+.table th,
+.table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+.table th {
+    background: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+}
+.table tr:hover {
+    background: #f9fafb;
+}
+.text-center {
+    text-align: center;
+}
+</style>
+{% endblock %}
