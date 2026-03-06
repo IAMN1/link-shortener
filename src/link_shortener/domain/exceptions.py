@@ -43,6 +43,7 @@ class LinkNotFoundError(DomainError):
             short_code: Optional short code that was not found 
                 (for detailed message).
         """
+        self.short_code = short_code
         message = "Link not found"
         if short_code:
             message = f"Link with code ({short_code}) not found"
