@@ -153,6 +153,7 @@ class Container:
                     self._cache = RedisLinkCache(
                         redis_url=self.config.REDIS_URL,
                         prefix=self.config.CACHE_LINK_PREFIX,
+                        logger=self.get_logger(),
                         link_ttl=self.config.CACHE_LINK_TTL,
                         stats_ttl=self.config.CACHE_STATS_TTL
                     )
@@ -270,3 +271,8 @@ class Container:
                 get_service_stats_use_case=self.get_get_service_stats_use_case()
             )
         return self._link_service
+
+    def close(self):
+        """Close all managed resources (database connections, etc)."""
+        if self._db_manager:
+            self._db_manager.close()
