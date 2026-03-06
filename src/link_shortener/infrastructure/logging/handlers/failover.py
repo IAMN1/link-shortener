@@ -1,3 +1,4 @@
+import datetime
 import sys
 import threading
 from typing import List, Tuple
@@ -113,7 +114,8 @@ class FailoverLogger(Logger):
         """
         Internal logging for failover events (uses current logger, but safe).
         """
-        print(f"[FailoverLogger] {message}", file=sys.stderr)
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"{timestamp} [FailoverLogger] {message}", file=sys.stderr)
 
     # =============== Logger interface methods ===================================
     def debug(self, message: str, **kwargs):
