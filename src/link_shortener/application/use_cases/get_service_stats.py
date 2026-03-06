@@ -24,7 +24,6 @@ class GetServiceStatsUseCase:
     base_url: str
     cache: StatsCache
     logger: Logger
-    cache_ttl: int = 300 # Not used directly; cache implementation handles TTL
 
     def execute(self) -> ServiceStatsResponse:
         """
