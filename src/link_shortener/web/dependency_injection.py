@@ -11,7 +11,7 @@ from link_shortener.application import (
 from link_shortener.infrastructure import (
     StructLogger, DatabaseManager, InMemoryLinkCache,
     RedisLinkCache, StructlogAuditLogger, 
-    SQLAlchemyLinkRepository, FailoverLogger, StandartLogger
+    SQLAlchemyLinkRepository, FailoverLogger, StandardLogger
 )
 
 
@@ -79,7 +79,7 @@ class Container:
                 # 2. StandartLogger (резервный)
                 try:
 
-                    std_logger = StandartLogger("Link_shortener")
+                    std_logger = StandardLogger("Link_shortener")
                     std_logger.debug("Initializing standard logger")
                     loggers.append((std_logger, "standart"))
 
@@ -249,7 +249,6 @@ class Container:
                 cache=self.get_cache(),
                 logger=self.get_logger(),
                 base_url=self.config.BASE_URL,
-                cache_ttl=self.config.CACHE_STATS_TTL
             )
         return self._use_cases["stats"]
 
