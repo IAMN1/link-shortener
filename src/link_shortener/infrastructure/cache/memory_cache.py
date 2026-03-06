@@ -22,7 +22,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
     """
 
     def __init__(
-        self, prefix: str, link_ttl: int = 3600, stats_ttl: int = 300
+        self, prefix: str, link_ttl: int = 30, stats_ttl: int = 3
     ):
         """
         Initialize the in-memory cache.
