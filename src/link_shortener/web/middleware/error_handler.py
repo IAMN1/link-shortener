@@ -64,7 +64,7 @@ class ErrorHandlerMiddleware:
                 ), 404
 
             response = ErrorResponse(
-                error="NOT_FOUND", message="Resourse not found"
+                error="NOT_FOUND", message="Resource not found"
             )
 
             return jsonify(response.model_dump()), 404
@@ -148,7 +148,7 @@ class ErrorHandlerMiddleware:
             )
             
             self.logger.info(
-                "Link not found", short_code=getattr(error, 'short_code', None)
+                "Link not found", short_code=error.short_code
             )
             return jsonify(response.model_dump()), 404
 
