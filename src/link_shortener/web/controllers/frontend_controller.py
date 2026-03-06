@@ -1,6 +1,5 @@
-from flask import Blueprint, current_app, render_template
+from flask import Blueprint, render_template
 from link_shortener.application import LinkService
-from link_shortener.domain.exceptions import LinkNotFoundError
 
 
 class FrontendController:
@@ -15,8 +14,8 @@ class FrontendController:
             'frontend',
             __name__,
             template_folder='../templates',
-            static_folder='../static',          # папка со статикой
-            static_url_path='/static'           # URL для статики
+            static_folder='../static',
+            static_url_path='/static'
         )
         self._register_routes()
 
@@ -29,20 +28,11 @@ class FrontendController:
         return render_template("index.html")
 
     def info(self, short_code: str):
-        try:
-            info = self.link_service.get_link_info(short_code)
-            return render_template('info.html', link=info)
-        except LinkNotFoundError:
-            current_app.logger.info(f"Link not found (frontend): {short_code}")
-            return render_template('error.html', error='Link not found'), 404
-        except Exception as e:
-            current_app.logger.error(f"Frontend info error: {e}", exc_info=True)
-            return render_template('error.html', error='Internal error'), 500
+
+        info = self.link_service.get_link_info(short_code)
+        return render_template('info.html', link=info)
 
     def stats(self):
-        try:
-            stats = self.link_service.get_service_stats()
-            return render_template('stats.html', stats=stats)
-        except Exception as e:
-            current_app.logger.error(f"Frontend stats error: {e}", exc_info=True)
-            return render_template('error.html', error='Internal error'), 500
+
+        stats = self.link_service.get_service_stats()
+        return render_template('stats.html', stats=stats)
