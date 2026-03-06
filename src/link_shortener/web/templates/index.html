@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Сократить ссылку{% endblock %}
+
+{% block extra_head %}
+    <script type="module" src="{{ url_for('frontend.static', filename='js/shorten.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h2 class="hero__title">Сокращатель ссылок</h2>
+    <p class="hero__subtitle">Введите длинную ссылку, и мы сделаем её короткой</p>
+</section>
+
+<section class="shorten-form">
+    <form id="shorten-form" class="form">
+        <div class="form__group">
+            <label for="url" class="form__label">URL</label>
+            <input type="url" name="url" id="url" class="form__input" 
+                   placeholder="https://example.com/very/long/url" required>
+        </div>
+        <button type="submit" class="btn btn--primary btn--block" id="submit-btn">
+            <span class="btn__text">Сократить</span>
+            <span class="btn__spinner" style="display: none;"><i class="fas fa-spinner fa-spin"></i></span>
+        </button>
+    </form>
+    <div id="result" class="result" style="display: none;"></div>
+</section>
+{% endblock %}
