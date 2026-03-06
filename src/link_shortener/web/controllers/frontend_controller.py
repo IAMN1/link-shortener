@@ -22,6 +22,7 @@ class FrontendController:
     def _register_routes(self):
         self.bp.add_url_rule('/', view_func=self.index, methods=['GET'])
         self.bp.add_url_rule('/info/<short_code>', view_func=self.info, methods=['GET'])
+        self.bp.add_url_rule('/info/<short_code>/extended', view_func=self.extended_info, methods=['GET'])
         self.bp.add_url_rule('/stats', view_func=self.stats, methods=['GET'])
 
     def index(self):
@@ -31,6 +32,11 @@ class FrontendController:
 
         info = self.link_service.get_link_info(short_code)
         return render_template('info.html', link=info)
+
+    def extended_info(self, short_code: str):
+        """Render extended information page for a short link."""
+        info = self.link_service.get_extended_link_info(short_code)
+        return render_template('extended_info.html', link=info)
 
     def stats(self):
 

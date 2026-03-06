@@ -33,6 +33,8 @@
         </div>
     </div>
     <div class="actions" style="text-align: center; margin-top: 2rem;">
+    <a href="{{ url_for('frontend.extended_info', short_code=link.short_code) }}" class="btn btn--secondary">Расширенная информация</a>
+    <div class="actions" style="text-align: center; margin-top: 2rem;">
         <a href="{{ url_for('frontend.index') }}" class="btn">Сократить ещё</a>
     </div>
 </section>
