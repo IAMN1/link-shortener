@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Расширенная информация о ссылке {{ link.short_code }}{% endblock %}
+
+{% block content %}
+<section class="result">
+    <h2 class="hero__title" style="margin-bottom: 1rem;">Расширенная информация</h2>
+    <div class="result-card">
+        <div class="result-card__field">
+            <span class="result-card__url" id="short-url">{{ link.short_url }}</span>
+            <button class="result-card__copy" id="copy-btn" title="Копировать">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>
+        <p><strong><i class="fas fa-globe"></i> Исходный URL:</strong> 
+            <a href="{{ link.original_url }}" target="_blank">{{ link.original_url | truncate(60) }}</a>
+        </p>
+
+        <div class="result-card__stats" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="stat-item">
+                <div class="stat-item__value">{{ link.clicks }}</div>
+                <div class="stat-item__label">переходов</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-item__value">{{ link.age_days }}</div>
+                <div class="stat-item__label">дней с создания</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-item__value">{{ "%.2f"|format(link.clicks_per_day) }}</div>
+                <div class="stat-item__label">переходов/день</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-item__value">{{ "Да" if link.is_popular else "Нет" }}</div>
+                <div class="stat-item__label">популярная</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 1.5rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
+            <p><strong>Создана:</strong> {{ link.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+            {% if link.last_accessed %}
+            <p><strong>Последний переход:</strong> {{ link.last_accessed.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+            <p><strong>Дней с последнего перехода:</strong> {{ link.last_access_days_ago }}</p>
+            {% else %}
+            <p><strong>Последний переход:</strong> никогда</p>
+            {% endif %}
+            <p><strong>Считается недавней:</strong> {{ "Да" if link.is_recent else "Нет" }}</p>
+        </div>
+    </div>
+
+    <div class="actions" style="text-align: center; margin-top: 2rem;">
+        <a href="{{ url_for('frontend.info', short_code=link.short_code) }}" class="btn">Обычная информация</a>
+        <a href="{{ url_for('frontend.index') }}" class="btn btn--secondary">Сократить ещё</a>
+    </div>
+</section>
+
+<script type="module">
+    import { copyToClipboard, showNotification } from "{{ url_for('frontend.static', filename='js/main.js') }}";
+    document.getElementById('copy-btn').addEventListener('click', async () => {
+        const shortUrl = document.getElementById('short-url').textContent;
+        const copied = await copyToClipboard(shortUrl);
+        if (copied) {
+            showNotification('Ссылка скопирована!', 'success');
+        } else {
+            showNotification('Не удалось скопировать', 'error');
+        }
+    });
+</script>
+{% endblock %}
