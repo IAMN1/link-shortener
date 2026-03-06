@@ -42,7 +42,6 @@ class StagingConfig(BaseConfig):
     # ========== Redis cache settings ==========
     REDIS_ENABLED: bool = os.environ.get("REDIS_ENABLED", "true").lower() == "true"
     REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-    REDIS_CACHE_TTL: int = int(os.environ.get("REDIS_CACHE_TTL", 12 * 60 * 60))
 
     # ========== Limits ==========
     MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 200))
