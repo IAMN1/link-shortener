@@ -8,7 +8,7 @@ from .ports.cache.redirect_cache import RedirectCache
 from .ports.logger.null_audit import NullAuditLogger
 from .ports.logger.audit import AuditLogger
 from .ports.logger.null_logger import NullLogger
-from .ports.logger.logger import ContextLogger, Logger
+from .ports.logger.logger import Logger
 from .services.link_service import LinkService
 from .use_cases.batch_create_links import BatchCreateLinksUseCase
 from .use_cases.create_short_link import CreateShortLinkUseCase
@@ -32,7 +32,6 @@ __all__ = [
     "AuditLogger",
     "NullLogger",
     "Logger",
-    "ContextLogger",
     "LinkService",
     "BatchCreateLinksUseCase",
     "CreateShortLinkUseCase",
