@@ -15,7 +15,7 @@ from .database.models import LinkModel
 from .database.repositories.sqlalchemy_link_repository import SQLAlchemyLinkRepository
 from .logging.handlers.structlog import StructLogger
 from .logging.handlers.failover import FailoverLogger
-from .logging.handlers.standard import StandartLogger
+from .logging.handlers.standard import StandardLogger
 
 __all__ = [
     "CacheKeyGenerator",
@@ -36,5 +36,5 @@ __all__ = [
     "SQLAlchemyLinkRepository",
     "StructLogger",
     "FailoverLogger",
-    "StandartLogger",
+    "StandardLogger",
 ]
