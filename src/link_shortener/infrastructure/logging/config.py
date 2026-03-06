@@ -146,11 +146,16 @@ def setup_logging(app: Flask) -> None:
     # Configure structlog
     _setup_structlog(log_config)
 
+    formatter = logging.Formatter(
+        fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt=log_config.log_date_format
+    )
+
     # Console handler
     if log_config.log_to_console:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(log_config.log_level)
-        console_handler.setFormatter(logging.Formatter("%(message)s"))
+        console_handler.setFormatter(formatter)
 
         root_logger.addHandler(console_handler)
 
@@ -167,7 +172,7 @@ def setup_logging(app: Flask) -> None:
                 encoding="utf-8",
             )
             file_handler.setLevel(log_config.log_level)
-            file_handler.setFormatter(logging.Formatter("%(message)s"))
+            file_handler.setFormatter(formatter)
 
             root_logger.addHandler(file_handler)
 
