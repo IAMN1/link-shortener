@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
-from link_shortener.application.dtos.responses import BatchCreateResponse, ServiceStatsResponse, ShortLinkResponse
+from link_shortener.application.dtos.responses import BatchCreateResponse, ExtendedLinkInfoResponse, ServiceStatsResponse, ShortLinkResponse
 from link_shortener.application.use_cases.batch_create_links import BatchCreateLinksUseCase
 from link_shortener.application.use_cases.create_short_link import CreateShortLinkUseCase
-from link_shortener.application.use_cases.get_link_info import GetLinkInfoUseCase
+from link_shortener.application.use_cases.get_link_info import GetExtendLinkInfoUseCase, GetLinkInfoUseCase
 from link_shortener.application.use_cases.get_service_stats import GetServiceStatsUseCase
 from link_shortener.application.use_cases.redirect_link import RedirectLinkUseCase
 
@@ -21,6 +21,7 @@ class LinkService:
 
     create_short_link_use_case: CreateShortLinkUseCase
     get_link_info_use_case: GetLinkInfoUseCase
+    get_extended_link_info_use_case: GetExtendLinkInfoUseCase
     redirect_link_use_case: RedirectLinkUseCase
     batch_create_links_use_case: BatchCreateLinksUseCase
     get_service_stats_use_case: GetServiceStatsUseCase
@@ -58,6 +59,9 @@ class LinkService:
             ShortLinkResponse: ShortLinkResponse DTO.
         """
         return self.get_link_info_use_case.execute(short_code)
+
+    def get_extended_link_info(self, short_code: str) -> ExtendedLinkInfoResponse:
+        return self.get_extended_link_info_use_case.execute(short_code)
 
     def redirect(
         self, short_code: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None

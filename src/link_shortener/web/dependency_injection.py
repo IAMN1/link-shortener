@@ -4,7 +4,8 @@ from link_shortener.domain import HashBasedShorteningPolicy
 from link_shortener.application import (
     Logger, LinkCache, LinkService, BatchCreateLinksUseCase,
     CreateShortLinkUseCase, GetLinkInfoUseCase, GetServiceStatsUseCase,
-    RedirectLinkUseCase, NullLogger, NullAuditLogger, NullCache
+    GetExtendLinkInfoUseCase, RedirectLinkUseCase, NullLogger, 
+    NullAuditLogger, NullCache
 )
 
 from link_shortener.infrastructure import (
@@ -228,6 +229,17 @@ class Container:
             )
         return self._use_cases['info']
 
+    def get_extended_link_info_use_case(self) -> GetExtendLinkInfoUseCase:
+        """Get or create the GetExtendLinkInfoUseCase instance."""
+        if 'extended_info' not in self._use_cases:
+            self._use_cases['extended_info'] = GetExtendLinkInfoUseCase(
+                repository=self.get_repository(),
+                cache=self.get_cache(),
+                logger=self.get_logger(),
+                base_url=self.config.BASE_URL,
+            )
+        return self._use_cases['extended_info']
+
     def get_get_service_stats_use_case(self):
         """Get or create the GetServiceStatsUseCase instance."""
 
@@ -266,6 +278,7 @@ class Container:
             self._link_service = LinkService(
                 create_short_link_use_case=self.get_create_short_link_use_case(),
                 get_link_info_use_case=self.get_get_link_info_use_case(),
+                get_extended_link_info_use_case=self.get_extended_link_info_use_case(),
                 redirect_link_use_case=self.get_redirect_link_use_case(),
                 batch_create_links_use_case=self.get_batch_create_links_use_case(),
                 get_service_stats_use_case=self.get_get_service_stats_use_case()
