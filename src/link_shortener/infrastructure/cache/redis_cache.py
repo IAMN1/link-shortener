@@ -169,7 +169,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                 clicks=data_dict["clicks"],
                 last_accessed=last_accessed,
             )
-        except Exception:
+        except Exception as e:
+            self.logger.error(f"Failed to deserialize cached link: {e}", exc_info=True)
             return None
 
     # ------------------------------------------------------------------
