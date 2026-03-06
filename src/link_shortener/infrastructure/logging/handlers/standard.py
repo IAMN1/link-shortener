@@ -3,7 +3,7 @@ from typing import Any, Optional
 from link_shortener.application import Logger
 
 
-class StandartLogger(Logger):
+class StandardLogger(Logger):
     """
     Adapter for the standard Python logging module.
 
