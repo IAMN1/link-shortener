@@ -99,8 +99,7 @@ class FailoverLogger(Logger):
                     old_logger, old_name = self._loggers[self._current_index]
                     
                     self._log(
-                        f"Switching logger from {old_name} \
-                            to {name} (downgrade due to error)", 
+                        f"Switching logger from {old_name} to {name} (downgrade due to error)", 
                         level="warning"
                     )
                 self._current_index = idx
