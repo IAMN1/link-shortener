@@ -10,6 +10,7 @@ wheels/
 .venv
 
 .env
+.env.*
 
 #  dev/tests and other Databases
 *.db
