@@ -18,6 +18,10 @@ class DevelopmentConfig(BaseConfig):
     # ========== Database settings ==========
     DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///dev.db")
 
+    # ========== Cache settings ==========
+    CACHE_LINK_TTL: int = int(os.environ.get("CACHE_LINK_TTL", 10))
+    CACHE_STATS_TTL: int = int(os.environ.get("CACHE_STATS_TTL", 5))
+
     # ========== Redis cache settings ==========
     REDIS_ENABLED: bool = os.environ.get("REDIS_ENABLED", "false").lower() == "true"
     REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
