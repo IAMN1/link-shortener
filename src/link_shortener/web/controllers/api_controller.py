@@ -1,7 +1,5 @@
 from flask import Blueprint, jsonify, request
-from link_shortener.domain import LinkNotFoundError
-from pydantic import ValidationError as PydanticValidationError
-from link_shortener.application import LinkService
+from link_shortener.application import LinkService, ExtendedLinkInfoResponse
 from link_shortener.web.schemas.requests import BatchCreateLinkRequest, CreateShortLinkRequest
 from link_shortener.web.schemas.responses import BatchCreateResponse, ServiceStatsResponse, ShortLinkResponse
 
@@ -34,6 +32,9 @@ class ApiController:
             '/links/<short_code>', view_func=self.get_link_info, methods=['GET']
         )
         self.bp.add_url_rule(
+            '/links/<short_code>/extended', view_func=self.get_extended_link_info, methods=['GET']
+        )
+        self.bp.add_url_rule(
             '/batch/shorten', view_func=self.batch_create, methods=['POST']
         )
         self.bp.add_url_rule(
@@ -57,13 +58,7 @@ class ApiController:
 
         data = request.get_json()
 
-        try:
-            validated = CreateShortLinkRequest(**data)
-        except PydanticValidationError as e:
-            return jsonify({
-                "error": "VALIDATION_ERROR",
-                "details": e.errors()
-            }), 400
+        validated = CreateShortLinkRequest(**data)
         
         user_ip = self._get_client_ip()
         user_agent = request.headers.get("User-Agent")
@@ -75,22 +70,20 @@ class ApiController:
         )
 
         response_data = ShortLinkResponse.from_dto(result_dto)
-
         status = 201 if result_dto.is_new else 200
-
         return jsonify(response_data.model_dump()), status
     
     def get_link_info(self, short_code: str):
         """Handle GET /api/v1/links/<short_code> - get link info."""
-        try:
-            result_dto = self.link_service.get_link_info(short_code)
-        except LinkNotFoundError as e:
-            return jsonify({
-                "error": e.code, 
-                "message": e.message
-            }), 404
 
+        result_dto = self.link_service.get_link_info(short_code)
         response_data = ShortLinkResponse.from_dto(result_dto)
+        return jsonify(response_data.model_dump())
+    
+    def get_extended_link_info(self, short_code: str):
+        """Handle GET /api/v1/links/<short_code>/extended - get extended link info."""
+        result_dto = self.link_service.get_extended_link_info(short_code)
+        response_data = ExtendedLinkInfoResponse.from_dto(result_dto)
         return jsonify(response_data.model_dump())
     
     def batch_create(self):
@@ -98,12 +91,7 @@ class ApiController:
 
         data = request.get_json()
 
-        try:
-            validated = BatchCreateLinkRequest(**data)
-        except PydanticValidationError as e:
-            return jsonify({
-                "error": "VALIDATION_ERROR", "details": e.errors()
-            }), 400
+        validated = BatchCreateLinkRequest(**data)
 
         user_ip = self._get_client_ip()
         user_agent = request.headers.get("User-Agent")
