@@ -22,12 +22,9 @@ class BaseConfig:
 
     # ========== Logging settings ==========
     LOG_DIR: str = os.environ.get("LOG_DIR", "logs")
-    # имя будет дополненно датой
     LOG_FILENAME: str = "link_shortener"
     LOG_LEVEL: int = logging.INFO
     LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
-    LOG_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB
-    LOG_BACKUP_FILES_COUNT: int = 5
     LOG_TO_CONSOLE: bool = True
     LOG_TO_FILE: bool = True
 
