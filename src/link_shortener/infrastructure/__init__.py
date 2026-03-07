@@ -8,7 +8,7 @@ from .config.production import ProductionConfig
 from .config.staging import StagingConfig
 from .config.testing import TestingConfig
 from .logging.handlers.audit import AuditLogger, StructlogAuditLogger
-from .logging.config import StructLogConfig
+from .logging.settings import LoggingSettings
 from .database.base import Base
 from .database.manager import DatabaseManager
 from .database.models import LinkModel
@@ -29,7 +29,7 @@ __all__ = [
     "ConfigFactory",
     "AuditLogger",
     "StructlogAuditLogger",
-    "StructLogConfig",
+    "LoggingSettings",
     "Base",
     "DatabaseManager",
     "LinkModel",
