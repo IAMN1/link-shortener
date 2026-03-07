@@ -1,4 +1,5 @@
 
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.domain import HashBasedShorteningPolicy
 
 from link_shortener.application import (
@@ -10,8 +11,8 @@ from link_shortener.application import (
 
 from link_shortener.infrastructure import (
     StructLogger, DatabaseManager, InMemoryLinkCache,
-    RedisLinkCache, StructlogAuditLogger, 
-    SQLAlchemyLinkRepository, FailoverLogger, StandardLogger
+    RedisLinkCache, StructlogAuditLogger, FailoverAuditLogger,
+    SQLAlchemyLinkRepository, FailoverLogger, StandardLogger, StandardAuditLogger
 )
 
 
@@ -69,7 +70,7 @@ class Container:
                 # 1. StructLogger (Основной)
                 try:
 
-                    struct_logger = StructLogger("Link_shortener")
+                    struct_logger = StructLogger("link_shortener")
                     struct_logger.debug("Initializing structlog")
                     loggers.append((struct_logger, "structlog"))
 
@@ -79,7 +80,7 @@ class Container:
                 # 2. StandartLogger (резервный)
                 try:
 
-                    std_logger = StandardLogger("Link_shortener")
+                    std_logger = StandardLogger("link_shortener")
                     std_logger.debug("Initializing standard logger")
                     loggers.append((std_logger, "standart"))
 
@@ -95,7 +96,7 @@ class Container:
                     self._logger = FailoverLogger(loggers, check_interval=30.0)
         return self._logger
 
-    def get_audit_logger(self) -> StructlogAuditLogger:
+    def get_audit_logger(self) -> AuditLogger:
         """
         Get the audit logger for logging significant events (creation, access).
         If audit is disabled, returns NullAuditLogger.
@@ -103,9 +104,33 @@ class Container:
 
         if not self._audit_logger:
             if self.config.AUDIT_ENABLED:
-                self._audit_logger = StructlogAuditLogger()
+                audit_loggers = []
+
+                # 1. StructLogAuditLogger (primary)
+                try:
+                    struct_audit = StructlogAuditLogger()
+                    audit_loggers.append((struct_audit, "structlog_audit"))
+                except Exception as e:
+                    self.get_logger().error(f"Failed to initialize StructlogAuditLogger: {e}")
+                
+                # 2. StandardAuditLogger (Fallback)
+                try:
+                    std_audit = StandardAuditLogger()
+                    audit_loggers.append((std_audit, "standard_audit"))
+                except Exception as e:
+                    self.get_logger().error(f"Failed to initialize StandardAuditLogger: {e}")
+                
+                # 3. NullAuditLogger (always available)
+                audit_loggers.append((NullAuditLogger(), "null_audit"))
+
+                if len(audit_loggers) == 1: # only NullAuditLogger
+                    self._audit_logger = NullAuditLogger()
+                else:
+                    self._audit_logger = FailoverAuditLogger(
+                        audit_loggers, check_interval=30.0
+                    )
             else:
-                self.get_logger().warning("Audit logging is disabled.")
+                self.get_logger().warning("Audit logging is disabled")
                 self._audit_logger = NullAuditLogger()
         return self._audit_logger
 
