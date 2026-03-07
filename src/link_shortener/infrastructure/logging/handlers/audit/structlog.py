@@ -34,6 +34,10 @@ class StructlogAuditLogger(AuditLogger):
             user_agent: User-Agent string of the client.
             **kwargs: Additional context (e.g., batch_id).
         """
+
+        if link is None:
+            return
+
         self._logger.info(
             "url_created",
             url_hash=link.url_hash.value,
@@ -63,6 +67,9 @@ class StructlogAuditLogger(AuditLogger):
             user_agent: User-Agent string.
             **kwargs: Additional context.
         """
+
+        if link is None:
+            return
 
         self._logger.info(
             "url_accessed",
