@@ -23,7 +23,7 @@ class StructlogAuditLogger(AuditLogger):
         self._logger = structlog.get_logger("audit")
 
     def log_url_created(
-        self, link: Link, user_ip: Optional[str] = None, user_agent: Optional[str] = None,**kwargs
+        self, link: Link, user_ip: Optional[str] = None, user_agent: Optional[str] = None, **kwargs
     ) -> None:
         """
         Log a URL creation event.
@@ -44,6 +44,7 @@ class StructlogAuditLogger(AuditLogger):
             user_agent=user_agent,
             timestamp=link.created_at.isoformat(),
             event_type="URL_CREATED",
+            **kwargs,
         )
 
     def log_url_accessed(
@@ -72,6 +73,7 @@ class StructlogAuditLogger(AuditLogger):
             user_agent=user_agent,
             timestamp=datetime.now().isoformat(),
             event_type="URL_ACCESSED",
+            **kwargs,
         )
 
     def _mask_url(self, url: str) -> str:
