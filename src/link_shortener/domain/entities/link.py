@@ -43,7 +43,7 @@ class Link:
             A new Link instance with default values (clicks=0, created_at=now).
         """
         return cls(
-            id=link_id or str(uuid.uuid4()),
+            id=link_id if link_id is not None else str(uuid.uuid4()),
             url_hash=url_hash,
             short_code=short_code,
             original_url=original_url,
