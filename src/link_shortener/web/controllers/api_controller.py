@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
-from link_shortener.application import LinkService, ExtendedLinkInfoResponse
+from link_shortener.application import LinkService
 from link_shortener.web.schemas.requests import BatchCreateLinkRequest, CreateShortLinkRequest
-from link_shortener.web.schemas.responses import BatchCreateResponse, ServiceStatsResponse, ShortLinkResponse
+from link_shortener.web.schemas.responses import BatchCreateResponse, ServiceStatsResponse, ShortLinkResponse, ExtendedLinkInfoResponse
 
 
 class ApiController:
@@ -103,7 +103,7 @@ class ApiController:
         )
         response_data = BatchCreateResponse.from_dto(result_dto)
         
-        return jsonify(response_data.model_dump()), 201
+        return jsonify(response_data.model_dump()), 200
     
     def get_stats(self):
         """Handle GET /api/v1/stats - get service statistics."""
