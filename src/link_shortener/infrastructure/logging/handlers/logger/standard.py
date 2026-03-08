@@ -11,16 +11,14 @@ class StandardLogger(Logger):
     structured data as key-value pairs appended to the message.
     """
 
-    def __init__(self, name: str = __name__, level: int = logging.INFO):
+    def __init__(self, name: str):
         """
         Initialize the logger.
 
         Args:
             name: Logger name.
-            level: Logging level.
         """
         self._logger = logging.getLogger(name)
-        self._logger.setLevel(level)
 
         # Ensure there's at least a NullHandler 
         #   to avoid "No handlers" warning
