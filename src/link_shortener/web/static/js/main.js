@@ -1,8 +1,3 @@
-/**
- * Копирует текст в буфер обмена.
- * @param {string} text - Текст для копирования.
- * @returns {Promise<boolean>} - true, если успешно.
- */
 export async function copyToClipboard(text) {
     try {
         await navigator.clipboard.writeText(text);
@@ -13,12 +8,27 @@ export async function copyToClipboard(text) {
     }
 }
 
-/**
- * Показывает простое уведомление (временное решение).
- * В реальном проекте заменить на красивый тост.
- * @param {string} message - Текст уведомления.
- * @param {string} type - Тип ('success', 'error', 'info').
- */
 export function showNotification(message, type = 'info') {
-    alert(message); // Заглушка
+    alert(message);
+}
+
+/**
+ * Экранирует специальные HTML-символы для защиты от XSS.
+ * Принимает любое значение, преобразует в строку.
+ * @param {*} unsafe - Данные для экранирования.
+ * @returns {string} Безопасная строка с заменёнными символами.
+ */
+export function escapeHtml(unsafe) {
+    if (unsafe === undefined || unsafe === null) {
+        return '';
+    }
+    const str = String(unsafe);
+    return str.replace(/[&<>"']/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        if (m === '"') return '&quot;';
+        if (m === "'") return '&#039;';
+        return m;
+    });
 }

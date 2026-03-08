@@ -1,5 +1,11 @@
 {% extends "base.html" %}
+
 {% block title %}Статистика сервиса{% endblock %}
+
+{% block extra_head %}
+    <link rel="stylesheet" href="{{ url_for('frontend.static', filename='css/stats.css') }}">
+{% endblock %}
+
 {% block content %}
 <h2 class="hero__title">Статистика</h2>
 
@@ -34,7 +40,7 @@
         <tbody>
             {% for link in stats.popular_links %}
             <tr>
-                <td><a href="{{ url_for('frontend.info', short_code=link.short_code) }}">{{ link.short_code }}</a></td>
+                <td><a href="/?mode=info&code={{ link.short_code }}">{{ link.short_code }}</a></td>
                 <td><a href="{{ link.original_url }}" target="_blank">{{ link.original_url | truncate(50) }}</a></td>
                 <td>{{ link.clicks }}</td>
                 <td>{{ link.created_at.strftime('%Y-%m-%d') }}</td>
@@ -45,32 +51,4 @@
         </tbody>
     </table>
 </div>
-
-<style>
-.table {
-    width: 100%;
-    border-collapse: collapse;
-    background: white;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.05);
-}
-.table th,
-.table td {
-    padding: 1rem;
-    text-align: left;
-    border-bottom: 1px solid #e5e7eb;
-}
-.table th {
-    background: #f9fafb;
-    font-weight: 600;
-    color: #374151;
-}
-.table tr:hover {
-    background: #f9fafb;
-}
-.text-center {
-    text-align: center;
-}
-</style>
 {% endblock %}
