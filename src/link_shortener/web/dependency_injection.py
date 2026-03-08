@@ -181,7 +181,10 @@ class Container:
                         prefix=self.config.CACHE_LINK_PREFIX,
                         logger=self.get_logger(),
                         link_ttl=self.config.CACHE_LINK_TTL,
-                        stats_ttl=self.config.CACHE_STATS_TTL
+                        stats_ttl=self.config.CACHE_STATS_TTL,
+                        connect_timeout=self.config.REDIS_CONNECT_TIMEOUT,
+                        socket_timeout=self.config.REDIS_SOCKET_TIMEOUT,
+                        retry_interval=self.config.REDIS_RETRY_INTERVAL
                     )
                 except Exception as e:
                     self.get_logger().error(

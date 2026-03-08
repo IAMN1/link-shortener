@@ -26,7 +26,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     """
 
     def __init__(
-        self, redis_url: str, prefix: str, logger: Logger, link_ttl: int = 3600, stats_ttl: int = 300
+        self, redis_url: str, prefix: str, logger: Logger, link_ttl: int, 
+        stats_ttl: int, connect_timout: int, socket_timeout: int, retry_interval: int
     ):
         """
         Initialize Redis cache.
@@ -42,12 +43,14 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         self.logger = logger
         self.ttl = link_ttl
         self.stats_ttl = stats_ttl
+        self.connect_timeout = connect_timout,
+        self.socket_timeout = socket_timeout,
+        self.retry_interval = retry_interval
 
         # Internal state for failover
         self._client = None
         self._available = False
         self._last_attempt = 0.0
-        self._retry_internal = 10
 
         self._connect()
 
@@ -55,7 +58,9 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         """Initial connection attempt to Redis."""
         try:
             self._client = redis.from_url(
-                self.redis_url, socket_connect_timeout=2, socket_timeout=2
+                self.redis_url, 
+                socket_connect_timeout=self.connect_timeout, 
+                socket_timeout=self.socket_timeout
             )
             self._client.ping()
             self._available = True
@@ -96,10 +101,12 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             return False
 
         # Attempt reconnection if enough time has passed
-        if time.time() - self._last_attempt > self._retry_internal:
+        if time.time() - self._last_attempt > self.retry_interval:
             try:
                 self._client = redis.from_url(
-                    self.redis_url, socket_connect_timeout=2, socket_timeout=2
+                    self.redis_url, 
+                    socket_connect_timeout=self.connect_timeout, 
+                    socket_timeout=self.socket_timeout
                 )
                 self._client.ping()
                 self._available = True
