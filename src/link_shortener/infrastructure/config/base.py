@@ -15,29 +15,44 @@ class BaseConfig:
     DEBUG: bool = True
     TESTING: bool = False
 
-    # ========== Feature flags ==========
+    # =============== Feature flags ==================================================
     LOGGING_ENABLED: bool = True
     AUDIT_ENABLED: bool = True
     CACHE_ENABLED: bool = True
 
-    # ========== Logging settings ==========
+    # =============== Logging settings ===============================================
     LOG_DIR: str = os.environ.get("LOG_DIR", "logs")
     LOG_FILENAME: str = "link_shortener"
-    LOG_LEVEL: int = logging.INFO
+    LOG_LEVEL: int = logging.DEBUG
     LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
     LOG_TO_CONSOLE: bool = True
     LOG_TO_FILE: bool = True
 
-    # ========== Security App ==========
+    ##  Logging levels for third-party libs
+    SQLALCHEMY_LOG_LEVEL: str = os.environ.get("SQLALCHEMY_LOG_LEVEL", "WARNING")
+    WERKZEUG_LOG_LEVEL: str = os.environ.get("WERKZEUG_LOG_LEVEL", "WARNING")
+
+    ## Failover
+    FAILOVER_CHECK_INTERVAL: float = float(os.environ.get("FAILOVER_CHECK_INTERVAL", 30.0))
+
+    # =============== Security App ===================================================
     _DEFAULT_SECRET_KEY: str = secrets.token_hex(32)
     _DEFAULT_PEPPER: str = secrets.token_hex(32)
 
     SECRET_KEY: str = os.environ.get("SECRET_KEY", _DEFAULT_SECRET_KEY)
     SHORT_CODE_SECRET_PEPPER: str = os.environ.get("SHORT_CODE_PEPPER", _DEFAULT_PEPPER)
 
-    # ========== App settings ==========
+    # =============== App settings ===================================================
     HOST: str = os.environ.get("HOST", "localhost")
     PORT: int = int(os.environ.get("PORT", 5000))
+
+    ## Code generation
+    MAX_COLLISION_ATTEMPTS: int = int(os.environ.get("MAX_COLLISION_ATTEMPTS", 5))
+
+    ## Business rules
+    POPULAR_THRESHOLD: int = int(os.environ.get("POPULAR_THRESHOLD", 100))
+    RECENT_DAYS: int = int(os.environ.get("RECENT_DAYS", 7))
+
 
     @property
     def BASE_URL(self) -> str:
@@ -50,12 +65,13 @@ class BaseConfig:
     SHORT_CODE_MIN_LENGTH: int = 6
     SHORT_CODE_MAX_LENGTH: int = 10
 
-    # ========== Limits ==========
+    # =============== Limits =========================================================
     MAX_REQUESTS_PER_MINUTE: int = 100
     BATCH_CREATE_LIMIT: int = 100  # Макс URL за один пакетный запрос
 
-    # ========== Database settings ==========
+    # =============== Database settings ==============================================
     DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///dev.db")
+    DATABASE_POOL_PRE_PING: bool = os.environ.get("DATABASE_POOL_PRE_PING", "true").lower() == "true"
 
     @property
     def DATABASE_POOL_SIZE(self) -> int:
@@ -78,19 +94,23 @@ class BaseConfig:
             return int(os.environ.get("DATABASE_POOL_RECYCLE", 3600))
         return 0
 
-    # ========== Cache settings ==========
+    # =============== Cache settings =================================================
     CACHE_LINK_PREFIX: str = os.environ.get("CACHE_LINK_PREFIX", "link_shortener")
     CACHE_LINK_TTL: int = int(os.environ.get("CACHE_LINK_TTL", 3600))
     CACHE_STATS_TTL: int = int(os.environ.get("CACHE_STATS_TTL", 300))
 
-    # ========== Redis cache settings ==========
+    # =============== Redis cache settings ===========================================
     REDIS_ENABLED: bool = os.environ.get("REDIS_ENABLED", "false").lower() == "true"
     REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
+    ## Redis timeouts
+    REDIS_CONNECT_TIMEOUT: int = int(os.environ.get("REDIS_CONNECT_TIMEOUT", 2))
+    REDIS_SOCKET_TIMEOUT: int = int(os.environ.get("REDIS_SOCKET_TIMEOUT", 2))
+    REDIS_RETRY_INTERVAL: int = int(os.environ.get("REDIS_RETRY_INTERVAL", 10))
 
     # TODO add monitoring
 
-    # ========== Validation Configuration ==========
+    # =============== Validation Configuration =======================================
     def validate(self) -> None:
         """
         Validate configuration settings.
