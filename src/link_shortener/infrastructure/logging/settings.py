@@ -1,8 +1,5 @@
 import logging
 import os
-from typing import Any, Dict
-
-from link_shortener.infrastructure.config.base import BaseConfig
 
 
 class LoggingSettings:
@@ -10,7 +7,16 @@ class LoggingSettings:
     Configuration parameters for logging, extracted from Flask app config.
     """
 
-    def __init__(self, flask_cfg: Dict[str, Any]):
+    def __init__(self,
+                 log_dir: str,
+                 log_file_name: str,
+                 log_date_format: str,
+                 log_to_console: bool,
+                 log_to_file: bool,
+                 debug: bool,
+                 sqlalchemy_log_level: str,
+                 werkzeug_log_level: str
+                 ):
         """
         Initialize from Flask config dictionary.
 
@@ -18,17 +24,20 @@ class LoggingSettings:
             flask_cfg: Flask app.config dictionary.
         """
 
-        self.log_dir: str = flask_cfg.get("LOG_DIR", BaseConfig.LOG_DIR)
-        self.log_file_name: str = flask_cfg.get("LOG_FILENAME", BaseConfig.LOG_FILENAME)
-        self.log_date_format: str = flask_cfg.get(
-            "LOG_DATE_FORMAT", BaseConfig.LOG_DATE_FORMAT
-        )
-        self.log_to_console: bool = flask_cfg.get(
-            "LOG_TO_CONSOLE", BaseConfig.LOG_TO_CONSOLE
-        )
-        self.log_to_file: bool = flask_cfg.get("LOG_TO_FILE", BaseConfig.LOG_TO_FILE)
-        self.debug: bool = flask_cfg.get("DEBUG", BaseConfig.DEBUG)
-        self.log_level = logging.DEBUG if self.debug else logging.INFO
+        self.log_dir = log_dir
+        self.log_file_name = log_file_name
+        self.log_date_format = log_date_format
+        self.log_to_console = log_to_console
+        self.log_to_file = log_to_file
+        self.debug = debug
+        self.sqlalchemy_log_level = sqlalchemy_log_level
+        self.werkzeug_log_level = werkzeug_log_level
+
+
+    @property
+    def log_level(self) -> int:
+        """Effective log level for the root logger."""
+        return logging.DEBUG if self.debug else logging.INFO
 
     @property
     def should_log_to_file(self) -> bool:
