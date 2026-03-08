@@ -143,7 +143,8 @@ class Container:
         if not self._db_manager:
             self._db_manager = DatabaseManager(
                 self.config.DATABASE_URL,
-                echo=self.config.DEBUG
+                echo=self.config.DEBUG,
+                pool_pre_ping=self.config.DATABASE_POOL_PRE_PING
             )
             self._db_manager.connect()
         return self._db_manager
