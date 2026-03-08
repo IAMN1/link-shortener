@@ -117,7 +117,7 @@ class CreateShortLinkUseCase:
 
         except Exception as e:
             self.logger.error("Error creating short link", error=str(e))
-            raise
+            raise e
 
     def _generate_unique_code(self, original_url: OriginalUrl) -> ShortCode:
         """
