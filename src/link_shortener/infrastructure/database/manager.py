@@ -15,7 +15,7 @@ class DatabaseManager:
     to get a raw session for manual management.
     """
 
-    def __init__(self, database_url: str, echo: bool = False):
+    def __init__(self, database_url: str, echo: bool, pool_pre_ping: bool):
         """
         Initialize the manager with database URL and optional echo flag.
 
@@ -26,6 +26,7 @@ class DatabaseManager:
 
         self.database_url = database_url
         self.echo = echo
+        self.pool_pre_ping = pool_pre_ping
         self.engine = None
         self._session_factory = None
 
@@ -38,7 +39,9 @@ class DatabaseManager:
         """
 
         self.engine = create_engine(
-            self.database_url, pool_pre_ping=True, echo=self.echo
+            self.database_url, 
+            pool_pre_ping=self.pool_pre_ping, 
+            echo=self.echo
         )
 
         self._session_factory = sessionmaker(
