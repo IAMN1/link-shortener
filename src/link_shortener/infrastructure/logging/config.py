@@ -2,10 +2,9 @@ import logging
 import logging.handlers
 import os
 
-import flask
 from link_shortener.infrastructure.logging.settings import LoggingSettings
 import structlog
-from flask import Flask, has_request_context
+from flask import has_request_context, g, request
 
 
 def _add_request_context(logger, method_name, event_dict):
@@ -14,28 +13,28 @@ def _add_request_context(logger, method_name, event_dict):
     """
 
     if has_request_context():
-        event_dict["request_id"] = getattr(flask.g, "request_id", None)
-        event_dict["request_path"] = flask.request.path
-        event_dict["request_method"] = flask.request.method
-        event_dict["remote_addr"] = flask.request.remote_addr
+        event_dict["request_id"] = getattr(g, "request_id", None)
+        event_dict["request_path"] = request.path
+        event_dict["request_method"] = request.method
+        event_dict["remote_addr"] = request.remote_addr
     return event_dict
 
 
-def _configure_structlog(config: LoggingSettings):
+def _configure_structlog(settings: LoggingSettings):
     """
-    Set up structlog with processors and renderer.
+    Set up structlog with processors and renderer based on settings.
     """
 
     processors = [
         structlog.stdlib.filter_by_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
-        structlog.processors.TimeStamper(fmt=config.log_date_format, utc=True),
+        structlog.processors.TimeStamper(fmt=settings.log_date_format, utc=True),
         _add_request_context,
         structlog.processors.StackInfoRenderer(),
 
     ]
-    if config.debug:
+    if settings.debug:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
     else:
         renderer = structlog.processors.JSONRenderer()
@@ -81,13 +80,14 @@ def _setup_file_handler(settings: LoggingSettings, root_logger: logging.Logger):
 
 
 
-def setup_logging(app: Flask) -> None:
+def setup_logging(settings: LoggingSettings) -> None:
     """
     Main entry point for logging configuration.
     Must be called once during application initialization.
-    """
 
-    settings = LoggingSettings(app.config)
+    Args:
+        settings: LoggingSettings object containing all configuration parameters.
+    """
 
     # Configure root logger
     root_logger = logging.getLogger()
@@ -105,21 +105,24 @@ def setup_logging(app: Flask) -> None:
     # Set log levels for third-party libraries
 
     # SQLAlchemy
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    sqlalchemy_level = getattr(logging, settings.sqlalchemy_log_level.upper(), logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(sqlalchemy_level)
 
     # Werkzeug
-    werkzeug_level = logging.INFO if settings.debug else logging.WARNING
+    werkzeug_level = getattr(logging, settings.werkzeug_log_level.upper(), logging.WARNING)
     logging.getLogger("werkzeug").setLevel(werkzeug_level)
 
 
     # Log successful initialization
-    logger = structlog.get_logger(__name__)
+    logger = structlog.get_logger(setup_logging.__module__)
     logger.info(
         "logging_initialized",
-        log_level=settings.log_level,
         debug_mode=settings.debug,
+        log_level=settings.log_level,
         log_to_console=settings.log_to_console,
         log_to_file=settings.log_to_file,
         log_dir=settings.log_dir if settings.log_to_file else None,
-        log_file=settings.log_file_path if settings.log_to_file else None
+        log_file=settings.log_file_path if settings.log_to_file else None,
+        sqlalchemy_log_level=sqlalchemy_level,
+        werkzeug_log_level=werkzeug_level
     )

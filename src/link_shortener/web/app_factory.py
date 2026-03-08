@@ -55,7 +55,17 @@ def create_app(config=None) -> Flask:
     app.config.from_object(config)
 
     # Настройка логирования
-    setup_logging(app)
+    logging_settings = LoggingSettings(
+        log_dir=app.config.get("LOG_DIR", "logs"),
+        log_file_name=app.config.get("LOG_FILENAME", "link_shortener"),
+        log_date_format=app.config.get("LOG_DATE_FORMAT", "%Y-%m-%d %H:%M:%S"),
+        log_to_console=app.config.get("LOG_TO_CONSOLE", True),
+        log_to_file=app.config.get("LOG_TO_FILE", False),
+        debug=app.config.get("DEBUG", False),
+        sqlalchemy_log_level=app.config.get("SQLALCHEMY_LOG_LEVEL", "WARNING"),
+        werkzeug_log_level=app.config.get("WERKZEUG_LOG_LEVEL", "WARNING"),
+    )
+    setup_logging(logging_settings)
 
     app.cli.add_command(init_db_command)
 
