@@ -128,7 +128,7 @@ def create_app(config=None) -> Flask:
 
     # Логирование успешного запуска
     logger.info(
-        "Application Fylly initialized",
+        "Application Fully initialized",
         env=env,
         debug=app.config.get("DEBUG", False),
         testing=app.config.get("TESTING", False),
