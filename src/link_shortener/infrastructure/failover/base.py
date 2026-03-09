@@ -45,6 +45,7 @@ class FailoverService(Generic[T]):
         self._health_checker = health_checker
         self._lock = threading.RLock()
         self._current_index = 0 # index of currently active service
+        #self._last_attempt = 0.0
 
         self._stop_event = threading.Event()
         if self._check_interval is not None:
@@ -54,7 +55,7 @@ class FailoverService(Generic[T]):
             )
             self._thread.start()
 
-    def get_current_serivice_name(self) -> str:
+    def get_current_service_name(self) -> str:
         """Return the name of the currently active service"""
         with self._lock:
             return self._services[self._current_index][1]
@@ -87,7 +88,7 @@ class FailoverService(Generic[T]):
         except Exception:
             return False
 
-    def _swith_to_next(self) -> bool:
+    def _switсh_to_next(self) -> bool:
         """Switch to the next available service (higher index)"""
         with self._lock:
             for idx in range(self._current_index + 1, len(self._services)):
@@ -118,7 +119,7 @@ class FailoverService(Generic[T]):
                 except Exception as e:
                     self._log(f"Service {name} failed for {method_name}: {e}. Attempting switch.")
 
-                    if not self._swith_to_next():
+                    if not self._switсh_to_next():
                         break
                 attempts += 1
             
