@@ -35,7 +35,7 @@ class Container:
         """
 
         self.config = config
-        self._logger = None
+        self._loggers = {}
         self._audit_logger = None
         self._db_manager = None
         self._repository = None
@@ -46,7 +46,7 @@ class Container:
 
 
     # =============== General dependencies ==================================
-    def get_logger(self) -> Logger:
+    def get_logger(self, module_name: str) -> Logger:
         """
         Get the application logger.
 
@@ -55,14 +55,14 @@ class Container:
         StructLogger first, then StandardLogger, falling back to NullLogger.
         """
 
-        if not self._logger:
+        if module_name not in self._loggers:
             if not self.config.LOGGING_ENABLED:
                 # Print warning because logger is disabled – we can't log it.
                 print(
                     "WARNING: Logging is disabled. "
                     "All log messages will be discarded."
                 )
-                self._logger = NullLogger()
+                self._loggers[module_name] = NullLogger()
             else:
                 # Создание всех возможных логеров в порядке предпочтения
                 loggers = []
@@ -70,7 +70,7 @@ class Container:
                 # 1. StructLogger (Основной)
                 try:
 
-                    struct_logger = StructLogger("link_shortener")
+                    struct_logger = StructLogger(name=module_name)
                     struct_logger.debug("Initializing structlog")
                     loggers.append((struct_logger, "structlog"))
 
@@ -80,7 +80,7 @@ class Container:
                 # 2. StandartLogger (резервный)
                 try:
 
-                    std_logger = StandardLogger("link_shortener")
+                    std_logger = StandardLogger(name=module_name)
                     std_logger.debug("Initializing standard logger")
                     loggers.append((std_logger, "standart"))
 
@@ -91,10 +91,13 @@ class Container:
                 loggers.append((NullLogger(), "null"))
 
                 if len(loggers) == 1: # only NullLogger
-                    self._logger = NullLogger()
+                    self._loggers[module_name] = NullLogger()
                 else:
-                    self._logger = FailoverLogger(loggers, check_interval=30.0)
-        return self._logger
+                    self._loggers[module_name] = FailoverLogger(
+                        loggers, 
+                        check_interval=self.config.FAILOVER_CHECK_INTERVAL
+                    )
+        return self._loggers[module_name]
 
     def get_audit_logger(self) -> AuditLogger:
         """
@@ -111,14 +114,14 @@ class Container:
                     struct_audit = StructlogAuditLogger()
                     audit_loggers.append((struct_audit, "structlog_audit"))
                 except Exception as e:
-                    self.get_logger().error(f"Failed to initialize StructlogAuditLogger: {e}")
+                    self.get_logger(Container.__module__).error(f"Failed to initialize StructlogAuditLogger: {e}")
                 
                 # 2. StandardAuditLogger (Fallback)
                 try:
                     std_audit = StandardAuditLogger()
                     audit_loggers.append((std_audit, "standard_audit"))
                 except Exception as e:
-                    self.get_logger().error(f"Failed to initialize StandardAuditLogger: {e}")
+                    self.get_logger(Container.__module__).error(f"Failed to initialize StandardAuditLogger: {e}")
                 
                 # 3. NullAuditLogger (always available)
                 audit_loggers.append((NullAuditLogger(), "null_audit"))
@@ -127,10 +130,11 @@ class Container:
                     self._audit_logger = NullAuditLogger()
                 else:
                     self._audit_logger = FailoverAuditLogger(
-                        audit_loggers, check_interval=30.0
+                        audit_loggers, 
+                        check_interval=self.config.FAILOVER_CHECK_INTERVAL
                     )
             else:
-                self.get_logger().warning("Audit logging is disabled")
+                self.get_logger(Container.__module__).warning("Audit logging is disabled")
                 self._audit_logger = NullAuditLogger()
         return self._audit_logger
 
@@ -172,7 +176,7 @@ class Container:
 
         if not self._cache:
             if not self.config.CACHE_ENABLED:
-                self.get_logger().warning("Cache is disabled. Using NullCache.")
+                self.get_logger(Container.__module__).warning("Cache is disabled. Using NullCache.")
                 self._cache = NullCache()
 
             elif self.config.REDIS_ENABLED:
@@ -180,7 +184,7 @@ class Container:
                     self._cache = RedisLinkCache(
                         redis_url=self.config.REDIS_URL,
                         prefix=self.config.CACHE_LINK_PREFIX,
-                        logger=self.get_logger(),
+                        logger=self.get_logger(RedisLinkCache.__module__),
                         link_ttl=self.config.CACHE_LINK_TTL,
                         stats_ttl=self.config.CACHE_STATS_TTL,
                         connect_timeout=self.config.REDIS_CONNECT_TIMEOUT,
@@ -188,13 +192,13 @@ class Container:
                         retry_interval=self.config.REDIS_RETRY_INTERVAL
                     )
                 except Exception as e:
-                    self.get_logger().error(
+                    self.get_logger(Container.__module__).error(
                         f"Failed to initialize Redis cache: {e}. \
                         Falling back to NullCache."
                     )
                     self._cache = NullCache()
             else:
-                self.get_logger().info("Using in-memory cache (development).")
+                self.get_logger(Container.__module__).info("Using in-memory cache (development).")
                 self._cache = InMemoryLinkCache(
                     prefix=self.config.CACHE_LINK_PREFIX,
                     link_ttl=self.config.CACHE_LINK_TTL,
@@ -226,8 +230,9 @@ class Container:
                 cache=self.get_cache(),
                 shortening_policy=self.get_shortening_policy(),
                 base_url=self.config.BASE_URL,
-                logger=self.get_logger(),
-                audit_logger=self.get_audit_logger()
+                logger=self.get_logger(CreateShortLinkUseCase.__module__),
+                audit_logger=self.get_audit_logger(),
+                max_collision_attempts=self.config.MAX_COLLISION_ATTEMPTS
             )
         return self._use_cases['create']
 
@@ -240,7 +245,7 @@ class Container:
                 cache=self.get_cache(),
                 shortening_policy=self.get_shortening_policy(),
                 base_url=self.config.BASE_URL,
-                logger=self.get_logger(),
+                logger=self.get_logger(BatchCreateLinksUseCase.__module__),
                 audit_logger=self.get_audit_logger(),
                 batch_limit=self.config.BATCH_CREATE_LIMIT
             )
@@ -253,7 +258,7 @@ class Container:
             self._use_cases['info'] = GetLinkInfoUseCase(
                 repository=self.get_repository(),
                 cache=self.get_cache(),
-                logger=self.get_logger(),
+                logger=self.get_logger(GetLinkInfoUseCase.__module__),
                 base_url=self.config.BASE_URL,
             )
         return self._use_cases['info']
@@ -264,7 +269,7 @@ class Container:
             self._use_cases['extended_info'] = GetExtendLinkInfoUseCase(
                 repository=self.get_repository(),
                 cache=self.get_cache(),
-                logger=self.get_logger(),
+                logger=self.get_logger(GetExtendLinkInfoUseCase.__module__),
                 base_url=self.config.BASE_URL,
             )
         return self._use_cases['extended_info']
@@ -276,7 +281,7 @@ class Container:
             self._use_cases['stats'] = GetServiceStatsUseCase(
                 repository=self.get_repository(),
                 cache=self.get_cache(),
-                logger=self.get_logger(),
+                logger=self.get_logger(GetServiceStatsUseCase.__module__),
                 base_url=self.config.BASE_URL,
             )
         return self._use_cases["stats"]
@@ -289,7 +294,7 @@ class Container:
                 repository=self.get_repository(),
                 link_cache=self.get_cache(),
                 redirect_cache=self.get_cache(),
-                logger=self.get_logger(),
+                logger=self.get_logger(RedirectLinkUseCase.__module__),
                 audit_logger=self.get_audit_logger()
             )
         return self._use_cases['redirect']
