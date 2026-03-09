@@ -4,7 +4,7 @@ import click
 from flask import Flask, redirect, request, current_app
 from flask.cli import with_appcontext
 from flask_cors import CORS
-from link_shortener.infrastructure import InMemoryLinkCache, RedisLinkCache,  FailoverLogger, LoggingSettings
+from link_shortener.infrastructure import InMemoryLinkCache, RedisLinkCache, LoggingSettings
 from link_shortener.infrastructure.config.factory import get_config
 from link_shortener.infrastructure.logging.config import setup_logging
 from link_shortener.web.controllers.api_controller import ApiController
@@ -118,6 +118,8 @@ def create_app(config=None) -> Flask:
 
     # Финальное логирвоание состояния приложения
     logger = container.get_logger(create_app.__module__)
+    active_logger_name = container.get_active_logger_name()
+
     cache = container.get_cache()
 
     # Определение типа кэша
@@ -127,12 +129,7 @@ def create_app(config=None) -> Flask:
         cache_type = "InMemory"
     else:
         cache_type = "Disabled (NullCache)"
-    
-    # Определение активного логгера (Если это FailoverLogger)
-    if isinstance(logger, FailoverLogger):
-        active_logger = logger.get_current_logger_name()
-    else:
-        active_logger = type(logger).__name__
+
 
     # Логирование успешного запуска
     logger.info(
@@ -140,7 +137,7 @@ def create_app(config=None) -> Flask:
         env=env,
         debug=app.config.get("DEBUG", False),
         testing=app.config.get("TESTING", False),
-        active_logger=active_logger,
+        active_logger=active_logger_name,
         cache_type=cache_type,
         redis_enabled=app.config.get("REDIS_ENABLED", False),
         database_url=app.config.get("DATABASE_URL", "unknown"),
