@@ -4,11 +4,9 @@ import click
 from flask import Flask, redirect, request, current_app
 from flask.cli import with_appcontext
 from flask_cors import CORS
-from link_shortener.infrastructure.cache.memory_cache import InMemoryLinkCache
-from link_shortener.infrastructure.cache.redis_cache import RedisLinkCache
+from link_shortener.infrastructure import InMemoryLinkCache, RedisLinkCache,  FailoverLogger, LoggingSettings
 from link_shortener.infrastructure.config.factory import get_config
 from link_shortener.infrastructure.logging.config import setup_logging
-from link_shortener.infrastructure.logging.handlers.logger.failover import FailoverLogger
 from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.frontend_controller import FrontendController
 from link_shortener.web.dependency_injection import Container
@@ -77,8 +75,8 @@ def create_app(config=None) -> Flask:
     app.container = container
 
     # Регистрация middleware
-    RequestLoggingMiddleware(app, container.get_logger())
-    ErrorHandlerMiddleware(app, container.get_logger())
+    RequestLoggingMiddleware(app, container.get_logger(RequestLoggingMiddleware.__module__))
+    ErrorHandlerMiddleware(app, container.get_logger(ErrorHandlerMiddleware.__module__))
 
     # Создание контроллеров и регистрация блюпринтов
     api_controller = ApiController(container.get_link_service())
@@ -119,7 +117,7 @@ def create_app(config=None) -> Flask:
         container.close()
 
     # Финальное логирвоание состояния приложения
-    logger = container.get_logger()
+    logger = container.get_logger(create_app.__module__)
     cache = container.get_cache()
 
     # Определение типа кэша
