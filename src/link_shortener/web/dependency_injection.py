@@ -5,15 +5,15 @@ from link_shortener.domain import HashBasedShorteningPolicy
 from link_shortener.application import (
     Logger, LinkCache, LinkService, BatchCreateLinksUseCase,
     CreateShortLinkUseCase, GetLinkInfoUseCase, GetServiceStatsUseCase,
-    GetExtendLinkInfoUseCase, RedirectLinkUseCase, NullLogger, 
-    NullAuditLogger, NullCache
+    GetExtendLinkInfoUseCase, RedirectLinkUseCase, NullCache
 )
 
 from link_shortener.infrastructure import (
-    StructLogger, DatabaseManager, InMemoryLinkCache,
-    RedisLinkCache, StructlogAuditLogger, FailoverAuditLogger,
-    SQLAlchemyLinkRepository, FailoverLogger, StandardLogger, StandardAuditLogger
+    DatabaseManager, InMemoryLinkCache,
+    RedisLinkCache, SQLAlchemyLinkRepository
 )
+from link_shortener.infrastructure.logging.audit_manager import AuditManager
+from link_shortener.infrastructure.logging.logger_manager import LoggerManager
 
 
 
@@ -35,8 +35,8 @@ class Container:
         """
 
         self.config = config
-        self._loggers = {}
-        self._audit_logger = None
+        self._logger_manager = None
+        self._audit_manager = None
         self._db_manager = None
         self._repository = None
         self._cache = None
@@ -48,95 +48,29 @@ class Container:
     # =============== General dependencies ==================================
     def get_logger(self, module_name: str) -> Logger:
         """
-        Get the application logger.
-
-        If logging is disabled, returns NullLogger.
-        Otherwise, creates a FailoverLogger that attempts to use
-        StructLogger first, then StandardLogger, falling back to NullLogger.
+        Get the application logger for a specific module.
+        Delegates to the global LoggerManager.
         """
+        if not self._logger_manager:
+            self._logger_manager = LoggerManager(
+                failover_check_interval=self.config.FAILOVER_CHECK_INTERVAL
+            )
+        return self._logger_manager.get_logger(module_name)
 
-        if module_name not in self._loggers:
-            if not self.config.LOGGING_ENABLED:
-                # Print warning because logger is disabled – we can't log it.
-                print(
-                    "WARNING: Logging is disabled. "
-                    "All log messages will be discarded."
-                )
-                self._loggers[module_name] = NullLogger()
-            else:
-                # Создание всех возможных логеров в порядке предпочтения
-                loggers = []
-
-                # 1. StructLogger (Основной)
-                try:
-
-                    struct_logger = StructLogger(name=module_name)
-                    struct_logger.debug("Initializing structlog")
-                    loggers.append((struct_logger, "structlog"))
-
-                except Exception as e:
-                    print(f"WARNING: Failed to initialize StructLogger: {e}")
-                
-                # 2. StandartLogger (резервный)
-                try:
-
-                    std_logger = StandardLogger(name=module_name)
-                    std_logger.debug("Initializing standard logger")
-                    loggers.append((std_logger, "standart"))
-
-                except Exception as e:
-                    print(f"WARNING: Failed to initialize StandardLogger: {e}")
-                
-                # 3. NullLogger (всегда доступен)
-                loggers.append((NullLogger(), "null"))
-
-                if len(loggers) == 1: # only NullLogger
-                    self._loggers[module_name] = NullLogger()
-                else:
-                    self._loggers[module_name] = FailoverLogger(
-                        loggers, 
-                        check_interval=self.config.FAILOVER_CHECK_INTERVAL
-                    )
-        return self._loggers[module_name]
+    def get_active_logger_name(self) -> str:
+        """Get the name of the currently active logger (for monitoring)."""
+        return self._logger_manager.get_active_logger_name()
 
     def get_audit_logger(self) -> AuditLogger:
         """
         Get the audit logger for logging significant events (creation, access).
-        If audit is disabled, returns NullAuditLogger.
+        Delegates to the global AuditManager.
         """
-
-        if not self._audit_logger:
-            if self.config.AUDIT_ENABLED:
-                audit_loggers = []
-
-                # 1. StructLogAuditLogger (primary)
-                try:
-                    struct_audit = StructlogAuditLogger()
-                    audit_loggers.append((struct_audit, "structlog_audit"))
-                except Exception as e:
-                    self.get_logger(Container.__module__).error(f"Failed to initialize StructlogAuditLogger: {e}")
-                
-                # 2. StandardAuditLogger (Fallback)
-                try:
-                    std_audit = StandardAuditLogger()
-                    audit_loggers.append((std_audit, "standard_audit"))
-                except Exception as e:
-                    self.get_logger(Container.__module__).error(f"Failed to initialize StandardAuditLogger: {e}")
-                
-                # 3. NullAuditLogger (always available)
-                audit_loggers.append((NullAuditLogger(), "null_audit"))
-
-                if len(audit_loggers) == 1: # only NullAuditLogger
-                    self._audit_logger = NullAuditLogger()
-                else:
-                    self._audit_logger = FailoverAuditLogger(
-                        audit_loggers, 
-                        check_interval=self.config.FAILOVER_CHECK_INTERVAL
-                    )
-            else:
-                self.get_logger(Container.__module__).warning("Audit logging is disabled")
-                self._audit_logger = NullAuditLogger()
-        return self._audit_logger
+        if not self._audit_manager:
+            self._audit_manager = AuditManager(
+                failover_check_interval=self.config.FAILOVER_CHECK_INTERVAL
+            )
+        return self._audit_manager.get_audit_logger()
 
     def get_db_manager(self) -> DatabaseManager:
         """
