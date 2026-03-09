@@ -24,45 +24,23 @@ class ConfigFactory:
 
     @classmethod
     def create_config(cls, env: str = None) -> BaseConfig:
-        """
-        Create a configuration instance for the given environment.
-
-        If env is None, it reads from FLASK_ENV environment variable (default "development").
-        It also loads environment variables from a .env.{env} file if it exists,
-        falling back to .env.
-
-        Args:
-            env: Environment name (development, staging, production, testing).
-
-        Returns:
-            An instance of the appropriate configuration class.
-
-        Raises:
-            ValueError: If the environment name is unknown.
-        """
-
         if env is None:
             env = os.environ.get("FLASK_ENV", "development").lower()
 
-        # Загрузка переменных окружения из .env.{env} или .env
+        # Загружаем базовый .env, если есть
+        if os.path.exists(".env"):
+            load_dotenv(".env")
+
+        # Загружаем специфичный для окружения .env.{env}, если есть (с переопределением)
         env_file = f".env.{env}"
         if os.path.exists(env_file):
-            load_dotenv(env_file)
-        elif os.path.exists(".env"):
-            load_dotenv()
+            load_dotenv(env_file, override=True)
 
-        # Получение класса конфигурации
         config_class = cls.CONFIG_MAP.get(env)
         if not config_class:
-            raise ValueError(
-                f"Unknown environment: {env}",
-                f"Avalibles: {list(cls.CONFIG_MAP.keys())}",
-            )
+            raise ValueError(f"Unknown environment: {env}")
 
-        # Создание экземпляра
         config = config_class()
-
-        # Валидация
         config.validate()
         return config
 
