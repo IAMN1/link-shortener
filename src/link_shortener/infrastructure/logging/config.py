@@ -19,6 +19,15 @@ def _add_request_context(logger, method_name, event_dict):
         event_dict["remote_addr"] = request.remote_addr
     return event_dict
 
+def _replace_logger_name_with_module(logger, method_name, event_dict):
+    """
+    Replace the logger name with the module name if present.
+    This allows us to show the module name in square brackets instead of the
+    global logger name.
+    """
+    if 'module' in event_dict:
+        event_dict['logger'] = event_dict.pop('module')
+    return event_dict
 
 def _configure_structlog(settings: LoggingSettings):
     """
@@ -31,6 +40,7 @@ def _configure_structlog(settings: LoggingSettings):
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt=settings.log_date_format, utc=True),
         _add_request_context,
+        _replace_logger_name_with_module,
         structlog.processors.StackInfoRenderer(),
 
     ]
