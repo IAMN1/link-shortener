@@ -60,14 +60,14 @@ class Link:
         self.clicks += 1
         self.last_accessed = datetime.now()
 
-    def is_popular(self, threshold: int = 100) -> bool:
+    def is_popular(self, threshold: int) -> bool:
         """
         Business rule: determine if the link is popular 
             based on click threshold.
         """
         return self.clicks > threshold
 
-    def is_recent(self, days: int = 7) -> bool:
+    def is_recent(self, days: int) -> bool:
         """
         Business rule: check if the link was created 
             within the given number of days.

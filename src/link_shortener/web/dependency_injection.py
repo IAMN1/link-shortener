@@ -207,6 +207,8 @@ class Container:
                 cache=self.get_cache(),
                 logger=self.get_logger(GetExtendLinkInfoUseCase.__module__),
                 base_url=self.config.BASE_URL,
+                popular_threshold=self.config.POPULAR_THRESHOLD,
+                recent_days=self.config.RECENT_DAYS
             )
         return self._use_cases['extended_info']
 
