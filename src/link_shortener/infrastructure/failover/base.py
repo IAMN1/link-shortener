@@ -45,9 +45,10 @@ class FailoverService(Generic[T]):
         self._health_checker = health_checker
         self._lock = threading.RLock()
         self._current_index = 0 # index of currently active service
-        #self._last_attempt = 0.0
 
         self._stop_event = threading.Event()
+        self._thread = None
+
         if self._check_interval is not None:
             self._thread = threading.Thread(
                 target=self._periodic_check,
@@ -62,7 +63,10 @@ class FailoverService(Generic[T]):
 
     def _periodic_check(self):
         """Background thread: periodically try to upgrade to a higher-priority service."""
-        while not self._stop_event.wait(self._check_interval):
+        while True:
+            # Wait for interval, but allow thread to be killed on exit
+            if self._check_interval is not None:
+                threading.Event().wait(self._check_interval)
             self._attempt_upgrade()
 
     def _attempt_upgrade(self):

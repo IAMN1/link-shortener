@@ -1,5 +1,5 @@
 import threading
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 from link_shortener.application import Logger
 from link_shortener.application.ports.logger.null_logger import NullLogger
@@ -22,43 +22,60 @@ class LoggerManager:
     _failover_service: Optional[FailoverService] = None
     _loggers_cache: Dict[str, Logger] = {}
 
-    def __new__(cls, failover_check_interval: float = 30.0):
+    def __new__(cls, logger_type: str,  failover_check_interval: float = 30.0):
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, failover_check_interval: float = 30.0):
+    def __init__(self, logger_type: str, failover_check_interval: float = 30.0):
         if self._initialized:
             return
         self._initialized = True
         self._failover_check_interval = failover_check_interval
-        self._init_failover_service()
+        self._init_failover_service(logger_type)
 
-    def _init_failover_service(self):
+    def _init_failover_service(self, logger_type: str):
         """Create the list of logger implementations and the failover service."""
-        loggers = []
 
-        # 1. StructLogger (highest priority)
-        try:
-            struct_logger = StructLogger(name="global")
-            # Test it quickly
-            struct_logger.debug("Initializing structlog")
-            loggers.append((struct_logger, "structlog"))
-        except Exception as e:
-            print(f"WARNING: Failed to initialize StructLogger: {e}")
+        if logger_type == "auto":
+            order = ["structlog", "standard"]
+        elif logger_type == "structlog":
+            order = ["structlog", "standard"]
+        elif logger_type == "standard":
+            order = ["standard", "structlog"]
+        elif logger_type == "null":
+            order = ["null"]
+        else:
+            order = ["structlog", "standard"]
 
-        # 2. StandardLogger
-        try:
-            std_logger = StandardLogger(name="global")
-            std_logger.debug("Initializing standard logger")
-            loggers.append((std_logger, "standard"))
-        except Exception as e:
-            print(f"WARNING: Failed to initialize StandardLogger: {e}")
+        loggers: List[Tuple[Logger, str]] = []
 
-        # 3. NullLogger (always available)
-        loggers.append((NullLogger(), "null"))
+        for type_ in order:
+            if type_ == "structlog":
+
+                try:
+                    logger = StructLogger(name="global")
+                    logger.debug("Initializing structlog")
+                    loggers.append((logger, "structlog"))
+                except Exception as e:
+                    print(f"WARNING: Failed to initialize StructLogger: {e}")
+
+            elif type_ == "standard":
+
+                try:
+                    logger = StandardLogger(name="global")
+                    logger.debug("Initializing standard logger")
+                    loggers.append((logger, "standard"))
+                except Exception as e:
+                    print(f"WARNING: Failed to initialize StandardLogger: {e}")
+
+            elif type_ == "null":
+                loggers.append((NullLogger(), "null"))
+
+        if not loggers:
+            loggers.append((NullLogger(), "null"))
 
         if len(loggers) == 1:  # only NullLogger
             self._failover_service = None

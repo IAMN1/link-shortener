@@ -18,40 +18,58 @@ class AuditManager:
     _failover_service: Optional[FailoverService] = None
     _audit_logger: Optional[AuditLogger] = None
 
-    def __new__(cls, failover_check_interval: float = 30.0):
+    def __new__(cls, audit_type: str, failover_check_interval: float = 30.0):
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, failover_check_interval: float = 30.0):
+    def __init__(self, audit_type: str,  failover_check_interval: float = 30.0):
         if self._initialized:
             return
         self._initialized = True
         self._failover_check_interval = failover_check_interval
-        self._init_failover_service()
+        self._init_failover_service(audit_type)
 
-    def _init_failover_service(self):
+    def _init_failover_service(self, audit_type: str):
         """Create the list of audit logger implementations."""
+
+        if audit_type == "auto":
+            order = ["structlog", "standard"]
+        elif audit_type == "structlog":
+            order = ["structlog", "standard"]
+        elif audit_type == "standard":
+            order = ["standard", "structlog"]
+        elif audit_type == "null":
+            order = ["null"]
+        else:
+            order = ["structlog", "standard"]
+
         audit_loggers: List[Tuple[AuditLogger, str]] = []
 
-        # 1. StructlogAuditLogger (highest priority)
-        try:
-            struct_audit = StructlogAuditLogger()
-            audit_loggers.append((struct_audit, "structlog_audit"))
-        except Exception as e:
-            print(f"WARNING: Failed to initialize StructlogAuditLogger: {e}")
+        for type_ in order:
+            if type_ == "structlog":
 
-        # 2. StandardAuditLogger
-        try:
-            std_audit = StandardAuditLogger()
-            audit_loggers.append((std_audit, "standard_audit"))
-        except Exception as e:
-            print(f"WARNING: Failed to initialize StandardAuditLogger: {e}")
+                try:
+                    struct_audit = StructlogAuditLogger()
+                    audit_loggers.append((struct_audit, "structlog_audit"))
+                except Exception as e:
+                    print(f"WARNING: Failed to initialize StructlogAuditLogger: {e}")
+            
+            elif type_ == "standard":
 
-        # 3. NullAuditLogger (always available)
-        audit_loggers.append((NullAuditLogger(), "null_audit"))
+                try:
+                    std_audit = StandardAuditLogger()
+                    audit_loggers.append((std_audit, "standard_audit"))
+                except Exception as e:
+                    print(f"WARNING: Failed to initialize StandardAuditLogger: {e}")
+            
+            elif type_ == "null":
+                audit_loggers.append((NullAuditLogger(), "null_audit"))
+        
+        if not audit_loggers:
+            audit_loggers.append((NullAuditLogger(), "null_audit"))
 
         if len(audit_loggers) == 1:  # only NullAuditLogger
             self._failover_service = None
