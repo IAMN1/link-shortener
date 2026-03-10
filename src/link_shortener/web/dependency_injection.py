@@ -52,8 +52,14 @@ class Container:
         Delegates to the global LoggerManager.
         """
         if not self._logger_manager:
+            # Determine effective logger type based on LOGGING_ENABLED flag
+            if not self.config.LOGGING_ENABLED:
+                effective_logger_type = "null"
+            else:
+                effective_logger_type = self.config.LOGGER_TYPE
+            
             self._logger_manager = LoggerManager(
-                logger_type=self.config.LOGGER_TYPE,
+                logger_type=effective_logger_type,
                 failover_check_interval=self.config.FAILOVER_CHECK_INTERVAL
             )
         return self._logger_manager.get_logger(module_name)
@@ -68,8 +74,14 @@ class Container:
         Delegates to the global AuditManager.
         """
         if not self._audit_manager:
+            # Determine effective audit type based on AUDIT_ENABLED flag
+            if not self.config.AUDIT_ENABLED:
+                effective_audit_type = "null"
+            else:
+                effective_audit_type = self.config.AUDIT_TYPE
+            
             self._audit_manager = AuditManager(
-                audit_type=self.config.AUDIT_TYPE,
+                audit_type=effective_audit_type,
                 failover_check_interval=self.config.FAILOVER_CHECK_INTERVAL
             )
         return self._audit_manager.get_audit_logger()
