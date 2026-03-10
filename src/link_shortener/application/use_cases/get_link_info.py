@@ -95,6 +95,8 @@ class GetExtendLinkInfoUseCase:
     cache: LinkCache
     base_url: str
     logger: Logger
+    popular_threshold: int
+    recent_days: int
 
     def execute(self, short_code_str: str) -> ExtendedLinkInfoResponse:
         """
@@ -123,7 +125,10 @@ class GetExtendLinkInfoUseCase:
             if cached_link:
                 self.logger.info("Cache hit for code", code=short_code.value)
                 return ExtendedLinkInfoResponse.from_link(
-                    cached_link, base_url=self.base_url
+                    cached_link, 
+                    base_url=self.base_url,
+                    popular_threshold=self.popular_threshold,
+                    recent_days=self.recent_days
                 )
 
             # Query repository
@@ -137,7 +142,12 @@ class GetExtendLinkInfoUseCase:
 
             self.logger.info("Found in repository", short_code=short_code.value)
 
-            return ExtendedLinkInfoResponse.from_link(link, self.base_url)
+            return ExtendedLinkInfoResponse.from_link(
+                link, 
+                base_url=self.base_url,
+                popular_threshold=self.popular_threshold,
+                recent_days=self.recent_days
+            )
 
         except ValueError as e:
             self.logger.error("Invalid short code format", short_code=short_code_str)

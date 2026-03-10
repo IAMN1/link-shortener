@@ -322,13 +322,15 @@ class ExtendedLinkInfoResponse:
     last_access_days_ago: Optional[int]
 
     @classmethod
-    def from_link(cls, link: Link, base_url: str) -> "ExtendedLinkInfoResponse":
+    def from_link(cls, link: Link, base_url: str, popular_threshold: int, recent_days: int) -> "ExtendedLinkInfoResponse":
         """
         Create an extended DTO from a domain Link entity.
 
         Args:
             link: Domain Link object.
             base_url: Base URL of the service.
+            popular_threshold: Threshold for determining popularity.
+            recent_days: Number of days to consider recent.
 
         Returns:
             ExtendedLinkInfoResponse with computed metrics.
@@ -351,8 +353,8 @@ class ExtendedLinkInfoResponse:
             clicks=link.clicks,
             created_at=link.created_at,
             last_accessed=link.last_accessed,
-            is_popular=link.is_popular(),
-            is_recent=link.is_recent(),
+            is_popular=link.is_popular(threshold=popular_threshold),
+            is_recent=link.is_recent(days=recent_days),
             age_days=age_days,
             clicks_per_day=clicks_per_day,
             last_access_days_ago=last_access_days_ago,
