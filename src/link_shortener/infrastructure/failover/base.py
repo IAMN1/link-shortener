@@ -92,7 +92,7 @@ class FailoverService(Generic[T]):
         except Exception:
             return False
 
-    def _switсh_to_next(self) -> bool:
+    def _switch_to_next(self) -> bool:
         """Switch to the next available service (higher index)"""
         with self._lock:
             for idx in range(self._current_index + 1, len(self._services)):
@@ -123,7 +123,7 @@ class FailoverService(Generic[T]):
                 except Exception as e:
                     self._log(f"Service {name} failed for {method_name}: {e}. Attempting switch.")
 
-                    if not self._switсh_to_next():
+                    if not self._switch_to_next():
                         break
                 attempts += 1
             
