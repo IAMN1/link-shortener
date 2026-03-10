@@ -53,6 +53,7 @@ class Container:
         """
         if not self._logger_manager:
             self._logger_manager = LoggerManager(
+                logger_type=self.config.LOGGER_TYPE,
                 failover_check_interval=self.config.FAILOVER_CHECK_INTERVAL
             )
         return self._logger_manager.get_logger(module_name)
@@ -68,6 +69,7 @@ class Container:
         """
         if not self._audit_manager:
             self._audit_manager = AuditManager(
+                audit_type=self.config.AUDIT_TYPE,
                 failover_check_interval=self.config.FAILOVER_CHECK_INTERVAL
             )
         return self._audit_manager.get_audit_logger()

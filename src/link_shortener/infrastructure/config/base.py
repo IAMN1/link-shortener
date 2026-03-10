@@ -20,7 +20,9 @@ class BaseConfig:
     AUDIT_ENABLED: bool = True
     CACHE_ENABLED: bool = True
 
-    # =============== Logging settings ===============================================
+    # =============== Logging and Audit settings ===============================================
+    LOGGER_TYPE: str = os.environ.get("LOGGER_TYPE", "auto") # auto / structlog / standard / null
+    AUDIT_TYPE: str = os.environ.get("AUDIT_TYPE", "auto") # auto / structlog / standard / null
     LOG_DIR: str = os.environ.get("LOG_DIR", "logs")
     LOG_FILENAME: str = "link_shortener"
     LOG_LEVEL: int = logging.DEBUG
