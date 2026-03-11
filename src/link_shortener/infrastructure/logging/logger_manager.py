@@ -1,4 +1,4 @@
-import threading
+import sys
 from typing import Dict, List, Optional, Tuple
 
 from link_shortener.application import Logger
@@ -10,34 +10,29 @@ from link_shortener.infrastructure.logging.handlers.logger.structlog import Stru
 
 class LoggerManager:
     """
-    Singleton manager for failover logger service.
+    Manages logger instances with failover support.
 
-    Creates a single FailoverService instance that manages multiple logger
-    implementations (structlog, standard, null). It then provides proxy loggers
-    for different modules that delegate calls to the current active logger.
+    This class is not a singleton – its lifecycle is controlled by the DI container.
+    It provides loggers for different modules, each potentially wrapped to add module context.
     """
 
-    _instance = None
-    _lock = threading.Lock()
-    _failover_service: Optional[FailoverService] = None
-    _loggers_cache: Dict[str, Logger] = {}
-
-    def __new__(cls, logger_type: str,  failover_check_interval: float = 30.0):
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super().__new__(cls)
-                cls._instance._initialized = False
-        return cls._instance
 
     def __init__(self, logger_type: str, failover_check_interval: float = 30.0):
-        if self._initialized:
-            return
-        self._initialized = True
+        """
+        Initialize the logger manager.
+
+        Args:
+            logger_type: Type of logger ('auto', 'structlog', 'standard', 'null').
+            failover_check_interval: Seconds between background health checks.
+        """
         self._failover_check_interval = failover_check_interval
+        self._failover_service: Optional[FailoverService] = None
+        self._active_logger: Optional[Logger] = None
+        self._loggers_cache: Dict[str, Logger] = {}
         self._init_failover_service(logger_type)
 
     def _init_failover_service(self, logger_type: str):
-        """Create the list of logger implementations and the failover service."""
+        """Build the ordered list of logger implementations based on type."""
 
         if logger_type == "auto":
             order = ["structlog", "standard"]
@@ -57,19 +52,23 @@ class LoggerManager:
 
                 try:
                     logger = StructLogger(name="global")
-                    logger.debug("Initializing structlog")
                     loggers.append((logger, "structlog"))
                 except Exception as e:
-                    print(f"WARNING: Failed to initialize StructLogger: {e}")
+                    print(
+                        f"WARNING: Failed to initialize StructLogger: {e}",
+                        file=sys.stderr
+                    )
 
             elif type_ == "standard":
 
                 try:
                     logger = StandardLogger(name="global")
-                    logger.debug("Initializing standard logger")
                     loggers.append((logger, "standard"))
                 except Exception as e:
-                    print(f"WARNING: Failed to initialize StandardLogger: {e}")
+                    print(
+                        f"WARNING: Failed to initialize StandardLogger: {e}",
+                        file=sys.stderr
+                    )
 
             elif type_ == "null":
                 loggers.append((NullLogger(), "null"))
@@ -102,6 +101,12 @@ class LoggerManager:
         If a proxy for this module already exists, returns it from cache.
         Otherwise creates a new FailoverLoggerProxy that will delegate calls
         to the failover service, passing the module name as additional context.
+
+        Args:
+            module_name: Name of the module requesting the logger.
+
+        Returns:
+            Logger instance.
         """
         if module_name in self._loggers_cache:
             return self._loggers_cache[module_name]
@@ -128,6 +133,11 @@ class LoggerManager:
             else:
                 return "null"
         return "unknown"
+    
+    def shutdown(self):
+        """Stop the background failover checker if it exists."""
+        if self._failover_service:
+            self._failover_service.shutdown()
 
 
 class FailoverLoggerProxy(Logger):

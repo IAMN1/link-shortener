@@ -12,6 +12,15 @@ from link_shortener.domain.value_objects.url_hash import UrlHash
 class Link:
     """
     Domain entity representing a shortened link with business logic.
+
+    Attributes:
+        id: Unique identifier (UUID string).
+        url_hash: Hash of the original URL (for deduplication).
+        short_code: Generated short code.
+        original_url: Original URL value object.
+        created_at: Timestamp when the link was created.
+        clicks: Number of times the link has been accessed.
+        last_accessed: Timestamp of the last access (if any).
     """
 
     id: str
@@ -54,23 +63,32 @@ class Link:
 
     def increment_clicks(self) -> None:
         """
-        Business rule: increment click counter 
-            and update last accessed timestamp.
+        Business rule: increment click counter and update last accessed timestamp.
         """
         self.clicks += 1
         self.last_accessed = datetime.now()
 
     def is_popular(self, threshold: int) -> bool:
         """
-        Business rule: determine if the link is popular 
-            based on click threshold.
+        Business rule: determine if the link is popular based on click threshold.
+
+        Args:
+            threshold: Minimum number of clicks to be considered popular.
+
+        Returns:
+            True if clicks > threshold, else False.
         """
         return self.clicks > threshold
 
     def is_recent(self, days: int) -> bool:
         """
-        Business rule: check if the link was created 
-            within the given number of days.
+        Business rule: check if the link was created within the given number of days.
+
+        Args:
+            days: Number of days to consider as "recent".
+
+        Returns:
+            True if created_at is within the last `days` days, else False.
         """
         age = datetime.now() - self.created_at
         return age.days <= days

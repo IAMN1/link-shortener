@@ -22,29 +22,32 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         - Link by code: {prefix}:code:{short_code}
         - Link by hash: {prefix}:hash:{url_hash}
         - Stats: {prefix}:stats:global
-
     """
 
     def __init__(
         self, redis_url: str, prefix: str, logger: Logger, link_ttl: int, 
-        stats_ttl: int, connect_timout: int, socket_timeout: int, retry_interval: int
+        stats_ttl: int, connect_timeout: int, socket_timeout: int, retry_interval: int
     ):
         """
         Initialize Redis cache.
 
         Args:
-            redis_url: Redis connection URL
+            redis_url: Redis connection URL.
             prefix: Prefix for cache keys.
+            logger: Logger instance for logging errors and info.
             link_ttl: TTL in seconds for link entries.
             stats_ttl: TTL in seconds for stats entries.
+            connect_timeout: Socket connect timeout (seconds).
+            socket_timeout: Socket read/write timeout (seconds).
+            retry_interval: Seconds to wait before reconnection attempt after failure.
         """
         self.redis_url = redis_url
         self.key_gen = CacheKeyGenerator(prefix=prefix)
         self.logger = logger
         self.ttl = link_ttl
         self.stats_ttl = stats_ttl
-        self.connect_timeout = connect_timout,
-        self.socket_timeout = socket_timeout,
+        self.connect_timeout = connect_timeout
+        self.socket_timeout = socket_timeout
         self.retry_interval = retry_interval
 
         # Internal state for failover
@@ -55,7 +58,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         self._connect()
 
     def _connect(self):
-        """Initial connection attempt to Redis."""
+        """Establish initial connection to Redis."""
         try:
             self._client = redis.from_url(
                 self.redis_url, 
@@ -77,9 +80,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     
     def _ensure_connection(self) -> bool:
         """
-        Check if connection is alive 
-            if not, attempt to reconnect if retry interval elapsed.
-        
+        Check if connection is alive; if not, attempt to reconnect after retry interval.
+
         Returns:
             True if connection is available, False otherwise.
         """
@@ -124,7 +126,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         """
         Execute a Redis operation; return None on failure.
 
-        This wrapper ensures we don't crash the application if Redis is down.
+        This wrapper ensures the application does not crash if Redis is down.
         """
         if not self._ensure_connection():
             return None
@@ -135,8 +137,13 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             self.logger.error(f"Redis operation failed: {e}")
             
             self._available = False
-            
+            self._client = None
             return None
+
+    def close(self):
+        """Close the Redis connection."""
+        if self._client:
+            self._client.close()
 
     # ------------------------------------------------------------------
     # Serialization helpers
@@ -202,18 +209,24 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     # LinkCache methods
     # ------------------------------------------------------------------
     def get_by_code(self, short_code: ShortCode) -> Optional[Link]:
+        """Retrieve a link by its short code."""
+
         key = self.key_gen.for_short_code(short_code.value)
         data = self._execute(self._client.get, key)
 
         return self._deserialize(data) if data else None
 
     def get_by_hash(self, url_hash: UrlHash) -> Optional[Link]:
+        """Retrieve a link by its URL hash."""
+
         key = self.key_gen.for_url_hash(url_hash.value)
         data = self._execute(self._client.get, key)
 
         return self._deserialize(data) if data else None
 
     def get_by_hashes(self, url_hashes: List[UrlHash]) -> Dict[UrlHash, Optional[Link]]:
+        """Retrieve multiple links by their URL hashes."""
+
         keys = [self.key_gen.for_url_hash(h.value) for h in url_hashes]
         data_list = self._execute(self._client.mget, keys) or []
 
@@ -224,6 +237,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         return result
 
     def save(self, link: Link) -> None:
+        """Store a link under multiple keys (hash, code, redirect) with TTL."""
+
         if not self._ensure_connection():
             return
         try:
@@ -247,7 +262,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             self._available = False
 
     def save_many(self, links: List[Link]) -> None:
-        
+        """Bulk store multiple links."""
+
         if not links or not self._ensure_connection():
             return
         
@@ -272,6 +288,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             self._available = False
 
     def delete(self, short_code: ShortCode) -> None:
+        """Remove a link and its associated keys from cache."""
 
         if not self._ensure_connection():
             return
@@ -300,6 +317,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     # RedirectCache methods
     # ------------------------------------------------------------------
     def get_original_url(self, short_code: ShortCode) -> Optional[str]:
+        """Retrieve original URL from redirect cache (L1)."""
+
         key = self.key_gen.for_redirect(short_code.value)
         
         data = self._execute(self._client.get, key)
@@ -307,6 +326,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         return data.decode("utf-8") if data else None
 
     def save_original_url(self, short_code: ShortCode, original_url: str) -> None:
+        """Store original URL in redirect cache with TTL."""
+
         if not self._ensure_connection():
             return
         
@@ -324,6 +345,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     # StatsCache methods
     # ------------------------------------------------------------------
     def get_stats(self) -> Optional[Dict[str, Any]]:
+        """Retrieve cached service statistics."""
+
         key = self.key_gen.for_stats()
         
         data = self._execute(self._client.get, key)
@@ -331,6 +354,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         return json.loads(data.decode("utf-8")) if data else None
 
     def save_stats(self, stats: Dict[str, Any]) -> None:
+        """Cache service statistics with TTL."""
+
         if not self._ensure_connection():
             return
         
@@ -346,6 +371,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             self._available = False
 
     def delete_stats(self) -> None:
+        """Invalidate cached statistics."""
+
         if not self._ensure_connection():
             return
         

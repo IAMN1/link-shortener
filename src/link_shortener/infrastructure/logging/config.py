@@ -66,7 +66,7 @@ def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logge
     """
     if settings.log_to_console:
         handler = logging.StreamHandler()
-        handler.setLevel(settings.log_level)
+        handler.setLevel(settings.get_log_level_int())
         handler.setFormatter(logging.Formatter("%(message)s"))
 
         root_logger.addHandler(handler)
@@ -83,52 +83,71 @@ def _setup_file_handler(settings: LoggingSettings, root_logger: logging.Logger):
             filename=settings.log_file_path,
             encoding="utf-8",
         )
-        handler.setLevel(settings.log_level)
+        handler.setLevel(settings.get_log_level_int())
         handler.setFormatter(logging.Formatter("%(message)s"))
 
         root_logger.addHandler(handler)
 
 
 
-def setup_logging(settings: LoggingSettings) -> None:
+def setup_logging(settings: LoggingSettings, logging_enabled: bool, audit_enabled: bool) -> None:
     """
     Main entry point for logging configuration.
-    Must be called once during application initialization.
 
     Args:
         settings: LoggingSettings object containing all configuration parameters.
+        general_enabled: Enable general application logging (to console/file).
+        audit_enabled: Enable audit logging (to console/file).
     """
 
-    # Configure root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(settings.log_level)
-    root_logger.handlers.clear()
-
-    # Configure structlog
+    # Always set up a structog for uniform formatting
     _configure_structlog(settings)
 
-    # Add handlers
-    _setup_console_handler(settings, root_logger)
-    _setup_file_handler(settings, root_logger)
+    # Setting general logging (root logger)
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    if logging_enabled:
+        root_logger.setLevel(settings.get_log_level_int())
+        _setup_console_handler(settings, root_logger)
+        _setup_file_handler(settings, root_logger)
+    else:
+        root_logger.setLevel(logging.CRITICAL)
+        root_logger.addHandler(logging.NullHandler())
+
+    # Setting up an audit (a logger "audit")
+    audit_logger = logging.getLogger("audit")
+    audit_logger.handlers.clear()
+    audit_logger.propagate = False  # do not pass on events in the root logger
+    if audit_enabled:
+        audit_logger.setLevel(settings.get_log_level_int())
+        # Use the same handlers (console/file) as for general logging
+        _setup_console_handler(settings, audit_logger)
+        _setup_file_handler(settings, audit_logger)
+    else:
+        audit_logger.setLevel(logging.CRITICAL)
+        audit_logger.addHandler(logging.NullHandler())
+
+    # Set the levels for third-party libraries (default CRITICAL if logging is off)
+    sqlalchemy_level = logging.CRITICAL
+    werkzeug_level = logging.CRITICAL
+    
+    if logging_enabled:
+        sqlalchemy_level = getattr(logging, settings.sqlalchemy_log_level.upper(), logging.WARNING)
+        logging.getLogger("sqlalchemy.engine").setLevel(sqlalchemy_level)
+
+        werkzeug_level = getattr(logging, settings.werkzeug_log_level.upper(), logging.WARNING)
+        logging.getLogger("werkzeug").setLevel(werkzeug_level)
+    else:
+        logging.getLogger("sqlalchemy.engine").setLevel(logging.CRITICAL)
+        logging.getLogger("werkzeug").setLevel(logging.CRITICAL)
 
 
-    # Set log levels for third-party libraries
-
-    # SQLAlchemy
-    sqlalchemy_level = getattr(logging, settings.sqlalchemy_log_level.upper(), logging.WARNING)
-    logging.getLogger("sqlalchemy.engine").setLevel(sqlalchemy_level)
-
-    # Werkzeug
-    werkzeug_level = getattr(logging, settings.werkzeug_log_level.upper(), logging.WARNING)
-    logging.getLogger("werkzeug").setLevel(werkzeug_level)
-
-
-    # Log successful initialization
+    # Log in the successful initialization (only if general logging is included)
     logger = structlog.get_logger(setup_logging.__module__)
     logger.info(
         "logging_initialized",
         debug_mode=settings.debug,
-        log_level=settings.log_level,
+        log_level=settings.log_level_str,
         log_to_console=settings.log_to_console,
         log_to_file=settings.log_to_file,
         log_dir=settings.log_dir if settings.log_to_file else None,

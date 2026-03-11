@@ -24,14 +24,28 @@ class ConfigFactory:
 
     @classmethod
     def create_config(cls, env: str = None) -> BaseConfig:
+        """
+        Create a configuration object for the given environment.
+
+        Args:
+            env: Environment name (development, staging, production, testing).
+                 If None, reads from FLASK_ENV environment variable (default: development).
+
+        Returns:
+            Configuration instance.
+
+        Raises:
+            ValueError: If environment is unknown.
+        """
+
         if env is None:
             env = os.environ.get("FLASK_ENV", "development").lower()
 
-        # Загружаем базовый .env, если есть
+        # Load base .env if exists
         if os.path.exists(".env"):
             load_dotenv(".env")
 
-        # Загружаем специфичный для окружения .env.{env}, если есть (с переопределением)
+        # Load environment-specific .env.{env} if exists (overrides)
         env_file = f".env.{env}"
         if os.path.exists(env_file):
             load_dotenv(env_file, override=True)

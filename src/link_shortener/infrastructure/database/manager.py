@@ -17,11 +17,12 @@ class DatabaseManager:
 
     def __init__(self, database_url: str, echo: bool, pool_pre_ping: bool):
         """
-        Initialize the manager with database URL and optional echo flag.
+        nitialize the manager with database URL and optional echo flag.
 
         Args:
             database_url: SQLAlchemy database URL.
             echo: If True, log all SQL statements.
+            pool_pre_ping: If True, test connections before using them.
         """
 
         self.database_url = database_url

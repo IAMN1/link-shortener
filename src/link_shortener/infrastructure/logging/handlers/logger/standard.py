@@ -18,13 +18,7 @@ class StandardLogger(Logger):
         Args:
             name: Logger name.
         """
-        self._logger = logging.getLogger(name)
-
-        # Ensure there's at least a NullHandler 
-        #   to avoid "No handlers" warning
-        if not self._logger.handlers:
-            self._logger.addHandler(logging.NullHandler())
-    
+        self._logger = logging.getLogger(name)    
 
     def _log(self, level: str, message: str, **kwargs):
         """Internal method to log with extra data."""

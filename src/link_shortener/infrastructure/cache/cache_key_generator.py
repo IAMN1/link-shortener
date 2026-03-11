@@ -6,13 +6,12 @@ class CacheKeyGenerator:
     and ensure all cache keys follow the same pattern.
     """
 
-    def __init__(self, prefix: str = "link_shortener"):
+    def __init__(self, prefix: str):
         """
         Initialize the key generator.
 
         Args:
-            prefix (str, optional): Common prefix for all keys. 
-                Defaults to "link_shortener".
+            prefix: Common prefix for all keys.
         """
         self.prefix = prefix
 
@@ -68,5 +67,6 @@ class CacheKeyGenerator:
         """Generate key for global service statistics cache.
 
         Returns:
-            Cache key for stats."""
+            Cache key for stats.
+        """
         return self._build_key("stats", "global")

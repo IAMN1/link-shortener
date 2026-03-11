@@ -8,6 +8,9 @@ class UrlHash:
     Value object representing a SHA-256 hash of a URL.
 
     Used for deduplication. Format: 64 lowercase hex characters.
+
+    Examples:
+        - "e41bc44298fc1c149afbf4c8996fb94432ae41e11519b934da495991c7852v911"
     """
 
     value: str

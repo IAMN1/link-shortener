@@ -7,8 +7,9 @@ from link_shortener.domain.value_objects.url_hash import UrlHash
 
 class ShorteningPolicy(ABC):
     """
-    Domain policy defining business rules 
-        for short code and hash generation.
+    Domain policy defining business rules for short code and hash generation.
+
+    All shortening strategies must implement these methods.
     """
 
     @abstractmethod
@@ -39,8 +40,8 @@ class ShorteningPolicy(ABC):
 
     def generate_code_for_url(self, original_url: OriginalUrl) -> ShortCode:
         """
-        Convenience method: generate a short code directly 
-            from a URL (uses normalized string).
+        Convenience method: generate a short code directly from a URL
+        (uses normalized string).
 
         Args:
             original_url: The original URL.

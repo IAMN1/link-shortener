@@ -24,8 +24,8 @@ class RedirectLinkUseCase:
     6. Cache URL in L1 and L2 for future requests.
     7. Return original URL.
 
-    Click increment and audit are done asynchronously 
-        to not block the redirect response.
+    Click increment and audit are done asynchronously
+    to not block the redirect response.
     """
 
     repository: LinkRepository
@@ -39,19 +39,17 @@ class RedirectLinkUseCase:
         Execute the redirect use case.
 
         Args:
-            short_code_str (str): Short code as string.
-            user_ip (Optional[str], optional): Client IP (for audit). 
-                Defaults to None.
-            user_agent (Optional[str], optional): Client User-Agent (for audit). 
-                Defaults to None.
+            short_code_str: Short code as string.
+            user_ip: Client IP (for audit). Optional.
+            user_agent: Client User-Agent (for audit). Optional.
+
+        Returns:
+            Original URL to redirect to.
 
         Raises:
             LinkNotFoundError: If link not found.
             ValueError: If short code format is invalid.
-            RuntimeError: _description_
-
-        Returns:
-            str: Original URL to redirect to.
+            RuntimeError: If an unexpected error occurs.
         """
         try:
             # Step 1: Validate short code
@@ -137,11 +135,10 @@ class RedirectLinkUseCase:
         This is a temporary solution to avoid blocking the redirect response.
         In production, this should be replaced with a proper task queue (e.g., Celery).
 
-        The thread:
-        - Fetches the link (from cache or repository).
-        - Audits the access.
-        - Increments click count in repository.
-        - Updates the cache with incremented count.
+        Args:
+            short_code: Short code of the accessed link.
+            user_ip: Client IP address.
+            user_agent: Client User-Agent.
         """
         def task():
             try:

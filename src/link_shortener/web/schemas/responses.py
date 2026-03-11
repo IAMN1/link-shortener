@@ -68,6 +68,8 @@ class ExtendedLinkInfoResponse(BaseModel):
 
     @field_serializer('created_at', 'last_accessed')
     def serialize_dt(self, value: Optional[datetime]) -> Optional[str]:
+        """Serialize datetime fields to ISO format strings."""
+
         if value is None:
             return None
         return value.isoformat()
@@ -92,6 +94,8 @@ class ExtendedLinkInfoResponse(BaseModel):
 
     @classmethod
     def from_dto(cls, dto) -> 'ExtendedLinkInfoResponse':
+        """Create a response schema from a ExtendedLinkInfoResponse DTO."""
+
         return cls(
             short_code=dto.short_code,
             short_url=dto.short_url,

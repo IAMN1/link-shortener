@@ -19,11 +19,9 @@ class AuditLogger(ABC):
         Log a URL creation event.
 
         Args:
-            link (Link): The newly created Link entity.
-            user_ip (Optional[str], optional): IP address of the user 
-                who created the link. Defaults to None.
-            user_agent (Optional[str], optional): User-Agent string of the client. 
-                Defaults to None.
+            link: The newly created Link entity.
+            user_ip: IP address of the user who created the link. Optional.
+            user_agent: User-Agent string of the client. Optional.
             **kwargs: Additional context (e.g., batch_id for bulk operations).
         """
         pass
@@ -40,11 +38,9 @@ class AuditLogger(ABC):
         Log a URL access (redirect) event.
 
         Args:
-            link (Link): The Link entity being accessed.
-            user_ip (Optional[str], optional): IP address of the user. 
-                Defaults to None.
-            user_agent (Optional[str], optional): User-Agent string. 
-                Defaults to None.
+            link: The Link entity being accessed.
+            user_ip: IP address of the user. Optional.
+            user_agent: User-Agent string. Optional.
             **kwargs: Additional context.
         """
         pass

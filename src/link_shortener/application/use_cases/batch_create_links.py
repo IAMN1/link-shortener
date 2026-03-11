@@ -2,6 +2,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 import uuid
 
 
@@ -22,12 +23,12 @@ class BatchCreateLinksUseCase:
     This use case processes a list of URLs, performing deduplication,
     cache lookups, database queries, and new link creation efficiently
     in batches. It handles:
-    - Validation of each URL.
-    - Grouping by URL hash to avoid duplicate processing.
-    - Checking cache and database for existing links.
-    - Resolving short code collisions with retries.
-    - Saving new links in bulk.
-    - Auditing and caching results.
+      - Validation of each URL.
+      - Grouping by URL hash to avoid duplicate processing.
+      - Checking cache and database for existing links.
+      - Resolving short code collisions with retries.
+      - Saving new links in bulk.
+      - Auditing and caching results.
     """
 
     repository: LinkRepository
@@ -36,6 +37,7 @@ class BatchCreateLinksUseCase:
     base_url: str
     logger: Logger
     audit_logger: AuditLogger
+    allowed_schemes: List[str]
     batch_limit: int = 100
 
     def execute(
@@ -45,19 +47,16 @@ class BatchCreateLinksUseCase:
         Execute the batch creation use case.
 
         Args:
-            urls (List[str]): List of URLs to shorten.
-            user_ip (Optional[str], optional): IP address of the user (for audit). 
-                Defaults to None.
-            user_agent (Optional[str], optional): User-Agent string (for audit). 
-                Defaults to None.
+            urls: List of URLs to shorten.
+            user_ip: IP address of the user (for audit). Optional.
+            user_agent: User-Agent string (for audit). Optional.
+
+        Returns:
+            BatchCreateResponse containing results for each URL and aggregated stats.
 
         Raises:
             ValueError: If the number of URLs exceeds batch_limit.
             RuntimeError: If batch processing fails unexpectedly.
-
-        Returns:
-            BatchCreateResponse: BatchCreateResponse containing results 
-                for each URL and aggregated stats.
         """
         if not urls:
             return BatchCreateResponse.empty()
@@ -113,6 +112,23 @@ class BatchCreateLinksUseCase:
             )
             raise RuntimeError(f"Batch processing failed: {str(e)}")
 
+    def _validate_url_scheme(self, url: str) -> None:
+        """
+        Validate that the URL scheme is allowed.
+
+        Args:
+            url: URL string to validate.
+
+        Raises:
+            ValueError: If the scheme is not in allowed_schemes.
+        """
+        parsed = urlparse(url)
+        if parsed.scheme not in self.allowed_schemes:
+            raise ValueError(
+                f"Scheme '{parsed.scheme}' is not allowed. "
+                f"Allowed schemes: {', '.join(self.allowed_schemes)}"
+            )
+
     def _group_urls_by_hash(self, urls: List[str]) -> Dict[str, Dict]:
         """
         Group URLs by their computed hash.
@@ -121,13 +137,14 @@ class BatchCreateLinksUseCase:
         under separate keys with an error flag.
 
         Returns:
-            Dict[str, Dict]: Dictionary where key is hash (or error key)
-            and value contains:
-                - hash: UrlHash (if valid)
-                - original_url: OriginalUrl (if valid)
-                - urls: list of input strings for this group
-                - is_valid: bool
-                - error: error message (if invalid)
+            A dictionary where:
+                - key: hash string (for valid URLs) or "invalid_{counter}" (for invalid)
+                - value: dict with fields:
+                    - hash: UrlHash (if valid)
+                    - original_url: OriginalUrl (if valid)
+                    - urls: list of input strings for this group
+                    - is_valid: bool
+                    - error: error message (if invalid)
         """
 
         groups = {}
@@ -135,6 +152,9 @@ class BatchCreateLinksUseCase:
 
         for url in urls:
             try:
+
+                self._validate_url_scheme(url)
+
                 # Validate and create value objects
                 original_url = OriginalUrl(url)
 
@@ -172,13 +192,21 @@ class BatchCreateLinksUseCase:
         self, groups: Dict[str, Dict], user_ip: Optional[str] = None, user_agent: Optional[str] = None
     ) -> List[BatchItemResponse]:
         """
-        Process all groups in batch-aware steps:
+        Process all groups in batch-aware steps.
 
-        1. Separate valid and invalid groups.
-        2. Check cache for all valid groups.
-        3. For cache misses, query repository.
-        4. For groups not in DB, create new links.
-        5. Build results for all cases.
+        Steps:
+          1. Separate valid and invalid groups.
+          2. Check cache for all valid groups.
+          3. For cache misses, query repository.
+          4. For groups not in DB, create new links.
+          5. Build results for all cases.
+
+        Args:
+            groups: Output from _group_urls_by_hash.
+            user_ip, user_agent: For audit logging.
+
+        Returns:
+            List of BatchItemResponse objects for all input URLs.
         """
 
         results = []
@@ -308,14 +336,14 @@ class BatchCreateLinksUseCase:
         """
         Create new Link entities for groups that are not in cache or DB.
 
-        This method handles short code collisions by generating alternative codes
+        Handles short code collisions by generating alternative codes
         with increasing attempt numbers.
 
-        Steps:
-        - Generate a short code for each group (using the policy).
-        - Check for code collisions with existing links in a single batch query.
-        - Resolve collisions by generating salted codes.
-        - Create domain Link objects.
+        Args:
+            groups: List of group dicts (must contain "hash" and "original_url").
+
+        Returns:
+            List of created Link objects (without repository save).
         """
 
         # 1. Generate initial codes for all groups
@@ -363,19 +391,24 @@ class BatchCreateLinksUseCase:
         """
         Resolve short code collisions in batch.
 
-        For each hash-code pair, if the code already exists 
-            and belongs to a different URL,
-            generate a new code with a salted input (attempt count). 
+        For each hash-code pair, if the code already exists and belongs to a
+        different URL, generate a new code with a salted input (attempt count).
         Keep trying up to max_attempts.
 
-        Returns a dictionary mapping each URL hash to a unique short code.
+        Args:
+            hash_to_code: Initial mapping from hash to generated code.
+            existing_codes_map: Result from repository.find_by_codes.
+            groups: List of groups (needed to retrieve original_url for salting).
+
+        Returns:
+            Dictionary mapping each URL hash to a unique short code.
         """
 
         resolved = {}
         collision_attempts = defaultdict(int)
         max_attempts = 5
 
-        # Словарь для быстрого поиска группы по хэшу
+        # Map hash to group for quick access
         hash_to_group = {group["hash"]: group for group in groups}
         
         # Initialize queue with all (hash, initial_code) pairs
@@ -395,7 +428,7 @@ class BatchCreateLinksUseCase:
                 if existing_link and existing_link.url_hash != url_hash:
 
                     # Collision with a different URL – need to retry
-                    attempt_key = (url_hash, short_code)
+                    attempt_key = url_hash
                     collision_attempts[attempt_key] += 1
 
                     if collision_attempts[attempt_key] > max_attempts:
@@ -437,10 +470,15 @@ class BatchCreateLinksUseCase:
         """
         Create BatchItemResponse objects for newly created links.
 
-        For each group, the first URL is considered the "original" that
-            triggered creation;
-        subsequent URLs in the same group are duplicates and get 
-            duplicate_of field set.
+        For each group, the first URL is considered the "original" that triggered creation;
+        subsequent URLs in the same group are duplicates and get duplicate_of field set.
+
+        Args:
+            groups: List of group dicts for which links were created.
+            saved_links: List of Link objects that were saved to repository.
+
+        Returns:
+            List of BatchItemResponse objects.
         """
         results = []
 

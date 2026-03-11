@@ -17,8 +17,7 @@ class StructlogAuditLogger(AuditLogger):
 
     def __init__(self):
         """
-        Initialize the audit logger with 
-        a structlog logger named 'audit'.
+        Initialize with a structlog logger named 'audit'.
         """
         self._logger = structlog.get_logger("audit")
 

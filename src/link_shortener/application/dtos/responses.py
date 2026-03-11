@@ -13,7 +13,8 @@ class ShortLinkResponse:
     Attributes:
         short_code: The generated short code.
         short_url: The full short URL (base URL + short code).
-        original_url: The original long URL.        clicks: Number of times the link has been accessed.
+        original_url: The original long URL.
+        clicks: Number of times the link has been accessed.
         created_at: Timestamp when the link was created.
         last_accessed: Timestamp of the last access (if any).
         is_new: True if the link was just created in this request.
@@ -238,12 +239,12 @@ class StatsItemResponse:
     """
     DTO for a single item in service statistics (popular links).
 
-        Attributes:
-            short_code: Short code.
-            short_url: Full short URL.
-            original_url: Original URL.
-            clicks: Click count.
-            created_at: Creation timestamp.
+    Attributes:
+        short_code: Short code.
+        short_url: Full short URL.
+        original_url: Original URL.
+        clicks: Click count.
+        created_at: Creation timestamp.
     """
 
     short_code: str

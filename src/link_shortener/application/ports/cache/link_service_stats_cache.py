@@ -17,8 +17,7 @@ class StatsCache(ABC):
 
         Returns:
             Optional[dict]: Dictionary with statistics 
-                (format matches repository.get_stats())
-                or None if not cached/expired.
+            (format matches repository.get_stats()) or None if not cached/expired.
         """
         pass
 

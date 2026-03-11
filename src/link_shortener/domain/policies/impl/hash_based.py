@@ -10,8 +10,9 @@ from link_shortener.domain.value_objects.url_hash import UrlHash
 class HashBasedShorteningPolicy(ShorteningPolicy):
     """
     Deterministic shortening policy based on hashing.
-    Same URL always produces the same short code 
-        (collisions handled by caller).
+
+    Same URL always produces the same short code (collisions handled by caller).
+    Uses SHA-256 hash and base64url encoding.
     """
 
     def __init__(self, code_length: int = 7, min_length: int = 6, max_length: int = 10):

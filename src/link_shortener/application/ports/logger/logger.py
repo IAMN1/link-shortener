@@ -6,8 +6,8 @@ class Logger(ABC):
     """
     Abstract interface for application logging.
 
-    This allows the application core to remain decoupled 
-        from concrete logging implementations.
+    This allows the application core to remain decoupled
+    from concrete logging implementations.
     """
 
     @abstractmethod
@@ -41,9 +41,8 @@ class Logger(ABC):
         Log an exception with traceback.
 
         Args:
-            message (str): Log message.
-            exc_info (Optional[Exception], optional): Exception to log 
-                (if None, current exception is captured). Defaults to None.
+            message: Log message.
+            exc_info: Exception to log (if None, current exception is captured). Optional.
             **kwargs: Additional structured data.
         """
         pass

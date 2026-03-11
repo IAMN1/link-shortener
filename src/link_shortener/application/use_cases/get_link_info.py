@@ -31,14 +31,14 @@ class GetLinkInfoUseCase:
         Execute the get link info use case.
 
         Args:
-            short_code_str (str): Short code as string.
+            short_code_str: Short code as string.
+
+        Returns:
+            ShortLinkResponse with link details.
 
         Raises:
             LinkNotFoundError: If link not found.
             ValueError: If short code format is invalid.
-
-        Returns:
-            ShortLinkResponse: ShortLinkResponse with link details.
         """
         try:
             # Step 1: Validate short code
@@ -103,14 +103,14 @@ class GetExtendLinkInfoUseCase:
         Execute the extended info use case.
 
         Args:
-            short_code_str (str): Short code as string.
+            short_code_str: Short code as string.
+
+        Returns:
+            ExtendedLinkInfoResponse with metrics.
 
         Raises:
             LinkNotFoundError: If link not found.
             ValueError: If short code format is invalid.
-
-        Returns:
-            ExtendedLinkInfoResponse: ExtendedLinkInfoResponse with metrics.
         """
         try:
 

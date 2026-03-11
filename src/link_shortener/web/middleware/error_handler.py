@@ -13,9 +13,9 @@ from link_shortener.web.schemas.responses import ErrorDetail, ErrorResponse
 
 class ErrorHandlerMiddleware:
     """
-    Middleware for centralized error handling in the Flask application.
+    Middleware for centralized error handling.
 
-    It registers error handlers for various exception types and returns
+    Registers error handlers for various exception types and returns
     appropriate JSON responses for API routes or HTML error pages for frontend routes.
     """
 

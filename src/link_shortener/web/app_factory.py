@@ -42,50 +42,55 @@ def create_app(config=None) -> Flask:
     """
 
     if config is None:
-        # Загрузка конфигурации
+        # Load configuration
         env = os.environ.get("FLASK_ENV", "development")
         config = get_config(env)
     else:
         env = getattr(config, "ENV", 'custom')
 
-    # Создание Flask приложения
+    # Create Flask application
     app = Flask(__name__)
     app.config.from_object(config)
 
-    # Настройка логирования
+    # Setup logging
     logging_settings = LoggingSettings(
         log_dir=app.config.get("LOG_DIR", "logs"),
         log_file_name=app.config.get("LOG_FILENAME", "link_shortener"),
         log_date_format=app.config.get("LOG_DATE_FORMAT", "%Y-%m-%d %H:%M:%S"),
         log_to_console=app.config.get("LOG_TO_CONSOLE", True),
         log_to_file=app.config.get("LOG_TO_FILE", False),
+        log_level_str=app.config.get("LOG_LEVEL", "DEBUG"), 
         debug=app.config.get("DEBUG", False),
         sqlalchemy_log_level=app.config.get("SQLALCHEMY_LOG_LEVEL", "WARNING"),
         werkzeug_log_level=app.config.get("WERKZEUG_LOG_LEVEL", "WARNING"),
     )
-    setup_logging(logging_settings)
+    setup_logging(
+        logging_settings, 
+        logging_enabled=config.LOGGING_ENABLED, 
+        audit_enabled=config.AUDIT_ENABLED
+    )
 
     app.cli.add_command(init_db_command)
 
     # CORS
     CORS(app)
 
-    # Инициализация контейнера зависимостей
+    # Initialize dependency injection container
     container = Container(config)
     app.container = container
 
-    # Регистрация middleware
+    # Register middleware
     RequestLoggingMiddleware(app, container.get_logger(RequestLoggingMiddleware.__module__))
     ErrorHandlerMiddleware(app, container.get_logger(ErrorHandlerMiddleware.__module__))
 
-    # Создание контроллеров и регистрация блюпринтов
+    # Create controllers and register blueprints
     api_controller = ApiController(container.get_link_service())
     frontend_controller = FrontendController(container.get_link_service())
 
     app.register_blueprint(api_controller.bp)
     app.register_blueprint(frontend_controller.bp)
 
-    # маршрут для редиректа
+    # Redirect route
     @app.route("/<short_code>", methods=["GET"])
     def redirect_to_original(short_code: str):
         """
@@ -110,19 +115,15 @@ def create_app(config=None) -> Flask:
         """Simple health check endpoint."""
         return {"status": "healthy"}, 200
 
-    # Очистка ресурсов при завершении контекста
+    # Cleanup resources when app context ends
     @app.teardown_appcontext
     def shutdown_session(exception=None):
         """Close database connections when the app context ends."""
         container.close()
 
-    # Финальное логирвоание состояния приложения
-    logger = container.get_logger(create_app.__module__)
-    active_logger_name = container.get_active_logger_name()
-
     cache = container.get_cache()
 
-    # Определение типа кэша
+    # Determine cache type
     if isinstance(cache, RedisLinkCache):
         cache_type = "Redis"
     elif isinstance(cache, InMemoryLinkCache):
@@ -130,6 +131,9 @@ def create_app(config=None) -> Flask:
     else:
         cache_type = "Disabled (NullCache)"
 
+    # Log final application state
+    logger = container.get_logger(create_app.__module__)
+    active_logger_name = container.get_active_logger_name()
 
     # Логирование успешного запуска
     logger.info(

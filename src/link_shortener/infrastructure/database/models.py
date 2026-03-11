@@ -36,7 +36,7 @@ class LinkModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, server_default=func.now()
     )
-    clicks: Mapped[int] = mapped_column(Integer, default=0)
+    clicks: Mapped[int] = mapped_column(Integer, default=0, index=True)
     last_accessed: Mapped[datetime] = mapped_column(
         DateTime, default=None, nullable=True
     )

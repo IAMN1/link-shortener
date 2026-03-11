@@ -8,15 +8,14 @@ T = TypeVar('T')
 
 class FailoverService(Generic[T]):
     """
-    GGeneric failover mechanism that switches between multiple implementations
-    of a service interface.
+    Generic failover mechanism that switches between multiple service implementations.
 
-    Features:
-    - On each method call, if the current service raises an exception,
-      it automatically switches to the next available service.
-    - A background thread periodically checks if a higher-priority service
-      has become available and upgrades to it.
-    - Custom health check function can be provided to determine service availability.
+    Maintains an ordered list of services (primary, secondary, etc.). When a call to the
+    current service fails, it automatically switches to the next available service.
+    Optionally runs a background health check thread to attempt upgrading to a higher-priority
+    service when it becomes healthy again.
+
+    Type parameter T represents the service interface (e.g., Logger, AuditLogger).
     """
 
     def __init__(
@@ -26,9 +25,11 @@ class FailoverService(Generic[T]):
         health_checker: Optional[Callable[[T], bool]] = None
     ):
         """
+        Initialize the failover service.
+
         Args:
             services: List of (service_instance, service_name) in priority order
-                     (highest first). The first service is the most desired.
+                      (highest first). The first service is the most desired.
             check_interval: Seconds between background health checks.
                             If None, background checks are disabled.
             health_checker: Optional function that takes a service instance and
@@ -62,15 +63,18 @@ class FailoverService(Generic[T]):
             return self._services[self._current_index][1]
 
     def _periodic_check(self):
-        """Background thread: periodically try to upgrade to a higher-priority service."""
-        while True:
-            # Wait for interval, but allow thread to be killed on exit
-            if self._check_interval is not None:
-                threading.Event().wait(self._check_interval)
+        """
+        Background thread: periodically try to upgrade to a higher-priority service.
+        Runs every `_check_interval` seconds until `shutdown()` is called.
+        """
+        while not self._stop_event.wait(self._check_interval):
             self._attempt_upgrade()
 
     def _attempt_upgrade(self):
-        """Try to switch to a service with higher priority (lower index) if it's healthy."""
+        """
+        Try to switch to a service with higher priority (lower index) if it is healthy.
+        If a healthy higher-priority service is found, switch to it and log the event.
+        """
         with self._lock:
             if self._current_index == 0:
                 return # already the best
@@ -82,7 +86,7 @@ class FailoverService(Generic[T]):
                     return
 
     def _is_service_healthly(self, service: T) -> bool:
-        """Use health checker if provided; otherwise assume it's healthy."""
+        """Use the health checker if provided; otherwise assume it's healthy."""
 
         if self._health_checker is None:
             return True
@@ -93,7 +97,12 @@ class FailoverService(Generic[T]):
             return False
 
     def _switch_to_next(self) -> bool:
-        """Switch to the next available service (higher index)"""
+        """
+        Switch to the next available service (higher index).
+
+        Returns:
+            True if a fallback service was found and switched to, False if none left.
+        """
         with self._lock:
             for idx in range(self._current_index + 1, len(self._services)):
                 self._current_index = idx
@@ -102,15 +111,23 @@ class FailoverService(Generic[T]):
             return False
     
     def _log(self, message: str):
-        """Internal logging for failover events"""
+        """Internal logging for failover events (printed to stderr)."""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"{timestamp} [FailoverService] {message}", file=sys.stderr)
     
     def execute(self, method_name: str, *args, **kwargs):
         """
         Call a method on the current active service.
-        If it fails, automatically switch to the next service and retry.
+
+        If the call fails, automatically switch to the next service and retry.
         Returns the result of the successful call, or None if all services fail.
+
+        Args:
+            method_name: Name of the method to call on the service.
+            *args, **kwargs: Arguments to pass to the method.
+
+        Returns:
+            Result of the method call, or None if all services failed.
         """
         with self._lock:
             attempts = 0
@@ -129,3 +146,9 @@ class FailoverService(Generic[T]):
             
             # All services failed
             return None
+
+    def shutdown(self):
+        """Stop the background health check thread and wait for it to finish."""
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=1)
