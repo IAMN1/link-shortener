@@ -35,12 +35,12 @@ class LinkService:
         Delegates to CreateShortLinkUseCase.
 
         Args:
-            url (str): Original URL to shorten.
-            **kwargs: Additional arguments (e.g., user_ip, user_agent) 
-                passed to the use case.
+            url: Original URL to shorten.
+            user_ip: Client IP address (for audit). Optional.
+            user_agent: Client User-Agent (for audit). Optional.
 
         Returns:
-            ShortLinkResponse: ShortLinkResponse DTO.
+            ShortLinkResponse DTO.
         """
         return self.create_short_link_use_case.execute(
             url, user_ip, user_agent
@@ -48,35 +48,47 @@ class LinkService:
 
     def get_link_info(self, short_code: str) -> ShortLinkResponse:
         """
-        Retrieve information about a short link.
+        Retrieve basic information about a short link.
 
         Delegates to GetLinkInfoUseCase.
 
         Args:
-            short_code (str): Short code of the link.
+            short_code: Short code of the link.
 
         Returns:
-            ShortLinkResponse: ShortLinkResponse DTO.
+            ShortLinkResponse DTO.
         """
         return self.get_link_info_use_case.execute(short_code)
 
     def get_extended_link_info(self, short_code: str) -> ExtendedLinkInfoResponse:
+        """
+        Retrieve extended information about a short link.
+
+        Delegates to GetExtendLinkInfoUseCase.
+
+        Args:
+            short_code: Short code of the link.
+
+        Returns:
+            ExtendedLinkInfoResponse DTO.
+        """
         return self.get_extended_link_info_use_case.execute(short_code)
 
     def redirect(
         self, short_code: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None
     ) -> str:
         """
-        Get the original URL for redirect (increments click count).
+        et the original URL for redirect (increments click count).
 
         Delegates to RedirectLinkUseCase.
 
         Args:
-            short_code (str): Short code of the link.
-            **kwargs: Additional arguments (e.g., user_ip, user_agent).
+            short_code: Short code of the link.
+            user_ip: Client IP address (for audit). Optional.
+            user_agent: Client User-Agent (for audit). Optional.
 
         Returns:
-            str: Original URL as string.
+            Original URL as string.
         """
         return self.redirect_link_use_case.execute(
             short_code, user_ip, user_agent
@@ -91,12 +103,12 @@ class LinkService:
         Delegates to BatchCreateLinksUseCase.
 
         Args:
-            urls (List[str]): List of URLs to shorten.
-            **kwargs: Additional arguments (e.g., user_ip, user_agent).
+            urls: List of URLs to shorten.
+            user_ip: Client IP address (for audit). Optional.
+            user_agent: Client User-Agent (for audit). Optional.
 
         Returns:
-            BatchCreateResponse: BatchCreateResponse DTO 
-                with aggregated results.
+            BatchCreateResponse DTO with aggregated results.
         """
         return self.batch_create_links_use_case.execute(
             urls, user_ip, user_agent
@@ -109,6 +121,6 @@ class LinkService:
         Delegates to GetServiceStatsUseCase.
 
         Returns:
-            ServiceStatsResponse: ServiceStatsResponse DTO.
+            ServiceStatsResponse DTO.
         """
         return self.get_service_stats_use_case.execute()

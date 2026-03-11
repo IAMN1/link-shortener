@@ -10,6 +10,12 @@ class OriginalUrl:
 
     Encapsulates validation rules and normalization logic.
     Immutable.
+
+    Attributes:
+        value: The original URL string.
+
+    Raises:
+        ValueError: If the URL fails validation.
     """
 
     value: str
@@ -24,7 +30,7 @@ class OriginalUrl:
         self._validate_path(parsed)
 
     # ------------------------------------------------------------------
-    # Методы валидации
+    # Validation methods
     # ------------------------------------------------------------------
 
     def _validate_length(self) -> None:
@@ -37,10 +43,7 @@ class OriginalUrl:
         """Check that scheme is present and allowed (http/https)."""
 
         if not parsed.scheme:
-            raise ValueError("URL must have a scheme (http:// or https://)")
-
-        if parsed.scheme not in ["http", "https"]:
-            raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
+            raise ValueError("URL must have a scheme!")
 
     def _validate_netloc(self, parsed: ParseResult) -> None:
         """Validate network location part (hostname and optional port)."""
@@ -65,10 +68,8 @@ class OriginalUrl:
         """
         Validate hostname: can be IP, localhost, or a valid domain name.
 
-        Domain name rules: each label must contain 
-            only alphanumeric chars and hyphens,
-            cannot start or end with hyphen, 
-            and total length constraints.
+        Domain name rules: each label must contain only alphanumeric chars and hyphens,
+        cannot start or end with hyphen, and total length constraints.
         """
 
         # Проврка как доменного имени
@@ -115,7 +116,7 @@ class OriginalUrl:
             raise ValueError("Path contains control characters")
 
     # ------------------------------------------------------------------
-    # Публичные методы
+    # Public methods
     # ------------------------------------------------------------------
 
     def __str__(self) -> str:

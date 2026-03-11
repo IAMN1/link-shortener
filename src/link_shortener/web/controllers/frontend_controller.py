@@ -4,11 +4,18 @@ from link_shortener.application import LinkService
 
 class FrontendController:
     """
-    Controller for frontend (HTML) routes. Now only renders pages,
-    all data operations go through the API (JSON).
+    Controller for frontend (HTML) routes.
+
+    Now only renders pages; all data operations go through the API (JSON).
     """
 
     def __init__(self, link_service: LinkService):
+        """
+        Initialize the frontend controller.
+
+        Args:
+            link_service: Application service facade.
+        """
         self.link_service = link_service
         self.bp = Blueprint(
             'frontend',
@@ -20,6 +27,8 @@ class FrontendController:
         self._register_routes()
 
     def _register_routes(self):
+        """Register all frontend routes."""
+
         self.bp.add_url_rule('/', view_func=self.index, methods=['GET'])
         self.bp.add_url_rule('/info/<short_code>', view_func=self.info_redirect, methods=['GET'])
         self.bp.add_url_rule('/extended/<short_code>', view_func=self.extended_info_redirect, methods=['GET'])
@@ -27,18 +36,27 @@ class FrontendController:
         self.bp.add_url_rule('/api/docs', view_func=self.api_docs, methods=['GET'])
 
     def index(self):
+        """Render the main page."""
         return render_template("index.html")
 
     def info_redirect(self, short_code: str):
+        """
+        Redirect to the main page with info mode for the given short code.
+        """
         return redirect(url_for('frontend.index', mode='info', code=short_code))
 
     def extended_info_redirect(self, short_code: str):
+        """
+        Redirect to the main page with extended mode for the given short code.
+        """
         return redirect(url_for('frontend.index', mode='extended', code=short_code))
 
     def stats(self):
+        """Render the statistics page."""
         stats = self.link_service.get_service_stats()
         return render_template('stats.html', stats=stats)
 
     def api_docs(self):
-        # Замените на реальную документацию (например, Swagger UI)
+        """Redirect to API documentation (e.g., Swagger UI)."""
+        # TODO Replace with actual documentation URL
         return redirect("https://swagger.io")

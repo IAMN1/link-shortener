@@ -172,7 +172,8 @@ class SQLAlchemyLinkRepository(LinkRepository):
             )
 
     def get_stats(self) -> dict:
-        """Retrieve service statistics: 
+        """
+        Retrieve service statistics: 
             - total URLs, 
             - total clicks, 
             - top 10 popular links.

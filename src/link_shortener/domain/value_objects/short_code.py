@@ -9,6 +9,11 @@ class ShortCode:
 
     Immutable, with validation ensuring the code matches the required format.
     Format: 6-10 alphanumeric characters, underscore, or hyphen.
+
+    Examples:
+        - "abc123"
+        - "my_code"
+        - "short-x"
     """
 
     value: str
@@ -28,7 +33,12 @@ class ShortCode:
     @classmethod
     def create(cls, value: str) -> "ShortCode":
         """
-        Factory method with explicit validation 
-            (alternative to constructor).
+        Factory method with explicit validation (alternative to constructor).
+
+        Args:
+            value: Short code string.
+
+        Returns:
+            ShortCode instance.
         """
         return cls(value)

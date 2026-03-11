@@ -9,6 +9,7 @@ class ApiController:
     Controller for REST API endpoints (JSON).
 
     Handles requests under /api/v1/ and returns JSON responses.
+    All methods extract client IP and User-Agent for audit logging.
     """
     
     def __init__(self, link_service: LinkService):

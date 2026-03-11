@@ -1,34 +1,32 @@
-import logging
 import os
 import secrets
-from typing import List
+from typing import List, Optional
 
 
 class BaseConfig:
     """
-    Base configuration class for the application.
+    Base configuration for the application.
 
     Contains default settings that can be overridden by environment variables.
-    Subclasses should override values for specific environments 
-        (development, production, etc.).
+    Subclasses should override values for specific environments (development, production, etc.).
     """
     DEBUG: bool = True
     TESTING: bool = False
 
     # =============== Feature flags ==================================================
-    LOGGING_ENABLED: bool = True
-    AUDIT_ENABLED: bool = True
-    CACHE_ENABLED: bool = True
+    LOGGING_ENABLED: bool = os.environ.get("LOGGING_ENABLED", "true").lower() == "true"
+    AUDIT_ENABLED: bool = os.environ.get("AUDIT_ENABLED", "true").lower() == "true"
+    CACHE_ENABLED: bool = os.environ.get("CACHE_ENABLED", "true").lower() == "true"
 
     # =============== Logging and Audit settings ===============================================
     LOGGER_TYPE: str = os.environ.get("LOGGER_TYPE", "auto") # auto / structlog / standard / null
     AUDIT_TYPE: str = os.environ.get("AUDIT_TYPE", "auto") # auto / structlog / standard / null
     LOG_DIR: str = os.environ.get("LOG_DIR", "logs")
     LOG_FILENAME: str = "link_shortener"
-    LOG_LEVEL: int = logging.DEBUG
+    LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "DEBUG")
     LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
-    LOG_TO_CONSOLE: bool = True
-    LOG_TO_FILE: bool = True
+    LOG_TO_CONSOLE: bool = os.environ.get("LOG_TO_CONSOLE", "true").lower() == "true"
+    LOG_TO_FILE: bool = os.environ.get("LOG_TO_FILE", "false").lower() == "true"
 
     ##  Logging levels for third-party libs
     SQLALCHEMY_LOG_LEVEL: str = os.environ.get("SQLALCHEMY_LOG_LEVEL", "WARNING")
@@ -47,6 +45,8 @@ class BaseConfig:
     # =============== App settings ===================================================
     HOST: str = os.environ.get("HOST", "localhost")
     PORT: int = int(os.environ.get("PORT", 5000))
+    USE_HTTPS: bool = os.environ.get("USE_HTTPS", "false").lower() == "true"
+    DOMAIN: Optional[str] = os.environ.get("DOMAIN")
 
     ## Code generation
     MAX_COLLISION_ATTEMPTS: int = int(os.environ.get("MAX_COLLISION_ATTEMPTS", 5))
@@ -61,15 +61,15 @@ class BaseConfig:
         """Base URL of the service (used for constructing short URLs)."""
         return f"http://{self.HOST}:{self.PORT}/"
 
-    ALLOWED_SCHEMES: List[str] = ["http", "https"]
+    ALLOWED_SCHEMES: List[str] = os.environ.get("ALLOWED_SCHEMES", "http,https").split(",")
     MAX_URL_LENGTH: int = 2048
     SHORT_CODE_LENGTH: int = 7
     SHORT_CODE_MIN_LENGTH: int = 6
     SHORT_CODE_MAX_LENGTH: int = 10
 
     # =============== Limits =========================================================
-    MAX_REQUESTS_PER_MINUTE: int = 100
-    BATCH_CREATE_LIMIT: int = 100  # Макс URL за один пакетный запрос
+    MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 100))
+    BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
 
     # =============== Database settings ==============================================
     DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///dev.db")
@@ -143,8 +143,8 @@ class BaseConfig:
         if self.MAX_URL_LENGTH > 2048:
             errors.append("MAX_URL_LENGTH should not exceed 2048")
 
-        if self.REDIS_ENABLED and not self.REDIS_URL.startswith("redis://"):
-            errors.append('REDIS_URL must start with "redis://"')
+        if self.CACHE_ENABLED and self.REDIS_ENABLED and not self.REDIS_URL:
+            errors.append("REDIS_URL must be set when REDIS_ENABLED=True")
 
         if errors:
             raise ValueError("Configuration errors:\n - " + "\n - ".join(errors))

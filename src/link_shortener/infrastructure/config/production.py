@@ -1,4 +1,3 @@
-import logging
 import os
 
 from link_shortener.infrastructure.config.base import BaseConfig
@@ -11,9 +10,9 @@ class ProductionConfig(BaseConfig):
     TESTING: bool = False
 
     # ========== logging settings ==========
-    LOG_LEVEL: int = logging.INFO
-    LOG_TO_CONSOLE: bool = False
-    LOG_TO_FILE: bool = True
+    LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
+    LOG_TO_CONSOLE: bool = os.environ.get("LOG_TO_CONSOLE", "false").lower() == "true"
+    LOG_TO_FILE: bool = os.environ.get("LOG_TO_FILE", "true").lower() == "true"
     # LOG_DIR: str = '/var/log/link_shortener'  # Стандартный путь для логов в Linux
 
     # ========== Security App ==========
@@ -97,4 +96,9 @@ class ProductionConfig(BaseConfig):
         _ = self.SECRET_KEY
         _ = self.SHORT_CODE_SECRET_PEPPER
         _ = self.DATABASE_URL
-        _ = self.REDIS_URL
+        
+        if self.REDIS_ENABLED:
+            _ = self.REDIS_URL
+
+        if not os.environ.get("DOMAIN"):
+            raise ValueError("DOMAIN environment variable must be set in production")

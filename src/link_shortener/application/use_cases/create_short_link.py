@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
+from urllib.parse import urlparse
 
 
 from link_shortener.application import(
@@ -33,6 +34,7 @@ class CreateShortLinkUseCase:
     base_url: str
     logger: Logger
     audit_logger: AuditLogger
+    allowed_schemes: List[str]
     max_collision_attempts: int = 5
 
     def execute(
@@ -42,20 +44,26 @@ class CreateShortLinkUseCase:
         Execute the create short link use case.
 
         Args:
-            url (str): The original URL to shorten.
-            user_ip (Optional[str], optional): Client IP address (for audit). 
-                Defaults to None.
-            user_agent (Optional[str], optional): Client User-Agent (for audit). 
-                Defaults to None.
+            url: The original URL to shorten.
+            user_ip: Client IP address (for audit). Optional.
+            user_agent: Client User-Agent (for audit). Optional.
+
+        Returns:
+            ShortLinkResponse with link details.
 
         Raises:
             ValueError: If the URL is invalid.
             RuntimeError: If code generation fails after max attempts.
-
-        Returns:
-            ShortLinkResponse: ShortLinkResponse with link details
         """
         try:
+            
+            parsed = urlparse(url)
+            if parsed.scheme not in self.allowed_schemes:
+                raise ValueError(
+                    f"Scheme '{parsed.scheme}' is not allowed. "
+                    f"Allowed schemes: {', '.join(self.allowed_schemes)}"
+                )
+
             # Step 1: Create value object – validation happens here
             original_url = OriginalUrl(url)
 
@@ -125,6 +133,15 @@ class CreateShortLinkUseCase:
 
         Attempts up to max_collision_attempts, each time adding a salt
         to the input to produce a different code if collision occurs.
+
+        Args:
+            original_url: The original URL value object.
+
+        Returns:
+            Unique ShortCode.
+
+        Raises:
+            RuntimeError: If a unique code cannot be generated after max attempts.
         """
         attempt = 0
         while attempt < self.max_collision_attempts:

@@ -1,4 +1,3 @@
-import logging
 import os
 
 from link_shortener.infrastructure.config.base import BaseConfig
@@ -11,9 +10,9 @@ class StagingConfig(BaseConfig):
     TESTING: bool = False
 
     # ========== logging settings ==========
-    LOG_LEVEL: int = logging.INFO
-    LOG_TO_CONSOLE: bool = False
-    LOG_TO_FILE: bool = True
+    LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
+    LOG_TO_CONSOLE: bool = os.environ.get("LOG_TO_CONSOLE", "false").lower() == "true"
+    LOG_TO_FILE: bool = os.environ.get("LOG_TO_FILE", "true").lower() == "true"
     LOG_DIR: str = os.environ.get("LOG_DIR", "/var/log/link_shortener/staging")
 
     # ========== Security App ==========
@@ -41,7 +40,14 @@ class StagingConfig(BaseConfig):
 
     # ========== Redis cache settings ==========
     REDIS_ENABLED: bool = os.environ.get("REDIS_ENABLED", "true").lower() == "true"
-    REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    
+    @property
+    def REDIS_URL(self) -> str:
+        """Redis URL must be set in environment if Redis is enabled."""
+        url = os.environ.get("REDIS_URL")
+        if self.REDIS_ENABLED and not url:
+            raise ValueError("REDIS_URL must be set in environment when REDIS_ENABLED=True")
+        return url or "redis://localhost:6379/0"
 
     # ========== Limits ==========
     MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 200))
