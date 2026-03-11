@@ -1,3 +1,10 @@
+// Utility functions for the frontend
+
+/**
+ * Copy text to clipboard.
+ * @param {string} text - Text to copy.
+ * @returns {Promise<boolean>} True if successful, false otherwise.
+ */
 export async function copyToClipboard(text) {
     try {
         await navigator.clipboard.writeText(text);
@@ -8,15 +15,19 @@ export async function copyToClipboard(text) {
     }
 }
 
+/**
+ * Show a notification (simple alert for now).
+ * @param {string} message - Message to display.
+ * @param {string} type - 'info', 'success', 'error' (unused).
+ */
 export function showNotification(message, type = 'info') {
     alert(message);
 }
 
 /**
- * Экранирует специальные HTML-символы для защиты от XSS.
- * Принимает любое значение, преобразует в строку.
- * @param {*} unsafe - Данные для экранирования.
- * @returns {string} Безопасная строка с заменёнными символами.
+ * Escape special HTML characters to prevent XSS.
+ * @param {*} unsafe - Data to escape.
+ * @returns {string} Escaped string.
  */
 export function escapeHtml(unsafe) {
     if (unsafe === undefined || unsafe === null) {
