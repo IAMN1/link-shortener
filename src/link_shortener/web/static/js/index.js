@@ -1,3 +1,5 @@
+// Main JavaScript for the index page – handles mode switching and API calls
+
 import { copyToClipboard, showNotification, escapeHtml } from './main.js';
 
 document.addEventListener('DOMContentLoaded', () => {
