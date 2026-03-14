@@ -8,44 +8,53 @@ from link_shortener.application import Logger
 class StructLogger(Logger):
     """
     Adapter for structlog, implementing the Logger interface.
+
+    This adapter wraps a structlog.BoundLogger and provides the bind() method
+    to create new loggers with additional contextual fields.
     """
 
-    def __init__(self, name: Optional[str] = None):
+    def __init__(self, name: Optional[str] = None, bound_logger=None):
         """
         Initialize the structlog logger.
 
         Args:
             name: Logger name (defaults to __name__ of caller if None).
+            bound_logger: If provided, used as a base logger with fields already bound.
         """
-        self._base_logger = structlog.get_logger(name or __name__)
+        if bound_logger is None:
+            # Create a BoundLogger immediately (not a lazy proxy)
+            self._logger = structlog.get_logger(name or __name__).bind()
+        else:
+            self._logger = bound_logger
 
+    def bind(self, **kwargs) -> "StructLogger":
+        """
+        Return a new StructLogger with the bound fields.
 
-    def _log(self, level: str, message: str, **kwargs):
-        """Internal method to log at given level with optional module binding."""
+        Args:
+            **kwargs: Fields to bind.
 
-        module = kwargs.pop("module", None)
-        logger = self._base_logger
-
-        if module:
-            logger = logger.bind(module=module)
-
-        getattr(logger, level)(message, **kwargs)
+        Returns:
+            A new StructLogger instance with the additional bound fields.
+        """
+        new_logger = self._logger.bind(**kwargs)
+        return StructLogger(bound_logger=new_logger)
 
 
     def debug(self, message: str, **kwargs: Any) -> None:
-        self._log("debug", message, **kwargs)
+        self._logger.debug(message, **kwargs)
 
     def info(self, message: str, **kwargs: Any) -> None:
-        self._log("info", message, **kwargs)
+        self._logger.info(message, **kwargs)
 
     def warning(self, message: str, **kwargs: Any) -> None:
-        self._log("warning", message, **kwargs)
+        self._logger.warning(message, **kwargs)
 
     def error(self, message: str, **kwargs: Any) -> None:
-        self._log("error", message, **kwargs)
+        self._logger.error(message, **kwargs)
 
     def exception(
-        self, message: str, exc_info=Optional[Exception], **kwargs: Any
+        self, message: str, exc_info: Optional[Exception] = None, **kwargs: Any
     ) -> None:
         kwargs["exc_info"] = exc_info
-        self._log("exception", message, **kwargs)
+        self._logger.exception(message, **kwargs)

@@ -19,8 +19,8 @@ class AuditManager:
         Initialize the audit manager.
 
         Args:
-            audit_type: Type of audit logger ('auto', 'structlog', 'standard', 'null')
-            failover_check_interval: Seconds between background health checks
+            audit_type: Type of audit logger ('auto', 'structlog', 'standard', 'null').
+            failover_check_interval: Seconds between background health checks.
         """
         self._failover_check_interval = failover_check_interval
         self._failover_service: Optional[FailoverService] = None
@@ -79,8 +79,9 @@ class AuditManager:
             # Define health check function
             def health_check(audit: AuditLogger) -> bool:
                 try:
+                    from link_shortener.application.context import RequestContext
                     # We need a safe method that doesn't require a link
-                    audit.log_url_created(None)  # link=None is ignored in implementations
+                    audit.log_url_created(None, RequestContext(request_id="Health"))  # link=None is ignored in implementations
                     return True
                 except Exception:
                     return False
@@ -113,8 +114,8 @@ class FailoverAuditLoggerProxy(AuditLogger):
     def __init__(self, service: FailoverService):
         self._service = service
 
-    def log_url_created(self, link, user_ip=None, user_agent=None, **kwargs):
-        self._service.execute("log_url_created", link, user_ip, user_agent, **kwargs)
+    def log_url_created(self, link, context, **kwargs):
+        self._service.execute("log_url_created", link, context, **kwargs)
 
-    def log_url_accessed(self, link, user_ip=None, user_agent=None, **kwargs):
-        self._service.execute("log_url_accessed", link, user_ip, user_agent, **kwargs)
+    def log_url_accessed(self, link, context, **kwargs):
+        self._service.execute("log_url_accessed", link, context, **kwargs)

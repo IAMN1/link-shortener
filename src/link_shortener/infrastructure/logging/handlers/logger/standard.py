@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from link_shortener.application import Logger
 
 
@@ -9,37 +9,46 @@ class StandardLogger(Logger):
 
     This implementation wraps a standard logging.Logger and formats
     structured data as key-value pairs appended to the message.
+    It supports binding of additional fields that are included in every log call.
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, bound_fields: Optional[Dict[str, Any]] = None):
         """
         Initialize the logger.
 
         Args:
             name: Logger name.
+            bound_fields: A dictionary of fields bound to the logger.
         """
-        self._logger = logging.getLogger(name)    
+        self._logger = logging.getLogger(name)
+        self._bound_fields = bound_fields if bound_fields else {}
+    
+    def bind(self, **kwargs) -> "StandardLogger":
+        """
+        Return a new StandardLogger with additional bound fields.
+
+        Args:
+            **kwargs: Fields to bind.
+
+        Returns:
+            A new StandardLogger instance combining existing and new bound fields.
+        """
+        new_bound = {**self._bound_fields, **kwargs}
+        return StandardLogger(self._logger.name, bound_fields=new_bound)
 
     def _log(self, level: str, message: str, **kwargs):
-        """Internal method to log with extra data."""
+        """Internal method for logging with bound fields."""
+        
+        all_kwargs = {**self._bound_fields, **kwargs}
+        module = all_kwargs.pop("module", None)
 
-        module = kwargs.pop("module", None)
-
-        # Add module to the message or to extra
-        log_method = getattr(self._logger, level)
-        extra = kwargs.copy()
-
-        if module:
-            extra["module"] = module
-
-        # Standard logger's extra parameter can be used, but not all handlers respect it.
-        # To be safe, we'll just append module to the message if present.
         if module:
             message = f"[{module}] {message}"
-        if extra:
-            log_method(f"{message} - {extra}")
+        
+        if all_kwargs:
+            getattr(self._logger, level)(f"{message} - {all_kwargs}")
         else:
-            log_method(message)
+            getattr(self._logger, level)(message)
 
 
     def debug(self, message: str, **kwargs: Any) -> None:

@@ -1,6 +1,6 @@
 import logging
-from typing import Optional
 from link_shortener.application import AuditLogger
+from link_shortener.application.context import RequestContext
 from link_shortener.domain import Link
 
 
@@ -26,9 +26,7 @@ class StandardAuditLogger(AuditLogger):
         extra_str = f" - {kwargs}" if kwargs else ""
         getattr(self._logger, level)(f"{event}{extra_str}")
     
-    def log_url_created(
-        self, link: Link, user_ip: Optional[str] = None, user_agent: Optional[str] = None, **kwargs
-    ) -> None:
+    def log_url_created(self, link: Link, context: RequestContext, **kwargs) -> None:
         """Log a URL creation event."""
 
         # Health check may pass link=None – do nothing in that case
@@ -39,15 +37,14 @@ class StandardAuditLogger(AuditLogger):
                   url_hash=link.url_hash.value,
                   short_code=link.short_code.value,
                   original_url=self._mask_url(link.original_url.value),
-                  user_ip=user_ip,
-                  user_agent=user_agent,
+                  remote_addr=context.remote_addr,
+                  user_agent=context.user_agent,
+                  request_id=context.request_id,
                   timestamp=link.created_at.isoformat(),
                   event_type="URL_CREATED",
                   **kwargs)
     
-    def log_url_accessed(
-        self, link: Link, user_ip: Optional[str] = None, user_agent: Optional[str] = None, **kwargs,
-    ) -> None:
+    def log_url_accessed(self, link: Link, context: RequestContext, **kwargs,) -> None:
         """Log a URL access (redirect) event."""
 
         if link is None:
@@ -56,9 +53,11 @@ class StandardAuditLogger(AuditLogger):
         self._log("info", "url_accessed",
                   short_code=link.short_code.value,
                   original_url=self._mask_url(link.original_url.value),
+                  url_hash=link.url_hash.value,
                   clicks=link.clicks,
-                  user_ip=user_ip,
-                  user_agent=user_agent,
+                  remote_addr=context.remote_addr,
+                  user_agent=context.user_agent,
+                  request_id=context.request_id,
                   timestamp=link.created_at.isoformat(),
                   event_type="URL_ACCESSED",
                   **kwargs)
