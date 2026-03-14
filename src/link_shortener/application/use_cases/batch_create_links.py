@@ -1,6 +1,6 @@
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from datetime import datetime
+import time
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 import uuid
@@ -10,13 +10,15 @@ from link_shortener.application import (
     BatchCreateResponse, BatchItemResponse, LinkCache, Logger, AuditLogger
 )
 
+from link_shortener.application.context import RequestContext
+from link_shortener.application.use_cases.base import BaseUseCase
 from link_shortener.domain import (
     Link, LinkRepository, OriginalUrl, ShortCode, ShorteningPolicy, UrlHash
 )
 
 
 @dataclass
-class BatchCreateLinksUseCase:
+class BatchCreateLinksUseCase(BaseUseCase):
     """
     Use case: Batch creation of short links for multiple URLs.
 
@@ -40,16 +42,13 @@ class BatchCreateLinksUseCase:
     allowed_schemes: List[str]
     batch_limit: int = 100
 
-    def execute(
-        self, urls: List[str], user_ip: Optional[str] = None, user_agent: Optional[str] = None
-    ) -> BatchCreateResponse:
+    def execute(self, urls: List[str], context: RequestContext) -> BatchCreateResponse:
         """
         Execute the batch creation use case.
 
         Args:
             urls: List of URLs to shorten.
-            user_ip: IP address of the user (for audit). Optional.
-            user_agent: User-Agent string (for audit). Optional.
+            context: Request context with request_id, user_ip, user_agent.
 
         Returns:
             BatchCreateResponse containing results for each URL and aggregated stats.
@@ -58,12 +57,17 @@ class BatchCreateLinksUseCase:
             ValueError: If the number of URLs exceeds batch_limit.
             RuntimeError: If batch processing fails unexpectedly.
         """
+
+        log = self._get_logger(self.logger, context)
+        start_time = time.perf_counter()
+
         if not urls:
+            log.debug("Empty URL list, returning empty response")
             return BatchCreateResponse.empty()
 
         # 1. Enforce batch size limit
         if len(urls) > self.batch_limit:
-            self.logger.warning(
+            log.warning(
                 "Batch limit exceeded", url_requested=len(urls), limit=self.batch_limit
             )
 
@@ -71,29 +75,28 @@ class BatchCreateLinksUseCase:
                 f"Batch limit exceeded. Max: {self.batch_limit}, requested: {len(urls)}"
             )
 
-        start_time = datetime.now()
-
-        self.logger.info("Starting batch link creation", urls_count=len(urls))
+        log.info("Starting batch link creation", urls_count=len(urls))
 
         try:
             # 2. Group URLs by their hash (deduplication)
-            url_groups = self._group_urls_by_hash(urls)
+            url_groups = self._group_urls_by_hash(urls, log)
 
-            self.logger.debug(
+            log.debug(
                 "URLs grouped by hash",
-                unique_hashes=len(url_groups),
-                total_urls=len(urls),
+                unique_hashes=len([g for g in url_groups.values() if g["is_valid"]]),
+                invalid_groups=len([g for g in url_groups.values() if not g["is_valid"]]),
+                total_urls=len(urls)
             )
 
             # 3. Process all groups in batch-aware manner
-            batch_results = self._process_groups_batch(url_groups, user_ip, user_agent)
+            batch_results = self._process_groups_batch(url_groups, context, log)
 
             # 4. Build the final response
             response = BatchCreateResponse.from_results(batch_results)
 
-            processing_time = (datetime.now() - start_time).total_seconds()
+            processing_time = time.perf_counter() - start_time
 
-            self.logger.info(
+            log.info(
                 "Batch link creation completed",
                 total=response.total,
                 successful=response.successful,
@@ -101,13 +104,13 @@ class BatchCreateLinksUseCase:
                 cache_hits=response.from_cache_count,
                 db_hits=response.from_db_count,
                 new=response.new_count,
-                time_sec=round(processing_time, 3),
+                time_sec=round(processing_time, 3)
             )
 
             return response
 
         except Exception as e:
-            self.logger.exception(
+            log.exception(
                 "Batch link creation failed", url_count=len(urls), error=str(e)
             )
             raise RuntimeError(f"Batch processing failed: {str(e)}")
@@ -129,7 +132,7 @@ class BatchCreateLinksUseCase:
                 f"Allowed schemes: {', '.join(self.allowed_schemes)}"
             )
 
-    def _group_urls_by_hash(self, urls: List[str]) -> Dict[str, Dict]:
+    def _group_urls_by_hash(self, urls: List[str], log: Logger) -> Dict[str, Dict]:
         """
         Group URLs by their computed hash.
 
@@ -184,15 +187,18 @@ class BatchCreateLinksUseCase:
                     "error": str(e),
                 }
 
-                self.logger.warning("Invalid URL in batch", url=url[:50], error=str(e))
+                log.warning("Invalid URL in batch", url=url[:50], error=str(e))
 
         return groups
 
     def _process_groups_batch(
-        self, groups: Dict[str, Dict], user_ip: Optional[str] = None, user_agent: Optional[str] = None
+        self, 
+        groups: Dict[str, Dict], 
+        context: RequestContext,
+        log: Logger
     ) -> List[BatchItemResponse]:
         """
-        Process all groups in batch-aware steps.
+        Process all groups in batch‑aware steps.
 
         Steps:
           1. Separate valid and invalid groups.
@@ -203,7 +209,8 @@ class BatchCreateLinksUseCase:
 
         Args:
             groups: Output from _group_urls_by_hash.
-            user_ip, user_agent: For audit logging.
+            context: Request context (for audit logging).
+            log: Logger with bound context.
 
         Returns:
             List of BatchItemResponse objects for all input URLs.
@@ -233,6 +240,10 @@ class BatchCreateLinksUseCase:
         # 2. Batch cache lookup for all valid groups
         url_hashes = [group["hash"] for group in valid_groups]
         cached_links_map = self.cache.get_by_hashes(url_hashes)
+        log.debug(
+            "Cache lookup completed", 
+            cache_hits=sum(1 for v in cached_links_map.values() if v)
+        )
 
         # 3. Separate groups found in cache vs. those not found
         groups_not_in_cache = []
@@ -260,7 +271,6 @@ class BatchCreateLinksUseCase:
 
         # If all groups were in cache, return combined results
         if not groups_not_in_cache:
-
             results.extend(cache_results)
             results.extend(invalid_results)
             return results
@@ -268,6 +278,10 @@ class BatchCreateLinksUseCase:
         # 4. Batch database lookup for groups not in cache
         missing_hashes = [group["hash"] for group in groups_not_in_cache]
         db_link_map = self.repository.find_by_hashes(missing_hashes)
+        log.debug(
+            "Database lookup completed", 
+            db_hits=sum(1 for v in db_link_map.values() if v)
+        )
 
         # 5. Separate groups found in DB vs. those needing creation
         groups_to_create = []
@@ -307,12 +321,8 @@ class BatchCreateLinksUseCase:
             # Audit each new link (optional: associate with batch_id)
             batch_id = str(uuid.uuid4())
             for link in saved_links:
-                self.audit_logger.log_url_created(
-                    link,
-                    user_ip=user_ip,
-                    user_agent=user_agent,
-                    batch_id=batch_id
-                )
+                self.audit_logger.log_url_created(link, context, batch_id=batch_id)
+            log.debug("New links saved", count=len(saved_links))
 
         # 8. Cache all links (both from DB and newly created)
         links_to_cache = []
@@ -321,6 +331,7 @@ class BatchCreateLinksUseCase:
 
         if links_to_cache:
             self.cache.save_many(links_to_cache)
+            log.debug("Links cached", count=len(links_to_cache))
 
         # 9. Build results for newly created links
         new_results = self._create_new_link_results(groups_to_create, saved_links)
@@ -332,7 +343,7 @@ class BatchCreateLinksUseCase:
         results.extend(invalid_results)
         return results
 
-    def _create_new_links_batch(self, groups: List[Dict]) -> List[Link]:
+    def _create_new_links_batch(self, groups: List[Dict], log: Logger) -> List[Link]:
         """
         Create new Link entities for groups that are not in cache or DB.
 
@@ -341,6 +352,7 @@ class BatchCreateLinksUseCase:
 
         Args:
             groups: List of group dicts (must contain "hash" and "original_url").
+            log: Logger with bound context.
 
         Returns:
             List of created Link objects (without repository save).
@@ -360,7 +372,7 @@ class BatchCreateLinksUseCase:
 
         # 3. Resolve collisions (may require multiple attempts)
         resolved_codes = self._resolve_collisions_batch(
-            hash_to_code, existing_codes_map, groups
+            hash_to_code, existing_codes_map, groups, log
         )
 
         # 4. Create Link entities for groups with successfully resolved codes
@@ -371,6 +383,7 @@ class BatchCreateLinksUseCase:
 
             if not short_code:
                 # Failed to resolve after max attempts – skip (should be rare)
+                log.error("Failed to resolve collision for hash", hash=url_hash.value[:10])
                 continue
 
             new_link = Link.create(
@@ -387,6 +400,7 @@ class BatchCreateLinksUseCase:
         hash_to_code: Dict[UrlHash, ShortCode],
         existing_codes_map: Dict[ShortCode, Optional[Link]],
         groups: List[Dict],
+        log: Logger
     ) -> Dict[UrlHash, ShortCode]:
         """
         Resolve short code collisions in batch.
@@ -399,6 +413,7 @@ class BatchCreateLinksUseCase:
             hash_to_code: Initial mapping from hash to generated code.
             existing_codes_map: Result from repository.find_by_codes.
             groups: List of groups (needed to retrieve original_url for salting).
+            log: Logger with bound context.
 
         Returns:
             Dictionary mapping each URL hash to a unique short code.
@@ -432,6 +447,11 @@ class BatchCreateLinksUseCase:
                     collision_attempts[attempt_key] += 1
 
                     if collision_attempts[attempt_key] > max_attempts:
+                        log.warning(
+                            "Max collision attempts exceeded for hash",
+                            hash=url_hash.value[:10],
+                            attempts=max_attempts
+                        )
                         continue  # Exceeded max attempts – skip this group
 
                     # Generate a new code with salt (attempt number)
@@ -442,10 +462,15 @@ class BatchCreateLinksUseCase:
                     new_code = self.shortening_policy.generate_unique_code(
                         original_url, attempt
                     )
+                    log.debug(
+                        "Code collision, retrying",
+                        hash=url_hash.value[:10],
+                        attempt=attempt,
+                        new_code=new_code.value
+                    )
 
                     # Check if new code is free
                     if new_code not in occupied_codes:
-
                         # В случае, если новый код не вызывает коллизию
                         resolved[url_hash] = new_code
                         occupied_codes.add(new_code)

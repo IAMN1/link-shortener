@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 
+from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.responses import BatchCreateResponse, ExtendedLinkInfoResponse, ServiceStatsResponse, ShortLinkResponse
 from link_shortener.application.use_cases.batch_create_links import BatchCreateLinksUseCase
 from link_shortener.application.use_cases.create_short_link import CreateShortLinkUseCase
@@ -27,8 +28,7 @@ class LinkService:
     get_service_stats_use_case: GetServiceStatsUseCase
 
     def create_short_link(
-        self, url: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None
-    ) -> ShortLinkResponse:
+        self, url: str, context: RequestContext) -> ShortLinkResponse:
         """
         Create a short link for the given URL.
 
@@ -36,17 +36,14 @@ class LinkService:
 
         Args:
             url: Original URL to shorten.
-            user_ip: Client IP address (for audit). Optional.
-            user_agent: Client User-Agent (for audit). Optional.
+            context: Request context with client metadata.
 
         Returns:
             ShortLinkResponse DTO.
         """
-        return self.create_short_link_use_case.execute(
-            url, user_ip, user_agent
-        )
+        return self.create_short_link_use_case.execute(url, context)
 
-    def get_link_info(self, short_code: str) -> ShortLinkResponse:
+    def get_link_info(self, short_code: str, context: RequestContext) -> ShortLinkResponse:
         """
         Retrieve basic information about a short link.
 
@@ -54,13 +51,14 @@ class LinkService:
 
         Args:
             short_code: Short code of the link.
+            context: Request context with client metadata.
 
         Returns:
             ShortLinkResponse DTO.
         """
-        return self.get_link_info_use_case.execute(short_code)
+        return self.get_link_info_use_case.execute(short_code, context)
 
-    def get_extended_link_info(self, short_code: str) -> ExtendedLinkInfoResponse:
+    def get_extended_link_info(self, short_code: str, context: RequestContext) -> ExtendedLinkInfoResponse:
         """
         Retrieve extended information about a short link.
 
@@ -68,35 +66,31 @@ class LinkService:
 
         Args:
             short_code: Short code of the link.
+            context: Request context with client metadata.
 
         Returns:
             ExtendedLinkInfoResponse DTO.
         """
-        return self.get_extended_link_info_use_case.execute(short_code)
+        return self.get_extended_link_info_use_case.execute(short_code, context)
 
     def redirect(
-        self, short_code: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None
-    ) -> str:
+        self, short_code: str, context: RequestContext) -> str:
         """
-        et the original URL for redirect (increments click count).
+        Get the original URL for redirect (increments click count).
 
         Delegates to RedirectLinkUseCase.
 
         Args:
             short_code: Short code of the link.
-            user_ip: Client IP address (for audit). Optional.
-            user_agent: Client User-Agent (for audit). Optional.
+            context: Request context with client metadata.
 
         Returns:
             Original URL as string.
         """
-        return self.redirect_link_use_case.execute(
-            short_code, user_ip, user_agent
-        )
+        return self.redirect_link_use_case.execute(short_code, context)
 
     def batch_create_short_links(
-        self, urls: List[str], user_ip: Optional[str] = None, user_agent: Optional[str] = None
-    ) -> BatchCreateResponse:
+        self, urls: List[str], context: RequestContext) -> BatchCreateResponse:
         """
         Create short links for multiple URLs in batch.
 
@@ -104,23 +98,23 @@ class LinkService:
 
         Args:
             urls: List of URLs to shorten.
-            user_ip: Client IP address (for audit). Optional.
-            user_agent: Client User-Agent (for audit). Optional.
+            context: Request context with client metadata.
 
         Returns:
             BatchCreateResponse DTO with aggregated results.
         """
-        return self.batch_create_links_use_case.execute(
-            urls, user_ip, user_agent
-        )
+        return self.batch_create_links_use_case.execute(urls, context)
 
-    def get_service_stats(self) -> ServiceStatsResponse:
+    def get_service_stats(self, context: RequestContext) -> ServiceStatsResponse:
         """
         Get service-wide statistics.
 
         Delegates to GetServiceStatsUseCase.
 
+        Args:
+            context: Request context with client metadata.
+
         Returns:
             ServiceStatsResponse DTO.
         """
-        return self.get_service_stats_use_case.execute()
+        return self.get_service_stats_use_case.execute(context)

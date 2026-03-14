@@ -1,9 +1,10 @@
 import os
 
 import click
-from flask import Flask, redirect, request, current_app
+from flask import Flask, g, redirect, request, current_app
 from flask.cli import with_appcontext
 from flask_cors import CORS
+from link_shortener.application.context import RequestContext
 from link_shortener.infrastructure import InMemoryLinkCache, RedisLinkCache, LoggingSettings
 from link_shortener.infrastructure.config.factory import get_config
 from link_shortener.infrastructure.logging.config import setup_logging
@@ -100,12 +101,14 @@ def create_app(config=None) -> Flask:
         then returns a redirect response to the original URL.
         """
 
-        # Extract real client IP (handling proxies)
-        user_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
-
-        user_agent = request.user_agent.string if request.user_agent else None
-
-        original_url = container.get_link_service().redirect(short_code, user_ip=user_ip, user_agent=user_agent)
+        context = RequestContext(
+            request_id=g.get('request_id'),
+            remote_addr=request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip(),
+            user_agent=request.user_agent.string if request.user_agent else None,
+            request_path=request.path,
+            request_method=request.method
+        )
+        original_url = container.get_link_service().redirect(short_code, context)
 
         return redirect(original_url)
 

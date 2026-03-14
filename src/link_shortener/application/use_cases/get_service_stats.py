@@ -1,15 +1,18 @@
 from dataclasses import dataclass
 from datetime import datetime
+import time
 
 
 from link_shortener.application import (
     ServiceStatsResponse, StatsItemResponse, StatsCache, Logger
 )
+from link_shortener.application.context import RequestContext
+from link_shortener.application.use_cases.base import BaseUseCase
 from link_shortener.domain import LinkRepository
 
 
 @dataclass
-class GetServiceStatsUseCase:
+class GetServiceStatsUseCase(BaseUseCase):
     """
     Use case: Retrieve service-wide statistics.
 
@@ -25,18 +28,26 @@ class GetServiceStatsUseCase:
     cache: StatsCache
     logger: Logger
 
-    def execute(self) -> ServiceStatsResponse:
+    def execute(self, context: RequestContext) -> ServiceStatsResponse:
         """
         Execute the get service stats use case.
+
+        Args:
+            context: Request context with client metadata.
 
         Returns:
             ServiceStatsResponse with aggregated statistics.
         """
+
+        log = self._get_logger(self.logger, context)
+        start_time = time.perf_counter()
+        log.debug("Getting service stats")
+
         try:
             # 1. Check cache
             cached_stats = self.cache.get_stats()
             if cached_stats:
-                self.logger.info("Stats cache hit")
+                log.info("Stats cache hit")
 
                 # Rehydrate popular_links from serialized data
                 popular_links = []
@@ -88,7 +99,7 @@ class GetServiceStatsUseCase:
             # 4. Cache the result
             self.cache.save_stats(response.to_dict())
 
-            self.logger.info(
+            log.info(
                 "Stats retrieved",
                 urls=total_urls,
                 clicks=total_clicks,
@@ -97,9 +108,12 @@ class GetServiceStatsUseCase:
 
             return response
         except Exception as e:
-            self.logger.exception("Error getting service stats", exc_info=str(e))
+            log.exception("Error getting service stats", exc_info=str(e))
 
             # Возвращение пустой статистики в случае ошибки
             return ServiceStatsResponse(
                 total_urls=0, total_clicks=0, avg_clicks_per_url=0.0, popular_links=[]
             )
+        finally:
+            duration = time.perf_counter() - start_time
+            log.debug("Execution time", duration_ms=round(duration * 1000, 2))

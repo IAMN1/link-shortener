@@ -4,20 +4,7 @@ import os
 
 from link_shortener.infrastructure.logging.settings import LoggingSettings
 import structlog
-from flask import has_request_context, g, request
 
-
-def _add_request_context(logger, method_name, event_dict):
-    """
-    Add Flask request context to log entries if available.
-    """
-
-    if has_request_context():
-        event_dict["request_id"] = getattr(g, "request_id", None)
-        event_dict["request_path"] = request.path
-        event_dict["request_method"] = request.method
-        event_dict["remote_addr"] = request.remote_addr
-    return event_dict
 
 def _replace_logger_name_with_module(logger, method_name, event_dict):
     """
@@ -39,7 +26,6 @@ def _configure_structlog(settings: LoggingSettings):
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt=settings.log_date_format, utc=True),
-        _add_request_context,
         _replace_logger_name_with_module,
         structlog.processors.StackInfoRenderer(),
 

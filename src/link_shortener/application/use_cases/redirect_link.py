@@ -1,17 +1,19 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import threading
-from typing import Optional
+import time
 
 
+from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.cache.link_cache import LinkCache
 from link_shortener.application.ports.cache.redirect_cache import RedirectCache
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application.use_cases.base import BaseUseCase
 from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
 
 
 @dataclass
-class RedirectLinkUseCase:
+class RedirectLinkUseCase(BaseUseCase):
     """
     Use case: Handle redirect by short code.
 
@@ -34,14 +36,13 @@ class RedirectLinkUseCase:
     logger: Logger
     audit_logger: AuditLogger
 
-    def execute(self, short_code_str: str, user_ip: Optional[str] = None, user_agent: Optional[str] = None) -> str:
+    def execute(self, short_code_str: str, context: RequestContext) -> str:
         """
         Execute the redirect use case.
 
         Args:
             short_code_str: Short code as string.
-            user_ip: Client IP (for audit). Optional.
-            user_agent: Client User-Agent (for audit). Optional.
+            context: Request context with client metadata.
 
         Returns:
             Original URL to redirect to.
@@ -51,26 +52,29 @@ class RedirectLinkUseCase:
             ValueError: If short code format is invalid.
             RuntimeError: If an unexpected error occurs.
         """
+
+        log = self._get_logger(self.logger, context)
+        start_time = time.perf_counter()
+        log.debug("Redirect requested", code=short_code_str)
+
         try:
             # Step 1: Validate short code
             short_code = ShortCode(short_code_str)
 
-            self.logger.debug("Redirect requested for", code=short_code.value)
-
             # Step 2: Check L1 cache (fastest)
             cached_url = self.redirect_cache.get_original_url(short_code)
             if cached_url:
-                self.logger.info("Redirect cache hit (L1)", code=short_code.value)
+                log.info("Redirect cache hit (L1)", code=short_code.value)
                 
                 # Asynchronously update click count and audit
-                self._audit_and_update_async(short_code, user_ip, user_agent)
+                self._audit_and_update_async(short_code, context)
                 
                 return cached_url
 
             # Step 3: Check L2 cache (full link)
             cached_link = self.link_cache.get_by_code(short_code)
             if cached_link:
-                self.logger.info(
+                log.info(
                     "Link cache hit for redirect (L2)", code=short_code.value
                 )
 
@@ -78,14 +82,14 @@ class RedirectLinkUseCase:
                 orig_url = cached_link.original_url.value
                 self.redirect_cache.save_original_url(short_code, orig_url)
 
-                self._audit_and_update_async(short_code, user_ip, user_agent)
+                self._audit_and_update_async(short_code, context)
 
                 return orig_url
 
             # Step 4: Query repository
             link = self.repository.find_by_code(short_code)
             if not link:
-                self.logger.warning(
+                log.warning(
                     "Link not found for redirect:", code=short_code.value
                 )
                 raise LinkNotFoundError(short_code_str)
@@ -99,16 +103,16 @@ class RedirectLinkUseCase:
             # Step 6: Cache on all levels
             self.link_cache.save(link)
 
-            self.logger.info(
+            log.info(
                 "Redirect successful", code=short_code.value, url=orig_url[:50]
             )
 
-            self.audit_logger.log_url_accessed(link, user_ip, user_agent)
+            self.audit_logger.log_url_accessed(link, context)
 
             return orig_url
 
         except ValueError as e:
-            self.logger.error(
+            log.error(
                 "Invalid short code format", code=short_code_str, error=str(e)
             )
             raise ValueError(f"Invalid short code: {str(e)}")
@@ -117,16 +121,18 @@ class RedirectLinkUseCase:
             raise
 
         except Exception as e:
-            self.logger.exception(
+            log.exception(
                 "Error during redirect",
                 exc_info=str(e),
                 short_code=short_code_str,
             )
             raise RuntimeError(f"Failed to redirect: {str(e)}")
+        finally:
+            duration = time.perf_counter() - start_time
+            log.debug("Execution time", duration_ms=round(duration * 1000, 2))
 
     def _audit_and_update_async(
-        self, short_code: ShortCode, user_ip: Optional[str], user_agent: Optional[str]
-    ) -> None:
+        self, short_code: ShortCode, context: RequestContext) -> None:
         """
         TODO: Replace with proper async task queue (Celery) later.
 
@@ -137,10 +143,15 @@ class RedirectLinkUseCase:
 
         Args:
             short_code: Short code of the accessed link.
-            user_ip: Client IP address.
-            user_agent: Client User-Agent.
+            context: Request context (copied to the background thread).
         """
+
+        context_copy = replace(context) # bcs of frozen=True
+
         def task():
+
+            thread_log = self._get_logger(context_copy)
+
             try:
                 # Try to get link from cache first (fast)
                 link = self.link_cache.get_by_code(short_code)
@@ -149,7 +160,7 @@ class RedirectLinkUseCase:
                 
                 if link:
                     # Audit
-                    self.audit_logger.log_url_accessed(link, user_ip, user_agent)
+                    self.audit_logger.log_url_accessed(link, context_copy)
                     
                     # Increment in repository
                     self.repository.increment_clicks(short_code)
@@ -159,21 +170,21 @@ class RedirectLinkUseCase:
                     # Refresh cache with updated link
                     self.link_cache.save(link)
 
-                    self.logger.debug(
+                    thread_log.debug(
                         "Background click increment and audit completed",
                         short_code=short_code.value,
                         new_clicks=link.clicks,
                     )
 
                 else:
-                    self.logger.error(
+                    thread_log.error(
                         "Background task failed: link not found", 
                         code=short_code.value
                     )
 
             except Exception as e:
-                self.logger.error(
-                    "Background click increment and audit failed",
+                thread_log.error(
+                    "Background task failed",
                     short_code=short_code.value,
                     error=str(e),
                 )

@@ -1,15 +1,18 @@
 from dataclasses import dataclass
+import time
 
 
 from link_shortener.application import (
     ExtendedLinkInfoResponse, ShortLinkResponse, LinkCache, Logger
 )
 
+from link_shortener.application.context import RequestContext
+from link_shortener.application.use_cases.base import BaseUseCase
 from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
 
 
 @dataclass
-class GetLinkInfoUseCase:
+class GetLinkInfoUseCase(BaseUseCase):
     """
     Use case: Retrieve basic information about a short link.
 
@@ -26,12 +29,13 @@ class GetLinkInfoUseCase:
     base_url: str
     logger: Logger
 
-    def execute(self, short_code_str: str) -> ShortLinkResponse:
+    def execute(self, short_code_str: str, context: RequestContext) -> ShortLinkResponse:
         """
         Execute the get link info use case.
 
         Args:
             short_code_str: Short code as string.
+            context: Request context with client metadata.
 
         Returns:
             ShortLinkResponse with link details.
@@ -40,17 +44,20 @@ class GetLinkInfoUseCase:
             LinkNotFoundError: If link not found.
             ValueError: If short code format is invalid.
         """
+
+        log = self._get_logger(self.logger, context)
+        start_time = time.perf_counter()
+        log.debug("Getting link info", short_code=short_code_str)
+
         try:
             # Step 1: Validate short code
             short_code = ShortCode(short_code_str)
-
-            self.logger.debug("Getting link info for", short_code=short_code.value)
 
             # Step 2: Check cache
             cached_link = self.cache.get_by_code(short_code)
             if cached_link:
 
-                self.logger.info("Cache hit for code", code=short_code.value)
+                log.info("Cache hit", code=short_code.value)
 
                 return ShortLinkResponse.from_link(
                     cached_link, base_url=self.base_url, is_new=False, from_cache=True
@@ -59,33 +66,36 @@ class GetLinkInfoUseCase:
             # Step 3: Query repository
             link = self.repository.find_by_code(short_code)
             if not link:
-                self.logger.warning("Link not found", code=short_code.value)
+                log.warning("Link not found", code=short_code.value)
                 raise LinkNotFoundError(short_code_str)
 
             # Step 4: Cache for future requests
             self.cache.save(link)
 
-            self.logger.info("Found in repository", short_code=short_code.value)
+            log.info("Found in repository", short_code=short_code.value)
 
             # Step 5: Return response
             return ShortLinkResponse.from_link(link, self.base_url, from_cache=False)
 
         except ValueError as e:
-            self.logger.error("Invalid short code format", short_code=short_code_str)
+            log.error("Invalid short code format", short_code=short_code_str)
             raise ValueError(f"Invalid short code: {str(e)}")
 
         except LinkNotFoundError:
             raise
 
         except Exception as e:
-            self.logger.exception(
+            log.exception(
                 "Error getting link info", short_code=short_code_str, exc_info=str(e)
             )
             raise
+        finally:
+            duration = time.perf_counter() - start_time
+            log.debug("Execution time", duration_ms=round(duration * 1000, 2))
 
 
 @dataclass
-class GetExtendLinkInfoUseCase:
+class GetExtendLinkInfoUseCase(BaseUseCase):
     """
     Use case: Retrieve extended information about a short link,
     including derived metrics like popularity, age, clicks per day.
@@ -98,12 +108,13 @@ class GetExtendLinkInfoUseCase:
     popular_threshold: int
     recent_days: int
 
-    def execute(self, short_code_str: str) -> ExtendedLinkInfoResponse:
+    def execute(self, short_code_str: str, context: RequestContext) -> ExtendedLinkInfoResponse:
         """
         Execute the extended info use case.
 
         Args:
             short_code_str: Short code as string.
+            context: Request context with client metadata.
 
         Returns:
             ExtendedLinkInfoResponse with metrics.
@@ -112,18 +123,18 @@ class GetExtendLinkInfoUseCase:
             LinkNotFoundError: If link not found.
             ValueError: If short code format is invalid.
         """
+        log = self._get_logger(self.logger, context)
+        start_time = time.perf_counter()
+        log.debug("Getting extend link info", short_code=short_code_str)
+
         try:
 
             short_code = ShortCode(short_code_str)
 
-            self.logger.debug(
-                "Getting extend link info for", short_code=short_code.value
-            )
-
             # Check cache first
             cached_link = self.cache.get_by_code(short_code)
             if cached_link:
-                self.logger.info("Cache hit for code", code=short_code.value)
+                log.info("Cache hit for code", code=short_code.value)
                 return ExtendedLinkInfoResponse.from_link(
                     cached_link, 
                     base_url=self.base_url,
@@ -134,13 +145,13 @@ class GetExtendLinkInfoUseCase:
             # Query repository
             link = self.repository.find_by_code(short_code)
             if not link:
-                self.logger.warning("Link not found", code=short_code.value)
+                log.warning("Link not found", code=short_code.value)
                 raise LinkNotFoundError(short_code_str)
 
             # Cache for future
             self.cache.save(link)
 
-            self.logger.info("Found in repository", short_code=short_code.value)
+            log.info("Found in repository", short_code=short_code.value)
 
             return ExtendedLinkInfoResponse.from_link(
                 link, 
@@ -150,16 +161,19 @@ class GetExtendLinkInfoUseCase:
             )
 
         except ValueError as e:
-            self.logger.error("Invalid short code format", short_code=short_code_str)
+            log.error("Invalid short code format", short_code=short_code_str)
             raise ValueError(f"Invalid short code: {str(e)}")
 
         except LinkNotFoundError:
             raise
 
         except Exception as e:
-            self.logger.error(
+            log.error(
                 "Error getting extended link info",
                 short_code=short_code_str,
                 error=str(e),
             )
             raise
+        finally:
+            duration = time.perf_counter() - start_time
+            log.debug("Execution time", duration_ms=round(duration * 1000, 2))

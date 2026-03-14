@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Optional
 
+from link_shortener.application.context import RequestContext
 import structlog
 
 from link_shortener.application import AuditLogger
@@ -21,16 +21,13 @@ class StructlogAuditLogger(AuditLogger):
         """
         self._logger = structlog.get_logger("audit")
 
-    def log_url_created(
-        self, link: Link, user_ip: Optional[str] = None, user_agent: Optional[str] = None, **kwargs
-    ) -> None:
+    def log_url_created(self, link: Link, context: RequestContext, **kwargs) -> None:
         """
         Log a URL creation event.
 
         Args:
             link: The newly created Link entity.
-            user_ip: IP address of the user who created the link.
-            user_agent: User-Agent string of the client.
+            context: Request context containing client IP, user agent, request ID, etc.
             **kwargs: Additional context (e.g., batch_id).
         """
 
@@ -43,27 +40,21 @@ class StructlogAuditLogger(AuditLogger):
             short_code=link.short_code.value,
             original_url=self._mask_url(link.original_url.value),
             is_new=True,
-            user_ip=user_ip,
-            user_agent=user_agent,
+            remote_addr=context.remote_addr,
+            user_agent=context.user_agent,
+            request_id=context.request_id,
             timestamp=link.created_at.isoformat(),
             event_type="URL_CREATED",
             **kwargs,
         )
 
-    def log_url_accessed(
-        self,
-        link: Link,
-        user_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        **kwargs,
-    ) -> None:
+    def log_url_accessed(self, link: Link, context: RequestContext, **kwargs) -> None:
         """
         Log a URL access (redirect) event.
 
         Args:
             link: The Link entity being accessed.
-            user_ip: IP address of the user.
-            user_agent: User-Agent string.
+            context: Request context containing client IP, user agent, request ID, etc.
             **kwargs: Additional context.
         """
 
@@ -74,9 +65,11 @@ class StructlogAuditLogger(AuditLogger):
             "url_accessed",
             short_code=link.short_code.value,
             original_url=self._mask_url(link.original_url.value),
+            url_hash=link.url_hash.value,
             clicks=link.clicks,
-            user_ip=user_ip,
-            user_agent=user_agent,
+            remote_addr=context.remote_addr,
+            user_agent=context.user_agent,
+            request_id=context.request_id,
             timestamp=datetime.now().isoformat(),
             event_type="URL_ACCESSED",
             **kwargs,

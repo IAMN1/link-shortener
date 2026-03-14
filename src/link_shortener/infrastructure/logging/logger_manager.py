@@ -144,15 +144,24 @@ class FailoverLoggerProxy(Logger):
     """
     Proxy that forwards logging calls to the FailoverService,
     adding the module name to the keyword arguments.
+    Supports binding additional fields via bind().
     """
 
-    def __init__(self, service: FailoverService, module_name: str):
+    def __init__(self, service: FailoverService, module_name: str, bound_fields: Optional[Dict]= None):
+        
         self._service = service
         self._module_name = module_name
+        self._bound_fields = bound_fields if bound_fields else {}
+
+    def bind(self, **kwargs) -> "FailoverLoggerProxy":
+        """Returns a new proxy with additional tied fields."""
+        new_bound = {**self._bound_fields, **kwargs}
+        return FailoverLoggerProxy(self._service, self._module_name, new_bound)
 
     def _call(self, method_name: str, message: str, **kwargs):
-        kwargs["module"] = self._module_name
-        return self._service.execute(method_name, message, **kwargs)
+        all_kwargs = {**self._bound_fields, **kwargs}
+        all_kwargs["module"] = self._module_name
+        return self._service.execute(method_name, message, **all_kwargs)
 
     def debug(self, message: str, **kwargs):
         self._call("debug", message, **kwargs)
@@ -177,27 +186,32 @@ class _ModuleLogger(Logger):
     that adds module name to kwargs.
     """
 
-    def __init__(self, logger: Logger, module_name: str):
+    def __init__(self, logger: Logger, module_name: str, bound_fields: Optional[Dict] = None):
         self._logger = logger
         self._module_name = module_name
+        self._bound_fields = bound_fields if bound_fields else {}
+
+    def bind(self, **kwargs) -> '_ModuleLogger':
+        new_bound = {**self._bound_fields, **kwargs}
+        return _ModuleLogger(self._logger, self._module_name, new_bound)
+
+    def _log(self, level: str, message: str, **kwargs):
+        all_kwargs = {**self._bound_fields, **kwargs}
+        all_kwargs["module"] = self._module_name
+        getattr(self._logger, level)(message, **all_kwargs)
 
     def debug(self, message: str, **kwargs):
-        kwargs["module"] = self._module_name
-        self._logger.debug(message, **kwargs)
+        self._log("debug", message, **kwargs)
 
     def info(self, message: str, **kwargs):
-        kwargs["module"] = self._module_name
-        self._logger.info(message, **kwargs)
+        self._log("info", message, **kwargs)
 
     def warning(self, message: str, **kwargs):
-        kwargs["module"] = self._module_name
-        self._logger.warning(message, **kwargs)
+        self._log("warning", message, **kwargs)
 
     def error(self, message: str, **kwargs):
-        kwargs["module"] = self._module_name
-        self._logger.error(message, **kwargs)
+        self._log("error", message, **kwargs)
 
     def exception(self, message: str, exc_info=None, **kwargs):
-        kwargs["module"] = self._module_name
         kwargs["exc_info"] = exc_info
-        self._logger.exception(message, **kwargs)
+        self._log("exception", message, **kwargs)
