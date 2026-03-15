@@ -119,7 +119,10 @@ class Container:
             self._db_manager = DatabaseManager(
                 self.config.DATABASE_URL,
                 echo=self.config.DEBUG,
-                pool_pre_ping=self.config.DATABASE_POOL_PRE_PING
+                pool_pre_ping=self.config.DATABASE_POOL_PRE_PING,
+                pool_size=self.config.DATABASE_POOL_SIZE,
+                max_overflow=self.config.DATABASE_MAX_OVERFLOW,
+                pool_recycle=self.config.DATABASE_POOL_RECYCLE,
             )
             self._db_manager.connect()
         return self._db_manager
