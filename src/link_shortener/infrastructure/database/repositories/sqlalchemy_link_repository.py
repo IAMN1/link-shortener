@@ -206,18 +206,31 @@ class SQLAlchemyLinkRepository(LinkRepository):
         """
         Convert a database model to a domain Link entity.
 
+        If the model's datetime fields are naive (missing timezone information),
+        they are assumed to be in UTC and are converted to timezone-aware UTC.
+        This ensures that all domain entities consistently use aware datetimes.
+
         Args:
             link_model: SQLAlchemy LinkModel instance.
 
         Returns:
-            Domain Link object.
+            Link: The corresponding domain entity.
         """
+
+        created_at = link_model.created_at
+        if created_at is not None and created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+
+        last_accessed = link_model.last_accessed
+        if last_accessed is not None and last_accessed.tzinfo is None:
+            last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+
         return Link(
             id=link_model.id,
             url_hash=UrlHash(link_model.url_hash),
             short_code=ShortCode(link_model.short_code),
             original_url=OriginalUrl(link_model.original_url),
-            created_at=link_model.created_at,
+            created_at=created_at,
             clicks=link_model.clicks,
-            last_accessed=link_model.last_accessed,
+            last_accessed=last_accessed,
         )
