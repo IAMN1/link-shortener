@@ -136,13 +136,19 @@ class OriginalUrl:
         - Ensure path is at least '/'.
         - Remove fragment.
         """
-
         parsed = urlparse(self.value)
+        scheme=parsed.scheme.lower()
+        netloc=parsed.netloc.lower()
+
+        if scheme == "http" and parsed.port == 80:
+            netloc = netloc.replace(':80','')
+        elif scheme == "https" and parsed.port == 443:
+            netloc = netloc.replace(':443', '')
         path = parsed.path if parsed.path else "/"
 
         normalized = ParseResult(
-            scheme=parsed.scheme.lower(),
-            netloc=parsed.netloc.lower(),
+            scheme=scheme,
+            netloc=netloc,
             path=path,
             params=parsed.params,
             query=parsed.query,
