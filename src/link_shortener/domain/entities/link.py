@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from link_shortener.domain.value_objects.original_url import OriginalUrl
@@ -56,7 +56,7 @@ class Link:
             url_hash=url_hash,
             short_code=short_code,
             original_url=original_url,
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
             clicks=0,
             last_accessed=None,
         )
@@ -66,7 +66,7 @@ class Link:
         Business rule: increment click counter and update last accessed timestamp.
         """
         self.clicks += 1
-        self.last_accessed = datetime.now()
+        self.last_accessed = datetime.now(timezone.utc)
 
     def is_popular(self, threshold: int) -> bool:
         """
@@ -90,7 +90,7 @@ class Link:
         Returns:
             True if created_at is within the last `days` days, else False.
         """
-        age = datetime.now() - self.created_at
+        age = datetime.now(timezone.utc) - self.created_at
         return age.days <= days
 
     def __eq__(self, other: object) -> bool:

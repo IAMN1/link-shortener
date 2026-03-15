@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy import func
@@ -149,7 +149,7 @@ class SQLAlchemyLinkRepository(LinkRepository):
             ).update(
                 {
                     LinkModel.clicks: LinkModel.clicks + 1,
-                    LinkModel.last_accessed: datetime.now(),
+                    LinkModel.last_accessed: datetime.now(timezone.utc),
                 },
                 synchronize_session=False,
             )
@@ -166,7 +166,7 @@ class SQLAlchemyLinkRepository(LinkRepository):
             ).update(
                 {
                     LinkModel.clicks: LinkModel.clicks + 1,
-                    LinkModel.last_accessed: datetime.now(),
+                    LinkModel.last_accessed: datetime.now(timezone.utc),
                 },
                 synchronize_session=False,
             )
