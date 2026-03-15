@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from link_shortener.domain import Link
@@ -194,7 +194,7 @@ class BatchCreateResponse:
     from_db_count: int = 0
     new_count: int = 0
     processing_time_seconds: float = 0.0
-    created_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=datetime.now(timezone.utc))
 
     @classmethod
     def from_results(cls, results: List[BatchItemResponse]) -> "BatchCreateResponse":
@@ -225,7 +225,7 @@ class BatchCreateResponse:
             from_cache_count=from_cache_count,
             from_db_count=from_db_count,
             new_count=new_count,
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
         )
 
     @classmethod
@@ -339,12 +339,12 @@ class ExtendedLinkInfoResponse:
 
         short_url = f'{base_url.rstrip("/")}/{link.short_code.value}'
 
-        age_days = (datetime.now() - link.created_at).days
+        age_days = (datetime.now(timezone.utc) - link.created_at).days
         clicks_per_day = (
             round(link.clicks / max(age_days, 1), 2) if link.clicks > 0 else 0.0
         )
         last_access_days_ago = (
-            (datetime.now() - link.last_accessed).days if link.last_accessed else None
+            (datetime.now(timezone.utc) - link.last_accessed).days if link.last_accessed else None
         )
 
         return cls(
