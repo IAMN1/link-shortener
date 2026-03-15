@@ -15,7 +15,15 @@ class DatabaseManager:
     to get a raw session for manual management.
     """
 
-    def __init__(self, database_url: str, echo: bool, pool_pre_ping: bool):
+    def __init__(
+        self, 
+        database_url: str, 
+        echo: bool, 
+        pool_pre_ping: bool,
+        pool_size: int,
+        max_overflow: int,
+        pool_recycle: int
+    ):
         """
         nitialize the manager with database URL and optional echo flag.
 
@@ -28,6 +36,9 @@ class DatabaseManager:
         self.database_url = database_url
         self.echo = echo
         self.pool_pre_ping = pool_pre_ping
+        self.pool_size = pool_size
+        self.max_overflow = max_overflow
+        self.pool_recycle = pool_recycle
         self.engine = None
         self._session_factory = None
 
@@ -39,11 +50,20 @@ class DatabaseManager:
             Self for chaining.
         """
 
-        self.engine = create_engine(
-            self.database_url, 
-            pool_pre_ping=self.pool_pre_ping, 
-            echo=self.echo
-        )
+        engine_kwargs = {
+            "pool_pre_ping": self.pool_pre_ping,
+            "echo": self.echo,
+        }
+
+        # Добавляем параметры пула только если они заданы (больше нуля)
+        if self.pool_size > 0:
+            engine_kwargs["pool_size"] = self.pool_size
+        if self.max_overflow > 0:
+            engine_kwargs["max_overflow"] = self.max_overflow
+        if self.pool_recycle > 0:
+            engine_kwargs["pool_recycle"] = self.pool_recycle
+
+        self.engine = create_engine(self.database_url, **engine_kwargs)
 
         self._session_factory = sessionmaker(
             autocommit=False, autoflush=False, bind=self.engine
