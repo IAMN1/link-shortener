@@ -1,3 +1,4 @@
+from datetime import timezone
 import json
 import time
 from typing import Any, Dict, List, Optional
@@ -15,7 +16,9 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
 
     This cache uses Redis for distributed caching with TTL support.
     It includes automatic reconnection logic and graceful degradation
-    (returns None on Redis failures).
+    (returns None on Redis failures). When deserializing cached Link objects,
+    any naive datetime fields are automatically converted to timezone-aware UTC
+    to ensure consistency with domain entities.
 
     Cache key patterns:
         - Redirect: {prefix}:redirect:{short_code}
@@ -149,7 +152,15 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     # Serialization helpers
     # ------------------------------------------------------------------
     def _serialize(self, link: Link) -> bytes:
-        """Serialize a Link object to JSON bytes for Redis storage."""
+        """
+        Serialize a Link object to JSON bytes for Redis storage.
+
+        Args:
+            link: The Link entity to serialize.
+
+        Returns:
+            bytes: JSON representation encoded in UTF-8.
+        """
         data = {
             "id": link.id,
             "url_hash": link.url_hash.value,
@@ -164,22 +175,42 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         return json.dumps(data).encode("utf-8")
 
     def _deserialize(self, data: bytes) -> Optional[Link]:
-        """Deserialize JSON bytes back to a Link object."""
+        """
+        Deserialize JSON bytes back to a Link object.
+
+        If the deserialized datetime fields are naive (missing timezone),
+        they are automatically converted to timezone-aware UTC to match the
+        domain model's expectations.
+
+        Args:
+            data: JSON bytes from Redis.
+
+        Returns:
+            Optional[Link]: The reconstructed Link object, or None if
+                deserialization fails.
+        """
         from datetime import datetime
 
         try:
             data_dict = json.loads(data.decode("utf-8"))
 
+            created_at = datetime.fromisoformat(data_dict["created_at"])
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+
             last_accessed = None
             if data_dict.get("last_accessed"):
                 last_accessed = datetime.fromisoformat(data_dict["last_accessed"])
+
+                if last_accessed.tzinfo is None:
+                    last_accessed = last_accessed.replace(tzinfo=timezone.utc)
 
             return Link(
                 id=data_dict["id"],
                 url_hash=UrlHash(data_dict["url_hash"]),
                 short_code=ShortCode(data_dict["short_code"]),
                 original_url=OriginalUrl(data_dict["original_url"]),
-                created_at=datetime.fromisoformat(data_dict["created_at"]),
+                created_at=created_at,
                 clicks=data_dict["clicks"],
                 last_accessed=last_accessed,
             )
