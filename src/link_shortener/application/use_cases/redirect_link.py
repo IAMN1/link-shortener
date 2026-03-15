@@ -150,7 +150,7 @@ class RedirectLinkUseCase(BaseUseCase):
 
         def task():
 
-            thread_log = self._get_logger(context_copy)
+            thread_log = self._get_logger(self.logger, context_copy)
 
             try:
                 # Try to get link from cache first (fast)
