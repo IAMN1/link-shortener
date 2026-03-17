@@ -1,6 +1,5 @@
 from flask import Blueprint, g, redirect, render_template, request
-from link_shortener.application import LinkService
-from link_shortener.application.context import RequestContext
+from link_shortener.application import LinkService, RequestContext
 
 
 class FrontendController:
