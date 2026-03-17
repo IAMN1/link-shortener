@@ -2,8 +2,8 @@ import sys
 from typing import Dict, List, Optional, Tuple
 
 from link_shortener.application import Logger
-from link_shortener.application.ports.logger.null_logger import NullLogger
 from link_shortener.infrastructure.failover.base import FailoverService
+from link_shortener.infrastructure.logging.handlers.logger.null_logger import NullLogger
 from link_shortener.infrastructure.logging.handlers.logger.standard import StandardLogger
 from link_shortener.infrastructure.logging.handlers.logger.structlog import StructLogger
 
