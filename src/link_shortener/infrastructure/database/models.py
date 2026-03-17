@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy import DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from link_shortener.infrastructure.database.base import Base
+from link_shortener.infrastructure.database.declarative_base import Base
 
 
 class LinkModel(Base):

@@ -8,7 +8,7 @@ from link_shortener.application.ports.cache.link_cache import LinkCache
 from link_shortener.application.ports.cache.redirect_cache import RedirectCache
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.use_cases.base import BaseUseCase
+from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
 
 

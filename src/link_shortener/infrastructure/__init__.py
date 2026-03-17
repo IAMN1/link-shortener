@@ -8,7 +8,7 @@ from .config.factory import ConfigFactory
 from .config.production import ProductionConfig
 from .config.staging import StagingConfig
 from .config.testing import TestingConfig
-from .database.base import Base
+from .database.declarative_base import Base
 from .database.manager import DatabaseManager
 from .database.models import LinkModel
 from .database.repositories.sqlalchemy_link_repository import SQLAlchemyLinkRepository
