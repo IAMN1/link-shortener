@@ -71,12 +71,12 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             self._client.ping()
             self._available = True
             
-            self.logger.info(
-                "Redis connected successfully."
-            )
+            self.logger.info("Redis connected successfully.")
         except redis.RedisError as e:
             self.logger.error(
-                f"Redis connection failed: {e}. Running without cache."
+                "Redis connection failed, running without cache",
+                error=str(e),
+                exc_info=True
             )
             self._available = False
             self._client = None
@@ -120,33 +120,77 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                 self.logger.info("Redis connection restored.")
                 return True
             
-            except redis.RedisError:
+            except redis.RedisError as e:
+                self.logger.error(
+                    "Redis reconnection failed",
+                    error=str(e),
+                    exc_info=True
+                )
                 self._last_attempt = time.time()
                 return False
         return False
 
-    def _execute(self, func, *args, **kwargs):
-        """
-        Execute a Redis operation; return None on failure.
 
-        This wrapper ensures the application does not crash if Redis is down.
+    # ------------------------------------------------------------------
+    # Unified execution helpers with error handling
+    # ------------------------------------------------------------------
+    def _execute_read(self, func, *args, **kwargs):
+        """
+        Execute a Redis read operation; return result on success, None on failure.
+
+        This helper ensures the application does not crash if Redis is down.
+        If connection fails, it returns None and logs the error.
+
+        Args:
+            func: Redis method to call (e.g., self._client.get).
+            *args, **kwargs: Arguments to pass to the function.
+
+        Returns:
+            Result of the Redis call, or None if Redis is unavailable or an error occurs.
         """
         if not self._ensure_connection():
             return None
         try:
             return func(*args, **kwargs)
         except redis.RedisError as e:
-            
-            self.logger.error(f"Redis operation failed: {e}")
-            
+            self.logger.error(
+                "Redis read operation failed",
+                error=str(e),
+                exc_info=True
+            )
             self._available = False
             self._client = None
             return None
+    
+    def _execute_write(self, func, *args, **kwargs):
+        """
+        Execute a Redis write operation; log errors but do not return a value.
 
+        This helper is used for operations that do not return data (e.g., setex, delete).
+        If Redis is unavailable or an error occurs, it logs the error and marks the
+        connection as unavailable.
+
+        Args:
+            func: Redis method or callable (e.g., self._client.setex, or a lambda).
+            *args, **kwargs: Arguments to pass to the function.
+        """
+        if not self._ensure_connection():
+            return
+        try:
+            func(*args, **kwargs)
+        except redis.RedisError as e:
+            self.logger.error(
+                "Redis write operation failed",
+                error=str(e),
+                exc_info=True
+            )
+            self._available = False
+            self._client = None
+    
     def close(self):
-        """Close the Redis connection."""
         if self._client:
             self._client.close()
+            self.logger.debug("Redis connection closed.")
 
     # ------------------------------------------------------------------
     # Serialization helpers
@@ -215,7 +259,11 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                 last_accessed=last_accessed,
             )
         except Exception as e:
-            self.logger.error(f"Failed to deserialize cached link: {e}", exc_info=True)
+            self.logger.error(
+                "Failed to deserialize cached link",
+                error=str(e),
+                exc_info=True
+            )
             return None
 
     # ------------------------------------------------------------------
@@ -223,7 +271,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     # ------------------------------------------------------------------
     def get_cache_info(self) -> Dict[str, Any]:
         """Retrieve Redis server info (for monitoring)."""
-        info = self._execute(lambda: self._client.info())
+        info = self._execute_read(lambda: self._client.info())
 
         if info is None:
             return {"error": "Redis unavailable"}
@@ -243,7 +291,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         """Retrieve a link by its short code."""
 
         key = self.key_gen.for_short_code(short_code.value)
-        data = self._execute(self._client.get, key)
+        data = self._execute_read(self._client.get, key)
 
         return self._deserialize(data) if data else None
 
@@ -251,7 +299,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         """Retrieve a link by its URL hash."""
 
         key = self.key_gen.for_url_hash(url_hash.value)
-        data = self._execute(self._client.get, key)
+        data = self._execute_read(self._client.get, key)
 
         return self._deserialize(data) if data else None
 
@@ -259,7 +307,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         """Retrieve multiple links by their URL hashes."""
 
         keys = [self.key_gen.for_url_hash(h.value) for h in url_hashes]
-        data_list = self._execute(self._client.mget, keys) or []
+        data_list = self._execute_read(self._client.mget, keys) or []
 
         result = {}
         for url_hash, data in zip(url_hashes, data_list):
@@ -269,10 +317,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
 
     def save(self, link: Link) -> None:
         """Store a link under multiple keys (hash, code, redirect) with TTL."""
-
-        if not self._ensure_connection():
-            return
-        try:
+        def _pipeline():
             # Сохраняем по нескольким ключам для быстрого поиска
             hash_key = self.key_gen.for_url_hash(link.url_hash.value)
             code_key = self.key_gen.for_short_code(link.short_code.value)
@@ -287,18 +332,15 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             pipeline.setex(redirect, self.ttl, link.original_url.value)
             
             pipeline.execute()
-        
-        except redis.RedisError as e:
-            self.logger.error(f"Redis save failed: {e}")
-            self._available = False
+        self._execute_write(_pipeline)
 
     def save_many(self, links: List[Link]) -> None:
         """Bulk store multiple links."""
 
-        if not links or not self._ensure_connection():
+        if not links:
             return
-        
-        try:
+
+        def _pipeline():
             pipeline = self._client.pipeline()
 
             for link in links:
@@ -313,23 +355,17 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                 pipeline.setex(redirect_key, self.ttl, link.original_url.value)
 
             pipeline.execute()
-
-        except redis.RedisError as e:
-            self.logger.error(f"Redis save_many failed: {e}")
-            self._available = False
+        self._execute_write(_pipeline)
 
     def delete(self, short_code: ShortCode) -> None:
         """Remove a link and its associated keys from cache."""
-
-        if not self._ensure_connection():
-            return
         
-        try:
+        def _delete():
             code_key = self.key_gen.for_short_code(short_code.value)
             redirect_key = self.key_gen.for_redirect(short_code.value)
 
             # try to get link to find hash key
-            data = self._execute(self._client.get, code_key)
+            data = self._client.get(code_key)
             keys_to_delete = [code_key, redirect_key]
             if data:
                 link = self._deserialize(data)
@@ -340,9 +376,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                         )
                     )
             self._client.delete(*keys_to_delete)
-        except redis.RedisError as e:
-            self.logger.error(f"Redis delete failed: {e}")
-            self._available = False
+
+        self._execute_write(_delete)
 
     # ------------------------------------------------------------------
     # RedirectCache methods
@@ -352,25 +387,15 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
 
         key = self.key_gen.for_redirect(short_code.value)
         
-        data = self._execute(self._client.get, key)
+        data = self._execute_read(self._client.get, key)
 
         return data.decode("utf-8") if data else None
 
     def save_original_url(self, short_code: ShortCode, original_url: str) -> None:
         """Store original URL in redirect cache with TTL."""
-
-        if not self._ensure_connection():
-            return
         
-        try:
-            key = self.key_gen.for_redirect(short_code.value)
-            self._client.setex(key, self.ttl, original_url)
-        except redis.RedisError as e:
-            self.logger.error(
-                f"Redis save_original_url failed: {e}"
-            )
-            
-            self._available = False
+        key = self.key_gen.for_redirect(short_code.value)
+        self._execute_write(self._client.setex, key, self.ttl, original_url)
 
     # ------------------------------------------------------------------
     # StatsCache methods
@@ -380,37 +405,21 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
 
         key = self.key_gen.for_stats()
         
-        data = self._execute(self._client.get, key)
+        data = self._execute_read(self._client.get, key)
 
         return json.loads(data.decode("utf-8")) if data else None
 
     def save_stats(self, stats: Dict[str, Any]) -> None:
         """Cache service statistics with TTL."""
 
-        if not self._ensure_connection():
-            return
+        key = self.key_gen.for_stats()
         
-        try:
-            key = self.key_gen.for_stats()
-            
-            data = json.dumps(stats)
-            
-            self._client.setex(key, self.stats_ttl, data)
-
-        except redis.RedisError as e:
-            self.logger.error(f"Redis save_stats failed: {e}")
-            self._available = False
+        data = json.dumps(stats)
+        
+        self._execute_write(self._client.setex, key, self.stats_ttl, data)
 
     def delete_stats(self) -> None:
         """Invalidate cached statistics."""
 
-        if not self._ensure_connection():
-            return
-        
-        try:
-            key = self.key_gen.for_stats()
-            self._client.delete(key)
-
-        except redis.RedisError as e:
-            self.logger.error(f"Redis delete_stats failed: {e}")
-            self._available = False
+        key = self.key_gen.for_stats()
+        self._execute_write(self._client.delete, key)
