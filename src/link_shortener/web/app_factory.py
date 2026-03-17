@@ -1,3 +1,4 @@
+import atexit
 import os
 
 import click
@@ -118,13 +119,18 @@ def create_app(config=None) -> Flask:
         """Simple health check endpoint."""
         return {"status": "healthy"}, 200
 
-    # Cleanup resources when app context ends
-    @app.teardown_appcontext
-    def shutdown_session(exception=None):
-        """Close database connections when the app context ends."""
-        container.close()
+
+    def close_resources():
+        """Close all managed resources (database connections, cache connections, etc.)"""
+        if hasattr(app, 'container'):
+            app.container.close()
+    
+    atexit.register(close_resources)
 
     cache = container.get_cache()
+    # Log final application state
+    logger = container.get_logger(create_app.__module__)
+    active_logger_name = container.get_active_logger_name()
 
     # Determine cache type
     if isinstance(cache, RedisLinkCache):
@@ -133,10 +139,6 @@ def create_app(config=None) -> Flask:
         cache_type = "InMemory"
     else:
         cache_type = "Disabled (NullCache)"
-
-    # Log final application state
-    logger = container.get_logger(create_app.__module__)
-    active_logger_name = container.get_active_logger_name()
 
     # Логирование успешного запуска
     logger.info(
