@@ -4,7 +4,7 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from link_shortener.infrastructure.database.base import Base
+from link_shortener.infrastructure.database.declarative_base import Base
 
 
 class DatabaseManager:

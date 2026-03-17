@@ -9,7 +9,7 @@ from link_shortener.application import(
 )
 
 from link_shortener.application.context import RequestContext
-from link_shortener.application.use_cases.base import BaseUseCase
+from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
     Link, LinkRepository, OriginalUrl, ShortCode, ShorteningPolicy
 )
