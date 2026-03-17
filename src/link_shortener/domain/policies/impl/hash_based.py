@@ -67,12 +67,8 @@ class HashBasedShorteningPolicy(ShorteningPolicy):
         Returns:
             ShortCode value object.
         """
-
-        # Calculate required bytes to get 
-        #   at least min_length characters after encoding.
-        # Each base64 character encodes 6 bits, 
-        #   so we need ceil(min_length * 6 / 8) bytes
-        need_bytes = max(self.code_length, self.min_length) * 8 // 6 + 1
+        target_len = max(self.code_length, self.min_length)
+        need_bytes = (target_len * 6 + 7) // 8
         hash_bytes = hashlib.sha256(input_string.encode()).digest()[:need_bytes]
         short_bytes = base64.urlsafe_b64encode(hash_bytes)
         short_code = short_bytes.decode().rstrip("=")[: self.code_length]
