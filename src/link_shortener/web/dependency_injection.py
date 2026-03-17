@@ -9,10 +9,9 @@ from link_shortener.application import (
 
 from link_shortener.infrastructure import (
     DatabaseManager, InMemoryLinkCache,
-    RedisLinkCache, SQLAlchemyLinkRepository
+    RedisLinkCache, SQLAlchemyLinkRepository,
+    AuditManager, LoggerManager
 )
-from link_shortener.infrastructure.logging.audit_manager import AuditManager
-from link_shortener.infrastructure.logging.logger_manager import LoggerManager
 
 
 

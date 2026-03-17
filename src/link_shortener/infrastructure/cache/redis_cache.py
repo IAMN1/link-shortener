@@ -3,8 +3,7 @@ import json
 import time
 from typing import Any, Dict, List, Optional
 
-from link_shortener.application import LinkCache, RedirectCache, StatsCache
-from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application import LinkCache, RedirectCache, StatsCache, Logger
 from link_shortener.domain import Link, OriginalUrl, ShortCode, UrlHash
 from link_shortener.infrastructure.cache.cache_key_generator import CacheKeyGenerator
 import redis

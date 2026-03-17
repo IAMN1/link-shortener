@@ -1,9 +1,8 @@
 from datetime import datetime
 
-from link_shortener.application.context import RequestContext
 import structlog
 
-from link_shortener.application import AuditLogger
+from link_shortener.application import AuditLogger, RequestContext
 from link_shortener.domain import Link
 
 

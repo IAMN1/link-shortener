@@ -1,6 +1,5 @@
 from flask import Blueprint, g, jsonify, request
-from link_shortener.application import LinkService
-from link_shortener.application.context import RequestContext
+from link_shortener.application import LinkService, RequestContext
 from link_shortener.web.schemas.requests import BatchCreateLinkRequest, CreateShortLinkRequest
 from link_shortener.web.schemas.responses import BatchCreateResponse, ServiceStatsResponse, ShortLinkResponse, ExtendedLinkInfoResponse
 
