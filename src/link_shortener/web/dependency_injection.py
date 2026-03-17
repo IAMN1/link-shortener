@@ -4,11 +4,11 @@ from link_shortener.domain import HashBasedShorteningPolicy
 from link_shortener.application import (
     Logger, LinkCache, LinkService, BatchCreateLinksUseCase,
     CreateShortLinkUseCase, GetLinkInfoUseCase, GetServiceStatsUseCase,
-    GetExtendLinkInfoUseCase, RedirectLinkUseCase, NullCache
+    GetExtendLinkInfoUseCase, RedirectLinkUseCase
 )
 
 from link_shortener.infrastructure import (
-    DatabaseManager, InMemoryLinkCache,
+    DatabaseManager, InMemoryLinkCache, NullCache,
     RedisLinkCache, SQLAlchemyLinkRepository,
     AuditManager, LoggerManager
 )

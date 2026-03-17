@@ -1,8 +1,9 @@
 import sys
 from typing import List, Optional, Tuple
 
-from link_shortener.application import AuditLogger, NullAuditLogger
+from link_shortener.application import AuditLogger
 from link_shortener.infrastructure.failover.base import FailoverService
+from link_shortener.infrastructure.logging.handlers.audit.null_audit import NullAuditLogger
 from link_shortener.infrastructure.logging.handlers.audit.standard import StandardAuditLogger
 from link_shortener.infrastructure.logging.handlers.audit.structlog import StructlogAuditLogger
 
