@@ -383,7 +383,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
 
             if not short_code:
                 # Failed to resolve after max attempts – skip (should be rare)
-                log.error("Failed to resolve collision for hash", hash=url_hash.value[:10])
+                log.error("Failed to resolve collision for hash, skipping", hash=url_hash.value[:10])
                 continue
 
             new_link = Link.create(
@@ -448,7 +448,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
 
                     if collision_attempts[attempt_key] > max_attempts:
                         log.warning(
-                            "Max collision attempts exceeded for hash",
+                            "Max collision attempts exceeded for hash, skipping",
                             hash=url_hash.value[:10],
                             attempts=max_attempts
                         )
