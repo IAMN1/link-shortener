@@ -57,25 +57,6 @@ class ProductionConfig(BaseConfig):
     MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 50))
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
 
-    # ========== Database settings ==========
-    @property
-    def DATABASE_URL(self) -> str:
-        """Database URL must be set in environment."""
-
-        url = os.environ.get("DATABASE_URL")
-        if not url:
-            raise ValueError("DATABASE_URL must be set in environment")
-
-        return url
-
-    @property
-    def DATABASE_POOL_SIZE(self) -> int:
-        return int(os.environ.get("DATABASE_POOL_SIZE", 50))
-
-    @property
-    def DATABASE_MAX_OVERFLOW(self) -> int:
-        return int(os.environ.get("DATABASE_MAX_OVERFLOW", 20))
-
     # ========== Redis cache settings ==========
     REDIS_ENABLED: bool = os.environ.get("REDIS_ENABLED", "true").lower() == "true"
 
@@ -95,7 +76,7 @@ class ProductionConfig(BaseConfig):
         # чтобы убедиться, что переменные окружения заданы
         _ = self.SECRET_KEY
         _ = self.SHORT_CODE_SECRET_PEPPER
-        _ = self.DATABASE_URL
+        _ = self.get_database_url()
         
         if self.REDIS_ENABLED:
             _ = self.REDIS_URL
