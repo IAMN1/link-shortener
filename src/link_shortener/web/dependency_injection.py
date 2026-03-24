@@ -116,12 +116,10 @@ class Container:
 
         if not self._db_manager:
             self._db_manager = DatabaseManager(
-                self.config.DATABASE_URL,
+                database_url=self.config.get_database_url(),
                 echo=self.config.DEBUG,
-                pool_pre_ping=self.config.DATABASE_POOL_PRE_PING,
-                pool_size=self.config.DATABASE_POOL_SIZE,
-                max_overflow=self.config.DATABASE_MAX_OVERFLOW,
-                pool_recycle=self.config.DATABASE_POOL_RECYCLE,
+                database_type=self.config.DATABASE_TYPE,
+                **self.config.get_pool_params()
             )
             self._db_manager.connect()
         return self._db_manager
@@ -176,7 +174,9 @@ class Container:
                     )
                 except Exception as e:
                     self.get_logger(Container.__module__).error(
-                        f"Failed to initialize Redis cache: {e}. Falling back to NullCache."
+                        "Failed to initialize Redis cache. Falling back to NullCache.",
+                        error=str(e),
+                        exc_info=True
                     )
                     self._cache = NullCache()
             else:
