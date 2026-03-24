@@ -19,10 +19,8 @@ class DatabaseManager:
         self, 
         database_url: str, 
         echo: bool, 
-        pool_pre_ping: bool,
-        pool_size: int,
-        max_overflow: int,
-        pool_recycle: int
+        database_type: str,
+        **pool_params
     ):
         """
         nitialize the manager with database URL and optional echo flag.
@@ -30,15 +28,14 @@ class DatabaseManager:
         Args:
             database_url: SQLAlchemy database URL.
             echo: If True, log all SQL statements.
-            pool_pre_ping: If True, test connections before using them.
+            database_type: Type of database ('sqlite' or 'postgresql').
+            **pool_params: Additional parameters for connection pool (pool_size, max_overflow, etc.)
         """
 
         self.database_url = database_url
         self.echo = echo
-        self.pool_pre_ping = pool_pre_ping
-        self.pool_size = pool_size
-        self.max_overflow = max_overflow
-        self.pool_recycle = pool_recycle
+        self.database_type = database_type
+        self.pool_params = pool_params
         self.engine = None
         self._session_factory = None
 
@@ -51,17 +48,17 @@ class DatabaseManager:
         """
 
         engine_kwargs = {
-            "pool_pre_ping": self.pool_pre_ping,
             "echo": self.echo,
         }
 
-        # Добавляем параметры пула только если они заданы (больше нуля)
-        if self.pool_size > 0:
-            engine_kwargs["pool_size"] = self.pool_size
-        if self.max_overflow > 0:
-            engine_kwargs["max_overflow"] = self.max_overflow
-        if self.pool_recycle > 0:
-            engine_kwargs["pool_recycle"] = self.pool_recycle
+        # Add pool parameters only for PostgreSQL (SQLite doesn't support them)
+        if self.database_type == "postgresql":
+            engine_kwargs.update(
+                {
+                    k: v for k, v in  self.pool_params.items() 
+                        if v is not None and v != 0
+                }
+            )
 
         self.engine = create_engine(self.database_url, **engine_kwargs)
 
