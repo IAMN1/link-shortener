@@ -72,29 +72,87 @@ class BaseConfig:
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
 
     # =============== Database settings ==============================================
-    DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///dev.db")
+    DATABASE_TYPE: str = os.environ.get("DATABASE_TYPE","sqlite") # "sqlite" or "postgressql"
+    DATABASE_HOST: str = os.environ.get("DATABASE_HOST", "localhost")
+    DATABASE_PORT: int = int(os.environ.get("DATABASE_PORT", 5432))
+    DATABASE_NAME: str = os.environ.get("DATABASE_NAME", "db_shortener")
+    DATABASE_USER: str = os.environ.get("DATABASE_USER", "")
+    DATABASE_PASSWORD: str = os.environ.get("DATABASE_PASSWORD", "")
+    
+    # If DATABASE_URL is set directly, it will be used instead of constructing from parts
+    DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
+    
+    # Pool parameters (used only for PostgreSQL)
     DATABASE_POOL_PRE_PING: bool = os.environ.get("DATABASE_POOL_PRE_PING", "true").lower() == "true"
 
     @property
     def DATABASE_POOL_SIZE(self) -> int:
         """Database connection pool size (for PostgreSQL)."""
-        if self.DATABASE_URL.startswith("postgresql://"):
+        if self.DATABASE_TYPE == "postgresql":
             return int(os.environ.get("DATABASE_POOL_SIZE", 20))
         return 0
 
     @property
     def DATABASE_MAX_OVERFLOW(self) -> int:
         """Maximum overflow connections for pool (PostgreSQL)."""
-        if self.DATABASE_URL.startswith("postgresql://"):
+        if self.DATABASE_TYPE == "postgresql":
             return int(os.environ.get("DATABASE_MAX_OVERFLOW", 10))
         return 0
 
     @property
     def DATABASE_POOL_RECYCLE(self) -> int:
         """Recycle connections after this many seconds (PostgreSQL)."""
-        if self.DATABASE_URL.startswith("postgresql://"):
+        if self.DATABASE_TYPE == "postgresql":
             return int(os.environ.get("DATABASE_POOL_RECYCLE", 3600))
         return 0
+
+    def get_database_url(self) -> str:
+        """
+        Construct database URL from individual parameters or return explicitly set URL.
+
+        Returns:
+            SQLAlchemy-compatible database URL.
+
+        Raises:
+            ValueError: If DATABASE_TYPE is unsupported or required parameters are missing.
+        """
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        
+        if self.DATABASE_TYPE == "sqlite":
+            # SQLite: DATABASE_NAME is the file path
+            return f"sqlite:///{self.DATABASE_NAME}"
+        elif self.DATABASE_TYPE == "postgresql":
+            # Use psycopg3 driver
+            if (not self.DATABASE_USER or not self.DATABASE_PASSWORD 
+                or not self.DATABASE_HOST or not self.DATABASE_NAME):
+                raise ValueError("PostgreSQL connection requires DATABASE_USER, DATABASE_PASSWORD, DATABASE_HOST, DATABASE_NAME")
+            return f"postgresql+psycopg://{self.DATABASE_USER}:{self.DATABASE_PASSWORD}@{self.DATABASE_HOST}:{self.DATABASE_PORT}/{self.DATABASE_NAME}"
+        else:
+            raise ValueError(f"Unsupported DATABASE_TYPE: {self.DATABASE_TYPE}")
+
+    @property
+    def display_database_url(self) -> str:
+        """Return database URL with password masked for logging."""
+        url = self.get_database_url()
+        import re
+        # Маскируем пароль: заменяем часть между :// и @
+        return re.sub(r':[^:]+@', ':***@', url)
+
+    def get_pool_params(self) -> dict:
+        """
+        Return a dictionary of connection pool parameters suitable for SQLAlchemy.
+
+        Returns:
+            Dictionary with keys: pool_size, max_overflow, pool_recycle, pool_pre_ping.
+        """
+        return {
+            "pool_size": self.DATABASE_POOL_SIZE,
+            "max_overflow": self.DATABASE_MAX_OVERFLOW,
+            "pool_recycle": self.DATABASE_POOL_RECYCLE,
+            "pool_pre_ping": self.DATABASE_POOL_PRE_PING,
+        }
+
 
     # =============== Cache settings =================================================
     CACHE_LINK_PREFIX: str = os.environ.get("CACHE_LINK_PREFIX", "link_shortener")
