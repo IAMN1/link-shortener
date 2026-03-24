@@ -30,13 +30,6 @@ class StagingConfig(BaseConfig):
             raise ValueError("SHORT_CODE_PEPPER must be set in environment")
         return pepper
 
-    # ========== Database settings ==========
-    @property
-    def DATABASE_URL(self) -> str:
-        url = os.environ.get("DATABASE_URL")
-        if not url:
-            raise ValueError("DATABASE_URL must be set in environment")
-        return url
 
     # ========== Redis cache settings ==========
     REDIS_ENABLED: bool = os.environ.get("REDIS_ENABLED", "true").lower() == "true"
