@@ -9,8 +9,6 @@ class DevelopmentConfig(BaseConfig):
     DEBUG: bool = True
     TESTING: bool = False
 
-    # ========== Database settings ==========
-    DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///dev.db")
 
     # ========== Cache settings ==========
     CACHE_LINK_TTL: int = int(os.environ.get("CACHE_LINK_TTL", 20))
