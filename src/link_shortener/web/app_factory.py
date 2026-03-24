@@ -149,7 +149,7 @@ def create_app(config=None) -> Flask:
         active_logger=active_logger_name,
         cache_type=cache_type,
         redis_enabled=app.config.get("REDIS_ENABLED", False),
-        database_url=app.config.get("DATABASE_URL", "unknown"),
+        database_url=config.display_database_url,
         host=app.config.get("HOST", "unknown"),
         port=app.config.get("PORT", "unknown"),
     )
