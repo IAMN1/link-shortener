@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from link_shortener.domain.entities.link import Link
@@ -121,5 +122,48 @@ class LinkRepository(ABC):
                 - 'total_urls': total number of shortened URLs.
                 - 'total_clicks': sum of all clicks.
                 - 'popular_links': list of Link objects (most popular up to 10).
+        """
+        pass
+
+    @abstractmethod
+    def delete(self, short_code: ShortCode) -> bool:
+        """
+        Delete a link by its short code.
+
+        Args:
+            short_code: Short code of the link to delete.
+
+        Returns:
+            True if a link was deleted, False if no link with the given code existed.
+        """
+        pass
+
+    @abstractmethod
+    def get_recent(self, limit: int = 10) -> List[Link]:
+        """
+        Return most recently created links.
+
+        Args:
+            limit: Maximum number of links to return (default 10).
+
+        Returns:
+            List of Link objects ordered by creation date descending.
+        """
+        pass
+
+    @abstractmethod
+    def delete_unaccessed_before(self, cutoff: datetime) -> int:
+        """
+        Delete links that haven't been accessed since the cutoff date.
+
+        A link is considered "unaccessed" if its last_accessed timestamp is
+        older than cutoff, or if it has never been accessed (last_accessed IS NULL)
+        and its created_at is older than cutoff.
+
+        Args:
+            cutoff: Datetime (timezone-aware UTC) threshold.
+
+        Returns:
+            Number of deleted links.
         """
         pass
