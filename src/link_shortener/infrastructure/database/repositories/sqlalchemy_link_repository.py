@@ -13,7 +13,8 @@ class SQLAlchemyLinkRepository(LinkRepository):
     SQLAlchemy implementation of the LinkRepository interface.
 
     Converts between domain Link entities and database LinkModel objects.
-    Uses DatabaseManager for session handling.
+    Uses DatabaseManager for session handling and ensures that datetime
+    fields are timezone-aware when converting to domain objects.
     """
 
     def __init__(self, db_manager: DatabaseManager):
