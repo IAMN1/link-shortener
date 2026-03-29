@@ -1,10 +1,10 @@
 from .cache.cache_key_generator import CacheKeyGenerator
-from.cache.null_cache import NullCache
+from .cache.null_cache import NullCache
 from .cache.memory_cache import InMemoryLinkCache
 from .cache.redis_cache import RedisLinkCache
 from .config.base import BaseConfig
 from .config.development import DevelopmentConfig
-from .config.factory import ConfigFactory
+from .config.factory import ConfigFactory, get_config
 from .config.production import ProductionConfig
 from .config.staging import StagingConfig
 from .config.testing import TestingConfig
@@ -21,6 +21,8 @@ from .logging.handlers.audit.structlog import StructlogAuditLogger
 from .logging.logger_manager import LoggerManager
 from .logging.audit_manager import AuditManager
 from .logging.settings import LoggingSettings
+from .logging.bootstrap import setup_logging
+from .cli import register_flask_commands
 
 __all__ = [
     "CacheKeyGenerator",
@@ -33,6 +35,7 @@ __all__ = [
     "StagingConfig",
     "TestingConfig",
     "ConfigFactory",
+    "get_config",
     "Base",
     "DatabaseManager",
     "LinkModel",
@@ -46,4 +49,6 @@ __all__ = [
     "StructLogger",
     "LoggerManager",
     "AuditManager",
+    "setup_logging",
+    "register_flask_commands",
 ]
