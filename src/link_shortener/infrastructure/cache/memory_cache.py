@@ -20,6 +20,8 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
     Implements all three cache interfaces: LinkCache, RedirectCache, StatsCache.
     """
 
+    cache_type = "InMemory"
+
     def __init__(self, prefix: str, link_ttl: int, stats_ttl: int):
         """
         Initialize the in-memory cache.
@@ -44,17 +46,26 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         self._lock = RLock()
 
     def _is_expired(self, key: str) -> bool:
-        """Return True if the given key has exceeded its TTL."""
+        """
+        Return True if the given key has exceeded its TTL.
+
+        Args:
+            key: Cache key to check.
+
+        Returns:
+            True if key is present and its expiration time has passed.
+        """
         if key not in self._expiry:
             return False
         return time.time() > self._expiry[key]
 
-    def _clean_expired(self, key_type: Optional[str] = None):
+    def _clean_expired(self):
         """
         Remove expired entries from all stores.
 
-        If key_type is provided (e.g., "code", "hash", "redirect", "stats"),
-        only clean keys whose prefix matches that type. Otherwise, clean all.
+        This method iterates over all keys and deletes those whose
+        expiration timestamp is in the past. It also handles the
+        special case of the stats entry which is stored separately.
         """
         current_time = time.time()
         expired_keys = [
@@ -62,22 +73,18 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         ]
 
         for key in expired_keys:
-            # Only clean if key_type is None or key starts with the type prefix
-            if key_type is None or key.startswith(f"{self.key_gen.prefix}:{key_type}"):
+            # Remove from all relevant dictionaries
+            if key in self._links:
+                del self._links[key]
+            if key in self._redirects:
+                del self._redirects[key]
+            del self._expiry[key]
 
-                # Remove from all relevant dictionaries
-                if key in self._links:
-                    del self._links[key]
-                if key in self._redirects:
-                    del self._redirects[key]
-
-                del self._expiry[key]
-
-            # Also check stats separately (stored in self._stats, not in _links)
-            stats_key = self.key_gen.for_stats()
-            if stats_key in self._expiry and self._expiry[stats_key] < current_time:
-                self._stats = None
-                del self._expiry[stats_key]
+        # Also check stats separately (stored in self._stats, not in _links)
+        stats_key = self.key_gen.for_stats()
+        if stats_key in self._expiry and self._expiry[stats_key] < current_time:
+            self._stats = None
+            del self._expiry[stats_key]
 
     def clear_all(self) -> None:
         """Clear all cached data (intended for testing purposes)."""
@@ -89,7 +96,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
 
     def get_cache_info(self) -> Dict[str, Any]:
         """
-        Return information about current cache state (for monitoring/debugging).
+        Return information about current cache state for monitoring/debugging.
 
         Returns:
             Dict with keys: link_count, redirect_count, has_stats, total_keys.
@@ -109,7 +116,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         """Retrieve a link by its short code."""
 
         with self._lock:
-            self._clean_expired("code")
+            self._clean_expired()
             key = self.key_gen.for_short_code(short_code.value)
             return self._links.get(key)
 
@@ -117,7 +124,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         """Retrieve a link by its URL hash."""
 
         with self._lock:
-            self._clean_expired("hash")
+            self._clean_expired()
             key = self.key_gen.for_url_hash(url_hash.value)
             return self._links.get(key)
 
@@ -129,7 +136,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         """
 
         with self._lock:
-            self._clean_expired("hash")
+            self._clean_expired()
 
             result = {}
             for url_hash in url_hashes:
@@ -192,7 +199,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         """Retrieve original URL from redirect cache (L1)."""
 
         with self._lock:
-            self._clean_expired("redirect")
+            self._clean_expired()
             key = self.key_gen.for_redirect(short_code.value)
             return self._redirects.get(key)
 
@@ -208,10 +215,13 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         """Retrieve cached service statistics."""
 
         with self._lock:
-            self._clean_expired("stats")
+            self._clean_expired()
             key = self.key_gen.for_stats()
-            if self._stats and not self._is_expired(key):
+            # Если ключ есть в _expiry и не истек – возвращаем данные
+            if key in self._expiry and not self._is_expired(key):
                 return self._stats
+            # Иначе сбрасываем статистику и возвращаем None
+            self._stats = None
             return None
 
     def save_stats(self, stats: Dict[str, Any]) -> None:

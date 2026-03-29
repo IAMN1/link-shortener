@@ -26,6 +26,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         - Stats: {prefix}:stats:global
     """
 
+    cache_type = "Redis"
+
     def __init__(
         self, redis_url: str, prefix: str, logger: Logger, link_ttl: int, 
         stats_ttl: int, connect_timeout: int, socket_timeout: int, retry_interval: int
@@ -51,6 +53,8 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         self.connect_timeout = connect_timeout
         self.socket_timeout = socket_timeout
         self.retry_interval = retry_interval
+
+        self.cache_type = "Redis"
 
         # Internal state for failover
         self._client = None
@@ -82,10 +86,13 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     
     def _ensure_connection(self) -> bool:
         """
-        Check if connection is alive; if not, attempt to reconnect after retry interval.
+        Check if connection is alive; if not, attempt to reconnect.
+
+        The method implements a simple backoff: reconnection is tried only
+        after `retry_interval` seconds have passed since the last attempt.
 
         Returns:
-            True if connection is available, False otherwise.
+            True if a working Redis connection is available, False otherwise
         """
 
         # If we have a client, test it with ping
@@ -138,7 +145,6 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         Execute a Redis read operation; return result on success, None on failure.
 
         This helper ensures the application does not crash if Redis is down.
-        If connection fails, it returns None and logs the error.
 
         Args:
             func: Redis method to call (e.g., self._client.get).
@@ -165,10 +171,6 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         """
         Execute a Redis write operation; log errors but do not return a value.
 
-        This helper is used for operations that do not return data (e.g., setex, delete).
-        If Redis is unavailable or an error occurs, it logs the error and marks the
-        connection as unavailable.
-
         Args:
             func: Redis method or callable (e.g., self._client.setex, or a lambda).
             *args, **kwargs: Arguments to pass to the function.
@@ -187,6 +189,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             self._client = None
     
     def close(self):
+        """Close the Redis connection if open."""
         if self._client:
             self._client.close()
             self.logger.debug("Redis connection closed.")
@@ -283,6 +286,15 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                 "keyspace_misses": info.get("keyspace_misses", 0),
             }
 
+    def clear_all(self) -> None:
+        """Delete all keys with the configured prefix (dangerous)."""
+        def _clear():
+            pattern = f"{self.key_gen.prefix}:*"
+            keys = self._client.keys(pattern)
+            if keys:
+                self._client.delete(*keys)
+        self._execute_write(_clear)
+    
     # ------------------------------------------------------------------
     # LinkCache methods
     # ------------------------------------------------------------------

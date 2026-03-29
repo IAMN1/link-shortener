@@ -14,6 +14,8 @@ class NullCache(LinkCache, RedirectCache, StatsCache):
     Used when caching is disabled or unavailable.
     """
 
+    cache_type = "Null"
+
     def get_by_code(self, short_code: ShortCode) -> Optional[Link]:
         """No-op: always return None."""
         return None
@@ -58,4 +60,8 @@ class NullCache(LinkCache, RedirectCache, StatsCache):
 
     def delete_stats(self) -> None:
         """No-op: do nothing."""
+        pass
+
+    def close(self) -> None:
+        """No-op: nothing to close."""
         pass
