@@ -22,7 +22,9 @@ class BaseConfig:
     LOGGER_TYPE: str = os.environ.get("LOGGER_TYPE", "auto") # auto / structlog / standard / null
     AUDIT_TYPE: str = os.environ.get("AUDIT_TYPE", "auto") # auto / structlog / standard / null
     LOG_DIR: str = os.environ.get("LOG_DIR", "logs")
-    LOG_FILENAME: str = "link_shortener"
+    LOG_FILENAME: str = os.environ.get("LOG_FILENAME", "application")
+    AUDIT_LOG_FILENAME: str = os.environ.get("AUDIT_LOG_FILENAME", "audit")
+    ERROR_LOG_FILENAME: str = os.environ.get("ERROR_LOG_FILENAME", "error")
     LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "DEBUG")
     LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
     LOG_TO_CONSOLE: bool = os.environ.get("LOG_TO_CONSOLE", "true").lower() == "true"
@@ -72,6 +74,8 @@ class BaseConfig:
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
 
     # =============== Database settings ==============================================
+    SQLALCHEMY_ECHO: bool = os.environ.get("SQLALCHEMY_ECHO", "true").lower() == "true"
+
     DATABASE_TYPE: str = os.environ.get("DATABASE_TYPE","sqlite") # "sqlite" or "postgressql"
     DATABASE_HOST: str = os.environ.get("DATABASE_HOST", "localhost")
     DATABASE_PORT: int = int(os.environ.get("DATABASE_PORT", 5432))

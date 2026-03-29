@@ -117,7 +117,7 @@ class Container:
         if not self._db_manager:
             self._db_manager = DatabaseManager(
                 database_url=self.config.get_database_url(),
-                echo=self.config.DEBUG,
+                echo=self.config.SQLALCHEMY_ECHO,
                 database_type=self.config.DATABASE_TYPE,
                 **self.config.get_pool_params()
             )
