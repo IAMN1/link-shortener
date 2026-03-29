@@ -1,35 +1,20 @@
 import atexit
 import os
 
-import click
-from flask import Flask, g, redirect, request, current_app
-from flask.cli import with_appcontext
+from flask import Flask, g, redirect, request
 from flask_cors import CORS
-from link_shortener.application.context import RequestContext
-from link_shortener.infrastructure import InMemoryLinkCache, RedisLinkCache, LoggingSettings
-from link_shortener.infrastructure.config.factory import get_config
-from link_shortener.infrastructure.logging.bootstrap import setup_logging
+from link_shortener.application import RequestContext
+from link_shortener.infrastructure import (
+    LoggingSettings,
+    get_config,
+    setup_logging,
+    register_flask_commands,
+)
 from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.frontend_controller import FrontendController
 from link_shortener.web.dependency_injection import Container
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
-
-
-@click.command
-@with_appcontext
-def init_db_command():
-    """Create database tables based on current models."""
-    container = current_app.container
-    db_manager = container.get_db_manager()
-
-    try:
-        db_manager.create_tables()
-        click.echo("Database tables created successfully.")
-    except Exception as e:
-        click.echo(f"Error creating tables: {e}", err=True)
-        raise
-
 
 def create_app(config=None) -> Flask:
     """
@@ -75,7 +60,8 @@ def create_app(config=None) -> Flask:
         audit_enabled=config.AUDIT_ENABLED
     )
 
-    app.cli.add_command(init_db_command)
+    # Регистрация CLI-комманд
+    register_flask_commands(app)
 
     # CORS
     CORS(app)
@@ -135,13 +121,7 @@ def create_app(config=None) -> Flask:
     logger = container.get_logger(create_app.__module__)
     active_logger_name = container.get_active_logger_name()
 
-    # Determine cache type
-    if isinstance(cache, RedisLinkCache):
-        cache_type = "Redis"
-    elif isinstance(cache, InMemoryLinkCache):
-        cache_type = "InMemory"
-    else:
-        cache_type = "Disabled (NullCache)"
+    cache_type = getattr(cache, "cache_type", "unknown")
 
     # Логирование успешного запуска
     logger.info(
