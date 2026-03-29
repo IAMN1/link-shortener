@@ -8,7 +8,7 @@ from flask_cors import CORS
 from link_shortener.application.context import RequestContext
 from link_shortener.infrastructure import InMemoryLinkCache, RedisLinkCache, LoggingSettings
 from link_shortener.infrastructure.config.factory import get_config
-from link_shortener.infrastructure.logging.config import setup_logging
+from link_shortener.infrastructure.logging.bootstrap import setup_logging
 from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.frontend_controller import FrontendController
 from link_shortener.web.dependency_injection import Container
@@ -36,15 +36,14 @@ def create_app(config=None) -> Flask:
     Application factory for creating and configuring a Flask instance.
 
     Args:
-        config (_type_, optional): Optional configuration object. 
-            If not provided, loads from environment.
+        config: Optional configuration object. If not provided, loads from environment.
 
     Returns:
-        Flask: Configured Flask application.
+        Flask: Configured Flask application
     """
 
     if config is None:
-        # Load configuration
+        # Load configuration from environment
         env = os.environ.get("FLASK_ENV", "development")
         config = get_config(env)
     else:
@@ -58,6 +57,8 @@ def create_app(config=None) -> Flask:
     logging_settings = LoggingSettings(
         log_dir=app.config.get("LOG_DIR", "logs"),
         log_file_name=app.config.get("LOG_FILENAME", "link_shortener"),
+        audit_log_filename=app.config.get("AUDIT_LOG_FILENAME", "audit"),
+        error_log_filename=app.config.get("ERROR_LOG_FILENAME", "error"),
         log_date_format=app.config.get("LOG_DATE_FORMAT", "%Y-%m-%d %H:%M:%S"),
         log_to_console=app.config.get("LOG_TO_CONSOLE", True),
         log_to_file=app.config.get("LOG_TO_FILE", False),
@@ -65,6 +66,8 @@ def create_app(config=None) -> Flask:
         debug=app.config.get("DEBUG", False),
         sqlalchemy_log_level=app.config.get("SQLALCHEMY_LOG_LEVEL", "WARNING"),
         werkzeug_log_level=app.config.get("WERKZEUG_LOG_LEVEL", "WARNING"),
+        logger_type=app.config.get("LOGGER_TYPE", True),
+        audit_enabled=app.config.get("AUDIT_ENABLED", True)
     )
     setup_logging(
         logging_settings, 

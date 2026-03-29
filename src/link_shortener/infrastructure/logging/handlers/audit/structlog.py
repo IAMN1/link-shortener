@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from link_shortener.infrastructure.logging.utils import mask_url
 import structlog
 
 from link_shortener.application import AuditLogger, RequestContext
@@ -10,13 +11,14 @@ class StructlogAuditLogger(AuditLogger):
     """
     Audit logger implementation using structlog.
 
-    Logs significant events (URL creation, URL access) to a dedicated audit log.
-    Sensitive data (original URL) is masked to prevent leakage.
+    This logger uses the structured logging library `structlog` to emit audit
+    events with rich, machine‑readable context. It is the preferred implementation
+    when structlog is available and configured.
     """
 
     def __init__(self):
         """
-        Initialize with a structlog logger named 'audit'.
+        Initialize the audit logger with a structlog logger named "audit".
         """
         self._logger = structlog.get_logger("audit")
 
@@ -37,7 +39,7 @@ class StructlogAuditLogger(AuditLogger):
             "url_created",
             url_hash=link.url_hash.value,
             short_code=link.short_code.value,
-            original_url=self._mask_url(link.original_url.value),
+            original_url=mask_url(link.original_url.value),
             is_new=True,
             remote_addr=context.remote_addr,
             user_agent=context.user_agent,
@@ -63,7 +65,7 @@ class StructlogAuditLogger(AuditLogger):
         self._logger.info(
             "url_accessed",
             short_code=link.short_code.value,
-            original_url=self._mask_url(link.original_url.value),
+            original_url=mask_url(link.original_url.value),
             url_hash=link.url_hash.value,
             clicks=link.clicks,
             remote_addr=context.remote_addr,
@@ -73,15 +75,3 @@ class StructlogAuditLogger(AuditLogger):
             event_type="URL_ACCESSED",
             **kwargs,
         )
-
-    def _mask_url(self, url: str) -> str:
-        """
-        Mask sensitive parts of the URL for logging.
-
-        If URL is longer than 100 characters, truncate to first 50 and last 20.
-        Otherwise, return as is.
-        """
-
-        if len(url) > 100:
-            return f"{url[:50]}...{url[-20:]}"
-        return url
