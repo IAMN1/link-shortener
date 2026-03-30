@@ -7,7 +7,7 @@ from .ports.cache.redirect_cache import RedirectCache
 from .ports.logger.audit import AuditLogger
 from .ports.logger.logger import Logger
 from .services.link_service import LinkService
-from .use_cases.batch_create_links import BatchCreateLinksUseCase
+from .use_cases.batch.batch_create_links import BatchCreateLinksUseCase
 from .use_cases.create_short_link import CreateShortLinkUseCase
 from .use_cases.get_link_info import (GetExtendLinkInfoUseCase,
                                       GetLinkInfoUseCase)

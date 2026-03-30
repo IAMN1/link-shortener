@@ -3,7 +3,7 @@ from typing import List
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.responses import BatchCreateResponse, ExtendedLinkInfoResponse, ServiceStatsResponse, ShortLinkResponse
-from link_shortener.application.use_cases.batch_create_links import BatchCreateLinksUseCase
+from link_shortener.application.use_cases.batch.batch_create_links import BatchCreateLinksUseCase
 from link_shortener.application.use_cases.create_short_link import CreateShortLinkUseCase
 from link_shortener.application.use_cases.get_link_info import GetExtendLinkInfoUseCase, GetLinkInfoUseCase
 from link_shortener.application.use_cases.get_service_stats import GetServiceStatsUseCase
