@@ -4,7 +4,7 @@ import time
 from typing import List
 import uuid
 
-from link_shortener.domain import ShorteningPolicy, LinkRepository
+from link_shortener.domain import LinkRepository
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.responses import BatchCreateResponse, BatchItemResponse
 from link_shortener.application.ports.cache.link_cache import LinkCache
@@ -23,7 +23,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
     Use case for batch creation of short links.
 
     Coordinates the work of helper components:
-        - UrlGrouper: groups URLs by their hash.
+        - UrlGrouper: groups URLs by their hash, validates schemes.
         - BatchLinkFetcher: retrieves existing links from cache and database.
         - BatchLinkCreator: creates new Link entities handling code collisions.
         - BatchResponseBuilder: builds DTOs for newly created links.
@@ -31,34 +31,40 @@ class BatchCreateLinksUseCase(BaseUseCase):
     Attributes:
         repository: Link repository for database operations.
         cache: Cache for storing Link objects.
-        shortening_policy: Policy for generating short codes and hashes.
         base_url: Base URL of the service (used to build short URLs).
         logger: Application logger.
         audit_logger: Audit logger for significant events.
-        allowed_schemes: List of allowed URL schemes (e.g., ['http', 'https']).
         batch_limit: Maximum number of URLs allowed in a single batch request.
+        grouper: Component that groups URLs by hash.
+        fetcher: Component that fetches existing links.
+        creator: Component that creates new links.
+        builder: Component that builds response items for new links.
     """
 
     repository: LinkRepository
     cache: LinkCache
-    shortening_policy: ShorteningPolicy
     base_url: str
     logger: Logger
     audit_logger: AuditLogger
-    allowed_schemes: List[str]
     batch_limit: int = 100
 
-    def __post_init__(self):
+    grouper: UrlGrouper
+    fetcher: BatchLinkFetcher
+    creator: BatchLinkCreator
+    builder: BatchResponseBuilder
+    
+    def execute(self, urls: List[str], context: RequestContext) -> BatchCreateResponse:
         """
         Execute batch link creation.
 
         Steps:
             1. Validate batch size.
-            2. Group URLs by hash (valid/invalid).
-            3. Fetch existing links from cache and database.
-            4. Create new links for missing URLs (handling collisions).
-            5. Save new links to repository and cache.
-            6. Build and aggregate responses.
+            2. Group URLs by hash (using injected grouper).
+            3. Fetch existing links from cache and database (using injected fetcher).
+            4. Create new links for missing URLs (using injected creator).
+            5. Save new links to repository.
+            6. Cache all links (existing and new).
+            7. Build and aggregate responses (using injected builder).
 
         Args:
             urls: List of URLs to shorten.
@@ -70,16 +76,6 @@ class BatchCreateLinksUseCase(BaseUseCase):
         Raises:
             ValueError: If the number of URLs exceeds batch_limit
         """
-        self._grouper = UrlGrouper(self.allowed_schemes, self.logger)
-        self._fetcher = BatchLinkFetcher(self.cache, self.repository)
-        self._creator = BatchLinkCreator(
-            self.repository,
-            self.shortening_policy,
-            self.logger
-        )
-        self._builder = BatchResponseBuilder()
-    
-    def execute(self, urls: List[str], context: RequestContext) -> BatchCreateResponse:
         log = self._get_logger(self.logger, context)
         start_time = time.perf_counter()
 
@@ -97,7 +93,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
         log.info("Starting batch link creation", count=len(urls))
 
         # 1. Group URLs
-        groups = self._grouper.group(urls, self.shortening_policy)
+        groups = self.grouper.group(urls)
 
         # Separate valid and invalid
         valid_groups = [g for g in groups.values() if g["is_valid"]]
@@ -115,12 +111,12 @@ class BatchCreateLinksUseCase(BaseUseCase):
             return BatchCreateResponse.from_results(invalid_results)
         
         # 2. Fetch from cache and DB
-        fetched_results, groups_to_create, links_to_cache = self._fetcher.fetch(
+        fetched_results, groups_to_create, links_to_cache = self.fetcher.fetch(
             valid_groups, self.base_url
         )
 
         # 3. Create new links for missing groups
-        new_links = self._creator.create_new_links(groups_to_create)
+        new_links = self.creator.create_new_links(groups_to_create)
 
         # 4. Save new links to repository
         saved_links = []
@@ -139,7 +135,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
             log.debug("Links cached", count=len(all_to_cache))
         
         # 6. Build responses for new links
-        new_results = self._builder.build_from_new_links(
+        new_results = self.builder.build_from_new_links(
             groups_to_create, saved_links, self.base_url
         )
 
