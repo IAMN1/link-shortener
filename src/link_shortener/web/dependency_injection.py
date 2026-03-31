@@ -268,7 +268,8 @@ class Container:
             creator = BatchLinkCreator(
                 repository=self.get_repository(),
                 policy=self.get_shortening_policy(),
-                logger=self.get_logger(BatchLinkCreator.__module__)
+                logger=self.get_logger(BatchLinkCreator.__module__),
+                max_attempts=self.config.MAX_COLLISION_ATTEMPTS
             )
             builder = BatchResponseBuilder()
 

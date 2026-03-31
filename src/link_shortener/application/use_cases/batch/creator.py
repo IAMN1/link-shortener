@@ -15,7 +15,7 @@ class BatchLinkCreator:
     attempt numbers. Uses a batch collision resolution algorithm to minimize
     database round trips.
     """
-    def __init__(self, repository: LinkRepository, policy: ShorteningPolicy, logger: Logger):
+    def __init__(self, repository: LinkRepository, policy: ShorteningPolicy, logger: Logger, max_attempts: int):
         """
         Initialize the creator.
 
@@ -28,7 +28,7 @@ class BatchLinkCreator:
         self.repository = repository
         self.policy = policy
         self.logger = logger
-        self.max_attempts: int = 5
+        self.max_attempts = max_attempts
     
     def create_new_links(self, groups: List[Dict]) -> List[Link]:
         """
@@ -149,4 +149,3 @@ class BatchLinkCreator:
                 occupied.add(code)
         
         return resolved
-    
