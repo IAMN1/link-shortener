@@ -23,6 +23,8 @@ from .logging.audit_manager import AuditManager
 from .logging.settings import LoggingSettings
 from .logging.bootstrap import setup_logging
 from .cli import register_flask_commands
+from .rate_limit.redis_rate_limiter import RedisRateLimiter
+from .rate_limit.memory_rate_limiter import MemoryRateLimiter
 
 __all__ = [
     "CacheKeyGenerator",
@@ -51,4 +53,6 @@ __all__ = [
     "AuditManager",
     "setup_logging",
     "register_flask_commands",
+    "RedisRateLimiter",
+    "MemoryRateLimiter"
 ]
