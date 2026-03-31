@@ -43,5 +43,4 @@ class StagingConfig(BaseConfig):
         return url or "redis://localhost:6379/0"
 
     # ========== Limits ==========
-    MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 200))
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))

@@ -56,6 +56,7 @@ class BaseConfig:
     ## Business rules
     POPULAR_THRESHOLD: int = int(os.environ.get("POPULAR_THRESHOLD", 100))
     RECENT_DAYS: int = int(os.environ.get("RECENT_DAYS", 7))
+    BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
 
 
     @property
@@ -69,13 +70,23 @@ class BaseConfig:
     SHORT_CODE_MIN_LENGTH: int = 6
     SHORT_CODE_MAX_LENGTH: int = 10
 
-    # =============== Limits =========================================================
-    #MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 100))
+    # =============== Rate Limit =========================================================
     DEFAULT_RATE_LIMIT: int = int(os.environ.get("DEFAULT_RATE_LIMIT", 100))
-    DEFAULT_RATE_LIMIT_PERIOD: int = int(os.environ.get("DEFAULT_RATE_LIMIT_PERIOD", 100))
-    
-    
-    BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
+    DEFAULT_RATE_LIMIT_PERIOD: int = int(os.environ.get("DEFAULT_RATE_LIMIT_PERIOD", 60))
+
+    # Словарь для переопределения лимитов для конкретных эндпоинтов.
+    # Ключ – имя эндпоинта (например, "api.create_short_link"), 
+    # значение – кортеж (limit, period).
+    RATE_LIMITS: dict = {
+        "api.create_short_link": (30, 60),
+        "api.get_link_info": (100, 60),
+        "api.get_extended_link_info": (50, 60),
+        "api.batch_create": (5, 60),
+        "api.get_stats": (10, 60),
+        "redirect_to_original": (200, 60),
+        "health": (10, 5),
+    }
+
 
     # =============== Database settings ==============================================
     SQLALCHEMY_ECHO: bool = os.environ.get("SQLALCHEMY_ECHO", "true").lower() == "true"

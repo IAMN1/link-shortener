@@ -54,7 +54,6 @@ class ProductionConfig(BaseConfig):
         return f"http://{self.HOST}:{self.PORT}/"
 
     # ========== Limits ==========
-    MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 50))
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
 
     # ========== Redis cache settings ==========

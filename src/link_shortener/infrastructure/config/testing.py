@@ -14,7 +14,6 @@ class TestingConfig(BaseConfig):
     SHORT_CODE_SECRET_PEPPER: str = "test-pepper"
 
     # ========== Limits ==========
-    MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 1000))
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 200))
 
     # ========== Database settings ==========
