@@ -29,6 +29,7 @@ services:
     redis:
       image: redis:7-alpine
       container_name: link_shortener_redis
+      command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
       restart: unless-stopped
       ports:
         - "${REDIS_PORT}:6379"
