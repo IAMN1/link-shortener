@@ -3,7 +3,8 @@ from link_shortener.application import RateLimiter
 
 
 class RateLimitMiddleware:
-    """Flask middleware that applies rate limiting to incoming requests.
+    """
+    Flask middleware that applies rate limiting to incoming requests.
 
     It extracts the client identifier (IP address or user ID) and the
     endpoint name to build a unique key. For each request it checks
@@ -11,7 +12,8 @@ class RateLimitMiddleware:
     429 response with standard rate-limit headers.
 
     Limits are defined per endpoint; a fallback default limit is used
-    for any unconfigured endpoint."""
+    for any unconfigured endpoint.
+    """
 
     def __init__(self, app, rate_limiter: RateLimiter):
         """
@@ -27,6 +29,8 @@ class RateLimitMiddleware:
         # Default limits (can be overridden in Flask config)
         self.default_limit = getattr(app.config, "DEFAULT_RATE_LIMIT", 100)
         self.default_period = getattr(app.config, "DEFAULT_RATE_LIMIT_PERIOD", 60)
+
+        self.rate_limits = getattr(app.config, "RATE_LIMITS", {})
 
         self._register_handlers()
     
@@ -44,32 +48,9 @@ class RateLimitMiddleware:
             # Combine client ID with endpoint to isolate limits per endpoint.
             key = f"{client_id}:{request.endpoint}"
 
-            # Configure limits per endpoint (hard‑coded for simplicity).
-            if request.endpoint == 'api.create_short_link':
-                limit = 30
-                period = 60
-            elif request.endpoint == 'api.get_link_info':
-                limit = 100
-                period = 60
-            elif request.endpoint == 'api.get_extend_link_info':
-                limit = 50
-                period = 60
-            elif request.endpoint == 'api.batch_create':
-                limit = 5
-                period = 60
-            elif request.endpoint == 'api.get_stats':
-                limit = 10
-                period = 60
-            elif request.endpoint == 'redirect_to_original':
-                limit == 200
-                period = 60
-            elif request.endpoint == 'health':
-                limit = 10
-                period = 5
-            else:
-                # Fallback to default limits for any other endpoint.
-                limit = self.default_limit
-                period = self.default_period
+            limit, period = self.rate_limits.get(
+                request.endpoint, (self.default_limit, self.default_period)
+            )
             
             if not self.rate_limiter.is_allowed(key, limit, period):
                 remaining = self.rate_limiter.get_remaining(key, limit, period)
@@ -92,7 +73,7 @@ class RateLimitMiddleware:
         @self.app.after_request
         def add_rate_limit_headers(response):
             """
-            After each request: add X‑RateLimit‑* headers to the response,
+            After each request: add (X-RateLimit-*) headers to the response,
             if they were set during the before_request phase.
             """
             if hasattr(g, "rate_limit_limit"):
