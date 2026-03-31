@@ -70,7 +70,11 @@ class BaseConfig:
     SHORT_CODE_MAX_LENGTH: int = 10
 
     # =============== Limits =========================================================
-    MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 100))
+    #MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 100))
+    DEFAULT_RATE_LIMIT: int = int(os.environ.get("DEFAULT_RATE_LIMIT", 100))
+    DEFAULT_RATE_LIMIT_PERIOD: int = int(os.environ.get("DEFAULT_RATE_LIMIT_PERIOD", 100))
+    
+    
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
 
     # =============== Database settings ==============================================
