@@ -11,25 +11,33 @@ class UrlGrouper:
 
     Valid URLs are grouped under their hash; invalid URLs are grouped
     under separate keys with a flag indicating the error.
+
+    The grouper uses the provided shortening policy to compute hashes
+    and validates URL schemes against the allowed list.
     """
-    def __init__(self, allowed_schemes: List[str], logger: Logger):
+    def __init__(self, allowed_schemes: List[str], policy: ShorteningPolicy, logger: Logger):
         """
         Initialize the grouper.
 
         Args:
             allowed_schemes: List of allowed URL schemes (e.g., ['http', 'https']).
+            policy: Shortening policy used to compute hashes and generate codes.
             logger: Logger for logging invalid URLs.
         """
         self.allowed_schemes = allowed_schemes
+        self.policy = policy
         self.logger = logger
     
-    def group(self, urls: List[str], policy: ShorteningPolicy) -> Dict[str, Dict]:
+    def group(self, urls: List[str]) -> Dict[str, Dict]:
         """
         Group URLs by hash.
 
+        The method validates each URL against allowed schemes, creates an
+        OriginalUrl value object, and computes the hash using the stored policy.
+        Invalid URLs are grouped separately with an error message.
+
         Args:
             urls: List of URL strings.
-            policy: Shortening policy used to compute hashes.
 
         Returns:
             A dictionary where:
@@ -49,7 +57,7 @@ class UrlGrouper:
             try:
                 self._validate_scheme(url)
                 original_url = OriginalUrl(url)
-                url_hash = policy.calculate_hash(original_url)
+                url_hash = self.policy.calculate_hash(original_url)
                 key = url_hash.value
 
                 if key not in groups:
