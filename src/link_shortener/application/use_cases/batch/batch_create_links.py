@@ -46,7 +46,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
     base_url: str
     logger: Logger
     audit_logger: AuditLogger
-    batch_limit: int = 100
+    batch_limit: int
 
     grouper: UrlGrouper
     fetcher: BatchLinkFetcher
