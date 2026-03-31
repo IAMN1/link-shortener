@@ -43,9 +43,7 @@ class ErrorHandlerMiddleware:
         if request.path.startswith("/api/"):
             return False
         
-        accept = request.headers.get("Accept", "")
-        
-        if "text/html" in accept:
+        if 'text/html' in request.headers.get('Accept', ''):
             return True
         
         # Default to HTML for frontend routes
