@@ -10,8 +10,11 @@ from link_shortener.application import (
 from link_shortener.infrastructure import (
     DatabaseManager, InMemoryLinkCache, NullCache,
     RedisLinkCache, SQLAlchemyLinkRepository,
-    AuditManager, LoggerManager
+    AuditManager, LoggerManager,
+    MemoryRateLimiter, RedisRateLimiter
 )
+
+import redis
 
 
 
@@ -205,6 +208,23 @@ class Container:
                 max_length=self.config.SHORT_CODE_MAX_LENGTH
             )
         return self._shortening_policy
+
+
+    def get_rate_limiter(self):
+        """
+        Get the rate limiter implementation based on configuration.
+
+        Returns:
+            RateLimiter: An instance of RedisRateLimiter if Redis is enabled,
+                otherwise MemoryRateLimiter.
+        """
+        if not hasattr(self, "_rate_limiter"):
+            if self.config.REDIS_ENABLED:
+                redis_client = redis.from_url(self.config.REDIS_URL)
+                self._rate_limiter = RedisRateLimiter(redis_client)
+            else:
+                self._rate_limiter = MemoryRateLimiter()
+        return self._rate_limiter
 
 
     # =============== Use cases =============================================
