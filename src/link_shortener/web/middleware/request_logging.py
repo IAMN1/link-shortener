@@ -42,13 +42,15 @@ class RequestLoggingMiddleware:
             g.start_time = time.time()
             g.request_id = str(uuid.uuid4())[:10]
 
+            user_agent = request.headers.get('User-Agent')
+
             self.logger.info(
                 "Request started", 
                 method=request.method,
                 path=request.path, 
                 remote_addr=request.remote_addr,
                 request_id=g.request_id,
-                user_agent=request.user_agent.string if request.user_agent else None
+                user_agent=user_agent
             )
 
         @self.app.after_request
