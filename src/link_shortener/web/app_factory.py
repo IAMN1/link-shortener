@@ -1,9 +1,8 @@
 import atexit
 import os
 
-from flask import Flask, g, redirect, request
+from flask import Flask, redirect
 from flask_cors import CORS
-from link_shortener.application import RequestContext
 from link_shortener.infrastructure import (
     LoggingSettings,
     get_config,
@@ -16,6 +15,7 @@ from link_shortener.web.dependency_injection import Container
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
 from link_shortener.web.middleware.rate_limit import RateLimitMiddleware
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
+from link_shortener.web.utils import create_request_context
 
 def create_app(config=None) -> Flask:
     """
@@ -93,13 +93,7 @@ def create_app(config=None) -> Flask:
         then returns a redirect response to the original URL.
         """
 
-        context = RequestContext(
-            request_id=g.get('request_id'),
-            remote_addr=request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip(),
-            user_agent=request.user_agent.string if request.user_agent else None,
-            request_path=request.path,
-            request_method=request.method
-        )
+        context = create_request_context()
         original_url = container.get_link_service().redirect(short_code, context)
 
         return redirect(original_url)

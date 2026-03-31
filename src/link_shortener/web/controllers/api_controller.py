@@ -1,7 +1,8 @@
-from flask import Blueprint, g, jsonify, request
-from link_shortener.application import LinkService, RequestContext
+from flask import Blueprint, jsonify, request
+from link_shortener.application import LinkService
 from link_shortener.web.schemas.requests import BatchCreateLinkRequest, CreateShortLinkRequest
 from link_shortener.web.schemas.responses import BatchCreateResponse, ServiceStatsResponse, ShortLinkResponse, ExtendedLinkInfoResponse
+from link_shortener.web.utils import create_request_context
 
 
 class ApiController:
@@ -43,34 +44,12 @@ class ApiController:
             '/stats', view_func=self.get_stats, methods=['GET']
         )
     
-    def _get_client_ip(self):
-        """
-        Extract real client IP from request headers, accounting for proxies.
-
-        Returns:
-            Client IP address as string.
-        """
-
-        if request.headers.get('X-Forwarded-For'):
-            return request.headers.get('X-Forwarded-For').split(',')[0].rstrip()
-        return request.remote_addr
-    
-    def _get_request_context(self) -> RequestContext:
-        """Create a RequestContext object from the current Flask request."""
-        return RequestContext(
-            request_id=g.get('request_id'),
-            remote_addr=self._get_client_ip(),
-            user_agent=request.headers.get("User-Agent"),
-            request_path=request.path,
-            request_method=request.method
-        )
-    
     def create_short_link(self):
         """Handle POST /api/v1/shorten - create a short link."""
 
         data = request.get_json()
         validated = CreateShortLinkRequest(**data)
-        context = self._get_request_context()
+        context = create_request_context()
         result_dto = self.link_service.create_short_link(validated.url, context)
 
         response_data = ShortLinkResponse.from_dto(result_dto)
@@ -80,7 +59,7 @@ class ApiController:
     def get_link_info(self, short_code: str):
         """Handle GET /api/v1/links/<short_code> - get link info."""
 
-        context = self._get_request_context()
+        context = create_request_context()
         result_dto = self.link_service.get_link_info(short_code, context)
         response_data = ShortLinkResponse.from_dto(result_dto)
         return jsonify(response_data.model_dump())
@@ -88,7 +67,7 @@ class ApiController:
     def get_extended_link_info(self, short_code: str):
         """Handle GET /api/v1/links/<short_code>/extended - get extended link info."""
 
-        context = self._get_request_context()
+        context = create_request_context()
         result_dto = self.link_service.get_extended_link_info(short_code, context)
         response_data = ExtendedLinkInfoResponse.from_dto(result_dto)
         return jsonify(response_data.model_dump())
@@ -98,7 +77,7 @@ class ApiController:
 
         data = request.get_json()
         validated = BatchCreateLinkRequest(**data)
-        context = self._get_request_context()
+        context = create_request_context()
         result_dto = self.link_service.batch_create_short_links(validated.urls, context)
         response_data = BatchCreateResponse.from_dto(result_dto)
         
@@ -107,7 +86,7 @@ class ApiController:
     def get_stats(self):
         """Handle GET /api/v1/stats - get service statistics."""
 
-        context = self._get_request_context()
+        context = create_request_context()
         result_dto = self.link_service.get_service_stats(context)
         response_data = ServiceStatsResponse.from_dto(result_dto)
         return jsonify(response_data.model_dump())
