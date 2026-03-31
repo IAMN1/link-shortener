@@ -14,6 +14,7 @@ from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.frontend_controller import FrontendController
 from link_shortener.web.dependency_injection import Container
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
+from link_shortener.web.middleware.rate_limit import RateLimitMiddleware
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
 
 def create_app(config=None) -> Flask:
@@ -73,6 +74,7 @@ def create_app(config=None) -> Flask:
     # Register middleware
     RequestLoggingMiddleware(app, container.get_logger(RequestLoggingMiddleware.__module__))
     ErrorHandlerMiddleware(app, container.get_logger(ErrorHandlerMiddleware.__module__))
+    RateLimitMiddleware(app, container.get_rate_limiter())
 
     # Create controllers and register blueprints
     api_controller = ApiController(container.get_link_service())
