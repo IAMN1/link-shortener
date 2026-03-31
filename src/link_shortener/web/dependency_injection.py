@@ -1,10 +1,10 @@
-from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.domain import HashBasedShorteningPolicy
 
 from link_shortener.application import (
     Logger, LinkCache, LinkService, BatchCreateLinksUseCase,
     CreateShortLinkUseCase, GetLinkInfoUseCase, GetServiceStatsUseCase,
-    GetExtendLinkInfoUseCase, RedirectLinkUseCase
+    GetExtendLinkInfoUseCase, RedirectLinkUseCase, AuditLogger,
+    BatchLinkCreator, BatchLinkFetcher, UrlGrouper, BatchResponseBuilder
 )
 
 from link_shortener.infrastructure import (
@@ -205,7 +205,8 @@ class Container:
             self._shortening_policy = HashBasedShorteningPolicy(
                 code_length=self.config.SHORT_CODE_LENGTH,
                 min_length=self.config.SHORT_CODE_MIN_LENGTH,
-                max_length=self.config.SHORT_CODE_MAX_LENGTH
+                max_length=self.config.SHORT_CODE_MAX_LENGTH,
+                pepper=self.config.SHORT_CODE_SECRET_PEPPER
             )
         return self._shortening_policy
 
@@ -245,18 +246,43 @@ class Container:
         return self._use_cases['create']
 
     def get_batch_create_links_use_case(self) -> BatchCreateLinksUseCase:
-        """Get or create the BatchCreateLinksUseCase instance."""
+        """
+        This method creates all required helper components (UrlGrouper,
+        BatchLinkFetcher, BatchLinkCreator, BatchResponseBuilder) and
+        injects them into the use case. The components are configured
+        with the application's settings (allowed schemes, shortening policy,
+        etc.) from the configuration object.
+        """
 
         if 'batch' not in self._use_cases:
+            
+            grouper = UrlGrouper(
+                allowed_schemes=self.config.ALLOWED_SCHEMES,
+                policy=self.get_shortening_policy(),
+                logger=self.get_logger(UrlGrouper.__module__)
+            )
+            fetcher = BatchLinkFetcher(
+                cache=self.get_cache(),
+                repository=self.get_repository()
+            )
+            creator = BatchLinkCreator(
+                repository=self.get_repository(),
+                policy=self.get_shortening_policy(),
+                logger=self.get_logger(BatchLinkCreator.__module__)
+            )
+            builder = BatchResponseBuilder()
+
             self._use_cases['batch'] = BatchCreateLinksUseCase(
                 repository=self.get_repository(),
                 cache=self.get_cache(),
-                shortening_policy=self.get_shortening_policy(),
                 base_url=self.config.BASE_URL,
                 logger=self.get_logger(BatchCreateLinksUseCase.__module__),
                 audit_logger=self.get_audit_logger(),
-                allowed_schemes=self.config.ALLOWED_SCHEMES,
-                batch_limit=self.config.BATCH_CREATE_LIMIT
+                batch_limit=self.config.BATCH_CREATE_LIMIT,
+                grouper=grouper,
+                fetcher=fetcher,
+                creator=creator,
+                builder=builder
             )
         return self._use_cases['batch']
 
