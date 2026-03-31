@@ -46,7 +46,7 @@ class FrontendController:
         return RequestContext(
             request_id=g.get('request_id'),
             remote_addr=request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip(),
-            user_agent=request.user_agent.string if request.user_agent else None,
+            user_agent=request.headers.get('User-Agent'),
             request_path=request.path,
             request_method=request.method
         )
