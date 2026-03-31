@@ -6,6 +6,7 @@ from .ports.cache.link_service_stats_cache import StatsCache
 from .ports.cache.redirect_cache import RedirectCache
 from .ports.logger.audit import AuditLogger
 from .ports.logger.logger import Logger
+from .ports.rate_limiter import RateLimiter
 from .services.link_service import LinkService
 from .use_cases.batch.batch_create_links import BatchCreateLinksUseCase
 from .use_cases.create_short_link import CreateShortLinkUseCase
@@ -27,6 +28,7 @@ __all__ = [
     "RedirectCache",
     "AuditLogger",
     "Logger",
+    "RateLimiter",
     "LinkService",
     "BatchCreateLinksUseCase",
     "CreateShortLinkUseCase",
