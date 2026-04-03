@@ -1,17 +1,18 @@
-from datetime import datetime, timezone, timedelta
-from link_shortener.domain.repositories.link_repository import LinkRepository
+from link_shortener.application import RequestContext, CleanExpiredLinksUseCase
 
 
-def clean_expired_links(repository: LinkRepository, days: int = 30) -> int:
+def clean_expired_links(
+    use_case: CleanExpiredLinksUseCase, days: int, context: RequestContext
+) -> int:
     """
     Delete links that have not been accessed for more than `days` days.
 
     Args:
-        repository: LinkRepository instance.
-        days: Age threshold in days (links older than this are deleted).
+        use_case: CleanExpiredLinksUseCase instance.
+        days: Age threshold in days.
+        context: Request context.
 
     Returns:
         Number of deleted links.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    return repository.delete_unaccessed_before(cutoff=cutoff)
+    return use_case.execute(days, context)

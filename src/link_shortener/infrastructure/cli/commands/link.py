@@ -1,70 +1,83 @@
 from typing import List, Optional
-from link_shortener.domain.repositories.link_repository import LinkRepository
-from link_shortener.domain.value_objects.short_code import ShortCode
+
+from link_shortener.application import (
+    RequestContext, DeleteLinkUseCase,
+    GetLinkInfoUseCase, GetRecentLinksUseCase
+)
+
+from link_shortener.domain import LinkNotFoundError
 
 
-def delete_link(repository: LinkRepository, short_code: str) -> bool:
+def delete_link(
+    use_case: DeleteLinkUseCase, short_code: str, context: RequestContext
+) -> bool:
     """
     Delete a short link by its code.
 
     Args:
-        repository: LinkRepository instance.
-        short_code: Short code string (will be validated).
+        use_case: DeleteLinkUseCase instance.
+        short_code: The short code string.
+        context: Request context.
 
     Returns:
-        True if deletion was successful, False if link not found or code invalid.
+        True if deletion was successful, False if link not found or invalid.
     """
-    try:
-        code = ShortCode(short_code)
-        return repository.delete(code)
-    except ValueError:
-        print(f"Invalid short code format: {short_code}")
-        return False
+    return use_case.execute(short_code, context)
 
-def get_link_info(repository: LinkRepository, short_code: str) -> Optional[dict]:
+def get_link_info(
+    use_case: GetLinkInfoUseCase, short_code: str, context: RequestContext
+) -> Optional[dict]:
     """
-    Retrieve detailed information about a short link.
+    Retrieve basic information about a short link.
 
     Args:
-        repository: LinkRepository instance.
-        short_code: Short code string.
+        use_case: GetLinkInfoUseCase instance.
+        short_code: The short code string.
+        context: Request context.
 
     Returns:
-        Dictionary with link details, or None if not found or invalid.
+        Dictionary with link details or None if not found.
     """
     try:
-        code = ShortCode(short_code)
-        link = repository.find_by_code(code)
-        if not link:
-            return None
+        response = use_case.execute(short_code, context)
+
         return {
-            "short_code": link.short_code.value,
-            "original_url": link.original_url.value,
-            "clicks": link.clicks,
-            "created_at": link.created_at.isoformat(),
-            "last_accessed": link.last_accessed.isoformat() if link.last_accessed else None,
+            "short_code": response.short_code,
+            "original_url": response.original_url,
+            "clicks": response.clicks,
+            "created_at": response.created_at.isoformat(),
+            "last_accessed": response.last_accessed.isoformat() 
+                if response.last_accessed else None,
         }
+    except LinkNotFoundError:
+        return None
     except ValueError:
         return None
 
-def list_links(repository: LinkRepository, limit: int = 10) -> List[dict]:
+def list_links(
+    use_case: GetRecentLinksUseCase, limit: int, context: RequestContext
+) -> List[dict]:
     """
     Return a list of the most recently created links.
 
     Args:
-        repository: LinkRepository instance.
+        use_case: GetRecentLinksUseCase instance.
         limit: Maximum number of links to return.
+        context: Request context.
 
     Returns:
         List of dictionaries, each containing short_code, original_url, clicks, created_at.
     """
-    links = repository.get_recent(limit)
-    result = []
-    for link in links:
-        result.append({
+    links = use_case.execute(limit, context)
+    
+    result = [
+        {
             "short_code": link.short_code.value,
             "original_url": link.original_url.value,
             "clicks": link.clicks,
             "created_at": link.created_at.isoformat(),
-        })
+        }
+        for link in links
+    ]
+    
     return result

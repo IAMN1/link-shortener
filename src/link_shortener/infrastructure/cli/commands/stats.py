@@ -1,5 +1,4 @@
-from link_shortener.application.context import RequestContext
-from link_shortener.application.use_cases.get_service_stats import GetServiceStatsUseCase
+from link_shortener.application import RequestContext, GetServiceStatsUseCase
 
 
 def refresh_stats(use_case: GetServiceStatsUseCase) -> dict:
