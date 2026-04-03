@@ -5,7 +5,7 @@ class ConsoleFormatter(logging.Formatter):
     """
     Formatter for console output in 'standard' logger mode.
 
-    It produces a human‑readable line:
+    It produces a human-readable line:
         timestamp - [module_name] - message [key1=value1 key2=value2 ...]
     where module_name is taken from the record's 'module_name' attribute (if present)
     or falls back to the logger name.

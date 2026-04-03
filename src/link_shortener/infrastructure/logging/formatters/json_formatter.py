@@ -22,7 +22,7 @@ class JSONFormatter(logging.Formatter):
 
         Args:
             date_format: Format string for timestamps.
-            ensure_ascii: If True, all non‑ASCII characters are escaped.
+            ensure_ascii: If True, all non-ASCII characters are escaped.
         """
         
         super().__init__()
@@ -51,7 +51,8 @@ class JSONFormatter(logging.Formatter):
             'exc_info', 'exc_text', 'filename', 'funcName',
             'id', 'levelname', 'levelno', 'lineno', 'module',
             'msecs', 'name', 'pathname','process', 'processName',
-            'relativeCreated', 'stack_info', 'thread', 'threadName'
+            'relativeCreated', 'stack_info', 'thread', 'threadName',
+            'message'
         }
         for key, value in record.__dict__.items():
             if key in skip_keys or key in log_entry:

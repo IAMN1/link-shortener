@@ -1,5 +1,5 @@
 import structlog
-from link_shortener.infrastructure.logging.settings import LoggingSettings
+from link_shortener.infrastructure.logging.logging_settings import LoggingSettings
 
 
 def _replace_logger_name_with_module(logger, method_name, event_dict):

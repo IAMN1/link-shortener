@@ -142,23 +142,48 @@ class LoggerManager:
 
 class FailoverLoggerProxy(Logger):
     """
-    Proxy that forwards logging calls to the FailoverService,
-    adding the module name to the keyword arguments.
-    Supports binding additional fields via bind().
+    Proxy that forwards logging calls to the FailoverService.
+
+    It adds the module name as a bound field and supports additional
+    `bind` operations. This allows contextual logging across multiple
+    logger instances.
     """
 
     def __init__(self, service: FailoverService, module_name: str, bound_fields: Optional[Dict]= None):
-        
+        """
+        Initialize the proxy.
+
+        Args:
+            service: The `FailoverService` that holds the actual loggers.
+            module_name: Name of the module requesting the logger.
+            bound_fields: Initial bound fields.
+        """
         self._service = service
         self._module_name = module_name
         self._bound_fields = bound_fields if bound_fields else {}
 
     def bind(self, **kwargs) -> "FailoverLoggerProxy":
-        """Returns a new proxy with additional tied fields."""
+        """
+        Return a new proxy with additional bound fields.
+
+        Args:
+            **kwargs: Fields to bind.
+
+        Returns:
+            A new `FailoverLoggerProxy` instance with merged bound fields.
+        """
         new_bound = {**self._bound_fields, **kwargs}
         return FailoverLoggerProxy(self._service, self._module_name, new_bound)
 
     def _call(self, method_name: str, message: str, **kwargs):
+        """
+        Internal method to forward a logging call.
+
+        Args:
+            method_name: Name of the log method (debug, info, etc.).
+            message: Log message.
+            **kwargs: Additional structured data
+        """
         all_kwargs = {**self._bound_fields, **kwargs}
         all_kwargs["module"] = self._module_name
         return self._service.execute(method_name, message, **all_kwargs)
@@ -182,20 +207,47 @@ class FailoverLoggerProxy(Logger):
 
 class _ModuleLogger(Logger):
     """
-    Simple wrapper for a single logger (when failover is disabled)
-    that adds module name to kwargs.
+    Simple wrapper for a single logger (when failover is disabled).
+
+    It adds the module name to every log call as the "module" field.
+    Supports `bind` to attach additional context.
     """
 
     def __init__(self, logger: Logger, module_name: str, bound_fields: Optional[Dict] = None):
+        """
+        Initialize the module logger.
+
+        Args:
+            logger: The underlying logger instance.
+            module_name: Name of the module requesting the logger.
+            bound_fields: Initial bound fields.
+        """
         self._logger = logger
         self._module_name = module_name
         self._bound_fields = bound_fields if bound_fields else {}
 
     def bind(self, **kwargs) -> '_ModuleLogger':
+        """
+        Return a new module logger with additional bound fields.
+
+        Args:
+            **kwargs: Fields to bind.
+
+        Returns:
+            A new `_ModuleLogger` instance with merged bound fields.
+        """
         new_bound = {**self._bound_fields, **kwargs}
         return _ModuleLogger(self._logger, self._module_name, new_bound)
 
     def _log(self, level: str, message: str, **kwargs):
+        """
+        Internal method to perform the actual logging.
+
+        Args:
+            level: Log level (debug, info, warning, error, exception).
+            message: Log message.
+            **kwargs: Additional structured data.
+        """
         all_kwargs = {**self._bound_fields, **kwargs}
         all_kwargs["module"] = self._module_name
         getattr(self._logger, level)(message, **all_kwargs)
