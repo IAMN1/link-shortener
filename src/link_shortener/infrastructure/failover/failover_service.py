@@ -86,7 +86,17 @@ class FailoverService(Generic[T]):
                     return
 
     def _is_service_healthly(self, service: T) -> bool:
-        """Use the health checker if provided; otherwise assume it's healthy."""
+        """
+        Check if a service is healthy using the provided health checker.
+
+        If no health checker is provided, assume the service is healthy.
+
+        Args:
+            service: The service instance to check.
+
+        Returns:
+            True if healthy, False otherwise.
+        """
 
         if self._health_checker is None:
             return True
@@ -111,7 +121,12 @@ class FailoverService(Generic[T]):
             return False
     
     def _log(self, message: str):
-        """Internal logging for failover events (printed to stderr)."""
+        """
+        Log a failover event to stderr.
+
+        Args:
+            message: The log message.
+        """
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"{timestamp} [FailoverService] {message}", file=sys.stderr)
     
