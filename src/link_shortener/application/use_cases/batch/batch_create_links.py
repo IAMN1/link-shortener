@@ -77,6 +77,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
             ValueError: If the number of URLs exceeds batch_limit
         """
         log = self._get_logger(self.logger, context)
+        audit = self._get_audit_logger(self.audit_logger, context)
         start_time = time.perf_counter()
 
         if not urls:
@@ -123,8 +124,13 @@ class BatchCreateLinksUseCase(BaseUseCase):
         if new_links:
             saved_links = self.repository.save_many(new_links)
             batch_id = str(uuid.uuid4())
+            
             for link in saved_links:
-                self.audit_logger.log_url_created(link, context, batch_id=batch_id)
+                audit.log_url_created(
+                    short_code=link.short_code.value,
+                    original_url=link.original_url.value,
+                    batch_id=batch_id
+                )
             log.debug("New links saved", count=len(saved_links))
         
 
