@@ -18,17 +18,17 @@ from link_shortener.domain import (
 @dataclass
 class CreateShortLinkUseCase(BaseUseCase):
     """
-    Use case: Create a single short link.
+    Use case: create a single short link.
 
     Steps:
-    1. Validate and normalize the input URL via OriginalUrl value object.
-    2. Compute the URL hash for deduplication.
-    3. Check cache for existing link by hash (fast path).
-    4. If not in cache, check repository.
-    5. If found, return cached/existing link.
-    6. If not found, generate a unique short code (handling collisions).
-    7. Create a new Link entity and save it to repository and cache.
-    8. Audit the creation event.
+        1. Validate and normalize the input URL via OriginalUrl value object.
+        2. Compute the URL hash for deduplication.
+        3. Check cache for existing link by hash (fast path).
+        4. If not in cache, check repository.
+        5. If found, return cached/existing link.
+        6. If not found, generate a unique short code (handling collisions).
+        7. Create a new Link entity and save it to repository and cache.
+        8. Audit the creation event.
     """
 
     repository: LinkRepository
@@ -50,15 +50,17 @@ class CreateShortLinkUseCase(BaseUseCase):
             context: Request context with client metadata.
 
         Returns:
-            ShortLinkResponse with link details.
+            ShortLinkResponse DTO with link details.
 
         Raises:
-            ValueError: If the URL is invalid.
+            ValueError: If the URL is invalid or scheme not allowed.
             RuntimeError: If code generation fails after max attempts.
         """
 
         # Привязка контекста к логгеру
         log = self._get_logger(self.logger, context)
+        audit = self._get_audit_logger(self.audit_logger, context)
+
         start_time = time.perf_counter()
         log.info("Starting short link creation", url=url[:50])
 
@@ -115,7 +117,9 @@ class CreateShortLinkUseCase(BaseUseCase):
                 "Short link created successfully", short_code=short_code.value
             )
             
-            self.audit_logger.log_url_created(saved_link, context)
+            audit.log_url_created(
+                short_code=saved_link.short_code.value, original_url=saved_link.original_url.value,
+            )
 
             return self._build_response(
                 saved_link, from_cache=False, is_new=True
@@ -140,7 +144,7 @@ class CreateShortLinkUseCase(BaseUseCase):
 
         Args:
             original_url: The original URL value object.
-            log: Logger with bound context.
+            log: Logger with bound context (used for debugging).
 
         Returns:
             Unique ShortCode.
@@ -170,7 +174,17 @@ class CreateShortLinkUseCase(BaseUseCase):
         )
     
     def _build_response(self, link: Link, from_cache: bool, is_new: bool) -> ShortLinkResponse:
-        """Build a ShortLinkResponse DTO from a Link entity."""
+        """
+        Build a ShortLinkResponse DTO from a domain Link entity.
+
+        Args:
+            link: The domain Link object.
+            from_cache: Whether the data came from cache.
+            is_new: Whether the link was just created.
+
+        Returns:
+            ShortLinkResponse DTO ready for serialization.
+        """
         return ShortLinkResponse.from_link(
             link, self.base_url, is_new=is_new, from_cache=from_cache
         )
