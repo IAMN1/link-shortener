@@ -152,7 +152,7 @@ class LinkRepository(ABC):
         pass
 
     @abstractmethod
-    def delete_unaccessed_before(self, cutoff: datetime) -> int:
+    def delete_unaccessed_before(self, cutoff: datetime) -> List[ShortCode]:
         """
         Delete links that haven't been accessed since the cutoff date.
 
@@ -164,6 +164,6 @@ class LinkRepository(ABC):
             cutoff: Datetime (timezone-aware UTC) threshold.
 
         Returns:
-            Number of deleted links.
+            List of short codes that were deleted.
         """
         pass
