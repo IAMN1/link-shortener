@@ -3,15 +3,17 @@ import os
 
 from flask import Flask, redirect
 from flask_cors import CORS
+
 from link_shortener.infrastructure import (
     LoggingSettings,
+    Container,
     get_config,
     setup_logging,
     register_flask_commands,
 )
+
 from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.frontend_controller import FrontendController
-from link_shortener.web.dependency_injection import Container
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
 from link_shortener.web.middleware.rate_limit import RateLimitMiddleware
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
