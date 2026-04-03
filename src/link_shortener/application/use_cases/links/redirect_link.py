@@ -1,0 +1,129 @@
+from dataclasses import dataclass
+import time
+
+
+from link_shortener.application.context import RequestContext
+from link_shortener.application.ports.cache.link_cache import LinkCache
+from link_shortener.application.ports.cache.redirect_cache import RedirectCache
+from link_shortener.application.ports.logger.audit import AuditLogger
+from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application.ports.task_queue import TaskQueue
+from link_shortener.application.use_cases.base_use_case import BaseUseCase
+from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
+
+
+@dataclass
+class RedirectLinkUseCase(BaseUseCase):
+    """
+    Use case: handle redirect by short code.
+
+    Steps:
+        1. Validate short code.
+        2. Check L1 cache (redirect cache) for original URL.
+        3. If not in L1, check L2 cache (full link cache).
+        4. If not in L2, query repository.
+        5. Return original URL immediately (synchronous).
+        6. Asynchronously enqueue click increment and audit (via Celery).
+        7. Update L1 and L2 caches for future requests.
+    """
+
+    repository: LinkRepository
+    link_cache: LinkCache
+    redirect_cache: RedirectCache
+    logger: Logger
+    audit_logger: AuditLogger
+    task_queue: TaskQueue
+
+    def execute(self, short_code_str: str, context: RequestContext) -> str:
+        """
+        Execute the redirect use case.
+
+        Args:
+            short_code_str: Short code as string.
+            context: Request context with client metadata.
+
+        Returns:
+            Original URL to redirect to.
+
+        Raises:
+            LinkNotFoundError: If link not found.
+            ValueError: If short code format is invalid.
+            RuntimeError: If an unexpected error occurs.
+        """
+
+        log = self._get_logger(self.logger, context)
+        audit = self._get_audit_logger(self.audit_logger, context)
+
+        start_time = time.perf_counter()
+        log.debug("Redirect requested", code=short_code_str)
+
+        try:
+            # Step 1: Validate short code
+            short_code = ShortCode(short_code_str)
+
+            # Step 2: Check L1 cache (fastest)
+            cached_url = self.redirect_cache.get_original_url(short_code)
+            if cached_url:
+                # Asynchronously update click count and audit
+                self.task_queue.enqueue_link_accessed(short_code.value, context)
+
+                log.info("Redirect cache hit (L1)", code=short_code.value)
+                audit.log_url_accessed(short_code=short_code.value, original_url=cached_url)
+
+                return cached_url
+
+            # Step 3: Check L2 cache (full link)
+            cached_link = self.link_cache.get_by_code(short_code)
+            if cached_link:
+
+                # Store in L1 cache for future fast redirects
+                orig_url = cached_link.original_url.value
+                self.redirect_cache.save_original_url(short_code, orig_url)
+
+                self.task_queue.enqueue_link_accessed(short_code.value, context)
+
+                log.info("Link cache hit (L2)", code=short_code.value)
+                audit.log_url_accessed(short_code=short_code.value, original_url=orig_url)
+
+                return orig_url
+
+            # Step 4: Query repository
+            link = self.repository.find_by_code(short_code)
+            if not link:
+                log.warning("Link not found:", code=short_code.value)
+                raise LinkNotFoundError(short_code_str)
+
+            orig_url = str(link.original_url.value)
+
+            # Step 6: Cache on all levels
+            self.link_cache.save(link)
+
+            # Отправка фоновой задачи
+            self.task_queue.enqueue_link_accessed(short_code.value, context)
+
+            log.info(
+                "Redirect successful", code=short_code.value, url=orig_url[:50]
+            )
+            audit.log_url_accessed(short_code=short_code.value, original_url=orig_url)
+
+            return orig_url
+
+        except ValueError as e:
+            log.error(
+                "Invalid short code format", code=short_code_str, error=str(e)
+            )
+            raise ValueError(f"Invalid short code: {str(e)}")
+
+        except LinkNotFoundError:
+            raise
+
+        except Exception as e:
+            log.exception(
+                "Error during redirect",
+                exc_info=str(e),
+                short_code=short_code_str,
+            )
+            raise RuntimeError(f"Failed to redirect: {str(e)}")
+        finally:
+            duration = time.perf_counter() - start_time
+            log.debug("Execution time", duration_ms=round(duration * 1000, 2))
