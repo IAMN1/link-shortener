@@ -1,12 +1,12 @@
 import os
 
 from dotenv import load_dotenv
+from link_shortener.infrastructure.configs.app.base import BaseConfig
+from link_shortener.infrastructure.configs.app.development import DevelopmentConfig
+from link_shortener.infrastructure.configs.app.production import ProductionConfig
+from link_shortener.infrastructure.configs.app.staging import StagingConfig
+from link_shortener.infrastructure.configs.app.testing import TestingConfig
 
-from link_shortener.infrastructure.config.base import BaseConfig
-from link_shortener.infrastructure.config.development import DevelopmentConfig
-from link_shortener.infrastructure.config.production import ProductionConfig
-from link_shortener.infrastructure.config.staging import StagingConfig
-from link_shortener.infrastructure.config.testing import TestingConfig
 
 
 class ConfigFactory:

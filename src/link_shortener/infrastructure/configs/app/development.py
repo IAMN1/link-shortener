@@ -1,6 +1,7 @@
 import os
 
-from link_shortener.infrastructure.config.base import BaseConfig
+from link_shortener.infrastructure.configs.app.base import BaseConfig
+
 
 
 class DevelopmentConfig(BaseConfig):
