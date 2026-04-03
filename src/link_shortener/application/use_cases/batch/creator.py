@@ -60,8 +60,8 @@ class BatchLinkCreator:
             hash_to_code[group["hash"]] = code
         
         # 2. Check collisions in one batch
-        uniqie_codes = list(set(hash_to_code.values()))
-        existing_map = self.repository.find_by_codes(uniqie_codes)
+        unique_codes = list(set(hash_to_code.values()))
+        existing_map = self.repository.find_by_codes(unique_codes)
 
         # 3. Resolve collisions
         resolved = self._resolve_collisions(hash_to_code, existing_map, groups)
@@ -121,7 +121,7 @@ class BatchLinkCreator:
                 existing = existing_map.get(code)
 
                 # Collision with a different URL?
-                if existing and existing.url_hash != url_hash:
+                if existing is not None and existing.url_hash != url_hash:
                     attempts[url_hash] += 1
                     if attempts[url_hash] > self.max_attempts:
                         self.logger.warning(
