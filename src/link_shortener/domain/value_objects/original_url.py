@@ -110,7 +110,15 @@ class OriginalUrl:
                 raise ValueError(f"Invalid characters in host label: {label}")
     
     def _validate_path(self, parsed) -> None:
-        """Ensure path does not contain control characters."""
+        """Validate that the URL path does not contain control characters.
+
+        Control characters (ASCII 0-31 and 127) are not allowed in the path.
+
+        Args:
+            parsed: The parsed URL result from urllib.parse.urlparse.
+
+        Raises:
+            ValueError: If a control character is found in the path."""
 
         if parsed.path and any(ord(c) < 32 or ord(c) == 127 for c in parsed.path):
             raise ValueError("Path contains control characters")
