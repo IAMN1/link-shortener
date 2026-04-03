@@ -16,7 +16,12 @@ class UrlHash:
     value: str
 
     def __post_init__(self):
-        """Validate hash format (64 hex chars)."""
+        """
+        Validate the hash format (64 lowercase hex characters).
+
+        Raises:
+            ValueError: If the hash does not match the required pattern.
+        """
 
         if not re.match(r"^[a-f0-9]{64}$", self.value):
             raise ValueError(

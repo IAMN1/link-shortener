@@ -19,7 +19,12 @@ class ShortCode:
     value: str
 
     def __post_init__(self):
-        """Validate the short code format upon creation."""
+        """
+        Validate the short code format upon creation.
+
+        Raises:
+            ValueError: If the code does not match the required pattern.
+        """
 
         if not re.match(r"^[a-zA-Z0-9_-]{6,10}$", self.value):
             raise ValueError(
