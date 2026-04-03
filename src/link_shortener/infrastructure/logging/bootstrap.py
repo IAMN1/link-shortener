@@ -3,10 +3,10 @@ import logging.handlers
 import os
 import structlog
 
-from link_shortener.infrastructure.logging.config import configure_structlog
-from link_shortener.infrastructure.logging.settings import LoggingSettings
-from link_shortener.infrastructure.logging.console_formatter import ConsoleFormatter
-from link_shortener.infrastructure.logging.json_formatter import JSONFormatter
+from link_shortener.infrastructure.logging.structlog_config import configure_structlog
+from link_shortener.infrastructure.logging.logging_settings import LoggingSettings
+from link_shortener.infrastructure.logging.formatters.console_formatter import ConsoleFormatter
+from link_shortener.infrastructure.logging.formatters.json_formatter import JSONFormatter
 
 
 def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logger):
@@ -89,13 +89,12 @@ def _setup_audit_handler(settings: LoggingSettings):
     audit_logger.propagate = False
     audit_logger.setLevel(logging.INFO)
     
-    formatter = logging.Formatter('%(asctime)s - [%(name)s] - %(message)s')
-    
     # Console handler
     if settings.log_to_console:
         if settings.logger_type == "standard":
             handler = logging.StreamHandler()
             handler.setLevel(logging.INFO)
+            formatter = ConsoleFormatter()
             handler.setFormatter(formatter)
             audit_logger.addHandler(handler)
         else:
