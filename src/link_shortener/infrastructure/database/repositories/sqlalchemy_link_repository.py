@@ -229,29 +229,22 @@ class SQLAlchemyLinkRepository(LinkRepository):
                       .all())
             return [self._to_domain(m) for m in models]
     
-    def delete_unaccessed_before(self, cutoff: datetime) -> int:
+    def delete_unaccessed_before(self, cutoff: datetime) -> List[ShortCode]:
         """
-        Delete links that haven't been accessed since cutoff.
-
-        A link is considered "unaccessed" if:
-          - last_accessed is older than cutoff, OR
-          - last_accessed is NULL and created_at is older than cutoff.
-
-        Args:
-            cutoff: Datetime threshold (timezone-aware UTC).
-
-        Returns:
-            Number of deleted links.
+        
         """
         with self.db_manager.session() as session:
-            # Удаляем ссылки, у которых last_accessed < cutoff,
-            # или last_accessed IS NULL и created_at < cutoff (никогда не использовались)
-            deleted = session.query(LinkModel).filter(
+            models_to_delete = session.query(LinkModel).filter(
                 (LinkModel.last_accessed < cutoff) |
                 ((LinkModel.last_accessed.is_(None)) & (LinkModel.created_at < cutoff))
-            ).delete(synchronize_session=False)
+            ).all()
+            short_codes = [ShortCode(m.short_code) for m in models_to_delete]
+            if short_codes:
+                session.query(LinkModel).filter(
+                    LinkModel.short_code.in_([sc.value for sc in short_codes])
+                ).delete(synchronize_session=False)
             session.flush()
-            return deleted
+            return short_codes
 
     def _to_domain(self, link_model: LinkModel) -> Link:
         """
