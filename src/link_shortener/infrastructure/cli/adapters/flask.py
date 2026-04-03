@@ -2,6 +2,7 @@ import click
 from flask import current_app
 from flask.cli import with_appcontext
 
+from link_shortener.application.context import RequestContext
 from ..commands.database import init_db as init_db_logic
 from ..commands.database import drop_db as drop_db_logic
 from ..commands.database import seed_db as seed_db_logic
@@ -53,11 +54,9 @@ def drop_db(yes):
 def seed_db(count):
     """Fill database with test data"""
     container = current_app.container
-    created = seed_db_logic(
-        container.get_repository(),
-        container.get_shortening_policy(),
-        count=count
-    )
+    context = RequestContext(request_id="cli-seed")
+    use_case = container.get_seed_database_use_case()
+    created = seed_db_logic(use_case, count, context)
     click.echo(f"Created {created} test links")
 
 @db_group.command("check")
@@ -130,7 +129,9 @@ def maintenance_group():
 def clean_expired(days):
     """Delete links that have not been accessed for N days."""
     container = current_app.container
-    deleted = clean_expired_logic(container.get_repository(), days=days)
+    context = RequestContext(request_id="cli-clean")
+    use_case = container.get_clean_expired_links_use_case()
+    deleted = clean_expired_logic(use_case, days, context)
     click.echo(f"Deleted {deleted} expired links.")
 
 @maintenance_group.command("check-redis")
@@ -199,10 +200,12 @@ def link_group():
 def link_delete(short_code):
     """Delete a short link by its code."""
     container = current_app.container
-    
+    context = RequestContext(request_id="cli-delete")
+    use_case = container.get_delete_link_use_case()
+
     click.echo("=" * 80)
-    if delete_link_logic(container.get_repository(), short_code):
-        click.echo(f"\t\t\tLink '{short_code}' deleted.")
+    if delete_link_logic(use_case, short_code, context):
+        click.echo(f"\t\t\tLink '{short_code}' has been deleted")
     else:
         click.echo(f"Link '{short_code}' not found or invalid.")
     click.echo("=" * 80)
@@ -212,8 +215,11 @@ def link_delete(short_code):
 @with_appcontext
 def link_info(short_code):
     """Show information about a short link."""
+
     container = current_app.container
-    info = link_info_logic(container.get_repository(), short_code)
+    context = RequestContext(request_id="cli-info")
+    use_case = container.get_get_link_info_use_case()
+    info = link_info_logic(use_case, short_code, context)
     
     if info:
         click.echo(f"\n\t\t\tLink: {info['short_code']}")
@@ -234,7 +240,9 @@ def link_info(short_code):
 def link_list(limit):
     """List the most recent short links."""
     container = current_app.container
-    links = list_links_logic(container.get_repository(), limit=limit)
+    context = RequestContext(request_id="cli-list")
+    use_case = container.get_get_recent_links_use_case()
+    links = list_links_logic(use_case, limit, context)
 
     if not links:
         click.echo("=" * 80)
@@ -245,6 +253,7 @@ def link_list(limit):
         for link in links:
             click.echo(f"\t\t\t{link['short_code']} - {link['clicks']} clicks - {link['created_at'][:10]}")
     click.echo("=" * 80)
+
 # ------------------------------------------------------------------
 # Отдельные команды верхнего уровня
 # ------------------------------------------------------------------
