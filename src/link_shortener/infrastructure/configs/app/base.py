@@ -187,6 +187,9 @@ class BaseConfig:
     REDIS_SOCKET_TIMEOUT: int = int(os.environ.get("REDIS_SOCKET_TIMEOUT", 2))
     REDIS_RETRY_INTERVAL: int = int(os.environ.get("REDIS_RETRY_INTERVAL", 10))
 
+    # =============== Celery settings ===========================================
+    CELERY_ENABLED: bool = os.environ.get("CELERY_ENABLED", "false").lower() == "true"
+    CELERY_BROKER_URL: str = os.environ.get("CELERY_BROKER_URL", "")
     # TODO add monitoring
 
     # =============== Validation Configuration =======================================
