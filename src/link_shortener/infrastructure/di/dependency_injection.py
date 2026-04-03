@@ -4,18 +4,24 @@ from link_shortener.application import (
     Logger, LinkCache, LinkService, BatchCreateLinksUseCase,
     CreateShortLinkUseCase, GetLinkInfoUseCase, GetServiceStatsUseCase,
     GetExtendLinkInfoUseCase, RedirectLinkUseCase, AuditLogger,
-    BatchLinkCreator, BatchLinkFetcher, UrlGrouper, BatchResponseBuilder
+    BatchLinkCreator, BatchLinkFetcher, UrlGrouper, BatchResponseBuilder,
+    UpdateLinkStatsUseCase, CleanExpiredLinksUseCase, GetRecentLinksUseCase,
+    SeedDatabaseUseCase, DeleteLinkUseCase, TaskQueue
 )
 
-from link_shortener.infrastructure import (
-    DatabaseManager, InMemoryLinkCache, NullCache,
-    RedisLinkCache, SQLAlchemyLinkRepository,
-    AuditManager, LoggerManager,
-    MemoryRateLimiter, RedisRateLimiter
-)
+from link_shortener.infrastructure.cache.memory_cache import InMemoryLinkCache
+from link_shortener.infrastructure.cache.null_cache import NullCache
+from link_shortener.infrastructure.cache.redis_cache import RedisLinkCache
+from link_shortener.infrastructure.database.manager import DatabaseManager
+from link_shortener.infrastructure.database.repositories.sqlalchemy_link_repository import SQLAlchemyLinkRepository
+from link_shortener.infrastructure.logging.managers.audit_manager import AuditManager
+from link_shortener.infrastructure.logging.managers.logger_manager import LoggerManager
+from link_shortener.infrastructure.rate_limit.memory_rate_limiter import MemoryRateLimiter
+from link_shortener.infrastructure.rate_limit.redis_rate_limiter import RedisRateLimiter
+from link_shortener.infrastructure.task_queue.celery_queue import CeleryTaskQueue
+from link_shortener.infrastructure.task_queue.null_queue import NullTaskQueue
 
 import redis
-
 
 
 class Container:
@@ -44,6 +50,8 @@ class Container:
         self._shortening_policy = None
         self._link_service = None
         self._use_cases = {}
+        self._rate_limiter = None
+        self._task_queue = None
 
 
     # =============== General dependencies ==================================
@@ -219,7 +227,7 @@ class Container:
             RateLimiter: An instance of RedisRateLimiter if Redis is enabled,
                 otherwise MemoryRateLimiter.
         """
-        if not hasattr(self, "_rate_limiter"):
+        if self._rate_limiter is None:
             if self.config.REDIS_ENABLED:
                 redis_client = redis.from_url(self.config.REDIS_URL)
                 self._rate_limiter = RedisRateLimiter(redis_client)
@@ -228,7 +236,26 @@ class Container:
         return self._rate_limiter
 
 
+    def get_task_queue(self) -> TaskQueue:
+        """
+        Get the task queue implementation (Celery or Null).
+
+        Returns:
+            TaskQueue: CeleryTaskQueue if CELERY_ENABLED is True,
+                otherwise NullTaskQueue.
+        """
+        if self._task_queue is None:
+            if self.config.CELERY_ENABLED:
+                self._task_queue = CeleryTaskQueue()
+            else:
+                self.get_logger(Container.__module__).info("Celery disabled, using NullTaskQueue")
+                self._task_queue = NullTaskQueue()
+        return self._task_queue
+
+
     # =============== Use cases =============================================
+
+    ## Links UseCases
     def get_create_short_link_use_case(self) -> CreateShortLinkUseCase:
         """Get or create the CreateShortLinkUseCase instance."""
 
@@ -245,6 +272,70 @@ class Container:
             )
         return self._use_cases['create']
 
+    def get_get_link_info_use_case(self) -> GetLinkInfoUseCase:
+        """Get or create the GetLinkInfoUseCase instance."""
+
+        if 'info' not in self._use_cases:
+            self._use_cases['info'] = GetLinkInfoUseCase(
+                repository=self.get_repository(),
+                cache=self.get_cache(),
+                logger=self.get_logger(GetLinkInfoUseCase.__module__),
+                base_url=self.config.BASE_URL,
+            )
+        return self._use_cases['info']
+
+    def get_extended_link_info_use_case(self) -> GetExtendLinkInfoUseCase:
+        """Get or create the GetExtendLinkInfoUseCase instance."""
+        if 'extended_info' not in self._use_cases:
+            self._use_cases['extended_info'] = GetExtendLinkInfoUseCase(
+                repository=self.get_repository(),
+                cache=self.get_cache(),
+                logger=self.get_logger(GetExtendLinkInfoUseCase.__module__),
+                base_url=self.config.BASE_URL,
+                popular_threshold=self.config.POPULAR_THRESHOLD,
+                recent_days=self.config.RECENT_DAYS
+            )
+        return self._use_cases['extended_info']
+
+    def get_redirect_link_use_case(self) -> RedirectLinkUseCase:
+        """Get or create the RedirectLinkUseCase instance."""
+
+        if 'redirect' not in self._use_cases:
+            self._use_cases['redirect'] = RedirectLinkUseCase(
+                repository=self.get_repository(),
+                link_cache=self.get_cache(),
+                redirect_cache=self.get_cache(),
+                logger=self.get_logger(RedirectLinkUseCase.__module__),
+                audit_logger=self.get_audit_logger(),
+                task_queue=self.get_task_queue()
+            )
+        return self._use_cases['redirect']
+
+    def get_update_link_stats_use_case(self) -> UpdateLinkStatsUseCase:
+        """
+        Get or create the UpdateLinkStatsUseCase instance.
+
+        Returns:
+            UpdateLinkStatsUseCase configured with repository, cache and logger.
+        """
+        if 'update_stats' not in self._use_cases:
+            self._use_cases['update_stats'] = UpdateLinkStatsUseCase(
+                repository=self.get_repository(),
+                link_cache=self.get_cache(),
+                logger=self.get_logger(UpdateLinkStatsUseCase.__module__)
+            )
+        return self._use_cases['update_stats']
+
+    def get_delete_link_use_case(self) -> DeleteLinkUseCase:
+        if 'delete_link' not in self._use_cases:
+            self._use_cases['delete_link'] = DeleteLinkUseCase(
+                repository=self.get_repository(),
+                logger=self.get_logger(DeleteLinkUseCase.__module__),
+                audit_logger=self.get_audit_logger(),
+            )
+        return self._use_cases['delete_link']
+
+    ## Batch UseCases
     def get_batch_create_links_use_case(self) -> BatchCreateLinksUseCase:
         """
         This method creates all required helper components (UrlGrouper,
@@ -287,31 +378,7 @@ class Container:
             )
         return self._use_cases['batch']
 
-    def get_get_link_info_use_case(self) -> GetLinkInfoUseCase:
-        """Get or create the GetLinkInfoUseCase instance."""
-
-        if 'info' not in self._use_cases:
-            self._use_cases['info'] = GetLinkInfoUseCase(
-                repository=self.get_repository(),
-                cache=self.get_cache(),
-                logger=self.get_logger(GetLinkInfoUseCase.__module__),
-                base_url=self.config.BASE_URL,
-            )
-        return self._use_cases['info']
-
-    def get_extended_link_info_use_case(self) -> GetExtendLinkInfoUseCase:
-        """Get or create the GetExtendLinkInfoUseCase instance."""
-        if 'extended_info' not in self._use_cases:
-            self._use_cases['extended_info'] = GetExtendLinkInfoUseCase(
-                repository=self.get_repository(),
-                cache=self.get_cache(),
-                logger=self.get_logger(GetExtendLinkInfoUseCase.__module__),
-                base_url=self.config.BASE_URL,
-                popular_threshold=self.config.POPULAR_THRESHOLD,
-                recent_days=self.config.RECENT_DAYS
-            )
-        return self._use_cases['extended_info']
-
+    ## Stats UseCases
     def get_get_service_stats_use_case(self):
         """Get or create the GetServiceStatsUseCase instance."""
 
@@ -324,19 +391,31 @@ class Container:
             )
         return self._use_cases["stats"]
 
-    def get_redirect_link_use_case(self) -> RedirectLinkUseCase:
-        """Get or create the RedirectLinkUseCase instance."""
-
-        if 'redirect' not in self._use_cases:
-            self._use_cases['redirect'] = RedirectLinkUseCase(
+    ## Admin UseCases
+    def get_clean_expired_links_use_case(self) -> CleanExpiredLinksUseCase:
+        if 'clean_expired' not in self._use_cases:
+            self._use_cases['clean_expired'] = CleanExpiredLinksUseCase(
                 repository=self.get_repository(),
-                link_cache=self.get_cache(),
-                redirect_cache=self.get_cache(),
-                logger=self.get_logger(RedirectLinkUseCase.__module__),
-                audit_logger=self.get_audit_logger()
+                cache=self.get_cache(),
+                logger=self.get_logger(CleanExpiredLinksUseCase.__module__),
             )
-        return self._use_cases['redirect']
+        return self._use_cases['clean_expired']
 
+    def get_get_recent_links_use_case(self) -> GetRecentLinksUseCase:
+        if 'recent_links' not in self._use_cases:
+            self._use_cases['recent_links'] = GetRecentLinksUseCase(
+                repository=self.get_repository(),
+                logger=self.get_logger(GetRecentLinksUseCase.__module__),
+            )
+        return self._use_cases['recent_links']
+
+    def get_seed_database_use_case(self) -> SeedDatabaseUseCase:
+        if 'seed_db' not in self._use_cases:
+            self._use_cases['seed_db'] = SeedDatabaseUseCase(
+                create_short_link_use_case=self.get_create_short_link_use_case(),
+                logger=self.get_logger(SeedDatabaseUseCase.__module__),
+            )
+        return self._use_cases['seed_db']
 
     # =============== Services =============================================
     def get_link_service(self) -> LinkService:
