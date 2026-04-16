@@ -1,11 +1,13 @@
-import logging
+import functools
+import structlog
 from link_shortener.application.context import RequestContext
 from link_shortener.infrastructure.configs.app.factory import get_config
 from link_shortener.infrastructure.task_queue import celery_app
 from link_shortener.infrastructure.di.dependency_injection import Container
 
-logger = logging.getLogger(__name__)
+logger = structlog.getLogger(__name__)
 
+@functools.lru_cache(maxsize=1)
 def get_container():
     """
     Create and cache the dependency injection container for the current worker process.
