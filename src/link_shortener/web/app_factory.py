@@ -54,13 +54,13 @@ def create_app(config=None) -> Flask:
         debug=app.config.get("DEBUG", False),
         sqlalchemy_log_level=app.config.get("SQLALCHEMY_LOG_LEVEL", "WARNING"),
         werkzeug_log_level=app.config.get("WERKZEUG_LOG_LEVEL", "WARNING"),
-        logger_type=app.config.get("LOGGER_TYPE", True),
+        logger_type=app.config.get("LOGGER_TYPE", "auto"),
         audit_enabled=app.config.get("AUDIT_ENABLED", True)
     )
     setup_logging(
         logging_settings, 
-        logging_enabled=config.LOGGING_ENABLED, 
-        audit_enabled=config.AUDIT_ENABLED
+        logging_enabled=app.config.get("LOGGING_ENABLED", True), 
+        audit_enabled=app.config.get("AUDIT_ENABLED", True)
     )
 
     # Регистрация CLI-комманд
