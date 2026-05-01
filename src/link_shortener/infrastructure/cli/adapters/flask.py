@@ -32,21 +32,32 @@ def db_group():
 @db_group.command("init")
 @with_appcontext
 def init_db():
-    "Create database tables"
+    "Create database tables (only if USE_ALEMBIC is False)."
     container = current_app.container
     db_manager = container.get_db_manager()
-    init_db_logic(db_manager)
+    use_alembic = current_app.config.get("USE_ALEMBIC", True)
+    try:
+        init_db_logic(db_manager, use_alembic)
+    except RuntimeError as e:
+        click.echo(f"ERROR: {e}", err=True)
+        raise SystemExit(1)
+
 
 @db_group.command("drop")
 @click.option("--yes", is_flag=True, help="Confirm dropping all tables")
 @with_appcontext
 def drop_db(yes):
-    """Drop all database tables (DANGEROUS)!!!"""
+    """Drop all database tables (DANGEROUS)."""
     if not yes:
         click.confirm("Are you sure you want to drop all tables?", abort=True)
     container = current_app.container
     db_manager = container.get_db_manager()
-    drop_db_logic(db_manager, confirm=True)
+    use_alembic = current_app.config.get("USE_ALEMBIC", True)
+    try:
+        drop_db_logic(db_manager, use_alembic, confirm=True)
+    except RuntimeError as e:
+        click.echo(f"ERROR: {e}", err=True)
+        raise SystemExit(1)
 
 @db_group.command("seed")
 @click.option("--count", default=10, help="Number of test links to create")

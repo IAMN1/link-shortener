@@ -45,3 +45,18 @@ class StagingConfig(BaseConfig):
 
     # ========== Limits ==========
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
+
+
+    # --------------------------------------------------------------------------
+    # Auto-seed roles: disabled (use migrations instead)
+    # --------------------------------------------------------------------------
+    AUTO_SEED_ROLES: bool = False
+    """
+    In staging, we rely on migrations to set up roles, not automatic seeding.
+    """
+
+
+    # --------------------------------------------------------------------------
+    # Alembic: must be enabled in staging (mirrors production)
+    # --------------------------------------------------------------------------
+    USE_ALEMBIC: bool = True
