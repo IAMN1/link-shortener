@@ -9,7 +9,12 @@ def init_db(db_manager: DatabaseManager) -> None:
 
     Args:
         db_manager: DatabaseManager instance.
+        use_alembic: flag indicating whether the alembic is used or not
     """
+    if use_alembic is True:
+        raise RuntimeError(
+            "USE_ALEMBIC is enabled. Please use 'alembic upgrade head' to manage schema."
+        )
     db_manager.create_tables()
     print("Database tables created_successfully!")
 
@@ -19,8 +24,14 @@ def drop_db(db_manager: DatabaseManager, confirm: bool = False) -> None:
 
     Args:
         db_manager: DatabaseManager instance.
+        use_alembic: flag indicating whether the alembic is used or not
         confirm: Must be True to actually drop tables (safety flag).
     """
+    if use_alembic is True:
+        raise RuntimeError(
+            "USE_ALEMBIC is enabled. Please use 'alembic downgrade base' to reset schema."
+        )
+
     if not confirm:
         print("Use confirm=True to drop all tables.")
         return

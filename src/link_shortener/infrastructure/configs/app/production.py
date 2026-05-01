@@ -68,7 +68,29 @@ class ProductionConfig(BaseConfig):
         if not url:
             raise ValueError("REDIS_URL must be set in environment")
         return url
-    
+
+
+    # --------------------------------------------------------------------------
+    # Alembic: strictly enforced in production
+    # --------------------------------------------------------------------------
+    USE_ALEMBIC: bool = True
+
+
+    # --------------------------------------------------------------------------
+    # Database: no SQL echo in production
+    # --------------------------------------------------------------------------
+    SQLALCHEMY_ECHO: bool = False
+
+    # --------------------------------------------------------------------------
+    # Auto-seed roles: disabled – all DB changes via migrations
+    # --------------------------------------------------------------------------
+    AUTO_SEED_ROLES: bool = False
+    """
+    In production, we strictly control DB schema and data via migrations.
+    Automatic seeding is disabled to prevent accidental changes.
+    """
+
+
     def validate(self) -> None:
         """Enforce presence of required environment variables."""
         super().validate()

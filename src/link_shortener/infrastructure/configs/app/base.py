@@ -86,9 +86,36 @@ class BaseConfig:
         "redirect_to_original": (200, 60),
         "health": (10, 5),
     }
+    """
+    Per-endpoint rate limit configurations.
+    Key is the Flask endpoint name (as used in url_for).
+    Value is a tuple (limit, period_seconds).
+    """
 
 
-    # =============== Database settings ==============================================
+    # ==========================================================================
+    # Alembic Integration
+    # ==========================================================================
+    USE_ALEMBIC: bool = os.environ.get("USE_ALEMBIC", "true").lower() == "true"
+    """
+    Enable Alembic-based schema management.
+
+    - true (default): The application expects the database schema to be managed
+      by Alembic migrations. Commands that directly modify the schema
+      (`flask db init`, `flask db drop`) are disabled or will show a warning.
+      It is recommended to set AUTO_SEED_ROLES=False because roles are seeded
+      within the Alembic migration that creates the RBAC tables.
+
+    - false: Schema is managed directly via SQLAlchemy's create_all/drop_all.
+      CLI commands `flask db init` and `flask db drop` are allowed, and
+      AUTO_SEED_ROLES should typically be True to ensure roles are populated
+      at startup.
+    """
+
+
+    # ==========================================================================
+    # Database Settings
+    # ==========================================================================
     SQLALCHEMY_ECHO: bool = os.environ.get("SQLALCHEMY_ECHO", "true").lower() == "true"
 
     DATABASE_TYPE: str = os.environ.get("DATABASE_TYPE","sqlite") # "sqlite" or "postgressql"

@@ -17,7 +17,16 @@ class TestingConfig(BaseConfig):
     # ========== Limits ==========
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 200))
 
-    # ========== Database settings ==========
+
+    # --------------------------------------------------------------------------
+    # Alembic: disabled in tests for faster setup (use create_all directly)
+    # --------------------------------------------------------------------------
+    USE_ALEMBIC: bool = False
+
+
+    # --------------------------------------------------------------------------
+    # Database: in-memory SQLite for fast isolated tests
+    # --------------------------------------------------------------------------
     DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
 
     # ========== Redis cache settings ==========
