@@ -1,0 +1,159 @@
+# ==============================================================================
+# RBAC Configuration File: Roles and Permissions
+# ==============================================================================
+# This file defines the permissions and roles for the Role-Based Access Control
+# (RBAC) system. It is used to seed the database with initial data or to update
+# existing records via the `flask db load-roles` CLI command.
+#
+# File location: src/link_shortener/infrastructure/configs/rbac/roles.yaml
+#
+# Format: YAML
+# Version: 1.0
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# PERMISSIONS
+# ------------------------------------------------------------------------------
+# A permission is a uniquely named action that can be performed on a resource.
+# Each permission must have a unique `name` and defines the `resource` and
+# `action` it grants. Permissions are reusable across multiple roles.
+#
+# Fields:
+#   - name:        Unique identifier (e.g., "link:create"). Must be globally unique.
+#                  Convention: "<resource>:<action>" (lowercase, underscore allowed).
+#   - resource:    The domain entity or module the permission applies to
+#                  (e.g., "link", "stats", "admin").
+#   - action:      The specific operation allowed (e.g., "create", "view_own",
+#                  "delete_any", "manage_users").
+#   - description: Human-readable explanation of what the permission grants.
+#                  Optional but highly recommended.
+# ------------------------------------------------------------------------------
+permissions:
+  # --- Link Management ---
+  - name: "link:create"
+    resource: "link"
+    action: "create"
+    description: "Create a new short link"
+
+  - name: "link:view_own"
+    resource: "link"
+    action: "view_own"
+    description: "View details of links owned by the user"
+
+  - name: "link:delete_own"
+    resource: "link"
+    action: "delete_own"
+    description: "Delete links owned by the user"
+
+  - name: "link:delete_any"
+    resource: "link"
+    action: "delete_any"
+    description: "Delete any link in the system (administrative privilege)"
+
+  # --- Statistics ---
+  - name: "stats:view_basic"
+    resource: "stats"
+    action: "view_basic"
+    description: "View basic service statistics (total URLs, total clicks)"
+
+  - name: "stats:view_full"
+    resource: "stats"
+    action: "view_full"
+    description: "View extended statistics including list of popular links"
+
+  # --- Administrative Functions ---
+  - name: "admin:view_users"
+    resource: "admin"
+    action: "view_users"
+    description: "View list of registered users"
+
+  - name: "admin:manage_users"
+    resource: "admin"
+    action: "manage_users"
+    description: "Create, update, activate/deactivate, or delete users"
+
+  - name: "admin:view_roles"
+    resource: "admin"
+    action: "view_roles"
+    description: "View existing roles and their assigned permissions"
+
+  - name: "admin:manage_roles"
+    resource: "admin"
+    action: "manage_roles"
+    description: "Create, update, or delete roles (system roles are protected)"
+
+  - name: "admin:view_system_health"
+    resource: "admin"
+    action: "view_system_health"
+    description: "Access system health metrics and logs"
+
+  - name: "admin:all"
+    resource: "admin"
+    action: "all"
+    description: "Full administrative access – bypasses all permission checks"
+
+# ------------------------------------------------------------------------------
+# ROLES
+# ------------------------------------------------------------------------------
+# A role is a named collection of permissions. Users are assigned one or more
+# roles. Roles marked as `is_system: true` are protected and cannot be deleted
+# via the admin panel (they can only be modified through this configuration file
+# or direct database migrations).
+#
+# Fields:
+#   - name:        Unique role identifier (e.g., "admin", "user", "analyst").
+#                  Convention: lowercase, underscores allowed.
+#   - description: Human-readable explanation of the role's purpose.
+#   - is_system:   Boolean flag. If true, the role is considered a system role
+#                  and cannot be deleted through the UI/API. Default is false.
+#   - permissions: List of permission names (must reference names defined above)
+#                  that this role grants.
+# ------------------------------------------------------------------------------
+roles:
+  # Guest role – represents unauthenticated visitors.
+  # This role is typically not assigned to any user; it serves as a template
+  # for public endpoints and can be used for explicit guest checks.
+  - name: "guest"
+    description: "Unauthenticated visitor with minimal access"
+    is_system: true
+    permissions:
+      - "stats:view_basic"
+
+  # Default role assigned to newly registered users.
+  - name: "user"
+    description: "Regular registered user"
+    is_system: true
+    permissions:
+      - "link:create"
+      - "link:view_own"
+      - "link:delete_own"
+      - "stats:view_basic"
+
+  # Analyst role – can view detailed statistics but cannot modify links.
+  - name: "analyst"
+    description: "Analyst with advanced statistics access"
+    is_system: true
+    permissions:
+      - "link:view_own"
+      - "stats:view_basic"
+      - "stats:view_full"
+
+  # Administrator role – has full control over the system.
+  - name: "admin"
+    description: "System administrator with unrestricted access"
+    is_system: true
+    permissions:
+      # Admin-specific permissions
+      - "link:delete_any"
+      - "admin:view_users"
+      - "admin:manage_users"
+      - "admin:view_roles"
+      - "admin:manage_roles"
+      - "admin:view_system_health"
+      - "admin:all"
+      # Additionally grant all regular user permissions for convenience
+      - "link:create"
+      - "link:view_own"
+      - "link:delete_own"
+      - "stats:view_basic"
+      - "stats:view_full"

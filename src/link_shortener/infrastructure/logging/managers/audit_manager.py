@@ -88,12 +88,7 @@ class AuditManager:
         else:
             # Define health check function
             def health_check(audit: AuditLogger) -> bool:
-                try:
-                    # We need a safe method that doesn't require a link
-                    audit.log_url_created("health_check", "http://health")
-                    return True
-                except Exception:
-                    return False
+                return audit.is_healthy()
 
             self._failover_service = FailoverService(
                 services=audit_loggers,

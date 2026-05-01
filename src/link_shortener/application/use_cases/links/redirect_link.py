@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import time
+from typing import Callable
 
 
 from link_shortener.application.context import RequestContext
@@ -8,26 +9,25 @@ from link_shortener.application.ports.cache.redirect_cache import RedirectCache
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
+from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import LinkNotFoundError, LinkRepository, ShortCode
+from link_shortener.domain import LinkNotFoundError, ShortCode
 
 
 @dataclass
 class RedirectLinkUseCase(BaseUseCase):
     """
-    Use case: handle redirect by short code.
+    Resolve a short code to the original URL for HTTP redirect.
 
-    Steps:
-        1. Validate short code.
-        2. Check L1 cache (redirect cache) for original URL.
-        3. If not in L1, check L2 cache (full link cache).
-        4. If not in L2, query repository.
-        5. Return original URL immediately (synchronous).
-        6. Asynchronously enqueue click increment and audit (via Celery).
-        7. Update L1 and L2 caches for future requests.
+    Caching strategy:
+    - L1 (RedirectCache): maps short_code - original_url for fastest lookup.
+    - L2 (LinkCache): full Link object for secondary access.
+
+    After returning the URL, a background task is enqueued to increment
+    click counts and update audit logs asynchronously.
     """
 
-    repository: LinkRepository
+    uow_factory: Callable[[], UnitOfWork]
     link_cache: LinkCache
     redirect_cache: RedirectCache
     logger: Logger
@@ -36,19 +36,19 @@ class RedirectLinkUseCase(BaseUseCase):
 
     def execute(self, short_code_str: str, context: RequestContext) -> str:
         """
-        Execute the redirect use case.
+        Execute the redirect.
 
         Args:
-            short_code_str: Short code as string.
-            context: Request context with client metadata.
+            short_code_str: Short code from the URL path.
+            context: Request context (contains IP, User-Agent, etc.).
 
         Returns:
-            Original URL to redirect to.
+            The original URL to redirect to.
 
         Raises:
-            LinkNotFoundError: If link not found.
-            ValueError: If short code format is invalid.
-            RuntimeError: If an unexpected error occurs.
+            LinkNotFoundError: If the short code does not exist.
+            ValueError: If the short code format is invalid.
+            RuntimeError: On unexpected failures.
         """
 
         log = self._get_logger(self.logger, context)
@@ -88,17 +88,17 @@ class RedirectLinkUseCase(BaseUseCase):
                 return orig_url
 
             # Step 4: Query repository
-            link = self.repository.find_by_code(short_code)
-            if not link:
-                log.warning("Link not found:", code=short_code.value)
-                raise LinkNotFoundError(short_code_str)
+            with self.uow_factory(read_only=True) as uow:
+                link = uow.links.find_by_code(short_code)
+                if not link:
+                    log.warning("Link not found:", code=short_code.value)
+                    raise LinkNotFoundError(short_code_str)
 
-            orig_url = str(link.original_url.value)
+                orig_url = str(link.original_url.value)
+                # Step 6: Cache on all levels
+                self.link_cache.save(link)
 
-            # Step 6: Cache on all levels
-            self.link_cache.save(link)
-
-            # Отправка фоновой задачи
+            # Enqueue background stat update
             self.task_queue.enqueue_link_accessed(short_code.value, context)
 
             log.info(

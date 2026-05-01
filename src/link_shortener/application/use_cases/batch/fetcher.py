@@ -1,44 +1,47 @@
 from typing import Dict, List, Tuple
 
+from link_shortener.application.dtos.batch import BatchItemResponse
 from link_shortener.domain import Link, LinkRepository
-from link_shortener.application.dtos.responses import BatchItemResponse
 from link_shortener.application.ports.cache.link_cache import LinkCache
 
 
 class BatchLinkFetcher:
     """
-    Fetches existing links from cache and database in batch.
+    Fetches links for a set of URL groups, checking cache then repository.
 
-    This class is responsible for:
-        - Checking the cache for each group's hash.
-        - For cache misses, querying the repository.
-        - Returning results, groups that need creation, and links to be cached.
+    Returns three collections:
+        - Results for items already found.
+        - Groups that still need link creation.
+        - Links that were fetched from DB and should be cached.
     """
 
-    def __init__(self, cache: LinkCache, repository: LinkRepository):
+    def __init__(self, cache: LinkCache):
         """
-        Initialize the fetcher.
-
         Args:
-            cache: Link cache implementation.
-            repository: Link repository.
+            cache: Link cache (L2) implementation.
         """
         self.cache = cache
-        self.repository = repository
     
-    def fetch(self, groups: List[Dict], base_url: str) -> Tuple[List[BatchItemResponse], List[Dict], List[Link]]:
+    def fetch(self, repository: LinkRepository, groups: List[Dict], base_url: str) -> Tuple[List[BatchItemResponse], List[Dict], List[Link]]:
         """
-        Fetch existing links for the given groups.
+        Look up existing links for each group.
+
+        Steps:
+            1. Bulk cache lookup by hash.
+            2. For cache misses, bulk DB lookup by hash.
+            3. Build BatchItemResponse for found items and identify missing groups.
 
         Args:
-            groups: List of valid group dictionaries (each with 'hash', 'original_url', 'urls').
-            base_url: Base URL of the service for building short URLs.
+            repository: Link repository for DB queries.
+            groups: List of valid group dicts (must contain ``hash``, ``original_url``,
+                ``urls``).
+            base_url: Base URL for constructing short URLs.
 
         Returns:
-            A tuple containing:
-                - results: BatchItemResponse objects for groups found in cache or DB.
-                - groups_to_create: List of groups that need new link creation.
-                - links_to_cache: List of Link objects that were found in DB and should be cached.
+            Tuple of:
+                - ``results``: list of BatchItemResponse for found items.
+                - ``groups_to_create``: list of groups that need new links.
+                - ``links_to_cache``: list of Link objects (from DB) to be cached.
         """
         if not groups:
             return [], [], []
@@ -72,7 +75,7 @@ class BatchLinkFetcher:
         
         # ---- 2. Database lookup for missing ----
         missing_hashes = [g["hash"] for g in groups_not_in_cache]
-        db_map = self.repository.find_by_hashes(missing_hashes)
+        db_map = repository.find_by_hashes(missing_hashes)
 
         db_results = []
         groups_to_create = []
@@ -98,3 +101,4 @@ class BatchLinkFetcher:
 
         all_results = cache_results + db_results
         return all_results, groups_to_create, links_to_cache
+    

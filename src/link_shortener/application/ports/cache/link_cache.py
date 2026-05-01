@@ -23,7 +23,7 @@ class LinkCache(ABC):
         Returns:
             Optional[Link]: Link if found, else None.
         """
-        pass
+        ...
 
     @abstractmethod
     def get_by_hash(self, url_hash: UrlHash) -> Optional[Link]:
@@ -36,7 +36,7 @@ class LinkCache(ABC):
         Returns:
             Optional[Link]: Link if found, else None.
         """
-        pass
+        ...
 
     @abstractmethod
     def get_by_hashes(self, url_hashes: List[UrlHash]) -> Dict[UrlHash, Optional[Link]]:
@@ -50,7 +50,7 @@ class LinkCache(ABC):
             Dict[UrlHash, Optional[Link]]: Dictionary mapping each hash 
                 to either the found Link or None.
         """
-        pass
+        ...
 
     @abstractmethod
     def save(self, link: Link) -> None:
@@ -63,7 +63,7 @@ class LinkCache(ABC):
         Args:
             link (Link): The Link to cache.
         """
-        pass
+        ...
 
     @abstractmethod
     def save_many(self, links: List[Link]) -> None:
@@ -73,7 +73,7 @@ class LinkCache(ABC):
         Args:
             links (List[Link]): List of Link objects to cache.
         """
-        pass
+        ...
 
     @abstractmethod
     def delete(self, short_code: ShortCode) -> None:
@@ -83,4 +83,4 @@ class LinkCache(ABC):
         Args:
             short_code (ShortCode): Short code of the link to delete.
         """
-        pass
+        ...

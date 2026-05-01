@@ -8,19 +8,17 @@ from link_shortener.application import Logger
 
 class RequestLoggingMiddleware:
     """
-    Middleware for logging HTTP requests and responses.
+    Logs incoming requests and their outcomes.
 
-    Adds a unique request ID, logs request start, and logs completion with duration.
+    Sets ``g.start_time`` and ``g.request_id`` early in the request
+    lifecycle, then logs request and response metadata.
     """
     
     def __init__(self, app: Flask, logger: Logger):
         """
-        Initialize the middleware and register 
-            before/after request handlers.
-
         Args:
-            app (Flask): Flask application instance
-            logger (Logger): Logger instance for request logging.
+            app: Flask application instance.
+            logger: Logger for request logs.
         """
 
         self.app = app

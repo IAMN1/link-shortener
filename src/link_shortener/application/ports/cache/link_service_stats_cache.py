@@ -19,7 +19,7 @@ class StatsCache(ABC):
             Optional[dict]: Dictionary with statistics 
             (format matches repository.get_stats()) or None if not cached/expired.
         """
-        pass
+        ...
 
     @abstractmethod
     def save_stats(self, stats: dict) -> None:
@@ -29,11 +29,11 @@ class StatsCache(ABC):
         Args:
             stats (dict): Dictionary of statistics to cache.
         """
-        pass
+        ...
 
     @abstractmethod
     def delete_stats(self) -> None:
         """
         Invalidate cached statistics (e.g., after a change).
         """
-        pass
+        ...

@@ -8,14 +8,14 @@ T = TypeVar('T')
 
 class FailoverService(Generic[T]):
     """
-    Generic failover mechanism that switches between multiple service implementations.
+    Failover manager for a group of interchangeable services.
 
-    Maintains an ordered list of services (primary, secondary, etc.). When a call to the
-    current service fails, it automatically switches to the next available service.
-    Optionally runs a background health check thread to attempt upgrading to a higher-priority
-    service when it becomes healthy again.
+    Type parameter ``T`` represents the service interface (e.g., ``Logger``,
+    ``AuditLogger``). The first service in the list is considered the primary;
+    subsequent entries are fallbacks.
 
-    Type parameter T represents the service interface (e.g., Logger, AuditLogger).
+    Background health checks attempt to upgrade to a higher-priority service
+    if it becomes healthy again.
     """
 
     def __init__(
@@ -28,14 +28,16 @@ class FailoverService(Generic[T]):
         Initialize the failover service.
 
         Args:
-            services: List of (service_instance, service_name) in priority order
-                      (highest first). The first service is the most desired.
+            services: List of ``(service_instance, service_name)`` in
+                priority order (highest first). Must not be empty.
             check_interval: Seconds between background health checks.
-                            If None, background checks are disabled.
-            health_checker: Optional function that takes a service instance and
-                            returns True if it's healthy, False otherwise.
-                            If not provided, only failures during actual calls
-                            trigger switching.
+                If ``None``, background checks are disabled.
+            health_checker: Optional callable that takes a service instance
+                and returns ``True`` if it is healthy. If not provided,
+                only failures during actual calls trigger switching.
+
+        Raises:
+            ValueError: If ``services`` is empty.
         """
 
         if not services:
@@ -135,14 +137,14 @@ class FailoverService(Generic[T]):
         Call a method on the current active service.
 
         If the call fails, automatically switch to the next service and retry.
-        Returns the result of the successful call, or None if all services fail.
+        Returns the result of the successful call, or ``None`` if all services fail.
 
         Args:
             method_name: Name of the method to call on the service.
             *args, **kwargs: Arguments to pass to the method.
 
         Returns:
-            Result of the method call, or None if all services failed.
+            Result of the method call, or ``None``.
         """
         with self._lock:
             attempts = 0

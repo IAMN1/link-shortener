@@ -121,3 +121,12 @@ class StandardAuditLogger(AuditLogger):
             **kwargs
         )
         self._log("Url deleted successfully", **data)
+    
+    def is_healthy(self) -> bool:
+        """
+        Check if the underlying logging setup is operational.
+
+        Returns:
+            True always, as the standard logger is considered always available.
+        """
+        return True

@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, render_template, request
 from pydantic import ValidationError as PydanticValidationError
 
+from link_shortener.web.schemas.error import ErrorDetail, ErrorResponse
 from link_shortener.application import Logger
 from link_shortener.domain.exceptions import (
     DomainError, LinkNotFoundError
@@ -8,24 +9,21 @@ from link_shortener.domain.exceptions import (
 from link_shortener.domain.exceptions import (
     ValidationError as DomainValidationError
 )
-from link_shortener.web.schemas.responses import ErrorDetail, ErrorResponse
 
 
 class ErrorHandlerMiddleware:
     """
-    Middleware for centralized error handling.
+    Registers Flask error handlers for known exceptions.
 
-    Registers error handlers for various exception types and returns
-    appropriate JSON responses for API routes or HTML error pages for frontend routes.
+    For API routes (``/api/…``) a JSON response is returned; for other
+    routes an HTML error page is rendered.
     """
 
     def __init__(self, app: Flask, logger: Logger):
         """
-        Initialize the middleware and register error handlers.
-
         Args:
-            app (Flask): Flask application instance.
-            logger (Logger): Logger instance for logging errors.
+            app: Flask application instance.
+            logger: Application logger.
         """
         self.app = app
         self.logger = logger
@@ -35,9 +33,8 @@ class ErrorHandlerMiddleware:
         """
         Determine whether the client expects an HTML response.
 
-        Returns True if the request path does not start with '/api/'
-        or the Accept header contains 'text/html'. This allows the same
-        error handler to serve both API and frontend requests appropriately.
+        Returns ``True`` if the request path does not start with ``/api/``
+        or the ``Accept`` header includes ``text/html``.
         """
 
         if request.path.startswith("/api/"):
@@ -50,7 +47,7 @@ class ErrorHandlerMiddleware:
         return True
 
     def _register_error_handlers(self):
-        """Register all error handlers with the Flask app."""
+        """Wire Flask error handlers to the appropriate methods."""
 
         @self.app.errorhandler(404)
         def handle_not_found(error):
@@ -86,8 +83,7 @@ class ErrorHandlerMiddleware:
         @self.app.errorhandler(PydanticValidationError)
         def handle_pydantic_validation(error: PydanticValidationError):
             """
-            Handle Pydantic validation errors (raised by request schema validation).
-            Converts Pydantic's error list into a structured ErrorResponse.
+            Convert Pydantic validation errors into structured ErrorResponse.
             """
 
             details = []

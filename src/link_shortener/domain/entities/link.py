@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from link_shortener.domain.value_objects.original_url import OriginalUrl
+from link_shortener.domain.value_objects.owner_id import OwnerID
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
 
@@ -21,6 +22,7 @@ class Link:
         created_at: Timestamp when the link was created.
         clicks: Number of times the link has been accessed.
         last_accessed: Timestamp of the last access (if any).
+        owner: Owner of the link (value object, None for guests).
     """
 
     id: str
@@ -30,6 +32,7 @@ class Link:
     created_at: datetime
     clicks: int = 0
     last_accessed: Optional[datetime] = None
+    owner: Optional[OwnerID] = None
 
     @classmethod
     def create(
@@ -38,6 +41,7 @@ class Link:
         short_code: ShortCode,
         original_url: OriginalUrl,
         link_id: Optional[str] = None,
+        owner: Optional[OwnerID] = None
     ) -> "Link":
         """
         Factory method to create a new Link instance.
@@ -47,6 +51,7 @@ class Link:
             short_code: Generated short code.
             original_url: Original URL value object.
             link_id: Optional UUID; if not provided, a new one is generated.
+            owner: Optional OwnerID value object representing the link owner.
 
         Returns:
             A new Link instance with default values (clicks=0, created_at=now).
@@ -59,11 +64,12 @@ class Link:
             created_at=datetime.now(timezone.utc),
             clicks=0,
             last_accessed=None,
+            owner=owner or OwnerID(None)
         )
 
     def increment_clicks(self) -> None:
         """
-        Business rule: increment click counter and update last accessed timestamp.
+        Business rule: increment the click counter and update last_accessed to now.
         """
         self.clicks += 1
         self.last_accessed = datetime.now(timezone.utc)

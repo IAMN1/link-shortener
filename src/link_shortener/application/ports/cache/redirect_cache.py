@@ -23,7 +23,7 @@ class RedirectCache(ABC):
         Returns:
             Optional[str]: Original URL as string if found, else None.
         """
-        pass
+        ...
 
     @abstractmethod
     def save_original_url(self, short_code: ShortCode, original_url: str) -> None:
@@ -35,5 +35,4 @@ class RedirectCache(ABC):
             short_code (ShortCode): Short code value object.
             original_url (str): Original URL string.
         """
-        pass
-
+        ...

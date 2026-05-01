@@ -3,20 +3,29 @@ import os
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 
 
-
 class ProductionConfig(BaseConfig):
-    """Configuration for production environment."""
+    """
+    Configuration for production environment.
+    All debug features are disabled, secrets must be provided via environment,
+    and performance settings are tuned for high load.
+    """
 
     DEBUG: bool = False
     TESTING: bool = False
 
-    # ========== logging settings ==========
+
+    # --------------------------------------------------------------------------
+    # Logging: less verbose, file-based
+    # --------------------------------------------------------------------------
     LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
     LOG_TO_CONSOLE: bool = os.environ.get("LOG_TO_CONSOLE", "false").lower() == "true"
     LOG_TO_FILE: bool = os.environ.get("LOG_TO_FILE", "true").lower() == "true"
-    # LOG_DIR: str = '/var/log/link_shortener'  # Стандартный путь для логов в Linux
+    # LOG_DIR: str = '/var/log/link_shortener'  # typical Linux log path
 
-    # ========== Security App ==========
+
+    # --------------------------------------------------------------------------
+    # Security: secrets are mandatory
+    # --------------------------------------------------------------------------
     @property
     def SECRET_KEY(self) -> str:
         """Secret key must be set in environment."""
@@ -39,7 +48,10 @@ class ProductionConfig(BaseConfig):
 
         return pepper
 
-    # ========== App settings ==========
+
+    # --------------------------------------------------------------------------
+    # Application settings
+    # --------------------------------------------------------------------------
     HOST: str = os.environ.get("HOST", "0.0.0.0")
     PORT: int = int(os.environ.get("PORT", 8000))
 
@@ -54,10 +66,16 @@ class ProductionConfig(BaseConfig):
             return f"{scheme}://{domain}"
         return f"http://{self.HOST}:{self.PORT}/"
 
-    # ========== Limits ==========
+
+    # --------------------------------------------------------------------------
+    # Limits
+    # --------------------------------------------------------------------------
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
 
-    # ========== Redis cache settings ==========
+
+    # --------------------------------------------------------------------------
+    # Redis: enabled by default
+    # --------------------------------------------------------------------------
     REDIS_ENABLED: bool = os.environ.get("REDIS_ENABLED", "true").lower() == "true"
 
     @property

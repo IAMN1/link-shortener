@@ -155,11 +155,12 @@ def setup_logging(settings: LoggingSettings, logging_enabled: bool, audit_enable
     """
     Main entry point for logging configuration.
 
-    This function configures structlog (if used) and sets up handlers for the root logger
-    and the audit logger based on the provided settings.
+    Configures structlog, sets up handlers on the root logger, and configures
+    the audit logger. If logging is disabled, a ``NullHandler`` is attached and
+    third-party loggers are silenced.
 
     Args:
-        settings: LoggingSettings object containing all configuration parameters.
+        settings: ``LoggingSettings`` object with all configuration parameters.
         logging_enabled: Whether general application logging is enabled.
         audit_enabled: Whether audit logging is enabled.
     """

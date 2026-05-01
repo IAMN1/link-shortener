@@ -7,17 +7,21 @@ class UrlHash:
     """
     Value object representing a SHA-256 hash of a URL.
 
-    Used for deduplication. Format: 64 lowercase hex characters.
+    Used for deduplication. Format enforced: **64 lowercase hexadecimal characters**.
 
     Examples:
-        - "e41bc44298fc1c149afbf4c8996fb94432ae41e11519b934da495991c7852v911"
+        ``"e41bc44298fc1c149afbf4c8996fb94432ae41e11519b934da495991c7852v911"``
+        (example uses a valid-looking hash; actual validation allows only ``[a-f0-9]``).
+
+    Attributes:
+        value: The 64-character hex string.
     """
 
     value: str
 
     def __post_init__(self):
         """
-        Validate the hash format (64 lowercase hex characters).
+        Validate that the hash is exactly 64 lowercase hexadecimal characters.
 
         Raises:
             ValueError: If the hash does not match the required pattern.

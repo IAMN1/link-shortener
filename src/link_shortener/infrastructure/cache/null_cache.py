@@ -8,14 +8,15 @@ from link_shortener.domain import Link, ShortCode, UrlHash
 
 class NullCache(LinkCache, RedirectCache, StatsCache):
     """
-    Null-object implementation of all cache interfaces.
+    Null-object cache that discards all data.
 
-    All methods do nothing and return None or empty results.
-    Used when caching is disabled or unavailable.
+    Used when caching is disabled or as a safe fallback.
+    All methods are no-ops and return ``None`` or empty results.
     """
 
     cache_type = "Null"
 
+    # ========== Link Cache methods ==========
     def get_by_code(self, short_code: ShortCode) -> Optional[Link]:
         """No-op: always return None."""
         return None

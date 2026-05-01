@@ -33,3 +33,7 @@ class NullLogger(Logger):
     ) -> None:
         """No-op."""
         pass
+
+    def is_healthy(self) -> bool:
+        """Null logger is always healthy, no log emission."""
+        return True

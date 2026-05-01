@@ -82,11 +82,7 @@ class LoggerManager:
         else:
             # Define health check function
             def health_check(logger: Logger) -> bool:
-                try:
-                    logger.debug("Health check from FailoverService")
-                    return True
-                except Exception:
-                    return False
+                return logger.is_healthy()
 
             self._failover_service = FailoverService(
                 services=loggers,

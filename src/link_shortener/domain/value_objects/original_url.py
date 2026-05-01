@@ -1,27 +1,30 @@
 from dataclasses import dataclass
 import ipaddress
+from typing import Tuple
 from urllib.parse import ParseResult, urlparse
 import re
 
 @dataclass(frozen=True)
 class OriginalUrl:
     """
-    Value object representing an original URL.
+    Value object representing a validated original URL.
 
-    Encapsulates validation rules and normalization logic.
-    Immutable.
+    Encapsulates URL validation rules and normalization logic.
+    The object is immutable (frozen) after creation.
 
     Attributes:
         value: The original URL string.
+        allowed_schemes: Tuple of permitted URL schemes (default http, https).
 
     Raises:
-        ValueError: If the URL fails validation.
+        ValueError: If the URL does not pass validation (length, scheme, host, path).
     """
 
     value: str
+    allowed_schemes: Tuple[str, ...] = ("http", "https")
 
     def __post_init__(self):
-        """Validate the URL upon creation."""
+        """Validate the URL upon creation. Called automatically by dataclass."""
 
         self._validate_length()
         parsed = urlparse(self.value)
@@ -32,21 +35,26 @@ class OriginalUrl:
     # ------------------------------------------------------------------
     # Validation methods
     # ------------------------------------------------------------------
-
     def _validate_length(self) -> None:
-        """Ensure URL does not exceed maximum allowed length."""
+        """Ensure URL does not exceed the maximum allowed length."""
 
         if len(self.value) > 2048:
             raise ValueError("URL too long (max 2048 characters)")
 
     def _validate_scheme(self, parsed: ParseResult) -> None:
-        """Check that scheme is present and allowed (http/https)."""
-
+        """Check that the scheme is present and allowed."""
         if not parsed.scheme:
             raise ValueError("URL must have a scheme!")
 
+        if parsed.scheme not in self.allowed_schemes:
+            allowed_list = ", ".join(self.allowed_schemes)
+            raise ValueError(
+                f"Scheme '{parsed.scheme}' is not allowed. "
+                f"Allowed schemes: {allowed_list}"
+            )
+
     def _validate_netloc(self, parsed: ParseResult) -> None:
-        """Validate network location part (hostname and optional port)."""
+        """Validate the network location (hostname and optional port)."""
 
         if not parsed.netloc:
             raise ValueError("URL must have a domain!")
@@ -55,7 +63,7 @@ class OriginalUrl:
         if not hostname:
             raise ValueError("URL must have a hostname")
         
-        # Validate port if present
+        # Validate port if present (must be between 1 and 65535)
         try:
             if parsed.port is not None and not (1 <= parsed.port <= 65535):
                 raise ValueError("Invalid port number")
@@ -66,28 +74,28 @@ class OriginalUrl:
     
     def _validate_host(self, host: str) -> None:
         """
-        Validate hostname: can be IP, localhost, or a valid domain name.
+        Validate hostname: can be an IP address, 'localhost', or a valid domain.
 
-        Domain name rules: each label must contain only alphanumeric chars and hyphens,
-        cannot start or end with hyphen, and total length constraints.
+        For domain names, each label must contain only alphanumeric chars and hyphens,
+        cannot start or end with hyphen, and total length ≤ 253.
         """
 
         # Проврка как доменного имени
         if not host:
             raise ValueError("Empty host")
 
-        # Check if it's a valid IP address
+        # Check if it's a valid IP address (IPv4 or IPv6)
         try:
             ipaddress.ip_address(host)
-            return # IP is valid
+            return # Valid IP, no further checks needed
         except ValueError:
             pass
         
-        # Allow localhost
+        # Allow 'localhost' as a special name
         if host == "localhost":
             return
 
-        # Domain name must contain at least one dot
+        # Otherwise must be a domain with at least one dot
         if '.' not in host:
             raise ValueError("Host must contain a dot (e.g., example.com)")
         
@@ -98,14 +106,12 @@ class OriginalUrl:
         # Validate each label
         labels = host.split(".")
         for label in labels:
-            
             if not label:
                 raise ValueError ("Empty label in host")
             if len(label) > 63:
                 raise ValueError("Label too long")
             
-            # Допустимые символы:
-            # буквы, цифры, дефис, но не начинается и не заканчивается дефисом
+            # Label must start/end with alphanumeric, may contain hyphens inside
             if not re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$', label):
                 raise ValueError(f"Invalid characters in host label: {label}")
     
@@ -126,8 +132,8 @@ class OriginalUrl:
     # ------------------------------------------------------------------
     # Public methods
     # ------------------------------------------------------------------
-
     def __str__(self) -> str:
+        """Return the original URL string."""
         return self.value
 
     def get_domain(self) -> str:
@@ -143,11 +149,13 @@ class OriginalUrl:
         - Lowercase scheme and netloc.
         - Ensure path is at least '/'.
         - Remove fragment.
+        - Remove default ports (80 for http, 443 for https).
         """
         parsed = urlparse(self.value)
         scheme=parsed.scheme.lower()
         netloc=parsed.netloc.lower()
 
+        # Remove default ports
         if scheme == "http" and parsed.port == 80:
             netloc = netloc.replace(':80','')
         elif scheme == "https" and parsed.port == 443:

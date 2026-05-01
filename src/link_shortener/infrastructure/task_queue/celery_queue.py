@@ -4,18 +4,18 @@ from link_shortener.application.ports.task_queue import TaskQueue
 
 class CeleryTaskQueue(TaskQueue):
     """
-    Implementation of `TaskQueue` using Celery.
+    Sends tasks to a Celery worker.
 
-    This class serializes the `RequestContext` into a dictionary and
-    sends a Celery task to update link statistics asynchronously.
+    The ``RequestContext`` is serialised into a dictionary and passed as a
+    task argument. The actual task function is ``process_link_accessed``.
     """
     def enqueue_link_accessed(self, short_code_str: str, context: RequestContext) -> None:
         """
-        Enqueue a Celery task to update link statistics.
+        Enqueue a Celery task to update link click statistics.
 
         Args:
             short_code_str: The short code of the accessed link.
-            context: Request context to be passed to the worker.
+            context: ``RequestContext`` containing request metadata.
         """
         
         # Сериализуем RequestContext в словарь

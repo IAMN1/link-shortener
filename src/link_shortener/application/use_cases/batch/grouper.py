@@ -1,53 +1,47 @@
 from typing import Dict, List
-from urllib.parse import urlparse
 
-from link_shortener.domain import ShorteningPolicy, OriginalUrl
+from link_shortener.domain import HashCalculator, OriginalUrl
 from link_shortener.application.ports.logger.logger import Logger
 
 
 class UrlGrouper:
     """
-    Groups URLs by their hash for deduplication.
+    Validates input URLs, computes their hashes, and groups them for deduplication.
 
-    Valid URLs are grouped under their hash; invalid URLs are grouped
-    under separate keys with a flag indicating the error.
-
-    The grouper uses the provided shortening policy to compute hashes
-    and validates URL schemes against the allowed list.
+    URLs with an invalid scheme are grouped separately with an error flag.
     """
-    def __init__(self, allowed_schemes: List[str], policy: ShorteningPolicy, logger: Logger):
+    def __init__(self, allowed_schemes: List[str], hash_calculator: HashCalculator, logger: Logger):
         """
-        Initialize the grouper.
-
         Args:
-            allowed_schemes: List of allowed URL schemes (e.g., ['http', 'https']).
-            policy: Shortening policy used to compute hashes and generate codes.
-            logger: Logger for logging invalid URLs.
+            allowed_schemes: Allowed schemes (e.g., ``['http','https']``).
+            hash_calculator: Domain hash calculator.
+            logger: Application logger.
         """
-        self.allowed_schemes = allowed_schemes
-        self.policy = policy
+        self.allowed_schemes = tuple(allowed_schemes)
+        self.hash_calculator = hash_calculator
         self.logger = logger
     
     def group(self, urls: List[str]) -> Dict[str, Dict]:
         """
-        Group URLs by hash.
+        Group URLs by their computed hash.
 
-        The method validates each URL against allowed schemes, creates an
-        OriginalUrl value object, and computes the hash using the stored policy.
-        Invalid URLs are grouped separately with an error message.
+        For each URL:
+            - Create an ``OriginalUrl`` value object (validates scheme).
+            - Compute the hash.
+            - Add to a group keyed by the hash string.
+        Invalid URLs are grouped under a synthetic key and marked with an error.
 
         Args:
-            urls: List of URL strings.
+            urls: Raw URL strings.
 
         Returns:
-            A dictionary where:
-                - Key: hash string (for valid URLs) or "invalid_{counter}" (for invalid).
-                - Value: dict with fields:
-                    - hash: UrlHash (if valid)
-                    - original_url: OriginalUrl (if valid)
-                    - urls: list of input strings for this group
-                    - is_valid: bool
-                    - error: error message (if invalid)
+            Dictionary where key is hash (for valid) or ``"invalid_{n}"`` (for invalid).
+            Each value is a dict with keys:
+                - ``hash``: UrlHash (if valid) else None
+                - ``original_url``: OriginalUrl (if valid) else None
+                - ``urls``: list of input strings falling into this group
+                - ``is_valid``: boolean
+                - ``error``: error message if invalid
         """
 
         groups = {}
@@ -55,9 +49,8 @@ class UrlGrouper:
 
         for url in urls:
             try:
-                self._validate_scheme(url)
-                original_url = OriginalUrl(url)
-                url_hash = self.policy.calculate_hash(original_url)
+                original_url = OriginalUrl(url, allowed_schemes=self.allowed_schemes)
+                url_hash = self.hash_calculator.calculate(original_url)
                 key = url_hash.value
 
                 if key not in groups:
@@ -80,19 +73,3 @@ class UrlGrouper:
                 }
                 self.logger.warning("Invalid URL in batch", url=url[:50], error=str(e))
         return groups
-    
-    def _validate_scheme(self, url: str) -> None:
-        """
-        Validate the URL scheme against the allowed list.
-
-        Args:
-            url: URL string.
-
-        Raises:
-            ValueError: If the scheme is not allowed.
-        """
-        parsed = urlparse(url)
-        if parsed.scheme not in self.allowed_schemes:
-            raise ValueError(
-                f"Scheme '{parsed.scheme}' not allowed. Allowed: {', '.join(self.allowed_schemes)}"
-            )

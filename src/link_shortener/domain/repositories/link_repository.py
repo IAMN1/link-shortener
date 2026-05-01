@@ -21,7 +21,7 @@ class LinkRepository(ABC):
         Returns:
             The saved Link (may include generated fields).
         """
-        pass
+        ...
 
     @abstractmethod
     def save_many(self, links: list[Link]) -> List[Link]:
@@ -34,7 +34,7 @@ class LinkRepository(ABC):
         Returns:
             List of saved Links.
         """
-        pass
+        ...
 
     @abstractmethod
     def find_by_code(self, short_code: ShortCode) -> Optional[Link]:
@@ -47,7 +47,7 @@ class LinkRepository(ABC):
         Returns:
             Link if found, else None.
         """
-        pass
+        ...
 
     @abstractmethod
     def find_by_codes(
@@ -62,7 +62,7 @@ class LinkRepository(ABC):
         Returns:
             Dictionary mapping each code to either the found Link or None.
         """
-        pass
+        ...
 
     @abstractmethod
     def find_by_hash(self, url_hash: UrlHash) -> Optional[Link]:
@@ -75,7 +75,7 @@ class LinkRepository(ABC):
         Returns:
             Link if found, else None.
         """
-        pass
+        ...
 
     @abstractmethod
     def find_by_hashes(
@@ -90,17 +90,20 @@ class LinkRepository(ABC):
         Returns:
             Dictionary mapping each hash to either the found Link or None.
         """
-        pass
+        ...
 
     @abstractmethod
-    def increment_clicks(self, short_code: ShortCode) -> None:
+    def increment_clicks(self, short_code: ShortCode) -> Link:
         """
         Increment click count for a given short code.
 
         Args:
             short_code: Short code of the link to increment.
+
+        Returns:
+            The updated Link entity.
         """
-        pass
+        ...
 
     @abstractmethod
     def increment_clicks_batch(self, short_codes: List[ShortCode]) -> None:
@@ -110,7 +113,7 @@ class LinkRepository(ABC):
         Args:
             short_codes: List of short codes.
         """
-        pass
+        ...
 
     @abstractmethod
     def get_stats(self) -> dict:
@@ -119,11 +122,11 @@ class LinkRepository(ABC):
 
         Returns:
             Dictionary with keys:
-                - 'total_urls': total number of shortened URLs.
-                - 'total_clicks': sum of all clicks.
-                - 'popular_links': list of Link objects (most popular up to 10).
+                - ``'total_urls'``: total number of shortened URLs.
+                - ``'total_clicks'``: sum of all clicks.
+                - ``'popular_links'``: list of Link objects (most popular up to 10).
         """
-        pass
+        ...
 
     @abstractmethod
     def delete(self, short_code: ShortCode) -> bool:
@@ -136,7 +139,7 @@ class LinkRepository(ABC):
         Returns:
             True if a link was deleted, False if no link with the given code existed.
         """
-        pass
+        ...
 
     @abstractmethod
     def get_recent(self, limit: int = 10) -> List[Link]:
@@ -149,21 +152,21 @@ class LinkRepository(ABC):
         Returns:
             List of Link objects ordered by creation date descending.
         """
-        pass
+        ...
 
     @abstractmethod
     def delete_unaccessed_before(self, cutoff: datetime) -> List[ShortCode]:
         """
         Delete links that haven't been accessed since the cutoff date.
 
-        A link is considered "unaccessed" if its last_accessed timestamp is
-        older than cutoff, or if it has never been accessed (last_accessed IS NULL)
-        and its created_at is older than cutoff.
+        A link is considered "unaccessed" if its ``last_accessed`` timestamp is
+        older than ``cutoff``, or if it has never been accessed (``last_accessed IS NULL``)
+        and its ``created_at`` is older than ``cutoff``.
 
         Args:
-            cutoff: Datetime (timezone-aware UTC) threshold.
+            cutoff: Datetime (timezone‑aware UTC) threshold.
 
         Returns:
             List of short codes that were deleted.
         """
-        pass
+        ...
