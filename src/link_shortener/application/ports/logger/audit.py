@@ -30,7 +30,7 @@ class AuditLogger(ABC):
         Returns:
             A new AuditLogger instance with the bound fields.
         """
-        pass
+        ...
 
     @abstractmethod
     def log_url_created(self, short_code: str, original_url: str, **kwargs) -> None:
@@ -42,7 +42,7 @@ class AuditLogger(ABC):
             original_url: The original long URL being shortened.
             **kwargs: Additional context (e.g., batch_id, is_new, from_cache).
         """
-        pass
+        ...
 
     @abstractmethod
     def log_url_accessed(self, short_code: str, original_url: str, **kwargs) -> None:
@@ -54,9 +54,22 @@ class AuditLogger(ABC):
             original_url: The original URL to which the user was redirected.
             **kwargs: Additional context (e.g., clicks count before increment).
         """
-        pass
+        ...
 
     @abstractmethod
     def log_url_deleted(self, short_code: str, original_url: str, **kwargs) -> None:
         """Log deletion of a shortened URL."""
-        pass
+        ...
+
+    def is_healthy(self) -> bool:
+        """
+        Check if the audit logger is operational.
+        
+        The default implementation performs a lightweight internal check
+        without emitting actual audit events. Override for custom health logic.
+        """
+        try:
+            self.log_url_created("__health_check__", "http://health.check")
+            return True
+        except Exception:
+            return False

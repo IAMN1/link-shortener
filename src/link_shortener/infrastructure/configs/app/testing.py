@@ -3,18 +3,27 @@ import os
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 
 
-
 class TestingConfig(BaseConfig):
-    """Configuration for testing environment."""
+    """
+    Configuration for automated testing (pytest).
+    Uses in-memory SQLite database, disables most external services,
+    and provides dummy secrets.
+    """
 
     TESTING: bool = True
     DEBUG: bool = False
 
-    # ========== Security App ==========
+
+    # --------------------------------------------------------------------------
+    # Dummy secrets for testing
+    # --------------------------------------------------------------------------
     SECRET_KEY: str = "test-secret-key"
     SHORT_CODE_SECRET_PEPPER: str = "test-pepper"
 
-    # ========== Limits ==========
+
+    # --------------------------------------------------------------------------
+    # Higher batch limit for test scenarios
+    # --------------------------------------------------------------------------
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 200))
 
 
@@ -29,8 +38,17 @@ class TestingConfig(BaseConfig):
     # --------------------------------------------------------------------------
     DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
 
-    # ========== Redis cache settings ==========
+
+    # --------------------------------------------------------------------------
+    # Redis: disabled
+    # --------------------------------------------------------------------------
     REDIS_ENABLED: bool = False
     REDIS_URL: str = (
         "redis://localhost:6379/0"  # не используется, но определена (пока что)
     )
+
+
+    # --------------------------------------------------------------------------
+    # Auto-seed roles: enabled for convenience in tests
+    # --------------------------------------------------------------------------
+    AUTO_SEED_ROLES: bool = True

@@ -1,29 +1,28 @@
+"""
+Redis-backed cache with automatic reconnection and graceful degradation.
+
+Implements LinkCache, RedirectCache, and StatsCache. Falls back silently
+when Redis is unavailable.
+"""
+
 from datetime import timezone
 import json
 import time
 from typing import Any, Dict, List, Optional
 
-from link_shortener.application import LinkCache, RedirectCache, StatsCache, Logger
+from link_shortener.application import LinkCache, RedirectCache, StatsCache, Logger, CacheKeyBuilder
 from link_shortener.domain import Link, OriginalUrl, ShortCode, UrlHash
-from link_shortener.infrastructure.cache.cache_key_generator import CacheKeyGenerator
+from link_shortener.domain.value_objects.owner_id import OwnerID
+
 import redis
 
 
 class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     """
-    Redis implementation of all cache interfaces.
+    Redis implementation of all three cache interfaces.
 
-    This cache uses Redis for distributed caching with TTL support.
-    It includes automatic reconnection logic and graceful degradation
-    (returns None on Redis failures). When deserializing cached Link objects,
-    any naive datetime fields are automatically converted to timezone-aware UTC
-    to ensure consistency with domain entities.
-
-    Cache key patterns:
-        - Redirect: {prefix}:redirect:{short_code}
-        - Link by code: {prefix}:code:{short_code}
-        - Link by hash: {prefix}:hash:{url_hash}
-        - Stats: {prefix}:stats:global
+    Stores link data as JSON and uses pipelines for batch operations.
+    Implements a reconnection strategy to tolerate transient Redis failures.
     """
 
     cache_type = "Redis"
@@ -33,20 +32,18 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
         stats_ttl: int, connect_timeout: int, socket_timeout: int, retry_interval: int
     ):
         """
-        Initialize Redis cache.
-
         Args:
-            redis_url: Redis connection URL.
-            prefix: Prefix for cache keys.
-            logger: Logger instance for logging errors and info.
-            link_ttl: TTL in seconds for link entries.
-            stats_ttl: TTL in seconds for stats entries.
-            connect_timeout: Socket connect timeout (seconds).
-            socket_timeout: Socket read/write timeout (seconds).
-            retry_interval: Seconds to wait before reconnection attempt after failure.
+            redis_url: Redis connection URL (e.g., ``redis://...``).
+            prefix: Key prefix for namespacing.
+            logger: Application logger.
+            link_ttl: TTL for link entries (seconds).
+            stats_ttl: TTL for stats entries (seconds).
+            connect_timeout: Connection timeout (seconds).
+            socket_timeout: Socket timeout (seconds).
+            retry_interval: Seconds between reconnection attempts.
         """
         self.redis_url = redis_url
-        self.key_gen = CacheKeyGenerator(prefix=prefix)
+        self.key_gen = CacheKeyBuilder(prefix=prefix)
         self.logger = logger
         self.ttl = link_ttl
         self.stats_ttl = stats_ttl
@@ -217,6 +214,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             "last_accessed": (
                 link.last_accessed.isoformat() if link.last_accessed else None
             ),
+            "owner_id": link.owner.value if link.owner else None
         }
         return json.dumps(data).encode("utf-8")
 
@@ -259,6 +257,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                 created_at=created_at,
                 clicks=data_dict["clicks"],
                 last_accessed=last_accessed,
+                owner=OwnerID(data_dict["owner_id"])
             )
         except Exception as e:
             self.logger.error(

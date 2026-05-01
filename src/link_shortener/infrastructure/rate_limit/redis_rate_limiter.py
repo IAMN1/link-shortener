@@ -18,11 +18,11 @@ class RedisRateLimiter(RateLimiter):
     """
 
     def __init__(self, redis_client: redis.Redis, prefix: str = "rate_limiter"):
-        """Initialize the rate limiter with a Redis client and key prefix.
-
+        """
         Args:
-            redis_client: An authenticated Redis client instance.
-            prefix: Prefix for all Redis keys (default: "rate_limiter")."""
+            redis_client: An authenticated Redis client.
+            prefix: Prefix for Redis keys (default ``"rate_limiter"``).
+        """
         self.redis = redis_client
         self.prefix = prefix
     

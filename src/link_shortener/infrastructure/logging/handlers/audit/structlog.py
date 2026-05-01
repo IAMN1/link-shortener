@@ -1,4 +1,3 @@
-
 from typing import Any, Dict
 from link_shortener.infrastructure.logging.utils import mask_url
 import structlog
@@ -82,7 +81,7 @@ class StructlogAuditLogger(AuditLogger):
             original_url=original_url,
             **kwargs
         )
-        self._logger.info("Url accessed successfully", **data)
+        self._logger.info("Url created successfully", **data)
 
 
     def log_url_accessed(self, short_code: str, original_url: str, **kwargs) -> None:
@@ -120,3 +119,12 @@ class StructlogAuditLogger(AuditLogger):
             **kwargs
         )
         self._logger.info("Url deleted successfully", **data)
+    
+    def is_healthy(self) -> bool:
+        """
+        Check if structlog is properly configured.
+
+        Returns:
+            True always, structlog doesn't require external service checks.
+        """
+        return True

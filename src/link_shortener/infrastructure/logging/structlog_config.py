@@ -6,17 +6,8 @@ def _replace_logger_name_with_module(logger, method_name, event_dict):
     """
     Processor that replaces the logger name with the module name if present.
 
-    This allows us to show the module name in square brackets instead of the
-    global logger name. It looks for a key 'module' in the event_dict and,
-    if found, moves it to 'logger'.
-
-    Args:
-        logger: The logger instance.
-        method_name: The logging method name (e.g., 'info').
-        event_dict: The current event dictionary.
-
-    Returns:
-        The modified event dictionary.
+    This allows the module name (added by the application) to appear in
+    the ``logger`` key, which is then formatted by the renderer.
     """
     if 'module' in event_dict:
         event_dict['logger'] = event_dict.pop('module')
@@ -24,14 +15,13 @@ def _replace_logger_name_with_module(logger, method_name, event_dict):
 
 def configure_structlog(settings: LoggingSettings):
     """
-    Set up structlog with processors and renderer based on settings.
+    Configure structlog with the application's processor chain.
 
-    This configuration does not include a final renderer – it only adds
-    processors that enrich the event dictionary. The actual rendering
-    is handled by ProcessorFormatter in the individual handlers.
+    Does not add a final renderer; rendering is handled by the
+    ``ProcessorFormatter`` that is attached to each handler individually.
 
     Args:
-        settings: LoggingSettings object.
+        settings: ``LoggingSettings`` instance.
     """
 
     processors = [

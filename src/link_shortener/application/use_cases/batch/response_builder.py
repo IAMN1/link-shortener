@@ -1,14 +1,15 @@
 from typing import Dict, List
 
+from link_shortener.application.dtos.batch import BatchItemResponse
 from link_shortener.domain import Link
-from link_shortener.application.dtos.responses import BatchItemResponse
 
 
 class BatchResponseBuilder:
     """
-    Builds BatchItemResponse objects for newly created links.
+    Converts newly created Link entities into ``BatchItemResponse`` objects.
 
-    This class is stateless and can be used as a collection of static methods.
+    The first URL in a group is considered the canonical new link; subsequent
+    URLs in the same group are marked as duplicates.
     """
 
     @staticmethod
@@ -18,17 +19,13 @@ class BatchResponseBuilder:
         """
         Build response items for groups that resulted in new links.
 
-        For each group, the first URL is considered the original that triggered
-        creation; subsequent URLs in the same group are duplicates and get a
-        `duplicate_of` field.
-
         Args:
-            groups: List of groups for which new links were created.
-            saved_links: List of Link objects that were saved to the repository.
-            base_url: Base URL of the service.
+            groups: List of group dicts for which links were newly created.
+            saved_links: List of ``Link`` entities that were saved.
+            base_url: Base URL for constructing short URLs.
 
         Returns:
-            List of BatchItemResponse objects.
+            List of ``BatchItemResponse``, one per input URL.
         """
 
         results = []
@@ -37,7 +34,7 @@ class BatchResponseBuilder:
         for group in groups:
             link = hash_to_link.get(group["hash"])
             if not link:
-                # Should not happen, but handle gracefully
+                # Safeguard: should not happen, but log missing link for debug
                 for url in group["urls"]:
                     results.append(
                         BatchItemResponse.error_(url=url, error="Failed to save link")

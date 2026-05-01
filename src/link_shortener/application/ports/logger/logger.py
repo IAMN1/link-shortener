@@ -16,7 +16,7 @@ class Logger(ABC):
 
         Bound fields are included in every subsequent log call.
         This is useful for adding contextual information like request ID,
-        user IP, etc., without passing them explicitly each time.
+        user IP, etc., without ...ing them explicitly each time.
 
         Args:
             **kwargs: Key-value pairs to bind to the logger.
@@ -31,22 +31,22 @@ class Logger(ABC):
         """
         Log a debug message with optional keyword arguments as structured data.
         """
-        pass
+        ...
 
     @abstractmethod
     def info(self, message: str, **kwargs: Any) -> None:
         """Log an info message with optional structured data."""
-        pass
+        ...
 
     @abstractmethod
     def warning(self, message: str, **kwargs: Any) -> None:
         """Log a warning message with optional structured data."""
-        pass
+        ...
 
     @abstractmethod
     def error(self, message: str, **kwargs: Any) -> None:
         """Log an error message with optional structured data."""
-        pass
+        ...
 
     @abstractmethod
     def exception(
@@ -60,5 +60,12 @@ class Logger(ABC):
             exc_info: Exception to log (if None, current exception is captured). Optional.
             **kwargs: Additional structured data.
         """
-        pass
+        ...
 
+    def is_healthy(self) -> bool:
+        """Check if the logger is operational without side effects."""
+        try:
+            self.debug("health_check")
+            return True
+        except Exception:
+            return False

@@ -1,44 +1,44 @@
+"""
+Thread-safe in-memory cache with TTL support.
+
+Implements LinkCache, RedirectCache, and StatsCache using Python dictionaries.
+Suitable for development and testing when Redis is unavailable.
+"""
+
 import time
 from threading import RLock
 from typing import Any, Dict, List, Optional
 
-from link_shortener.application import LinkCache, RedirectCache, StatsCache
+from link_shortener.application import LinkCache, RedirectCache, StatsCache, CacheKeyBuilder
 from link_shortener.domain import Link, ShortCode, UrlHash
-from link_shortener.infrastructure.cache.cache_key_generator import (
-    CacheKeyGenerator
-)
+
 
 
 class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
     """
-    In-memory cache implementation with TTL support.
+    In-memory cache that stores data in Python dictionaries.
 
-    Stores data in Python dictionaries and uses timestamps for expiration.
-    Suitable for development, testing, or when Redis is unavailable.
-    All operations are thread-safe using RLock.
-
-    Implements all three cache interfaces: LinkCache, RedirectCache, StatsCache.
+    All operations are protected by a reentrant lock for thread safety.
+    Expired entries are cleaned lazily on reads.
     """
 
     cache_type = "InMemory"
 
     def __init__(self, prefix: str, link_ttl: int, stats_ttl: int):
         """
-        Initialize the in-memory cache.
-
         Args:
-            prefix: Prefix for cache keys (used by CacheKeyGenerator).
+            prefix: Prefix used by CacheKeyBuilder to namespace keys.
             link_ttl: Time-to-live in seconds for link entries.
-            stats_ttl: Time-to-live in seconds for stats entries.
+            stats_ttl: Time-to-live in seconds for statistics.
         """
-        self.key_gen = CacheKeyGenerator(prefix=prefix)
+        self.key_gen = CacheKeyBuilder(prefix=prefix)
 
         # Internal storage
         self._links: Dict[str, Link] = {}               # key -> Link object
         self._redirects: Dict[str, str] = {}            # key -> original_url string
         self._stats: Optional[Dict[str, Any]] = None
 
-        # TTL tracking: key -> expiration timestamp
+        # Expiry timestamps: key -> expiration time (monotonic seconds)
         self._expiry: Dict[str, float] = {}
         self.link_ttl = link_ttl
         self.stats_ttl = stats_ttl
@@ -47,13 +47,13 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
 
     def _is_expired(self, key: str) -> bool:
         """
-        Return True if the given key has exceeded its TTL.
+        Return True if the key's TTL has expired.
 
         Args:
-            key: Cache key to check.
+            key: Cache key.
 
         Returns:
-            True if key is present and its expiration time has passed.
+            True if expired or absent.
         """
         if key not in self._expiry:
             return False
@@ -87,7 +87,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
             del self._expiry[stats_key]
 
     def clear_all(self) -> None:
-        """Clear all cached data (intended for testing purposes)."""
+        """Clear all cached data (intended for testing)."""
         with self._lock:
             self._links.clear()
             self._redirects.clear()
@@ -96,10 +96,10 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
 
     def get_cache_info(self) -> Dict[str, Any]:
         """
-        Return information about current cache state for monitoring/debugging.
+        Return monitoring information about the cache state.
 
         Returns:
-            Dict with keys: link_count, redirect_count, has_stats, total_keys.
+            Dict with link_count, redirect_count, has_stats, total_keys.
         """
         with self._lock:
             self._clean_expired()
@@ -111,7 +111,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
                 "total_keys": len(self._expiry),
             }
 
-    # ========== LinkCache методы ==========
+    # ========== LinkCache methods ==========
     def get_by_code(self, short_code: ShortCode) -> Optional[Link]:
         """Retrieve a link by its short code."""
 
@@ -194,7 +194,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
                     if key in self._expiry:
                         del self._expiry[key]
 
-    # ========== RedirectCache методы ==========
+    # ========== RedirectCache methods ==========
     def get_original_url(self, short_code: ShortCode) -> Optional[str]:
         """Retrieve original URL from redirect cache (L1)."""
 
@@ -210,7 +210,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         self._redirects[key] = original_url
         self._expiry[key] = time.time() + self.link_ttl
 
-    # ========== StatsCache методы ==========
+    # ========== StatsCache methods ==========
     def get_stats(self) -> Optional[Dict[str, Any]]:
         """Retrieve cached service statistics."""
 

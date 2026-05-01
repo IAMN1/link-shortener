@@ -1,18 +1,25 @@
+"""
+Database connection and session manager.
+
+Provides a context manager for automatic session handling and a factory
+for manual sessions.
+"""
+
 from contextlib import contextmanager
 from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from link_shortener.infrastructure.database.declarative_base import Base
+from link_shortener.infrastructure.database.models.base import Base
 
 
 class DatabaseManager:
     """
-    Manages database connections and sessions.
+    Manages the database engine, session factory, and table creation.
 
-    Provides a context manager for automatic session handling and a method
-    to get a raw session for manual management.
+    For PostgreSQL, connection pool parameters (pool_size, max_overflow,
+    pool_recycle, pool_pre_ping) can be supplied via ``**pool_params``.
     """
 
     def __init__(
@@ -23,13 +30,14 @@ class DatabaseManager:
         **pool_params
     ):
         """
-        nitialize the manager with database URL and optional echo flag.
-
         Args:
-            database_url: SQLAlchemy database URL.
-            echo: If True, log all SQL statements.
-            database_type: Type of database ('sqlite' or 'postgresql').
-            **pool_params: Additional parameters for connection pool (pool_size, max_overflow, etc.)
+            database_url: SQLAlchemy URL (e.g., ``sqlite:///...`` or
+                ``postgresql+psycopg://...``).
+            echo: If True, log every SQL statement.
+            database_type: ``"sqlite"`` or ``"postgresql"``.
+            **pool_params: Extra keyword arguments forwarded to
+                ``create_engine`` (pool_size, max_overflow, etc.). Only
+                applied for PostgreSQL.
         """
 
         self.database_url = database_url
@@ -41,10 +49,13 @@ class DatabaseManager:
 
     def connect(self) -> "DatabaseManager":
         """
-        Establish connection to the database and create engine/session factory.
+        Create the SQLAlchemy engine and session factory.
+
+        Pool parameters are injected into ``create_engine`` only when the
+        database type is ``"postgresql"``. For SQLite they are ignored.
 
         Returns:
-            Self for chaining.
+            Self for method chaining.
         """
 
         engine_kwargs = {
@@ -69,34 +80,40 @@ class DatabaseManager:
         return self
 
     def close(self):
-        """Dispose of the engine and close all connections."""
+        """Dispose of the engine and all associated connections."""
         if self.engine:
             self.engine.dispose()
 
     def create_tables(self):
         """
-        Create all tables defined in models (for development/testing).
+        Create all tables from models (development/testing only).
 
         Raises:
-            RuntimeError: If database not connected.
+            RuntimeError: If connect() hasn't been called.
         """
         if not self.engine:
             raise RuntimeError("Database not connected. Call connect() first.")
         Base.metadata.create_all(bind=self.engine)
 
-    # ========== Варианты обращения к Базе Данных ==========
 
-    ## Вариант 1 - через контекстный менеджер
+    # ------------------------------------------------------------------
+    # Session providers
+    # ------------------------------------------------------------------
+
+    ## Option 1 - via context manager
     @contextmanager
     def session(self) -> Generator[Session, None, None]:
         """
-        Context manager that provides a database session.
+        Context manager that provides a transactional session.
 
-        The session is automatically committed on success and rolled back on exception.
-        The session is closed when exiting the context.
+        The session is committed on success and rolled back on exception.
+        The session is always closed when the block exits.
 
         Yields:
-            SQLAlchemy Session object.
+            A SQLAlchemy ``Session`` object.
+
+        Raises:
+            RuntimeError: If the manager has not been initialised.
         """
         if not self._session_factory:
             raise RuntimeError("Database not initialized. Call connect() first.")
@@ -111,15 +128,19 @@ class DatabaseManager:
         finally:
             session.close()
 
-    ## Вариант 2 - через метод получения сесии
+    ## Option 2 - via the session retrieval method
     def get_session(self) -> Session:
         """
-        Obtain a database session without automatic commit/rollback.
+        Obtain a raw session **without** automatic transaction handling.
 
-        Warning: The caller is responsible for closing the session and handling transactions.
+        The caller is responsible for committing, rolling back, and
+        closing the session.
 
         Returns:
-            SQLAlchemy Session object.
+            A new SQLAlchemy ``Session``.
+
+        Raises:
+            RuntimeError: If the manager has not been initialised.
         """
 
         if not self._session_factory:

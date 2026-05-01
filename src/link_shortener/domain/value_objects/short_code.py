@@ -5,15 +5,18 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class ShortCode:
     """
-    Value object representing a short code.
+    Value object representing a generated short code.
 
-    Immutable, with validation ensuring the code matches the required format.
-    Format: 6-10 alphanumeric characters, underscore, or hyphen.
+    Immutable, with validation ensuring the code matches the required format:
+    **6-10 alphanumeric characters, underscore, or hyphen**.
 
     Examples:
-        - "abc123"
-        - "my_code"
-        - "short-x"
+        - ``"abc123"``
+        - ``"my_code"``
+        - ``"short-x"``
+
+    Attributes:
+        value: The short code string.
     """
 
     value: str

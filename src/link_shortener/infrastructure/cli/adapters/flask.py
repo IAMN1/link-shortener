@@ -2,10 +2,12 @@ import click
 from flask import current_app
 from flask.cli import with_appcontext
 
-from link_shortener.application.context import RequestContext
+from link_shortener.application import RequestContext
 from ..commands.database import init_db as init_db_logic
 from ..commands.database import drop_db as drop_db_logic
 from ..commands.database import seed_db as seed_db_logic
+from ..commands.database import load_base_roles_from_cfg as load_base_roles_logic
+from ..commands.database import load_custom_roles_from_cfg as load_custom_roles_logic
 from ..commands.database import check_db_connection as check_db_logic
 from ..commands.database import migrate_db as migrate_db_logic
 from ..commands.stats import refresh_stats as refresh_stats_logic
@@ -22,7 +24,7 @@ from ..commands.admin import create_admin as create_admin_logic
 
 
 # ------------------------------------------------------------------
-# Группа DB-команд
+# Database commands group
 # ------------------------------------------------------------------
 @click.group(name="db")
 def db_group():
@@ -63,17 +65,36 @@ def drop_db(yes):
 @click.option("--count", default=10, help="Number of test links to create")
 @with_appcontext
 def seed_db(count):
-    """Fill database with test data"""
+    """Fill database with test links."""
     container = current_app.container
     context = RequestContext(request_id="cli-seed")
     use_case = container.get_seed_database_use_case()
     created = seed_db_logic(use_case, count, context)
     click.echo(f"Created {created} test links")
 
+@db_group.command("load-base-roles")
+@with_appcontext
+def load_roles():
+    """Seed default roles and permissions from YAML config."""
+    container = current_app.container
+    db_manager = container.get_db_manager()
+    load_base_roles_logic(db_manager=db_manager)
+
+@db_group.command("load-custom-roles")
+@click.argument("file_path", type=click.Path(exists=True))
+@click.option("--update-existing", is_flag=True, help="Update existing roles and permissions")
+@with_appcontext
+def load_custom_roles(file_path, update_existing):
+    """Load roles and permissions from a YAML file."""
+    container = current_app.container
+    db_manager = container.get_db_manager()
+    load_custom_roles_logic(db_manager, file_path, update_existing)
+    click.echo(f"Roles and permissions loaded from {file_path}")
+
 @db_group.command("check")
 @with_appcontext
 def check_db():
-    """Check database connection"""
+    """Check database connection health."""
     container = current_app.container
     if check_db_logic(container.get_db_manager()):
         click.echo("Database connection is healthy.")
@@ -83,12 +104,12 @@ def check_db():
 @db_group.command("migrate")
 @with_appcontext
 def migrate_db():
-    """Apply database migrations (placeholder – to be replaced with Alembic)."""
+    """Apply database migrations (placeholder)."""
     container = current_app.container
     migrate_db_logic(container.get_db_manager())
 
 # ------------------------------------------------------------------
-# Группа Stats-команд
+# Stats commands group
 # ------------------------------------------------------------------
 @click.group(name="stats")
 def stats_group():
@@ -127,7 +148,7 @@ def stats_refresh():
     click.echo("=" * 80)
 
 # ------------------------------------------------------------------
-# Группа Maintenance-команд
+# Maintenance commands group
 # ------------------------------------------------------------------
 @click.group(name="maintenance")
 def maintenance_group():
@@ -166,7 +187,7 @@ def check_db_maintenance():
         click.echo("Database connection failed.", err=True)
 
 # ------------------------------------------------------------------
-# Группа Cache-команд
+# Cache commands group
 # ------------------------------------------------------------------
 @click.group(name="cache")
 def cache_group():
@@ -197,7 +218,7 @@ def cache_stats():
         click.echo("=" * 80)
 
 # ------------------------------------------------------------------
-# Группа Link-команд
+# Link commands group
 # ------------------------------------------------------------------
 @click.group(name="link")
 def link_group():
@@ -266,7 +287,7 @@ def link_list(limit):
     click.echo("=" * 80)
 
 # ------------------------------------------------------------------
-# Отдельные команды верхнего уровня
+# Top‑level commands
 # ------------------------------------------------------------------
 @click.command("generate-secrets")
 def generate_secrets():
@@ -290,7 +311,7 @@ def create_admin(email, password):
 
 
 # ------------------------------------------------------------------
-# Регистрация всех комманд
+# Registration helper
 # ------------------------------------------------------------------
 def register_flask_commands(app):
     """

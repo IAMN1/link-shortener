@@ -3,20 +3,29 @@ import os
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 
 
-
 class StagingConfig(BaseConfig):
-    """Configuration for staging environment (pre-production)."""
+    """
+    Configuration for staging (pre-production) environment.
+    Should closely mirror production settings but with debugging disabled.
+    Secrets must be provided via environment variables.
+    """
 
     DEBUG: bool = False
     TESTING: bool = False
 
-    # ========== logging settings ==========
+
+    # --------------------------------------------------------------------------
+    # Logging: typically more verbose than production for debugging
+    # --------------------------------------------------------------------------
     LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
     LOG_TO_CONSOLE: bool = os.environ.get("LOG_TO_CONSOLE", "false").lower() == "true"
     LOG_TO_FILE: bool = os.environ.get("LOG_TO_FILE", "true").lower() == "true"
     LOG_DIR: str = os.environ.get("LOG_DIR", "/var/log/link_shortener/staging")
 
-    # ========== Security App ==========
+
+    # --------------------------------------------------------------------------
+    # Security: enforce presence of secrets
+    # --------------------------------------------------------------------------
     @property
     def SECRET_KEY(self) -> str:
         key = os.environ.get("SECRET_KEY")
@@ -32,7 +41,9 @@ class StagingConfig(BaseConfig):
         return pepper
 
 
-    # ========== Redis cache settings ==========
+    # --------------------------------------------------------------------------
+    # Redis: enabled by default for realistic testing
+    # --------------------------------------------------------------------------
     REDIS_ENABLED: bool = os.environ.get("REDIS_ENABLED", "true").lower() == "true"
     
     @property
@@ -43,7 +54,10 @@ class StagingConfig(BaseConfig):
             raise ValueError("REDIS_URL must be set in environment when REDIS_ENABLED=True")
         return url or "redis://localhost:6379/0"
 
-    # ========== Limits ==========
+
+    # --------------------------------------------------------------------------
+    # Limits: same as production
+    # --------------------------------------------------------------------------
     BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 100))
 
 

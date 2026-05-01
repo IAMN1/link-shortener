@@ -29,3 +29,7 @@ class NullAuditLogger(AuditLogger):
     def log_url_deleted(self, short_code: str, original_url: str, **kwargs) -> None:
         """No-op: do nothing."""
         pass
+
+    def is_healthy(self):
+        """Null logger is always healthy."""
+        return True

@@ -29,21 +29,20 @@ class LoggingSettings:
                  audit_enabled: bool = True
     ):
         """
-        Initialize logging settings.
-
         Args:
             log_dir: Directory for log files.
             log_file_name: Base name for general log files (without extension).
             audit_log_filename: Base name for audit log files.
             error_log_filename: Base name for error log files.
             log_date_format: Date format for timestamps.
-            log_to_console: Whether to log to console.
-            log_to_file: Whether to log to file.
-            log_level_str: Log level as string (e.g., "DEBUG").
+            log_to_console: Whether to log to stdout/stderr.
+            log_to_file: Whether to log to rotating files.
+            log_level_str: Log level as string (``"DEBUG"``, ``"INFO"``, …).
             debug: Whether debug mode is enabled.
             sqlalchemy_log_level: Log level for SQLAlchemy.
             werkzeug_log_level: Log level for Werkzeug.
-            logger_type: Type of logger ('auto', 'structlog', 'standard', 'null').
+            logger_type: Desired logger type (``"auto"``, ``"structlog"``,
+                ``"standard"``, ``"null"``).
             audit_enabled: Whether audit logging is enabled.
         """
 

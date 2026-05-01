@@ -2,52 +2,48 @@ from collections import defaultdict, deque
 from typing import Dict, List, Optional
 
 from link_shortener.domain import (
-    Link, ShorteningPolicy, LinkRepository, ShortCode, UrlHash
+    Link, CodeGenerator, LinkRepository, ShortCode, UrlHash
 )
 from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.domain.value_objects.owner_id import OwnerID
 
 
 class BatchLinkCreator:
     """
-    Creates new Link entities for groups not found in cache or database.
+    Creates new ``Link`` entities for groups not found in cache or DB.
 
-    Handles short code collisions by generating alternative codes with increasing
-    attempt numbers. Uses a batch collision resolution algorithm to minimize
-    database round trips.
+    Implements a batch collision resolution algorithm: generates initial
+    codes, batch-checks existing codes, and resolves collisions with
+    salted codes using a queue.
     """
-    def __init__(self, repository: LinkRepository, policy: ShorteningPolicy, logger: Logger, max_attempts: int):
+    def __init__(self, code_generator: CodeGenerator, logger: Logger, max_attempts: int):
         """
-        Initialize the creator.
-
         Args:
-            repository: Link repository for checking code uniqueness.
-            policy: Shortening policy for code generation.
-            logger: Logger for recording warnings and errors.
-            max_attempts: Maximum number of attempts to resolve a collision.
+            code_generator: The domain code generation policy.
+            logger: Application logger.
+            max_attempts: Maximum collision resolution attempts per hash.
         """
-        self.repository = repository
-        self.policy = policy
+        self.code_generator = code_generator
         self.logger = logger
         self.max_attempts = max_attempts
     
-    def create_new_links(self, groups: List[Dict]) -> List[Link]:
+    def create_new_links(self, repository: LinkRepository, groups: List[Dict], owner_id: OwnerID = None) -> List[Link]:
         """
-        Create new Link entities for the given groups.
+        Generate unique short codes and instantiate Link entities.
 
         Steps:
-            1. Generate initial short codes for all groups.
-            2. Batch check existing codes in the repository.
-            3. Resolve collisions by generating salted codes.
-            4. Create Link objects for groups with resolved codes.
+            1. Generate an initial code for each group.
+            2. Batch-check which codes already exist in the repository.
+            3. Resolve collisions by generating salted codes up to ``max_attempts``.
+            4. Create a Link for each group with a unique code.
 
         Args:
-            groups: List of group dictionaries, each containing:
-                - 'hash': UrlHash of the URL.
-                - 'original_url': OriginalUrl value object.
-                - 'urls': list of input URLs (first is canonical).
+            repository: Link repository (for existence checks).
+            groups: List of group dicts with keys ``hash``, ``original_url``, ``urls``.
+            owner_id: Optional OwnerID value object.
 
         Returns:
-            List of new Link entities (not yet saved to repository)
+            List of new Link entities (not yet persisted).
         """
         if not groups:
             return []
@@ -56,12 +52,12 @@ class BatchLinkCreator:
         hash_to_code = {}
         for group in groups:
             original_url = group["original_url"]
-            code = self.policy.generate_code_for_url(original_url)
+            code = self.code_generator.generate_for_url(original_url)
             hash_to_code[group["hash"]] = code
         
         # 2. Check collisions in one batch
         unique_codes = list(set(hash_to_code.values()))
-        existing_map = self.repository.find_by_codes(unique_codes)
+        existing_map = repository.find_by_codes(unique_codes)
 
         # 3. Resolve collisions
         resolved = self._resolve_collisions(hash_to_code, existing_map, groups)
@@ -81,6 +77,7 @@ class BatchLinkCreator:
                     url_hash=url_hash,
                     short_code=code,
                     original_url=group["original_url"],
+                    owner=owner_id
                 )
             )
         return new_links
@@ -94,16 +91,17 @@ class BatchLinkCreator:
         """
         Resolve short code collisions using a queue and retries.
 
-        This method processes all hash-code pairs, attempting to assign a unique
-        code to each. If a code is already taken by a different URL, a new code
-        is generated with a salt (attempt number). The process continues until
-        either a unique code is found or max_attempts is exceeded.
+        Algorithm:
+            - Maintain a set of occupied codes.
+            - For each hash, if its code is free, accept it.
+            - If the code belongs to a different URL, generate a salted code
+              (increasing attempt counter). If the new code is still occupied,
+              push the hash back onto the queue for another attempt.
 
         Args:
             hash_to_code: Mapping from URL hash to initially generated code.
-            existing_map: Mapping from existing short codes to their Links
-                          (only codes that already exist in the database).
-            groups: List of groups (needed to retrieve original URL for salting).
+            existing_map: Map from existing codes to their Links (None if free).
+            groups: Original groups (needed for hash → group lookup).
 
         Returns:
             Dictionary mapping each URL hash to a unique short code.
@@ -111,7 +109,7 @@ class BatchLinkCreator:
         resolved = {}
         attempts = defaultdict(int)
         queue = deque(hash_to_code.items())
-        occupied = set(existing_map.keys())
+        occupied = {code for code, link in existing_map.items() if link is not None}
         hash_to_group = {g["hash"]: g for g in groups}
 
         while queue:
@@ -130,7 +128,7 @@ class BatchLinkCreator:
                         continue
 
                     group = hash_to_group[url_hash]
-                    new_code = self.policy.generate_unique_code(
+                    new_code = self.code_generator.generate_unique(
                         group["original_url"], attempts[url_hash]
                     )
                     if new_code not in occupied:

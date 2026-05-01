@@ -3,7 +3,7 @@ import structlog
 from link_shortener.application.context import RequestContext
 from link_shortener.infrastructure.configs.app.factory import get_config
 from link_shortener.infrastructure.task_queue import celery_app
-from link_shortener.infrastructure.di.dependency_injection import Container
+from link_shortener.infrastructure.di.container import Container
 
 logger = structlog.getLogger(__name__)
 

@@ -1,42 +1,43 @@
 from dataclasses import dataclass
 from datetime import datetime
 import time
+from typing import Callable
 
 
-from link_shortener.application import (
-    ServiceStatsResponse, StatsItemResponse, StatsCache, Logger
-)
+
 from link_shortener.application.context import RequestContext
+from link_shortener.application.dtos.stats import ServiceStatsResponse, StatsItemResponse
+from link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
+from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import LinkRepository
+from link_shortener.application.utils.url_utils import build_short_url
 
 
 @dataclass
 class GetServiceStatsUseCase(BaseUseCase):
     """
-    Use case: Retrieve service-wide statistics.
+    Compute service-wide statistics (total URLs, clicks, top links).
 
-    Steps:
-    1. Attempt to get cached statistics.
-    2. If cache miss, query repository.
-    3. Compute derived metrics (avg clicks per URL).
-    4. Cache the result and return.
+    Attempts to serve from cache; if miss, queries repository, caches the
+    result, and returns it. In case of failure, returns an empty statistics
+    container to avoid crashing the caller.
     """
 
-    repository: LinkRepository
+    uow_factory: Callable[[], UnitOfWork]
     base_url: str
     cache: StatsCache
     logger: Logger
 
     def execute(self, context: RequestContext) -> ServiceStatsResponse:
         """
-        Execute the get service stats use case.
+        Get service stats.
 
         Args:
-            context: Request context with client metadata.
+            context: Request context.
 
         Returns:
-            ServiceStatsResponse with aggregated statistics.
+            ServiceStatsResponse, never None.
         """
 
         log = self._get_logger(self.logger, context)
@@ -44,12 +45,12 @@ class GetServiceStatsUseCase(BaseUseCase):
         log.debug("Getting service stats")
 
         try:
-            # 1. Check cache
+            # 1. Try cache first
             cached_stats = self.cache.get_stats()
             if cached_stats:
                 log.info("Stats cache hit")
 
-                # Rehydrate popular_links from serialized data
+                # Rehydrate popular links from serialised data
                 popular_links = []
                 for item in cached_stats["popular_links"]:
                     created_at = datetime.fromisoformat(item["created_at"])
@@ -70,15 +71,15 @@ class GetServiceStatsUseCase(BaseUseCase):
                     popular_links=popular_links,
                 )
 
-            # 2. Cache miss – query repository
-            stats_data = self.repository.get_stats()
+            # 2. Cache miss – query repository read‑only
+            with self.uow_factory(read_only=True) as uow:
+                stats_data = uow.links.get_stats()
 
-            # 3. Build response
             total_urls = stats_data.get("total_urls", 0)
             total_clicks = stats_data.get("total_clicks", 0)
             avg_clicks = total_clicks / total_urls if total_urls > 0 else 0
 
-            popular_links = stats_data.get("popular_links", [])[:10]
+            popular_links = stats_data.get("popular_links", [])
 
             response = ServiceStatsResponse(
                 total_urls=total_urls,
@@ -87,7 +88,7 @@ class GetServiceStatsUseCase(BaseUseCase):
                 popular_links=[
                     StatsItemResponse(
                         short_code=str(link.short_code.value),
-                        short_url=f"{self.base_url.rstrip('/')}/{link.short_code.value}",
+                        short_url=build_short_url(self.base_url, link.short_code.value),
                         original_url=str(link.original_url.value),
                         clicks=link.clicks,
                         created_at=link.created_at,
@@ -96,7 +97,7 @@ class GetServiceStatsUseCase(BaseUseCase):
                 ],
             )
 
-            # 4. Cache the result
+            # 3. Cache the freshly computed stats
             self.cache.save_stats(response.to_dict())
 
             log.info(
@@ -110,7 +111,7 @@ class GetServiceStatsUseCase(BaseUseCase):
         except Exception as e:
             log.exception("Error getting service stats", exc_info=str(e))
 
-            # Возвращение пустой статистики в случае ошибки
+            # Fallback: return empty statistics
             return ServiceStatsResponse(
                 total_urls=0, total_clicks=0, avg_clicks_per_url=0.0, popular_links=[]
             )
