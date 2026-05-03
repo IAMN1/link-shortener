@@ -21,12 +21,12 @@ class UpdateLinkStatsUseCase(BaseUseCase):
     link_cache: LinkCache
     logger: Logger
 
-    def execute(self, short_code_str: ShortCode, context: RequestContext) -> None:
+    def execute(self, short_code_str: str, context: RequestContext) -> None:
         """
         Increment click count.
 
         Args:
-            short_code_str: Short code string.
+            short_code_str: Short code as string (from Celery task).
             context: Request context (only used for logging).
         """
         log = self._get_logger(self.logger, context)

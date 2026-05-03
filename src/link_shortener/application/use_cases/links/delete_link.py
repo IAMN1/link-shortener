@@ -8,6 +8,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import ( DomainError, ShortCode)
+from link_shortener.domain.system_permissions import SystemPermissions
 
 
 @dataclass
@@ -45,30 +46,41 @@ class DeleteLinkUseCase(BaseUseCase):
             short_code = ShortCode(short_code_str)
 
             with self.uow_factory() as uow:
-                # Authorize
+                # Load user if authenticated
                 user = None
                 if context.current_user:
                     user = uow.users.find_by_id(context.current_user.id)
-                if not self.authz.is_allowed(user, "link:delete"):
-                    log.warning("Unauthorized delete attempt", user_id=user.id if user else None)
-                    raise DomainError("Not authorized to delete this link", code="FORBIDDEN")
 
+                # Fetch link
                 link = uow.links.find_by_code(short_code)
                 if not link:
                     log.warning("Link not found for deletion", code=short_code_str)
                     return False
+
+                # Authorization: allow deletion by owner or by admin
+                can_delete_any = self.authz.is_allowed(user, SystemPermissions.LINK_DELETE_ANY.value)
+                can_delete_own = self.authz.is_allowed(user, SystemPermissions.LINK_DELETE_OWN.value)
+                if not can_delete_any and not (
+                    can_delete_own
+                    and link.owner
+                    and user
+                    and link.owner.value == user.id
+                ):
+                    log.warning("Unauthorized delete attempt", user_id=user.id if user else None)
+                    raise DomainError("Not authorized to delete this link", code="FORBIDDEN")
                 
                 deleted = uow.links.delete(short_code)
-                if deleted:
+                if not deleted:
+                    return False
 
-                    uow.commit()
+                uow.commit()
 
-                    audit.log_url_deleted(
-                        short_code=link.short_code.value,
-                        original_url=link.original_url.value
-                    )
+                audit.log_url_deleted(
+                    short_code=link.short_code.value,
+                    original_url=link.original_url.value
+                )
 
-                    log.info("Link deleted successfully", code=link.short_code.value)
+                log.info("Link deleted successfully", code=link.short_code.value)
 
                 return deleted
 
