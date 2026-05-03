@@ -27,6 +27,7 @@ from .ports.uow import UnitOfWork
 # ------------------------------------------------------------------
 # Application Services (facades)
 # ------------------------------------------------------------------
+from .services.admin_service import AdminService
 from .services.link_service import LinkService
 from .services.role_management_service import RoleManagementService
 from .services.user_management_service import UserManagementService
@@ -108,6 +109,7 @@ __all__ = [
     "UnitOfWork",
 
     # Services
+    "AdminService",
     "LinkService",
     "RoleManagementService",
     "UserManagementService",
