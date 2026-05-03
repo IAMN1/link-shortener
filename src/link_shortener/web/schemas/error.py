@@ -30,10 +30,6 @@ class ErrorResponse(BaseModel):
     details: Optional[List[ErrorDetail]] = None
     timestamp: datetime = Field(default_factory=datetime.now)
 
-    @field_serializer('timestamp')
-    def serialize_dt(self, value: datetime) -> str:
-        return value.isoformat()
-
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -50,3 +46,16 @@ class ErrorResponse(BaseModel):
             }
         }
     )
+
+    @field_serializer('timestamp')
+    def serialize_dt(self, value: datetime) -> str:
+        """
+        Serialize the timestamp field to an ISO 8601 string.
+
+        Args:
+            value: A timezone-aware datetime.
+
+        Returns:
+            ISO-formatted string representation.
+        """
+        return value.isoformat()
