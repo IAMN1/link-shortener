@@ -23,6 +23,8 @@ from .exceptions import (
     CodeGenerationError
 )
 
+from .system_permissions import SystemPermissions
+
 __all__ = [
     # Entities
     "Link",
@@ -52,5 +54,8 @@ __all__ = [
     "DomainError",
     "ValidationError",
     "LinkNotFoundError",
-    "CodeGenerationError"
+    "CodeGenerationError",
+
+    # System permissions
+    "SystemPermissions"
 ]

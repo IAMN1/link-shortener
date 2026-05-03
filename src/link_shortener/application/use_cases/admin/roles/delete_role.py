@@ -7,7 +7,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.services.role_management_service import RoleManagementService
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import DomainError
+from link_shortener.domain import DomainError, SystemPermissions
 
 
 @dataclass
@@ -51,7 +51,7 @@ class DeleteRoleUseCase(BaseUseCase):
                 user = uow.users.find_by_id(context.current_user.id)
 
             # Authorize: only users with admin:manage_roles can delete roles
-            if not self.authorization_service.is_allowed(user, "admin:manage_roles"):
+            if not self.authorization_service.is_allowed(user, SystemPermissions.ADMIN_MANAGE_ROLES.value):
                 log.warning(
                     "Unauthorized attempt to delete role",
                     user_id=user.id if user else None

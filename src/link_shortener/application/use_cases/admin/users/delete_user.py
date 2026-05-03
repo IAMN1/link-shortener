@@ -7,7 +7,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.services.user_management_service import UserManagementService
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain.exceptions import DomainError
+from link_shortener.domain import DomainError, SystemPermissions
 
 
 @dataclass
@@ -43,7 +43,7 @@ class DeleteUserUseCase(BaseUseCase):
             admin = None
             if context and context.current_user:
                 admin = uow.users.find_by_id(context.current_user.id)
-            if not self.authorization_service.is_allowed(admin, "admin:manage_users"):
+            if not self.authorization_service.is_allowed(admin, SystemPermissions.ADMIN_MANAGE_USERS.value):
                 log.warning(
                     "Unauthorized attempt to delete user",
                     admin_id=admin.id if admin else None

@@ -8,7 +8,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.services.user_management_service import UserManagementService
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import DomainError
+from link_shortener.domain import DomainError, SystemPermissions
 
 
 @dataclass
@@ -47,8 +47,8 @@ class GetUserUseCase(BaseUseCase):
             
             # Permission check: view_users or manage_users
             if (
-                not self.authorization_service.is_allowed(admin, "admin:manage_users") 
-                and not self.authorization_service.is_allowed(admin, "admin:view_users")
+                not self.authorization_service.is_allowed(admin, SystemPermissions.ADMIN_MANAGE_USERS.value) 
+                and not self.authorization_service.is_allowed(admin, SystemPermissions.ADMIN_VIEW_USERS.value)
             ):
                 log.warning(
                     "Unauthorized attempt to view user",
