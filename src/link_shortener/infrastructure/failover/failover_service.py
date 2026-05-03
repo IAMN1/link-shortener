@@ -1,8 +1,8 @@
-import datetime
-import sys
 import threading
 from typing import Callable, Generic, List, Optional, Tuple, TypeVar
+import time
 
+from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
 
 T = TypeVar('T')
 
@@ -22,7 +22,9 @@ class FailoverService(Generic[T]):
         self, 
         services: List[Tuple[T, str]], 
         check_interval: Optional[float] = 30.0,
-        health_checker: Optional[Callable[[T], bool]] = None
+        health_checker: Optional[Callable[[T], bool]] = None,
+        upgrade_coldown: float = 300.0,
+        logger: Optional[MinimalLogger] = None
     ):
         """
         Initialize the failover service.
@@ -35,6 +37,9 @@ class FailoverService(Generic[T]):
             health_checker: Optional callable that takes a service instance
                 and returns ``True`` if it is healthy. If not provided,
                 only failures during actual calls trigger switching.
+            upgrade_coldown: Minimum seconds between upgrade attempts.
+            logger: Logger for failover events. Defaults to
+                ``MinimalLogger()`` which prints to stderr
 
         Raises:
             ValueError: If ``services`` is empty.
@@ -46,11 +51,16 @@ class FailoverService(Generic[T]):
         self._services = services
         self._check_interval = check_interval
         self._health_checker = health_checker
+        self._upgrade_cooldown = upgrade_coldown
         self._lock = threading.RLock()
-        self._current_index = 0 # index of currently active service
+        self._current_index = 0                 # index of currently active service
+        self._last_upgrade_attempt = 0.0
 
         self._stop_event = threading.Event()
         self._thread = None
+
+        # Use provided logger or default to a simple stderr logger
+        self.logger = logger if logger is not None else MinimalLogger()
 
         if self._check_interval is not None:
             self._thread = threading.Thread(
@@ -77,15 +87,28 @@ class FailoverService(Generic[T]):
         Try to switch to a service with higher priority (lower index) if it is healthy.
         If a healthy higher-priority service is found, switch to it and log the event.
         """
+        now = time.time()
+        if now - self._last_upgrade_attempt < self._upgrade_cooldown:
+            return
+        self._last_upgrade_attempt = now
+
         with self._lock:
             if self._current_index == 0:
                 return # already the best
             
             for idx, (service, name) in enumerate(self._services[:self._current_index]):
-                if self._is_service_healthly(service):
-                    self._log(f"Upgrading from {self._services[self._current_index][1]} to {name}")
-                    self._current_index = idx
-                    return
+                try:
+                
+                    if self._health_checker is None or self._health_checker(service):
+                        self.logger.warning(f"Upgrading from {self._services[self._current_index][1]} to {name}")
+                        self._current_index = idx
+
+                        # Сброс cooldown после успешного апгрейда, чтобы можно было
+                        # позже попытаться вернуться на ещё более приоритетный
+                        self._last_upgrade_attempt = 0.0
+                        return
+                except Exception as e:
+                    self.logger.warning(f"Health check for {name} failed: {e}")
 
     def _is_service_healthly(self, service: T) -> bool:
         """
@@ -118,19 +141,9 @@ class FailoverService(Generic[T]):
         with self._lock:
             for idx in range(self._current_index + 1, len(self._services)):
                 self._current_index = idx
-                self._log(f"Switched to {self._services[idx][1]}")
+                self.logger.warning(f"Switched to {self._services[idx][1]}")
                 return True
             return False
-    
-    def _log(self, message: str):
-        """
-        Log a failover event to stderr.
-
-        Args:
-            message: The log message.
-        """
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"{timestamp} [FailoverService] {message}", file=sys.stderr)
     
     def execute(self, method_name: str, *args, **kwargs):
         """
@@ -155,7 +168,7 @@ class FailoverService(Generic[T]):
                     method = getattr(service, method_name)
                     return method(*args, **kwargs)
                 except Exception as e:
-                    self._log(f"Service {name} failed for {method_name}: {e}. Attempting switch.")
+                    self.logger.warning(f"Service {name} failed for {method_name}: {e}. Attempting switch.")
 
                     if not self._switch_to_next():
                         break
