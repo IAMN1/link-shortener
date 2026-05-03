@@ -121,10 +121,9 @@ class StructlogAuditLogger(AuditLogger):
         self._logger.info("Url deleted successfully", **data)
     
     def is_healthy(self) -> bool:
-        """
-        Check if structlog is properly configured.
-
-        Returns:
-            True always, structlog doesn't require external service checks.
-        """
-        return True
+        """"""
+        try:
+            self._logger.debug("health_check")
+            return True
+        except Exception:
+            return False

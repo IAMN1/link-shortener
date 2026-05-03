@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple
 
 from link_shortener.application import AuditLogger
 from link_shortener.infrastructure.failover.failover_service import FailoverService
+from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
 from link_shortener.infrastructure.logging.handlers.audit.null_audit import NullAuditLogger
 from link_shortener.infrastructure.logging.handlers.audit.standard import StandardAuditLogger
 from link_shortener.infrastructure.logging.handlers.audit.structlog import StructlogAuditLogger
@@ -21,7 +22,7 @@ class AuditManager:
     Lifecycle is controlled by the DI container.
     """
 
-    def __init__(self, audit_type: str,  failover_check_interval: float = 30.0):
+    def __init__(self, audit_type: str,  failover_check_interval: float = 30.0, logger: Optional[MinimalLogger] = None):
         """
         Initialize the audit manager.
 
@@ -29,8 +30,10 @@ class AuditManager:
             audit_type: Type of audit logger: 'auto', 'structlog', 'standard', 'null'.
             failover_check_interval: Seconds between background health checks
                 (ignored if only one implementation is available).
+            logger: Logger for internal messages; defaults to MinimalLogger.
         """
         self._failover_check_interval = failover_check_interval
+        self.logger = logger if logger is not None else MinimalLogger()
         self._failover_service: Optional[FailoverService] = None
         self._active_audit_logger: Optional[AuditLogger] = None
         self._init_failover_service(audit_type)
@@ -60,7 +63,7 @@ class AuditManager:
                     struct_audit = StructlogAuditLogger()
                     audit_loggers.append((struct_audit, "structlog_audit"))
                 except Exception as e:
-                    print(
+                    self.logger.warning(
                         f"WARNING: Failed to initialize StructlogAuditLogger: {e}",
                         file=sys.stderr
                     )
@@ -71,7 +74,7 @@ class AuditManager:
                     std_audit = StandardAuditLogger()
                     audit_loggers.append((std_audit, "standard_audit"))
                 except Exception as e:
-                    print(
+                    self.logger.warning(
                         f"WARNING: Failed to initialize StandardAuditLogger: {e}",
                         file=sys.stderr
                     )
@@ -94,6 +97,8 @@ class AuditManager:
                 services=audit_loggers,
                 check_interval=self._failover_check_interval,
                 health_checker=health_check,
+                upgrade_cooldown=300,
+                logger=self.logger
             )
 
     def get_audit_logger(self) -> AuditLogger:
@@ -184,3 +189,8 @@ class FailoverAuditLoggerProxy(AuditLogger):
         """
         all_kwargs = {**self._bound_fields, **kwargs}
         self._service.execute("log_url_deleted", short_code, original_url, **all_kwargs)
+    
+    def is_healthy(self) -> bool:
+        """"""
+        result = self._service.execute("is_healthy")
+        return result is True

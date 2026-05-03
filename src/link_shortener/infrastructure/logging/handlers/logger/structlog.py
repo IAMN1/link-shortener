@@ -58,3 +58,11 @@ class StructLogger(Logger):
     ) -> None:
         kwargs["exc_info"] = exc_info
         self._logger.exception(message, **kwargs)
+    
+    def is_healthy(self) -> bool:
+        """"""
+        try:
+            self._logger.debug("health_check")
+            return True
+        except Exception:
+            return False

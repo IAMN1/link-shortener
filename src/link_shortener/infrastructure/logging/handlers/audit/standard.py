@@ -123,10 +123,19 @@ class StandardAuditLogger(AuditLogger):
         self._log("Url deleted successfully", **data)
     
     def is_healthy(self) -> bool:
-        """
-        Check if the underlying logging setup is operational.
-
-        Returns:
-            True always, as the standard logger is considered always available.
-        """
-        return True
+        """"""
+        if not self._logger.handlers:
+            return False
+        try:
+            test_logger = logging.getLogger(self._logger.name + "._health_test")
+            test_logger.handlers = self._logger.handlers
+            test_logger.propagate = False
+            test_logger.setLevel(logging.DEBUG)
+            test_logger.debug("health_check")
+            return True
+        except Exception:
+            return False
+        finally:
+            logging.Logger.manager.getLogger(
+                self._logger.name + "._health_test"
+            ). handlers = []
