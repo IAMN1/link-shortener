@@ -4,7 +4,7 @@ from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.link import ExtendedLinkInfoResponse, ShortLinkResponse
 from link_shortener.web.schemas.requests import BatchCreateLinkRequest, CreateShortLinkRequest
 from link_shortener.web.schemas.stats import ServiceStatsResponse
-from link_shortener.web.utils import create_request_context
+from link_shortener.web.security.context import create_request_context
 
 
 class ApiController:

@@ -19,7 +19,7 @@ from link_shortener.web.middleware.authentication import AuthenticationMiddlewar
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
 from link_shortener.web.middleware.rate_limit import RateLimitMiddleware
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
-from link_shortener.web.utils import create_request_context
+from link_shortener.web.security.context import create_request_context
 
 def create_app(config=None) -> Flask:
     """
