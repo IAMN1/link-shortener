@@ -1,7 +1,9 @@
 from link_shortener.application import (
     UnitOfWork, RoleManagementService, 
-    UserManagementService, LinkService
+    UserManagementService, LinkService,
+    AdminService
 )
+
 from link_shortener.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 from link_shortener.infrastructure.di.components.logger import LoggerComponent
 from link_shortener.infrastructure.di.components.audit import AuditComponent
@@ -140,7 +142,7 @@ class Container:
         )
 
         # ------------------------------------------------------------------
-        # Facade service for link operations
+        # Facade service for Link operations
         # ------------------------------------------------------------------
         self._link_service = LinkService(
             create_short_link_use_case=self.get_create_short_link_use_case(),
@@ -149,6 +151,24 @@ class Container:
             redirect_link_use_case=self.get_redirect_link_use_case(),
             batch_create_links_use_case=self.get_batch_create_links_use_case(),
             get_service_stats_use_case=self.get_get_service_stats_use_case(),
+        )
+
+        # ------------------------------------------------------------------
+        # Facade service for Admin operations
+        # ------------------------------------------------------------------
+        self._admin_service = AdminService(
+            create_user_uc=self.get_create_user_use_case(),
+            update_user_roles_uc=self.get_update_user_roles_use_case(),
+            deactivate_user_uc=self.get_deactivate_user_use_case(),
+            activate_user_uc=self.get_activate_user_use_case(),
+            list_users_uc=self.get_list_users_use_case(),
+            get_user_uc=self.get_get_user_use_case(),
+            delete_user_uc=self.get_delete_user_use_case(),
+            create_role_uc=self.get_create_role_use_case(),
+            update_role_permissions_uc=self.get_update_role_permissions_use_case(),
+            delete_role_uc=self.get_delete_role_use_case(),
+            list_roles_uc=self.get_list_roles_use_case(),
+            get_role_uc=self.get_get_role_use_case(),
         )
 
         # ------------------------------------------------------------------
@@ -371,6 +391,10 @@ class Container:
     def get_link_service(self) -> LinkService:
         """Return the application facade for link operations."""
         return self._link_service
+
+    def get_admin_service(self) -> AdminService:
+        """Return the application facade for admin operations"""
+        return self._admin_service
 
     def get_role_management_service(self) -> RoleManagementService:
         """Return the service for role CRUD operations."""
