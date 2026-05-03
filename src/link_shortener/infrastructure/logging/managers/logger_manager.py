@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple
 
 from link_shortener.application import Logger
 from link_shortener.infrastructure.failover.failover_service import FailoverService
+from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
 from link_shortener.infrastructure.logging.handlers.logger.null_logger import NullLogger
 from link_shortener.infrastructure.logging.handlers.logger.standard import StandardLogger
 from link_shortener.infrastructure.logging.handlers.logger.structlog import StructLogger
@@ -17,15 +18,17 @@ class LoggerManager:
     """
 
 
-    def __init__(self, logger_type: str, failover_check_interval: float = 30.0):
+    def __init__(self, logger_type: str, failover_check_interval: float = 30.0, logger: Optional[MinimalLogger] = None):
         """
         Initialize the logger manager.
 
         Args:
             logger_type: Type of logger ('auto', 'structlog', 'standard', 'null').
             failover_check_interval: Seconds between background health checks.
+            logger: logger for internal messages; defaults to MinimalLogger.
         """
         self._failover_check_interval = failover_check_interval
+        self.logger = logger if logger is not None else MinimalLogger()
         self._failover_service: Optional[FailoverService] = None
         self._active_logger: Optional[Logger] = None
         self._loggers_cache: Dict[str, Logger] = {}
@@ -54,7 +57,7 @@ class LoggerManager:
                     logger = StructLogger(name="global")
                     loggers.append((logger, "structlog"))
                 except Exception as e:
-                    print(
+                    self.logger.warning(
                         f"WARNING: Failed to initialize StructLogger: {e}",
                         file=sys.stderr
                     )
@@ -65,7 +68,7 @@ class LoggerManager:
                     logger = StandardLogger(name="global")
                     loggers.append((logger, "standard"))
                 except Exception as e:
-                    print(
+                    self.logger.warning(
                         f"WARNING: Failed to initialize StandardLogger: {e}",
                         file=sys.stderr
                     )
@@ -88,6 +91,8 @@ class LoggerManager:
                 services=loggers,
                 check_interval=self._failover_check_interval,
                 health_checker=health_check,
+                upgrade_cooldown=300,
+                logger=self.logger,
             )
 
     def get_logger(self, module_name: str) -> Logger:
@@ -263,3 +268,8 @@ class _ModuleLogger(Logger):
     def exception(self, message: str, exc_info=None, **kwargs):
         kwargs["exc_info"] = exc_info
         self._log("exception", message, **kwargs)
+
+    def is_healthy(self) -> bool:
+        """"""
+        result = self._service.execute("is_healthy")
+        return result is True

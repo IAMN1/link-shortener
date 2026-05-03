@@ -86,3 +86,23 @@ class StandardLogger(Logger):
         """
         kwargs["exc_info"] = exc_info
         self._log("exception", message, **kwargs)
+    
+    def is_healthy(self) -> bool:
+        """"""
+        if not self._logger.handlers:
+            return False
+        try:
+            # Создаём временный логгер с теми же handler'ами
+            test_logger = logging.getLogger(self._logger.name + "._health_test")
+            test_logger.handlers = self._logger.handlers
+            test_logger.propagate = False
+            test_logger.setLevel(logging.DEBUG)
+            test_logger.debug("health_check")
+            return True
+        except Exception:
+            return False
+        finally:
+            # Очищаем handlers временного логгера, чтобы не засорять память
+            logging.Logger.manager.getLogger(
+                self._logger.name + "._health_test"
+            ).handlers = []
