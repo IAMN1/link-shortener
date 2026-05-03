@@ -61,15 +61,7 @@ class AuditLogger(ABC):
         """Log deletion of a shortened URL."""
         ...
 
+    @abstractmethod
     def is_healthy(self) -> bool:
-        """
-        Check if the audit logger is operational.
-        
-        The default implementation performs a lightweight internal check
-        without emitting actual audit events. Override for custom health logic.
-        """
-        try:
-            self.log_url_created("__health_check__", "http://health.check")
-            return True
-        except Exception:
-            return False
+        """Check if the audit logger is operational."""
+        ...
