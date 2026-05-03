@@ -1,0 +1,21 @@
+{% extends "admin/base_admin.html" %}
+{% block admin_content %}
+<h1>Редактирование пользователя {{ user.email }}</h1>
+<form id="edit-user-form">
+    <div>
+        <label>Активен</label>
+        <input type="checkbox" name="is_active" {% if user.is_active %}checked{% endif %}>
+    </div>
+    <div>
+        <label>Роли</label>
+        <select name="roles" multiple>
+            {% for role in all_roles %}
+                <option value="{{ role.name }}" {% if role.name in user.roles %}selected{% endif %}>
+                    {{ role.name }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit">Сохранить</button>
+</form>
+{% endblock %}

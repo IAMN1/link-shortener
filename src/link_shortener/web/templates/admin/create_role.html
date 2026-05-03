@@ -1,0 +1,25 @@
+{% extends "admin/base_admin.html" %}
+{% block admin_content %}
+<h1>Создать роль</h1>
+<form id="create-role-form">
+    <div>
+        <label>Название</label>
+        <input type="text" name="name" required minlength="2">
+    </div>
+    <div>
+        <label>Описание</label>
+        <input type="text" name="description">
+    </div>
+    <div>
+        <label>Разрешения</label>
+        <div id="permissions-container">
+            {% for perm in permissions %}
+                <label>
+                    <input type="checkbox" name="permissions" value="{{ perm }}"> {{ perm }}
+                </label><br>
+            {% endfor %}
+        </div>
+    </div>
+    <button type="submit">Создать</button>
+</form>
+{% endblock %}
