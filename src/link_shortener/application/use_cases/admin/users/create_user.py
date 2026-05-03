@@ -8,7 +8,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.services.user_management_service import UserManagementService
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import Role, DomainError
+from link_shortener.domain import DomainError, SystemPermissions
 
 
 @dataclass
@@ -29,7 +29,7 @@ class CreateUserUseCase(BaseUseCase):
             email: str,
             password: str,
             context: RequestContext,
-            roles: Optional[List[Role]] = None,
+            role_names: Optional[List[str]] = None,
             is_active: bool = True,
     ) -> UserResponse:
         """
@@ -51,10 +51,18 @@ class CreateUserUseCase(BaseUseCase):
         log = self._get_logger(self.logger, context)
 
         with self.uow_factory() as uow:
+            roles = []
+            if role_names:
+                for name in role_names:
+                    role = uow.roles.get_by_name(name)
+                    if not role:
+                        raise DomainError(f"Role '{name}' not found", code="VALIDATION_ERROR")
+                    roles.append(role)
+            
             admin = None
             if context and context.current_user:
                 admin = uow.users.find_by_id(context.current_user.id)
-            if not self.authorization_service.is_allowed(admin, "admin:manage_users"):
+            if not self.authorization_service.is_allowed(admin, SystemPermissions.ADMIN_MANAGE_USERS.value):
                 log.warning(
                     "Unauthorized attempt to create user",
                     admin_id=admin.id if admin else None

@@ -8,7 +8,8 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.services.user_management_service import UserManagementService
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import Role, DomainError
+from link_shortener.domain import DomainError
+from link_shortener.domain.system_permissions import SystemPermissions
 
 
 @dataclass
@@ -27,7 +28,7 @@ class UpdateUserRolesUseCase(BaseUseCase):
     def execute(
         self,
         user_id: str,
-        roles: List[Role],
+        role_names: List[str],
         context: RequestContext,
     ) -> UserResponse:
         """
@@ -48,7 +49,14 @@ class UpdateUserRolesUseCase(BaseUseCase):
 
         admin = context.current_user if context else None
         with self.uow_factory() as uow:
-            if not self.authorization_service.is_allowed(admin, "admin:manage_users"):
+            roles = []
+            for name in role_names:
+                role = uow.roles.get_by_name(name)
+                if not role:
+                    raise DomainError(f"Role '{name}' not found", code="VALIDATION_ERROR")
+                roles.append(role) 
+
+            if not self.authorization_service.is_allowed(admin, SystemPermissions.ADMIN_MANAGE_USERS.value):
                 log.warning(
                     "Unauthorized attempt to update user roles",
                     admin_id=admin.id if admin else None
