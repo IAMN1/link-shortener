@@ -1,5 +1,5 @@
 from typing import List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateShortLinkRequest(BaseModel):
@@ -8,6 +8,14 @@ class CreateShortLinkRequest(BaseModel):
         ...,
         description="Url to shorten",
         examples=["https://example.com/so-long-url"]
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "url": "https://example.com/so-long-url"
+            }
+        }
     )
 
 class BatchCreateLinkRequest(BaseModel):
@@ -24,4 +32,16 @@ class BatchCreateLinkRequest(BaseModel):
             "https://example.com/so-long-url-2",
             "https://example.com/so-long-url-3"
         ]
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "urls": [
+                    "https://example.com/so-long-url-1",
+                    "https://example.com/so-long-url-2",
+                    "https://example.com/so-long-url-3"
+                ]
+            }
+        }
     )

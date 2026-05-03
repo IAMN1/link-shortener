@@ -5,7 +5,19 @@ from pydantic import BaseModel, ConfigDict, field_serializer
 
 
 class ShortLinkResponse(BaseModel):
-    """Basic link information returned to clients."""
+    """
+    Basic link information returned to clients.
+
+    Attributes:
+        short_code: The generated short code.
+        short_url: Full short URL (base + code).
+        original_url: The original long URL.
+        clicks: Number of recorded accesses.
+        created_at: Timestamp when the link was created.
+        last_accessed: Timestamp of the last access (if any).
+        is_new: ``True`` if the link was just created.
+        from_cache: ``True`` if data came from cache.
+    """
 
     short_code: str
     short_url: str
@@ -18,6 +30,15 @@ class ShortLinkResponse(BaseModel):
 
     @field_serializer('created_at', 'last_accessed')
     def serialize_dt(self, value: Optional[datetime]) -> Optional[str]:
+        """
+        Serialize datetime fields to ISO 8601 strings.
+
+        Args:
+            value: A timezone-aware datetime or ``None``.
+
+        Returns:
+            ISO-formatted string or ``None`` if input is ``None``.
+        """
         if value is None:
             return None
         return value.isoformat()
@@ -53,7 +74,22 @@ class ShortLinkResponse(BaseModel):
 
 
 class ExtendedLinkInfoResponse(BaseModel):
-    """Extended link statistics including derived metrics."""
+    """
+    Extended link statistics including derived metrics.
+
+    Attributes:
+        short_code: The generated short code.
+        short_url: Full short URL.
+        original_url: The original long URL.
+        clicks: Total click count.
+        created_at: Creation timestamp.
+        last_accessed: Last access timestamp (if any).
+        is_popular: Whether the link's clicks exceed the popular threshold.
+        is_recent: Whether the link was created recently (within ``RECENT_DAYS``).
+        age_days: Age of the link in whole days.
+        clicks_per_day: Average clicks per day since creation.
+        last_access_days_ago: Days since the last access (``None`` if never accessed).
+    """
 
     short_code: str
     short_url: str
@@ -66,12 +102,6 @@ class ExtendedLinkInfoResponse(BaseModel):
     age_days: int
     clicks_per_day: float
     last_access_days_ago: Optional[int]
-
-    @field_serializer('created_at', 'last_accessed')
-    def serialize_dt(self, value: Optional[datetime]) -> Optional[str]:
-        if value is None:
-            return None
-        return value.isoformat()
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -91,8 +121,32 @@ class ExtendedLinkInfoResponse(BaseModel):
         }
     )
 
+    @field_serializer('created_at', 'last_accessed')
+    def serialize_dt(self, value: Optional[datetime]) -> Optional[str]:
+        """
+        Serialize datetime fields to ISO 8601 strings.
+
+        Args:
+            value: A timezone-aware datetime or ``None``.
+
+        Returns:
+            ISO-formatted string or ``None`` if input is ``None``.
+        """
+        if value is None:
+            return None
+        return value.isoformat()
+
     @classmethod
     def from_dto(cls, dto) -> 'ExtendedLinkInfoResponse':
+        """
+        Build a schema instance from an application DTO.
+
+        Args:
+            dto: An ``ExtendedLinkInfoResponse`` DTO from the application layer.
+
+        Returns:
+            Populated ``ExtendedLinkInfoResponse`` schema instance.
+        """
         return cls(
             short_code=dto.short_code,
             short_url=dto.short_url,
