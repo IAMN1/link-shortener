@@ -5,17 +5,22 @@ from pydantic import BaseModel, ConfigDict, field_serializer
 
 
 class StatsItemResponse(BaseModel):
-    """Statistics for a single popular link."""
+    """
+    Statistics for a single popular link.
+
+    Attributes:
+        short_code: The short code.
+        short_url: Full short URL.
+        original_url: The original long URL.
+        clicks: Number of recorded accesses.
+        created_at: Creation timestamp.
+    """
 
     short_code: str
     short_url: str
     original_url: str
     clicks: int
     created_at: datetime
-
-    @field_serializer('created_at')
-    def serialize_dt(self, value: datetime) -> str:
-        return value.isoformat()
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -29,8 +34,30 @@ class StatsItemResponse(BaseModel):
         }
     )
 
+    @field_serializer('created_at')
+    def serialize_dt(self, value: datetime) -> str:
+        """
+        Serialize the creation timestamp to an ISO 8601 string.
+
+        Args:
+            value: A timezone-aware datetime.
+
+        Returns:
+            ISO-formatted string.
+        """
+        return value.isoformat()
+
     @classmethod
     def from_dto(cls, dto) -> "StatsItemResponse":
+        """
+        Build a schema instance from an application DTO.
+
+        Args:
+            dto: A ``StatsItemResponse`` DTO from the application layer.
+
+        Returns:
+            Populated ``StatsItemResponse`` schema instance.
+        """
         return cls(
             short_code=dto.short_code,
             short_url=dto.short_url,
@@ -41,7 +68,15 @@ class StatsItemResponse(BaseModel):
 
 
 class ServiceStatsResponse(BaseModel):
-    """Aggregated service statistics"""
+    """
+    Aggregated service-wide statistics.
+
+    Attributes:
+        total_urls: Total number of short links in the system.
+        total_clicks: Sum of all clicks across all links.
+        avg_clicks_per_url: Average number of clicks per link.
+        popular_links: List of the most popular links (up to 10).
+    """
 
     total_urls: int
     total_clicks: int
@@ -69,6 +104,15 @@ class ServiceStatsResponse(BaseModel):
 
     @classmethod
     def from_dto(cls, dto) -> "ServiceStatsResponse":
+        """
+        Build a schema instance from an application DTO.
+
+        Args:
+            dto: A ``ServiceStatsResponse`` DTO from the application layer.
+
+        Returns:
+            Populated ``ServiceStatsResponse`` schema instance.
+        """
         return cls(
             total_urls=dto.total_urls,
             total_clicks=dto.total_clicks,
