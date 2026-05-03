@@ -150,6 +150,28 @@ class ErrorHandlerMiddleware:
         def handle_domain_error(error: DomainError):
             """Handle generic domain errors (base class)."""
 
+            status_mapping = {
+                "FORBIDDEN": 403,
+                "USER_NOT_FOUND": 404,
+                "ROLE_NOT_FOUND": 404,
+                "INVALID_CREDENTIALS": 401,
+                "ACCOUNT_INACTIVE": 403,
+                "VALIDATION_ERROR": 400,
+                "LINK_NOT_FOUND": 404,
+                "CODE_GENERATION_FAILED": 500,
+                "CONFIGURATION_ERROR": 500,
+                "ROLE_CREATION_FAILED": 400,
+                "ROLE_DELETION_FAILED": 400,
+                "ROLE_UPDATE_FAILED": 400,
+            }
+
+            status_code = status_mapping.get(error.code, 400)
+
+            if self._should_return_html():
+                return render_template(
+                    "error.html", error=error.message
+                ), status_code
+
             response = ErrorResponse(
                 error=error.code,
                 message=error.message
