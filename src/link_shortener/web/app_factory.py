@@ -13,7 +13,10 @@ from link_shortener.infrastructure import (
     seed_base_roles
 )
 
+from link_shortener.web.controllers.admin_api_controller import AdminApiController
+from link_shortener.web.controllers.admin_frontend_controller import AdminFrontendController
 from link_shortener.web.controllers.api_controller import ApiController
+from link_shortener.web.controllers.auth_controller import AuthController
 from link_shortener.web.controllers.frontend_controller import FrontendController
 from link_shortener.web.middleware.authentication import AuthenticationMiddleware
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
@@ -117,9 +120,18 @@ def create_app(config=None) -> Flask:
     # ------------------------------------------------------------------
     api_controller = ApiController(container.get_link_service())
     frontend_controller = FrontendController(container.get_link_service())
+    admin_api_controller = AdminApiController(container.get_admin_service())
+    admin_frontend_controller = AdminFrontendController(
+        admin_servie=container.get_admin_service(),
+        auth_service=container.get_authorization_service()
+    )
+    auth_controller = AuthController(container.get_authentication_service())
 
     app.register_blueprint(api_controller.bp)
     app.register_blueprint(frontend_controller.bp)
+    app.register_blueprint(admin_api_controller.bp)
+    app.register_blueprint(admin_frontend_controller.bp)
+    app.register_blueprint(auth_controller.bp)
 
     # ------------------------------------------------------------------
     # Redirect route (short code resolver)
