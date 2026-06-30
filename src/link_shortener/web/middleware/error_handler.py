@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, render_template, request
 from pydantic import ValidationError as PydanticValidationError
+from werkzeug.exceptions import BadRequest
 
 from link_shortener.web.schemas.error import ErrorDetail, ErrorResponse
 from link_shortener.application import Logger
@@ -187,7 +188,7 @@ class ErrorHandlerMiddleware:
         @self.app.errorhandler(ValueError)
         def handle_value_error(error: ValueError):
             """
-            Handle generic ValueError exceptions 
+            Handle generic ValueError exceptions
             (e.g., from invalid input).
             """
 
@@ -198,6 +199,19 @@ class ErrorHandlerMiddleware:
 
             self.logger.warning("Value error", error=str(error))
 
+            return jsonify(response.model_dump()), 400
+
+        @self.app.errorhandler(BadRequest)
+        def handle_bad_request(error):
+            """Handle malformed request body (e.g., invalid JSON)."""
+
+            if self._should_return_html():
+                return render_template("error.html", error="Bad request"), 400
+
+            response = ErrorResponse(
+                error="BAD_REQUEST",
+                message="Malformed request body"
+            )
             return jsonify(response.model_dump()), 400
         
         @self.app.errorhandler(Exception)

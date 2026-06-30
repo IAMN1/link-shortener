@@ -231,6 +231,10 @@ class Container:
                 guest_link_window_days=self.config.GUEST_LINK_WINDOW_DAYS,
                 default_guest_ttl_seconds=self.config.DEFAULT_GUEST_TTL_SECONDS,
             )
+            # Wire synchronous fallback for NullTaskQueue
+            if not self.config.CELERY_ENABLED:
+                update_uc = self._link_use_cases.get_update_link_stats_use_case()
+                self.task_queue_component.set_update_stats_fn(update_uc.execute)
         return self._link_use_cases
 
     def _init_batch_use_cases(self):

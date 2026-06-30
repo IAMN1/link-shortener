@@ -7,7 +7,7 @@ class TaskQueueComponent:
     Provides a singleton ``TaskQueue`` implementation.
 
     When Celery is enabled, tasks are sent to a Celery worker; otherwise
-    they are silently discarded (``NullTaskQueue``).
+    the click counter is updated synchronously via ``UpdateLinkStatsUseCase``.
     """
     def __init__(self, celery_enabled: bool, logger):
         """
@@ -18,6 +18,14 @@ class TaskQueueComponent:
         self.celery_enabled = celery_enabled
         self.logger = logger
         self._queue = None
+        self._update_stats_fn = None
+
+    def set_update_stats_fn(self, fn) -> None:
+        """Set the synchronous stats update function for NullTaskQueue."""
+        self._update_stats_fn = fn
+        # If NullTaskQueue is already created, wire the function now
+        if self._queue is not None and isinstance(self._queue, NullTaskQueue):
+            self._queue.set_update_fn(fn)
 
     def get_task_queue(self) -> TaskQueue:
         """
@@ -30,6 +38,8 @@ class TaskQueueComponent:
             if self.celery_enabled:
                 self._queue = CeleryTaskQueue()
             else:
-                self.logger.info("Celery disabled, using NullTaskQueue")
+                self.logger.info("Celery disabled, using NullTaskQueue (synchronous fallback)")
                 self._queue = NullTaskQueue()
+                if self._update_stats_fn:
+                    self._queue.set_update_fn(self._update_stats_fn)
         return self._queue

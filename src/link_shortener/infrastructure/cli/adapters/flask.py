@@ -440,10 +440,11 @@ def security_validate_token(token):
 # Top-level commands
 # ------------------------------------------------------------------
 @click.command("create-admin")
-@click.option("--email", prompt=True, help="Admin email")
-@click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True, help="Admin password")
+@click.option("--email", prompt="Email", help="Admin email")
+@click.option("--password", prompt="Password", hide_input=True, help="Admin password")
+@click.option("--non-interactive", is_flag=True, help="Skip confirmation prompts")
 @with_appcontext
-def create_admin(email, password):
+def create_admin(email, password, non_interactive):
     """Create an admin user."""
     container = current_app.container
     user_service = container.get_user_management_service()

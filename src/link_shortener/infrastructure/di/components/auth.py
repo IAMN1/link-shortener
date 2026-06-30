@@ -1,5 +1,5 @@
 from typing import Callable
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application import UnitOfWork
 from link_shortener.infrastructure.auth.jwt_auth_service import JwtAuthenticationService
 from link_shortener.infrastructure.auth.rbac_authorization_service import RBACAuthorizationService
 
