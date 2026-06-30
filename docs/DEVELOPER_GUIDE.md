@@ -70,7 +70,7 @@ uv run pytest tests/integration/ -v
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 224 (unit + integration), покрытие: 71%
+Тесты: 241 (unit + integration), покрытие: 72%
 
 ## Ключевые файлы
 
@@ -113,14 +113,39 @@ uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ## CLI-команды
 
 ```bash
-flask create-admin --email admin@example.com --password secret
-flask db check
-flask db load-base-roles
-flask stats show
-flask cache clear
-flask maintenance clean-expired --days 90
+# Ссылки
+flask link create --url <url>
 flask link info <short_code>
 flask link delete <short_code>
+flask link list --limit 10
+
+# Пользователи
+flask create-admin --email admin@example.com --password secret
+flask create-user --email user@example.com --password user123 --role user
+
+# Безопасность
+flask security check-secrets
+flask security generate-secrets
+flask security list-users
+flask security list-roles
+flask security validate-token <jwt_token>
+
+# База данных
+flask db check
+flask db status
+flask db migrate
+flask db load-base-roles
+flask db seed --count 10
+
+# Alembic
+flask alembic status
+flask alembic history
+flask alembic upgrade head
+
+# Статистика и обслуживание
+flask stats show
+flask maintenance health
+flask cache clear
 ```
 
 ## Как добавить новый use case

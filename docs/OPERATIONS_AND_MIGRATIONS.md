@@ -35,14 +35,40 @@ docker compose exec app flask <команда>
 | Команда | Описание |
 |---------|----------|
 | `flask create-admin --email <email> --password <pwd>` | Создать администратора |
+| `flask create-user --email <email> --password <pwd> --role <role>` | Создать пользователя с указанной ролью |
+
+### Безопасность
+
+| Команда | Описание |
+|---------|----------|
+| `flask security check-secrets` | Проверить настройку секретов |
+| `flask security generate-secrets` | Сгенерировать новые SECRET_KEY и SHORT_CODE_PEPPER |
+| `flask security list-users` | Показать список всех пользователей |
+| `flask security list-roles` | Показать список ролей и разрешений |
+| `flask security validate-token <token>` | Проверить JWT токен и показать claims |
+| `flask security reset-password` | Сбросить пароль пользователя |
 
 ### База данных
 
 | Команда | Описание |
 |---------|----------|
-| `flask db check` | Проверить соединение с БД |
+| `flask db check` / `flask db status` | Проверить соединение с БД |
+| `flask db init` | Создать таблицы (только если USE_ALEMBIC=false) |
+| `flask db drop --yes` | Удалить все таблицы (ОПАСНО) |
+| `flask db migrate` | Применить миграции Alembic |
 | `flask db load-base-roles` | Загрузить/обновить системные роли из YAML |
+| `flask db load-custom-roles <file>` | Загрузить роли из YAML файла |
 | `flask db seed --count N` | Заполнить БД тестовыми ссылками |
+
+### Alembic миграции
+
+| Команда | Описание |
+|---------|----------|
+| `flask alembic status` | Показать текущую ревизию |
+| `flask alembic history` | Показать историю миграций |
+| `flask alembic upgrade [revision]` | Применить миграции (по умолчанию: head) |
+| `flask alembic downgrade [revision]` | Откатить миграции (по умолчанию: -1) |
+| `flask alembic migrate <message>` | Создать новую миграцию с автогенерацией |
 
 ### Статистика
 
@@ -56,21 +82,22 @@ docker compose exec app flask <команда>
 | Команда | Описание |
 |---------|----------|
 | `flask cache clear` | Полностью очистить кэш |
+| `flask cache clear --stats-only` | Очистить только кэш статистики |
 | `flask cache stats` | Показать информацию о кэше |
 
 ### Обслуживание
 
 | Команда | Описание |
 |---------|----------|
+| `flask maintenance health` | Проверка здоровья (БД + Redis) |
 | `flask maintenance clean-expired --days N` | Удалить ссылки, не использовавшиеся N дней |
-| `flask maintenance clean-expired` | Удалить все истёкшие по TTL ссылки |
-| `flask maintenance check-db` | Проверить соединение с БД |
 | `flask maintenance check-redis` | Проверить соединение с Redis |
 
 ### Управление ссылками
 
 | Команда | Описание |
 |---------|----------|
+| `flask link create --url <url>` | Создать короткую ссылку |
 | `flask link info <code>` | Показать информацию о ссылке |
 | `flask link delete <code>` | Удалить ссылку |
 | `flask link list --limit N` | Показать последние N ссылок |

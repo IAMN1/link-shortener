@@ -3,8 +3,8 @@
 Сервис сокращения ссылок на Python/Flask с архитектурой Clean Architecture. Поддерживает гостевое создание ссылок, аккаунты пользователей, RBAC, асинхронную статистику и кэширование в Redis.
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-224%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-71%25-blue.svg)]()
+[![Tests](https://img.shields.io/badge/tests-241%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-72%25-blue.svg)]()
 
 ## Возможности
 
@@ -100,7 +100,7 @@ uv run pytest tests/integration/ -v
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 224 (unit + integration), покрытие: 71%
+Тесты: 241 (unit + integration), покрытие: 72%
 
 ## Технологический стек
 
@@ -118,6 +118,48 @@ uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 | Менеджер пакетов | uv |
 | Контейнеризация | Docker, Docker Compose |
 
+## CLI-команды
+
+```bash
+# Управление ссылками
+flask link create --url <url>           # Создать короткую ссылку
+flask link info <code>                  # Информация о ссылке
+flask link list --limit N               # Последние N ссылок
+flask link delete <code>                # Удалить ссылку
+
+# Управление пользователями
+flask create-admin --email <e> --password <p>  # Создать администратора
+flask create-user --email <e> --password <p> --role <role>  # Создать пользователя
+
+# Безопасность
+flask security check-secrets            # Проверить настройку секретов
+flask security generate-secrets         # Сгенерировать новые секреты
+flask security list-users               # Список пользователей
+flask security list-roles               # Список ролей
+flask security validate-token <token>   # Проверить JWT токен
+flask security reset-password           # Сбросить пароль
+
+# База данных
+flask db check / flask db status        # Проверить соединение с БД
+flask db migrate                        # Применить миграции Alembic
+flask db load-base-roles                # Загрузить системные роли
+flask db seed --count N                 # Заполнить тестовыми данными
+
+# Alembic миграции
+flask alembic status                    # Текущая ревизия
+flask alembic history                   # История миграций
+flask alembic upgrade [revision]        # Применить миграции
+flask alembic downgrade [revision]      # Откатить миграции
+flask alembic migrate <message>         # Создать новую миграцию
+
+# Статистика и обслуживание
+flask stats show                        # Показать статистику
+flask maintenance health                # Проверка здоровья (БД + Redis)
+flask cache clear                       # Очистить кэш
+```
+
+Подробнее: [docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md)
+
 ## Конфигурация
 
 Ключевые настройки в `.env`:
@@ -129,8 +171,6 @@ uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 | `DEFAULT_GUEST_TTL_SECONDS` | 604800 | Время жизни гостевых ссылок (7 дней) |
 | `CACHE_LINK_TTL` | 20 | TTL кэша (секунды) |
 | `COOKIE_SECURE` | false | Secure-флаг для cookie (true в production) |
-
-Полный список: [docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md)
 
 ## Документация
 

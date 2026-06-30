@@ -78,6 +78,12 @@ docker compose logs app
 docker compose exec app flask create-admin --email admin@example.com --password your_password
 ```
 
+Для создания обычного пользователя:
+
+```bash
+docker compose exec app flask create-user --email user@example.com --password user_password --role user
+```
+
 ## Шаг 8: Использование приложения
 
 ### Как гость (без аккаунта)
