@@ -4,8 +4,36 @@ from link_shortener.application import (
     RequestContext, DeleteLinkUseCase,
     GetLinkInfoUseCase, GetRecentLinksUseCase
 )
+from link_shortener.application.use_cases.links.create_short_link import CreateShortLinkUseCase
 
-from link_shortener.domain import LinkNotFoundError
+from link_shortener.domain import LinkNotFoundError, ValidationError
+
+
+def create_link(
+    use_case: CreateShortLinkUseCase, url: str, context: RequestContext, code: Optional[str] = None
+) -> dict:
+    """
+    Create a new short link.
+
+    Args:
+        use_case: CreateShortLinkUseCase instance.
+        url: The original URL to shorten.
+        context: Request context.
+        code: Optional custom short code.
+
+    Returns:
+        Dictionary with short_code and original_url.
+
+    Raises:
+        ValidationError: If the URL is invalid.
+    """
+    response = use_case.execute(url, context, ttl_seconds=0)
+    return {
+        "short_code": response.short_code,
+        "original_url": response.original_url,
+        "short_url": response.short_url,
+        "is_new": response.is_new,
+    }
 
 
 def delete_link(

@@ -303,6 +303,30 @@ def link_list(limit):
             click.echo(f"\t\t\t{link['short_code']} - {link['clicks']} clicks - {link['created_at'][:10]}")
     click.echo("=" * 80)
 
+@link_group.command("create")
+@click.option("--url", required=True, help="Original URL to shorten")
+@click.option("--code", default=None, help="Custom short code (optional)")
+@with_appcontext
+def link_create(url, code):
+    """Create a new short link."""
+    from ..commands.link import create_link as create_link_logic
+    container = current_app.container
+    context = RequestContext(request_id="cli-create")
+    use_case = container.get_create_short_link_use_case()
+
+    try:
+        result = create_link_logic(use_case, url, context, code)
+        click.echo("=" * 80)
+        click.echo(f"\t\t\tShort link created successfully!")
+        click.echo(f"\t\t\tShort code: {result['short_code']}")
+        click.echo(f"\t\t\tOriginal URL: {result['original_url']}")
+        click.echo(f"\t\t\tShort URL: {result['short_url']}")
+        click.echo(f"\t\t\tIs new: {result['is_new']}")
+        click.echo("=" * 80)
+    except Exception as e:
+        click.echo(f"Error creating link: {e}", err=True)
+        raise SystemExit(1)
+
 # ------------------------------------------------------------------
 # Security commands group
 # ------------------------------------------------------------------
@@ -437,6 +461,33 @@ def create_admin(email, password):
         click.echo(f"Failed to create admin: {e}", err=True)
         raise SystemExit(1)
 
+
+@click.command("create-user")
+@click.option("--email", prompt=True, help="User email")
+@click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True, help="User password")
+@click.option("--role", required=True, help="Role name to assign (e.g., admin, user, analyst)")
+@with_appcontext
+def create_user(email, password, role):
+    """Create a new user with a specified role."""
+    from ..commands.admin import create_user as create_user_logic
+    container = current_app.container
+    user_service = container.get_user_management_service()
+    uow_factory = container.get_uow_factory()
+    logger = container.get_logger("cli")
+    try:
+        result = create_user_logic(
+            uow_factory=uow_factory,
+            user_service=user_service,
+            logger=logger,
+            email=email,
+            password=password,
+            role_names=[role],
+        )
+        click.echo(f"User {result['email']} created successfully (active: {result['is_active']}).")
+    except Exception as e:
+        click.echo(f"Failed to create user: {e}", err=True)
+        raise SystemExit(1)
+
 # ------------------------------------------------------------------
 # Alembic commands group
 # ------------------------------------------------------------------
@@ -509,3 +560,4 @@ def register_flask_commands(app):
     app.cli.add_command(alembic_group)
     app.cli.add_command(security_group)
     app.cli.add_command(create_admin)
+    app.cli.add_command(create_user)

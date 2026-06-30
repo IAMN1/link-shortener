@@ -1,6 +1,7 @@
-from typing import Callable
+from typing import Callable, List, Optional
 
-from link_shortener.application import UnitOfWork, UserManagementService
+from link_shortener.application import UnitOfWork, UserManagementService, RequestContext
+from link_shortener.application.ports.logger.logger import Logger
 
 
 def create_admin(
@@ -43,3 +44,53 @@ def create_admin(
         )
         uow.commit()
     return user.email.value
+
+
+def create_user(
+        uow_factory: Callable[[], UnitOfWork],
+        user_service: UserManagementService,
+        logger: Logger,
+        email: str,
+        password: str,
+        role_names: List[str],
+        is_active: bool = True,
+    ) -> dict:
+    """
+    Create a new user with specified roles.
+
+    Args:
+        uow_factory: Factory for Unit of Work instances.
+        user_service: Service for user CRUD operations.
+        logger: Logger instance.
+        email: User email.
+        password: Plain-text password.
+        role_names: List of role names to assign.
+        is_active: Whether the account is active.
+
+    Returns:
+        Dictionary with user details.
+
+    Raises:
+        RuntimeError: If a role is not found.
+    """
+    context = RequestContext(request_id="cli-create-user")
+    with uow_factory() as uow:
+        roles = []
+        for name in role_names:
+            role = uow.roles.get_by_name(name)
+            if not role:
+                raise RuntimeError(
+                    f"Role '{name}' not found. Please seed roles first "
+                    "(flask db load-base-roles)."
+                )
+            roles.append(role)
+
+        user = user_service.create_user(
+            uow=uow,
+            email=email,
+            password=password,
+            roles=roles if roles else None,
+            is_active=is_active,
+        )
+        uow.commit()
+    return {"email": user.email.value, "is_active": user.is_active}

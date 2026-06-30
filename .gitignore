@@ -16,6 +16,12 @@ wheels/
 *.db
 :memory
 
+# logs-catalog
+logs/
+
+# accidental files
+db_shortener
+
 # Pytest-generated files
 .pytest_cache/
 .coverage
