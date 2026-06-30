@@ -21,9 +21,9 @@ class RegisterUseCase(BaseUseCase):
     The password is hashed by the AuthenticationService before storage.
     """
     uow_factory: Callable[[], UnitOfWork]
-    auth_service: AuthenticationService
+    authentication_service: AuthenticationService
     logger: Logger
-    default_role_name: str  # роль, назначаемая пользователю по умолчанию
+    default_role_name: str  # Role assigned to new users by default.
 
     def execute(self, email: str, password: str, context: RequestContext) -> UserResponse:
         """
@@ -53,7 +53,7 @@ class RegisterUseCase(BaseUseCase):
                 raise ValidationError("Email already registered", field="email")
         
             # Hash the password
-            hashed = self.auth_service.hash_password(password)
+            hashed = self.authentication_service.hash_password(password)
             password_hash_vo = PasswordHash(hashed)
 
             # Retrieve default role

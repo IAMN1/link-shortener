@@ -13,9 +13,8 @@ from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
     Link, OriginalUrl, ShortCode, 
     HashCalculator, CodeGenerator, OwnerID,
-    ValidationError, CodeGenerationError
+    ValidationError, CodeGenerationError, GuestLinkLimitExceededError
 )
-
 
 
 @dataclass
@@ -23,25 +22,20 @@ class CreateShortLinkUseCase(BaseUseCase):
     """
     Use case for creating a single short link.
 
-    Steps:
-        1. Validate and normalize the input URL via OriginalUrl value object.
-        2. Compute the URL hash for deduplication.
-        3. Check cache for existing link by hash (fast path).
-        4. If not in cache, check repository via UoW.
-        5. If found, return cached/existing link.
-        6. If not found, generate a unique short code (handling collisions).
-        7. Create a new Link entity and persist it.
-        8. Cache the new link and audit the creation event.
+    Orchestrates URL validation, deduplication, code generation, persistence and caching.
 
     Attributes:
         uow_factory: Callable factory for creating Unit of Work instances.
-        cache: Link cache implementation.
+        cache: Link cache implementation for fast lookups.
         hash_calculator: Strategy for computing URL hashes.
         code_generator: Strategy for generating short codes.
         base_url: Base URL of the service for building short URLs.
         logger: Application logger.
         audit_logger: Audit logger for significant events.
         allowed_schemes: List of allowed URL schemes (e.g., ['http', 'https']).
+        guest_link_limit: Max number of guest links per window.
+        guest_link_window_days: Time window in days for guest link counting.
+        default_guest_ttl_seconds: Default TTL for gues-created links.
         max_collision_attempts: Maximum tries to generate a unique code.
     """
 
@@ -53,26 +47,31 @@ class CreateShortLinkUseCase(BaseUseCase):
     logger: Logger
     audit_logger: AuditLogger
     allowed_schemes: List[str]
+    guest_link_limit: int
+    guest_link_window_days: int
+    default_guest_ttl_seconds: int
     max_collision_attempts: int = 5
 
     def execute(
-        self, url: str, context: RequestContext) -> ShortLinkResponse:
+        self, url: str, context: RequestContext, ttl_seconds: int = 0) -> ShortLinkResponse:
         """
         Execute the create short link use case.
 
         Args:
             url: The original URL to shorten.
             context: Request context with client metadata.
+            ttl_seconds: Time-to-live in seconds (0 = forever).
 
         Returns:
             ShortLinkResponse DTO with link details.
 
         Raises:
             ValidationError: If the URL is invalid or scheme not allowed.
+            GuestLinkLimitExceededError: If the guest link limit is exceeded.
             CodeGenerationError: If code generation fails after max attempts.
         """
 
-        # Привязка контекста к логгеру
+        # Bind request context to the logger.
         log = self._get_logger(self.logger, context)
         audit = self._get_audit_logger(self.audit_logger, context)
 
@@ -81,13 +80,30 @@ class CreateShortLinkUseCase(BaseUseCase):
 
         try:
 
-            # Step 1: Validate URL via value object
+            # ---- 1. Validate URL via value object ----------------
             original_url = OriginalUrl(url, allowed_schemes=tuple(self.allowed_schemes))
 
-            # Step 2: Compute hash for deduplication
+            # ---- 2. Compute hash for deduplication ---------------
             url_hash = self.hash_calculator.calculate(original_url)
 
-            # Step 3: Check cache (fast path)
+            # ---- Guest limit & TTL enforcement -------------------
+            guest_id = None
+            if not context.current_user:
+                guest_id = context.remote_addr
+            
+                with self.uow_factory() as uow:
+                    count = uow.links.count_guest_links_by_identifier(
+                        guest_id, self.guest_link_window_days
+                    )
+                if count >= self.guest_link_limit:
+                    raise GuestLinkLimitExceededError(
+                        f"Guest link limit of {self.guest_link_limit} exceeded."
+                    )
+                # For guests, apply a default TTL of 7 days if none specified.
+                if ttl_seconds == 0:
+                    ttl_seconds = self.default_guest_ttl_seconds
+
+            # ---- 3. Check cache (fast path) ----------------------
             cached_link = self.cache.get_by_hash(url_hash)
             if cached_link:
 
@@ -97,8 +113,8 @@ class CreateShortLinkUseCase(BaseUseCase):
                     cached_link, from_cache=True, is_new=False
                 )
 
+            # ---- 4. Check repository -----------------------------
             with self.uow_factory() as uow:
-                # Step 4: Check repository
                 existing_link = uow.links.find_by_hash(url_hash)
                 if existing_link:
 
@@ -108,23 +124,25 @@ class CreateShortLinkUseCase(BaseUseCase):
                     self.cache.save(existing_link)
                     return self._build_response(existing_link, from_cache=False, is_new=False)
 
-                # Step 5: Generate a unique short code
+                # -- 5. Generate unique short code -----------------
                 short_code = self._generate_unique_code(original_url, uow, log)
 
-                # Step 6: Create domain entity
+                # -- 6. Create domain entity -----------------------
                 owner = context.current_user.id if context.current_user else None
                 owner_id_vo = OwnerID(owner)
                 new_link = Link.create(
                     url_hash=url_hash,
                     short_code=short_code,
                     original_url=original_url,
-                    owner=owner_id_vo
+                    owner=owner_id_vo,
+                    guest_identifier=guest_id,
+                    ttl_seconds=ttl_seconds,
                 )
 
                 saved_link = uow.links.save(new_link)
                 uow.commit()
 
-            # Cache newly created link
+            # ---- 7. Cache new link & audit -----------------------
             self.cache.save(saved_link)
 
             log.info("Short link created successfully", short_code=short_code.value)

@@ -1,33 +1,56 @@
+"""
+Component that produces fully configured core link use cases.
+
+This module defines the ``LinkUseCasesComponent`` dataclass which aggregates
+all infrastructure dependencies required by link-related use cases and
+exposes factory methods for creating them.
+"""
+
 from dataclasses import dataclass
 from typing import Callable, List
 
 from link_shortener.application import (
     CreateShortLinkUseCase,
-    GetLinkInfoUseCase,
+    DeleteLinkUseCase,
     GetExtendedLinkInfoUseCase,
+    GetLinkInfoUseCase,
+    GetUserLinksUseCase,
     RedirectLinkUseCase,
     UpdateLinkStatsUseCase,
-    DeleteLinkUseCase,
-    LinkCache,
-    RedirectCache,
     AuditLogger,
+    LinkCache,
     Logger,
-    UnitOfWork,
+    RedirectCache,
     TaskQueue,
-    AuthorizationService,
+    UnitOfWork,
 )
 from link_shortener.domain import CodeGenerator, HashCalculator
 
 
-
-
 @dataclass
 class LinkUseCasesComponent:
-    """
-    Holds all dependencies needed by the core link use cases.
+    """Holds all dependencies needed by the core link use cases.
 
     Each factory method returns a fully initialised instance that can be
     used directly by the application layer.
+
+    Attributes:
+        uow_factory: Factory for creating Unit of Work instances.
+        cache: Full link cache (L2) implementation.
+        redirect_cache: Fast redirect cache (L1) implementation.
+        hash_calculator: Strategy for computing URL hashes.
+        code_generator: Strategy for generating short codes.
+        base_url: Base URL of the service for constructing short URLs.
+        logger: Application logger.
+        audit_logger: Audit logger for security-relevant events.
+        task_queue: Asynchronous task queue for offloading work.
+        allowed_schemes: URL schemes permitted for shortening.
+        max_collision_attempts: Max retries for code generation on collision.
+        popular_threshold: Click threshold for a link to be considered popular.
+        recent_days: Number of days to consider a link as recent.
+        guest_link_limit: Max guest links allowed in a given window.
+        guest_link_window_days: Time window (days) for guest link counting.
+        default_guest_ttl_seconds: Default TTL applied to guest-created links.
     """
 
     uow_factory: Callable[[], UnitOfWork]
@@ -38,21 +61,27 @@ class LinkUseCasesComponent:
     base_url: str
     logger: Logger
     audit_logger: AuditLogger
-    authz_service: AuthorizationService
     task_queue: TaskQueue
     allowed_schemes: List[str]
     max_collision_attempts: int
     popular_threshold: int
     recent_days: int
+    guest_link_limit: int
+    guest_link_window_days: int
+    default_guest_ttl_seconds: int
 
-    # ----- Creation -----
+    # ------------------------------------------------------------------
+    # Creation
+    # ------------------------------------------------------------------
     def get_create_short_link_use_case(self) -> CreateShortLinkUseCase:
-        """
-        Return a configured ``CreateShortLinkUseCase``.
+        """Return a configured ``CreateShortLinkUseCase``.
 
         The use case validates the input URL, checks for duplicates via
-        cache and DB, generates a unique short code, and persists the new
-        link.
+        cache and database, generates a unique short code, and persists the
+        new link.
+
+        Returns:
+            A ready-to-use ``CreateShortLinkUseCase`` instance.
         """
         return CreateShortLinkUseCase(
             uow_factory=self.uow_factory,
@@ -64,15 +93,22 @@ class LinkUseCasesComponent:
             audit_logger=self.audit_logger,
             allowed_schemes=self.allowed_schemes,
             max_collision_attempts=self.max_collision_attempts,
+            guest_link_limit=self.guest_link_limit,
+            guest_link_window_days=self.guest_link_window_days,
+            default_guest_ttl_seconds=self.default_guest_ttl_seconds,
         )
 
-    # ----- Information retrieval -----
+    # ------------------------------------------------------------------
+    # Information retrieval
+    # ------------------------------------------------------------------
     def get_get_link_info_use_case(self) -> GetLinkInfoUseCase:
-        """
-        Return a configured ``GetLinkInfoUseCase``.
+        """Return a configured ``GetLinkInfoUseCase``.
 
         Retrieves basic information about a link by its short code,
-        with cache-first lookup.
+        with cache-first lookup and authorisation checks.
+
+        Returns:
+            A ready-to-use ``GetLinkInfoUseCase`` instance.
         """
         return GetLinkInfoUseCase(
             uow_factory=self.uow_factory,
@@ -82,11 +118,13 @@ class LinkUseCasesComponent:
         )
 
     def get_extended_link_info_use_case(self) -> GetExtendedLinkInfoUseCase:
-        """
-        Return a configured ``GetExtendedLinkInfoUseCase``.
+        """Return a configured ``GetExtendedLinkInfoUseCase``.
 
         Enhances basic link information with derived metrics such as
         popularity, age, and clicks per day.
+
+        Returns:
+            A ready-to-use ``GetExtendedLinkInfoUseCase`` instance.
         """
         return GetExtendedLinkInfoUseCase(
             uow_factory=self.uow_factory,
@@ -97,13 +135,17 @@ class LinkUseCasesComponent:
             recent_days=self.recent_days,
         )
 
-    # ----- Redirect and stats update -----
+    # ------------------------------------------------------------------
+    # Redirect and stats update
+    # ------------------------------------------------------------------
     def get_redirect_link_use_case(self) -> RedirectLinkUseCase:
-        """
-        Return a configured ``RedirectLinkUseCase``.
+        """Return a configured ``RedirectLinkUseCase``.
 
         Resolves a short code to the original URL using a multi-level cache
         and enqueues a background task to update click statistics.
+
+        Returns:
+            A ready-to-use ``RedirectLinkUseCase`` instance.
         """
         return RedirectLinkUseCase(
             uow_factory=self.uow_factory,
@@ -115,11 +157,13 @@ class LinkUseCasesComponent:
         )
 
     def get_update_link_stats_use_case(self) -> UpdateLinkStatsUseCase:
-        """
-        Return a configured ``UpdateLinkStatsUseCase``.
+        """Return a configured ``UpdateLinkStatsUseCase``.
 
-        Designed to be called asynchronously by a worker; increments click
-        counts and refreshes the link cache.
+        Designed to be called asynchronously (e.g. by a Celery worker);
+        increments click counts and refreshes the link cache.
+
+        Returns:
+            A ready-to-use ``UpdateLinkStatsUseCase`` instance.
         """
         return UpdateLinkStatsUseCase(
             uow_factory=self.uow_factory,
@@ -127,17 +171,34 @@ class LinkUseCasesComponent:
             logger=self.logger,
         )
 
-    # ----- Deletion -----
+    # ------------------------------------------------------------------
+    # Deletion
+    # ------------------------------------------------------------------
     def get_delete_link_use_case(self) -> DeleteLinkUseCase:
-        """
-        Return a configured ``DeleteLinkUseCase``.
+        """Return a configured ``DeleteLinkUseCase``.
 
         Deletes a link by its short code after verifying the caller has the
-        ``link:delete`` permission.
+        required permissions.
+
+        Returns:
+            A ready-to-use ``DeleteLinkUseCase`` instance.
         """
         return DeleteLinkUseCase(
             uow_factory=self.uow_factory,
+            cache=self.cache,
             logger=self.logger,
             audit_logger=self.audit_logger,
-            authz=self.authz_service,
+        )
+
+    def get_get_user_links_use_case(self) -> GetUserLinksUseCase:
+        """Return a configured ``GetUserLinksUseCase``.
+
+        Retrieves all short links owned by a specific user.
+
+        Returns:
+            A ready-to-use ``GetUserLinksUseCase`` instance.
+        """
+        return GetUserLinksUseCase(
+            uow_factory=self.uow_factory,
+            base_url=self.base_url,
         )

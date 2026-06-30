@@ -9,6 +9,7 @@ from .dtos.auth import LoginResponse, RegisterResponse
 from .dtos.admin.role import RoleResponse
 from .dtos.admin.permission import PermissionResponse
 from .dtos.current_user_info import CurrentUserInfo
+from .dtos.user_activity import UserActivityResponse
 
 # ------------------------------------------------------------------
 # Ports (interfaces)
@@ -23,6 +24,7 @@ from .ports.task_queue import TaskQueue
 from .ports.auth.auth_service import AuthenticationService
 from .ports.auth.authorization_service import AuthorizationService
 from .ports.uow import UnitOfWork
+from .ports.health_check import HealthCheck
 
 # ------------------------------------------------------------------
 # Application Services (facades)
@@ -44,10 +46,14 @@ from .use_cases.batch.response_builder import BatchResponseBuilder
 from .use_cases.links.create_short_link import CreateShortLinkUseCase
 from .use_cases.links.get_link_info import GetLinkInfoUseCase
 from .use_cases.links.get_extended_link_info import GetExtendedLinkInfoUseCase
+from .use_cases.links.get_user_links import GetUserLinksUseCase
 from .use_cases.links.redirect_link import RedirectLinkUseCase
 from .use_cases.links.delete_link import DeleteLinkUseCase
 from .use_cases.links.update_link_stats import UpdateLinkStatsUseCase
+
+from .use_cases.stats.get_service_health import GetServiceHealthUseCase
 from .use_cases.stats.get_service_stats import GetServiceStatsUseCase
+from .use_cases.stats.get_user_activity_stats import GetUserActivityStatsUseCase
 
 from .use_cases.admin.links.clean_expired_links import CleanExpiredLinksUseCase
 from .use_cases.admin.links.get_recent_links import GetRecentLinksUseCase
@@ -95,6 +101,7 @@ __all__ = [
     "RoleResponse",
     "PermissionResponse",
     "CurrentUserInfo",
+    "UserActivityResponse",
 
     # Ports
     "LinkCache",
@@ -107,6 +114,7 @@ __all__ = [
     "AuthenticationService",
     "AuthorizationService",
     "UnitOfWork",
+    "HealthCheck",
 
     # Services
     "AdminService",
@@ -124,10 +132,14 @@ __all__ = [
     "CreateShortLinkUseCase",
     "GetLinkInfoUseCase",
     "GetExtendedLinkInfoUseCase",
+    "GetUserLinksUseCase",
     "RedirectLinkUseCase",
     "DeleteLinkUseCase",
     "UpdateLinkStatsUseCase",
+
+    "GetServiceHealthUseCase",
     "GetServiceStatsUseCase",
+    "GetUserActivityStatsUseCase",
 
     "CleanExpiredLinksUseCase",
     "GetRecentLinksUseCase",

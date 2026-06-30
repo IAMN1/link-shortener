@@ -62,10 +62,7 @@ class Logger(ABC):
         """
         ...
 
+    @abstractmethod
     def is_healthy(self) -> bool:
-        """Check if the logger is operational without side effects."""
-        try:
-            self.debug("health_check")
-            return True
-        except Exception:
-            return False
+        """Check if logger can write messages right now."""
+        ...

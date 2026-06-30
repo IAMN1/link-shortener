@@ -36,3 +36,13 @@ class RedirectCache(ABC):
             original_url (str): Original URL string.
         """
         ...
+
+    @abstractmethod
+    def delete(self, short_code: ShortCode) -> None:
+        """
+        Remove the original URL for a short code from the redirect cache.
+
+        Args:
+            short_code (ShortCode): Short code value object.
+        """
+        ...

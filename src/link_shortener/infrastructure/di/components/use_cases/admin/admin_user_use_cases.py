@@ -10,7 +10,6 @@ from link_shortener.application import (
     GetUserUseCase,
     DeleteUserUseCase,
     UserManagementService,
-    AuthorizationService,
     Logger,
     UnitOfWork,
 )
@@ -26,14 +25,12 @@ class AdminUserUseCasesComponent:
 
     uow_factory: Callable[[], UnitOfWork]
     user_service: UserManagementService
-    authorization_service: AuthorizationService
     logger: Logger
 
     def get_create_user_use_case(self) -> CreateUserUseCase:
         """Return a configured ``CreateUserUseCase``."""
         return CreateUserUseCase(
             user_service=self.user_service,
-            authorization_service=self.authorization_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
         )
@@ -41,8 +38,7 @@ class AdminUserUseCasesComponent:
     def get_update_user_roles_use_case(self) -> UpdateUserRolesUseCase:
         """Return a configured ``UpdateUserRolesUseCase``."""
         return UpdateUserRolesUseCase(
-            user_service=self.user_service,
-            authorization_service=self.authorization_service,
+            user_service=self.user_service,            
             logger=self.logger,
             uow_factory=self.uow_factory,
         )
@@ -51,7 +47,6 @@ class AdminUserUseCasesComponent:
         """Return a configured ``DeactivateUserUseCase``."""
         return DeactivateUserUseCase(
             user_service=self.user_service,
-            authorization_service=self.authorization_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
         )
@@ -60,7 +55,6 @@ class AdminUserUseCasesComponent:
         """Return a configured ``ActivateUserUseCase``."""
         return ActivateUserUseCase(
             user_service=self.user_service,
-            authorization_service=self.authorization_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
         )
@@ -69,7 +63,6 @@ class AdminUserUseCasesComponent:
         """Return a configured ``ListUsersUseCase``."""
         return ListUsersUseCase(
             user_service=self.user_service,
-            authorization_service=self.authorization_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
         )
@@ -78,7 +71,6 @@ class AdminUserUseCasesComponent:
         """Return a configured ``GetUserUseCase``."""
         return GetUserUseCase(
             user_service=self.user_service,
-            authorization_service=self.authorization_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
         )
@@ -87,7 +79,6 @@ class AdminUserUseCasesComponent:
         """Return a configured ``DeleteUserUseCase``."""
         return DeleteUserUseCase(
             user_service=self.user_service,
-            authorization_service=self.authorization_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
         )

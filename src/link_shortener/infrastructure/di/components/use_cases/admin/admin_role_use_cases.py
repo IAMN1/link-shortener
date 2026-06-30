@@ -8,7 +8,6 @@ from link_shortener.application import (
     ListRolesUseCase,
     GetRoleUseCase,
     RoleManagementService,
-    AuthorizationService,
     Logger,
     UnitOfWork,
 )
@@ -25,7 +24,6 @@ class AdminRoleUseCasesComponent:
 
     uow_factory: Callable[[], UnitOfWork]
     role_service: RoleManagementService
-    authorization_service: AuthorizationService
     logger: Logger
 
     def get_create_role_use_case(self) -> CreateRoleUseCase:
@@ -37,7 +35,6 @@ class AdminRoleUseCasesComponent:
         return CreateRoleUseCase(
             uow_factory=self.uow_factory,
             role_service=self.role_service,
-            authorization_service=self.authorization_service,
             logger=self.logger,
         )
 
@@ -50,7 +47,6 @@ class AdminRoleUseCasesComponent:
         return UpdateRolePermissionsUseCase(
             uow_factory=self.uow_factory,
             role_service=self.role_service,
-            authorization_service=self.authorization_service,
             logger=self.logger,
         )
 
@@ -63,7 +59,6 @@ class AdminRoleUseCasesComponent:
         return DeleteRoleUseCase(
             uow_factory=self.uow_factory,
             role_service=self.role_service,
-            authorization_service=self.authorization_service,
             logger=self.logger,
         )
 
@@ -75,7 +70,6 @@ class AdminRoleUseCasesComponent:
         """
         return ListRolesUseCase(
             uow_factory=self.uow_factory,
-            authorization_service=self.authorization_service,
             logger=self.logger,
         )
 
@@ -87,6 +81,5 @@ class AdminRoleUseCasesComponent:
         """
         return GetRoleUseCase(
             uow_factory=self.uow_factory,
-            authorization_service=self.authorization_service,
             logger=self.logger,
         )

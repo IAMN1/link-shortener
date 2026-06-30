@@ -29,6 +29,7 @@ class ShortLinkResponse:
     last_accessed: Optional[datetime]
     is_new: bool = False
     from_cache: bool = False
+    owner_id: Optional[str] = None
 
     @classmethod
     def from_link(
@@ -56,8 +57,9 @@ class ShortLinkResponse:
             last_accessed=link.last_accessed,
             is_new=is_new,
             from_cache=from_cache,
+            owner_id=link.owner.value if link.owner else None
         )
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Serialize to a dictionary (e.g., for caching).
@@ -108,6 +110,7 @@ class ExtendedLinkInfoResponse:
     age_days: int
     clicks_per_day: float
     last_access_days_ago: Optional[int]
+    owner_id: Optional[str] = None
 
     @classmethod
     def from_link(
@@ -147,4 +150,5 @@ class ExtendedLinkInfoResponse:
             age_days=age_days,
             clicks_per_day=clicks_per_day,
             last_access_days_ago=last_access_days_ago,
+            owner_id=link.owner.value if link.owner else None
         )

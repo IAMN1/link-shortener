@@ -11,7 +11,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import LinkNotFoundError, ShortCode
+from link_shortener.domain import LinkNotFoundError, ShortCode, LinkExpiredError
 
 
 @dataclass
@@ -61,20 +61,28 @@ class RedirectLinkUseCase(BaseUseCase):
             # Step 1: Validate short code
             short_code = ShortCode(short_code_str)
 
-            # Step 2: Check L1 cache (fastest)
+            # Step 2: Check L1 cache (fastest).
+            # L1 only stores the URL string, so expiration must be verified
+            # against L2 (which holds the full Link entity).
             cached_url = self.redirect_cache.get_original_url(short_code)
             if cached_url:
-                # Asynchronously update click count and audit
-                self.task_queue.enqueue_link_accessed(short_code.value, context)
+                cached_link = self.link_cache.get_by_code(short_code)
+                if cached_link and cached_link.is_expired():
+                    log.info("Link expired (L1 cache)", short_code=short_code.value)
+                    raise LinkExpiredError(short_code.value)
 
+                self.task_queue.enqueue_link_accessed(short_code.value, context)
                 log.info("Redirect cache hit (L1)", code=short_code.value)
                 audit.log_url_accessed(short_code=short_code.value, original_url=cached_url)
-
                 return cached_url
 
-            # Step 3: Check L2 cache (full link)
+            # Step 3: Check L2 cache (full link).
             cached_link = self.link_cache.get_by_code(short_code)
             if cached_link:
+
+                if cached_link.is_expired():
+                    log.info("Link expired", short_code=short_code.value)
+                    raise LinkExpiredError(short_code.value)
 
                 # Store in L1 cache for future fast redirects
                 orig_url = cached_link.original_url.value
@@ -93,6 +101,10 @@ class RedirectLinkUseCase(BaseUseCase):
                 if not link:
                     log.warning("Link not found:", code=short_code.value)
                     raise LinkNotFoundError(short_code_str)
+                
+                if link.is_expired():
+                    log.info("Link expired", short_code=short_code.value)
+                    raise LinkExpiredError(short_code.value)
 
                 orig_url = str(link.original_url.value)
                 # Step 6: Cache on all levels
@@ -108,13 +120,7 @@ class RedirectLinkUseCase(BaseUseCase):
 
             return orig_url
 
-        except ValueError as e:
-            log.error(
-                "Invalid short code format", code=short_code_str, error=str(e)
-            )
-            raise ValueError(f"Invalid short code: {str(e)}")
-
-        except LinkNotFoundError:
+        except (ValueError, LinkNotFoundError, LinkExpiredError):
             raise
 
         except Exception as e:
@@ -123,7 +129,7 @@ class RedirectLinkUseCase(BaseUseCase):
                 exc_info=str(e),
                 short_code=short_code_str,
             )
-            raise RuntimeError(f"Failed to redirect: {str(e)}")
+            raise
         finally:
             duration = time.perf_counter() - start_time
             log.debug("Execution time", duration_ms=round(duration * 1000, 2))

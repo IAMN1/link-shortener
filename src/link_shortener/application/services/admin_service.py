@@ -5,6 +5,7 @@ from typing import List, Optional
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.admin.role import RoleResponse
 from link_shortener.application.dtos.user import UserResponse
+from link_shortener.application.dtos.user_activity import UserActivityResponse
 from link_shortener.application.use_cases.admin.roles.create_role import CreateRoleUseCase
 from link_shortener.application.use_cases.admin.roles.delete_role import DeleteRoleUseCase
 from link_shortener.application.use_cases.admin.roles.get_role import GetRoleUseCase
@@ -17,15 +18,34 @@ from link_shortener.application.use_cases.admin.users.delete_user import DeleteU
 from link_shortener.application.use_cases.admin.users.get_user import GetUserUseCase
 from link_shortener.application.use_cases.admin.users.list_user import ListUsersUseCase
 from link_shortener.application.use_cases.admin.users.update_user_role import UpdateUserRolesUseCase
+from link_shortener.application.use_cases.stats.get_service_health import GetServiceHealthUseCase, ServiceHealthStatus
+from link_shortener.application.use_cases.stats.get_user_activity_stats import GetUserActivityStatsUseCase
 
 
 @dataclass
 class AdminService:
     """
-    Facade for administrative operations (user and role management).
+    Facade for all administrative operations.
 
-    Delegates to dedicated use cases while providing a simplified interface
-    for the web layer.
+    Aggregates use cases for user and role management as well as service health
+    checks and user statistics. The web layer interacts exclusively through this
+    class, keeping the internal use case orchestration hidden.
+
+    Attributes:
+        create_user_uc: Use case for creating a new user.
+        update_user_roles_uc: Use case for updating a user's roles.
+        deactivate_user_uc: Use case for deactivating a user.
+        activate_user_uc: Use case for reactivating a user.
+        list_users_uc: Use case for listing users.
+        get_user_uc: Use case for retrieving a single user.
+        delete_user_uc: Use case for deleting a user.
+        create_role_uc: Use case for creating a new role.
+        update_role_permissions_uc: Use case for updating role permissions.
+        delete_role_uc: Use case for deleting a role.
+        list_roles_uc: Use case for listing all roles.
+        get_role_uc: Use case for retrieving a single role.
+        get_service_health_uc: Use case for checking infrastructure health.
+        get_user_activity_stats_uc: Use case for obtaining user activity statistics.
     """
 
     create_user_uc: CreateUserUseCase
@@ -40,6 +60,8 @@ class AdminService:
     delete_role_uc: DeleteRoleUseCase
     list_roles_uc: ListRolesUseCase
     get_role_uc: GetRoleUseCase
+    get_service_health_uc: GetServiceHealthUseCase
+    get_user_activity_stats_uc: GetUserActivityStatsUseCase
 
     # ------------------------------------------------------------------
     # User management
@@ -52,19 +74,21 @@ class AdminService:
         role_names: Optional[List[str]] = None,
         is_active: bool = True,
     ) -> UserResponse:
-        """
-        Create a new user account via the admin panel.
+        """Create a new user account through the admin panel.
 
         Args:
             email: User's email address.
             password: Plain-text password.
             context: Request context containing admin's identity.
-            role_names: Optional list of role names to assign; uses default
-                role when omitted.
-            is_active: Whether the account should be enabled immediately.
+            role_names: Optional list of role names to assign; if omitted the
+                default role is used.
+            is_active: Whether the account should be active immediately.
 
         Returns:
             UserResponse with the newly created user's details.
+
+        Raises:
+            DomainError: If the caller is not authorized or validation fails.
         """
         return self.create_user_uc.execute(
             email=email,
@@ -77,8 +101,7 @@ class AdminService:
     def list_users(
         self, context: RequestContext, limit: int = 100, offset: int = 0
     ) -> List[UserResponse]:
-        """
-        Return a paginated list of all users.
+        """Return a paginated list of all registered users.
 
         Args:
             context: Request context with admin's identity.
@@ -91,23 +114,35 @@ class AdminService:
         return self.list_users_uc.execute(context, limit=limit, offset=offset)
 
     def get_user(self, user_id: str, context: RequestContext) -> Optional[UserResponse]:
-        """
-        Fetch a single user by identifier.
+        """Fetch a single user by identifier.
 
         Args:
             user_id: UUID of the user.
             context: Request context.
 
         Returns:
-            UserResponse if found, else ``None``.
+            UserResponse if found, otherwise ``None``.
         """
         return self.get_user_uc.execute(user_id, context)
+
+    def get_user_activity_stats(
+        self, user_id: str, context: RequestContext
+    ) -> "UserActivityResponse":
+        """Retrieve activity statistics for a specific user.
+
+        Args:
+            user_id: UUID of the user.
+            context: Request context (authorization is handled by the use case).
+
+        Returns:
+            UserActivityResponse containing total links, clicks, and recent links.
+        """
+        return self.get_user_activity_stats_uc.execute(user_id, context)
 
     def update_user_roles(
         self, user_id: str, role_names: List[str], context: RequestContext
     ) -> UserResponse:
-        """
-        Replace the roles assigned to a user.
+        """Replace the roles assigned to a user.
 
         Args:
             user_id: UUID of the user.
@@ -118,47 +153,42 @@ class AdminService:
             Updated UserResponse.
         """
         return self.update_user_roles_uc.execute(
-            user_id=user_id,
-            role_names=role_names,
-            context=context,
+            user_id=user_id, role_names=role_names, context=context
         )
 
     def deactivate_user(self, user_id: str, context: RequestContext) -> UserResponse:
-        """
-        Deactivate a user account (soft delete).
+        """Deactivate a user account (soft delete).
 
         Args:
             user_id: UUID of the user.
             context: Request context.
 
         Returns:
-            UserResponse with active flag set to False.
+            UserResponse with ``is_active`` set to ``False``.
         """
         return self.deactivate_user_uc.execute(user_id, context)
 
     def activate_user(self, user_id: str, context: RequestContext) -> UserResponse:
-        """
-        Reactivate a previously deactivated user account.
+        """Reactivate a previously deactivated user account.
 
         Args:
             user_id: UUID of the user.
             context: Request context.
 
         Returns:
-            UserResponse with active flag set to True.
+            UserResponse with ``is_active`` set to ``True``.
         """
         return self.activate_user_uc.execute(user_id, context)
 
     def delete_user(self, user_id: str, context: RequestContext) -> bool:
-        """
-        Permanently delete a user.
+        """Permanently delete a user.
 
         Args:
             user_id: UUID of the user.
             context: Request context.
 
         Returns:
-            ``True`` if the user was deleted, ``False`` if not found.
+            ``True`` if the user was deleted, ``False`` if the user did not exist.
         """
         return self.delete_user_uc.execute(user_id, context)
 
@@ -172,8 +202,7 @@ class AdminService:
         permission_names: List[str],
         context: RequestContext,
     ) -> RoleResponse:
-        """
-        Create a new role with the given permissions.
+        """Create a new role with the given permissions.
 
         Args:
             name: Unique role name.
@@ -192,8 +221,7 @@ class AdminService:
         )
 
     def list_roles(self, context: RequestContext) -> List[RoleResponse]:
-        """
-        Return all roles defined in the system.
+        """Return all roles defined in the system.
 
         Args:
             context: Request context.
@@ -203,28 +231,28 @@ class AdminService:
         """
         return self.list_roles_uc.execute(context)
 
-    def get_role(self, role_name: str, context: RequestContext) -> Optional[RoleResponse]:
-        """
-        Fetch a single role by name.
+    def get_role(
+        self, role_name: str, context: RequestContext
+    ) -> Optional[RoleResponse]:
+        """Fetch a single role by name.
 
         Args:
             role_name: Role name to look up.
             context: Request context.
 
         Returns:
-            RoleResponse if found, else ``None``.
+            RoleResponse if found, otherwise ``None``.
         """
         return self.get_role_uc.execute(role_name, context)
 
     def update_role_permissions(
         self, role_name: str, permission_names: List[str], context: RequestContext
     ) -> RoleResponse:
-        """
-        Replace the permission set of a role.
+        """Replace the permission set of a role.
 
         Args:
             role_name: Role to update.
-            permission_names: New list of permission names.
+            permission_names: New list of permission names (full replacement).
             context: Request context.
 
         Returns:
@@ -237,14 +265,27 @@ class AdminService:
         )
 
     def delete_role(self, role_name: str, context: RequestContext) -> bool:
-        """
-        Delete a non-system role.
+        """Delete a non-system role.
 
         Args:
-            role_name: Role name to delete.
+            role_name: Name of the role to delete.
             context: Request context.
 
         Returns:
-            ``True`` if deleted, ``False`` if role is system or not found.
+            ``True`` if deleted, ``False`` if the role is a system role or not found.
         """
         return self.delete_role_uc.execute(role_name, context)
+
+    # ------------------------------------------------------------------
+    # Service health
+    # ------------------------------------------------------------------
+    def get_service_health(self, context: RequestContext) -> ServiceHealthStatus:
+        """Check the health of all infrastructure dependencies.
+
+        Args:
+            context: Request context.
+
+        Returns:
+            ServiceHealthStatus indicating which components are healthy.
+        """
+        return self.get_service_health_uc.execute(context)

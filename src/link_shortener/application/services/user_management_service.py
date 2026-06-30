@@ -17,7 +17,7 @@ class UserManagementService:
     Coordinates between repositories and authentication services.
     Authorization checks are performed by the calling use case.
     """
-    auth_service: AuthenticationService
+    authentication_service: AuthenticationService
     default_role_name: str
 
     def create_user(
@@ -56,7 +56,7 @@ class UserManagementService:
             raise ValidationError("Email already registered", field="email")
         
         # Hash password using authentication service
-        hashed_password = self.auth_service.hash_password(password)
+        hashed_password = self.authentication_service.hash_password(password)
         password_hash_vo = PasswordHash(hashed_password)
 
         # Determine roles to assign
@@ -68,7 +68,7 @@ class UserManagementService:
                     f"Default role '{self.default_role_name}' not found",
                     code="CONFIGURATION_ERROR"
                 )
-            assigned_roles = [self.default_role]
+            assigned_roles = [default_role]
         
         # Create domain entity (business rules encapsulated inside)
         user = User.create(
@@ -103,46 +103,6 @@ class UserManagementService:
             raise DomainError(f"User with id {user_id} not found", code="USER_NOT_FOUND")
         
         user.roles = roles
-        return uow.users.save(user)
-    
-    def add_role(self, uow: UnitOfWork, user_id: str, role: Role) -> User:
-        """
-        Add a single role to a user if not already present.
-
-        Args:
-            uow: Unit of work.
-            user_id: User ID.
-            role: Role to add.
-
-        Returns:
-            Updated User.
-        """
-        user = uow.users.find_by_id(user_id)
-        if not user:
-            raise DomainError(f"User with id {user_id} not found", code="USER_NOT_FOUND")
-        
-        if role not in user.roles:
-            user.roles.append(role)
-            user = uow.users.save(user)
-        return user
-    
-    def remove_role(self, uow: UnitOfWork, user_id: str, role_name: str) -> User:
-        """
-        Remove a role from a user by role name.
-
-        Args:
-            uow: Unit of work.
-            user_id: User ID.
-            role_name: Name of the role to remove.
-
-        Returns:
-            Updated User.
-        """
-        user = uow.users.find_by_id(user_id)
-        if not user:
-            raise DomainError(f"User with id {user_id} not found", code="USER_NOT_FOUND")
-        
-        user.roles = [r for r in user.roles if r.name != role_name]
         return uow.users.save(user)
     
     def deactivate_user(self, uow: UnitOfWork, user_id: str) -> User:
@@ -206,23 +166,6 @@ class UserManagementService:
             User if found, else None.
         """
         return uow.users.find_by_id(user_id)
-    
-    def get_user_by_email(self, uow: UnitOfWork, email: str) -> Optional[User]:
-        """
-        Find a user by email.
-
-        Args:
-            uow: Unit of work.
-            email: Email string.
-
-        Returns:
-            User if found, else None.
-        """
-        try:
-            email_vo = Email(email)
-            return uow.users.find_by_email(email_vo)
-        except ValueError:
-            return None
     
     def delete_user(self, uow: UnitOfWork, user_id: str) -> bool:
         """

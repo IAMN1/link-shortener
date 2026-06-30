@@ -101,4 +101,3 @@ class BatchLinkFetcher:
 
         all_results = cache_results + db_results
         return all_results, groups_to_create, links_to_cache
-    

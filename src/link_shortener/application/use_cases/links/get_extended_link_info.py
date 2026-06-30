@@ -40,6 +40,7 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
         Raises:
             LinkNotFoundError: If link not found.
             ValueError: If short code format is invalid.
+            DomainError: If the user is not authorised.
         """
         log = self._get_logger(self.logger, context)
         start_time = time.perf_counter()
@@ -67,8 +68,8 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
                     log.warning("Link not found", code=short_code.value)
                     raise LinkNotFoundError(short_code_str)
 
-                # Cache for future
-                self.cache.save(link)
+            # Cache for future
+            self.cache.save(link)
 
             log.info("Found in repository", short_code=short_code.value)
 

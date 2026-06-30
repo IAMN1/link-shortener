@@ -1,3 +1,12 @@
+"""
+Root Dependency Injection container for the link shortener application.
+
+This module provides the ``Container`` class which wires together all
+infrastructure components, use cases, and application services.  Dependencies
+are created lazily to avoid unnecessary initialisation at import time.
+"""
+
+
 from link_shortener.application import (
     UnitOfWork, RoleManagementService, 
     UserManagementService, LinkService,
@@ -13,6 +22,7 @@ from link_shortener.infrastructure.di.components.policy import PolicyComponent
 from link_shortener.infrastructure.di.components.rate_limiter import RateLimiterComponent
 from link_shortener.infrastructure.di.components.task_queue import TaskQueueComponent
 from link_shortener.infrastructure.di.components.auth import AuthComponent
+from link_shortener.infrastructure.di.components.use_cases.health.health_use_cases import HealthUseCasesComponent
 from link_shortener.infrastructure.di.components.use_cases.link.link_use_cases import LinkUseCasesComponent
 from link_shortener.infrastructure.di.components.use_cases.link.batch_use_cases import BatchUseCasesComponent
 from link_shortener.infrastructure.di.components.use_cases.stats.stats_use_cases import StatsUseCasesComponent
@@ -20,6 +30,7 @@ from link_shortener.infrastructure.di.components.use_cases.admin.admin_link_use_
 from link_shortener.infrastructure.di.components.use_cases.admin.admin_role_use_cases import AdminRoleUseCasesComponent
 from link_shortener.infrastructure.di.components.use_cases.admin.admin_user_use_cases import AdminUserUseCasesComponent
 from link_shortener.infrastructure.di.components.use_cases.authentication.auth_use_cases import AuthUseCasesComponent
+from link_shortener.infrastructure.health.infrastructure_health_check import InfrastructureHealthCheck
 
 
 
@@ -29,19 +40,19 @@ class Container:
 
     All dependencies are created lazily. The container provides:
 
-    * Public accessors for use cases
-    * Public accessors for services
-    * Public accessors for cross-cutting infrastructure (cache, logger, etc.)
+    * Public accessors for use cases.
+    * Public accessors for application services.
+    * Public accessors for cross-cutting infrastructure (cache, logger, etc.).
 
     Lifecycle:
-        ``close()`` must be called at shutdown to release resources
-        (database connections, cache connections, logger/audit failover threads).
+        ``close()`` must be called at shutdown to release resources (database
+        connections, cache connections, logger/audit failover threads).
     """
     def __init__(self, config):
         """
         Args:
-            config: An application config object (e.g., ``BaseConfig``
-                instance) providing all settings needed by the components.
+            config: An application config object (e.g. ``BaseConfig`` instance)
+                providing all settings needed by the components.
         """
         self.config = config
 
@@ -112,6 +123,14 @@ class Container:
         )
 
         # ------------------------------------------------------------------
+        # Health checker
+        # ------------------------------------------------------------------
+        self.health_check = InfrastructureHealthCheck(
+            db_manager=self.db_component.get_db_manager(),
+            cache=self.cache_component.get_cache(),
+        )
+
+        # ------------------------------------------------------------------
         # Unit of Work factory (created once, shared across components)
         # ------------------------------------------------------------------
         def uow_factory(read_only: bool = False) -> UnitOfWork:
@@ -137,12 +156,25 @@ class Container:
         # ------------------------------------------------------------------
         self._role_management_service = RoleManagementService()
         self._user_management_service = UserManagementService(
-            auth_service=self.auth_component.get_authentication_service(),
+            authentication_service=self.auth_component.get_authentication_service(),
             default_role_name=self.config.DEFAULT_ROLE_NAME,
         )
 
         # ------------------------------------------------------------------
-        # Facade service for Link operations
+        # Use‑case component caches (lazy initialisation)
+        # ------------------------------------------------------------------
+        self._link_use_cases = None
+        self._batch_use_cases = None
+        self._stats_use_cases = None
+        self._admin_link_use_cases = None
+        self._admin_role_use_cases = None
+        self._admin_user_use_cases = None
+        self._auth_use_cases = None
+        self._user_activity_stats_uc = None
+        self._health_use_cases = None
+
+        # ------------------------------------------------------------------
+        # Facade service for Link operations (eagerly composed)
         # ------------------------------------------------------------------
         self._link_service = LinkService(
             create_short_link_use_case=self.get_create_short_link_use_case(),
@@ -151,10 +183,12 @@ class Container:
             redirect_link_use_case=self.get_redirect_link_use_case(),
             batch_create_links_use_case=self.get_batch_create_links_use_case(),
             get_service_stats_use_case=self.get_get_service_stats_use_case(),
+            get_user_links_use_case=self.get_get_user_links_use_case(),
+            delete_link_use_case=self.get_delete_link_use_case(),
         )
 
         # ------------------------------------------------------------------
-        # Facade service for Admin operations
+        # Facade service for Admin operations (eagerly composed)
         # ------------------------------------------------------------------
         self._admin_service = AdminService(
             create_user_uc=self.get_create_user_use_case(),
@@ -169,18 +203,9 @@ class Container:
             delete_role_uc=self.get_delete_role_use_case(),
             list_roles_uc=self.get_list_roles_use_case(),
             get_role_uc=self.get_get_role_use_case(),
+            get_service_health_uc=self.get_service_health_use_case(),
+            get_user_activity_stats_uc=self.get_user_activity_stats_use_case(),
         )
-
-        # ------------------------------------------------------------------
-        # Use‑case component caches (lazy initialisation)
-        # ------------------------------------------------------------------
-        self._link_use_cases = None
-        self._batch_use_cases = None
-        self._stats_use_cases = None
-        self._admin_link_use_cases = None
-        self._admin_role_use_cases = None
-        self._admin_user_use_cases = None
-        self._auth_use_cases = None
 
     # ------------------------------------------------------------------
     # Lazy initialisers for use‑case component groups
@@ -197,12 +222,14 @@ class Container:
                 base_url=self.config.BASE_URL,
                 logger=self.logger_component.get_logger(__name__),
                 audit_logger=self.audit_component.get_audit_logger(),
-                authz_service=self.auth_component.get_authorization_service(),
                 task_queue=self.task_queue_component.get_task_queue(),
                 allowed_schemes=self.config.ALLOWED_SCHEMES,
                 max_collision_attempts=self.config.MAX_COLLISION_ATTEMPTS,
                 popular_threshold=self.config.POPULAR_THRESHOLD,
                 recent_days=self.config.RECENT_DAYS,
+                guest_link_limit=self.config.GUEST_LINK_LIMIT,
+                guest_link_window_days=self.config.GUEST_LINK_WINDOW_DAYS,
+                default_guest_ttl_seconds=self.config.DEFAULT_GUEST_TTL_SECONDS,
             )
         return self._link_use_cases
 
@@ -251,7 +278,6 @@ class Container:
             self._admin_role_use_cases = AdminRoleUseCasesComponent(
                 uow_factory=self._uow_factory,
                 role_service=self._role_management_service,
-                authorization_service=self.auth_component.get_authorization_service(),
                 logger=self.logger_component.get_logger(__name__),
             )
         return self._admin_role_use_cases
@@ -262,7 +288,6 @@ class Container:
             self._admin_user_use_cases = AdminUserUseCasesComponent(
                 uow_factory=self._uow_factory,
                 user_service=self._user_management_service,
-                authorization_service=self.auth_component.get_authorization_service(),
                 logger=self.logger_component.get_logger(__name__),
             )
         return self._admin_user_use_cases
@@ -272,11 +297,20 @@ class Container:
         if self._auth_use_cases is None:
             self._auth_use_cases = AuthUseCasesComponent(
                 uow_factory=self._uow_factory,
-                auth_service=self.auth_component.get_authentication_service(),
+                authentication_service=self.auth_component.get_authentication_service(),
                 logger=self.logger_component.get_logger(__name__),
                 default_role_name=self.config.DEFAULT_ROLE_NAME,
             )
         return self._auth_use_cases
+
+    def _init_health_use_cases(self):
+        """Ensure ``HealthUseCasesComponent`` is created and return it."""
+        if self._health_use_cases is None:
+            self._health_use_cases = HealthUseCasesComponent(
+                health_check=self.health_check,
+                logger=self.logger_component.get_logger(__name__),
+            )
+        return self._health_use_cases
 
     # ------------------------------------------------------------------
     # Public use case accessors
@@ -385,6 +419,19 @@ class Container:
         """Return fully configured ``RegisterUseCase``."""
         return self._init_auth_use_cases().get_register_use_case()
 
+    # Additional use cases
+    def get_user_activity_stats_use_case(self):
+        """Return fully configured ``GetUserActivityStatsUseCase``."""
+        return self._init_stats_use_cases().get_user_activity_stats_use_case()
+
+    def get_service_health_use_case(self):
+        """Return fully configured ``GetServiceHealthUseCase``."""
+        return self._init_health_use_cases().get_service_health_use_case()
+
+    def get_get_user_links_use_case(self):
+        """Return fully configured ``GetUserLinksUseCase``."""
+        return self._init_link_use_cases().get_get_user_links_use_case()
+
     # ------------------------------------------------------------------
     # Public service accessors
     # ------------------------------------------------------------------
@@ -393,7 +440,7 @@ class Container:
         return self._link_service
 
     def get_admin_service(self) -> AdminService:
-        """Return the application facade for admin operations"""
+        """Return the application facade for admin operations."""
         return self._admin_service
 
     def get_role_management_service(self) -> RoleManagementService:
@@ -408,7 +455,12 @@ class Container:
     # Public infrastructure accessors
     # ------------------------------------------------------------------
     def get_uow_factory(self):
-        """Return a callable that creates fresh ``UnitOfWork`` instances."""
+        """
+        Return a callable that creates fresh ``UnitOfWork`` instances.
+
+        Returns:
+            A factory with signature ``(read_only: bool = False) -> UnitOfWork``.
+        """
         return self._uow_factory
 
     def get_logger(self, module_name: str):
@@ -423,7 +475,7 @@ class Container:
         """
         return self.logger_component.get_logger(module_name)
 
-    def get_active_logger_name(self):
+    def get_active_logger_name(self) -> str:
         """Return the name of the currently active logger implementation."""
         return self.logger_component.get_active_logger_name()
 
@@ -458,6 +510,9 @@ class Container:
         """Return the RBAC authorization service."""
         return self.auth_component.get_authorization_service()
 
+    # ------------------------------------------------------------------
+    # Resource cleanup
+    # ------------------------------------------------------------------
     def close(self):
         """
         Release all resources held by the container.

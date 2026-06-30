@@ -3,12 +3,11 @@ from typing import Callable, List
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.admin.role import RoleResponse
-from link_shortener.application.ports.auth.authorization_service import AuthorizationService
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.services.role_management_service import RoleManagementService
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import DomainError, SystemPermissions
+from link_shortener.domain import DomainError
 
 
 @dataclass
@@ -20,7 +19,6 @@ class UpdateRolePermissionsUseCase(BaseUseCase):
     """
     uow_factory: Callable[[], UnitOfWork]
     role_service: RoleManagementService
-    authorization_service: AuthorizationService
     logger: Logger
 
     def execute(
@@ -46,25 +44,11 @@ class UpdateRolePermissionsUseCase(BaseUseCase):
         log = self._get_logger(self.logger, context)
 
         with self.uow_factory() as uow:
-            user = None
-            if context and context.current_user:
-                user = uow.users.find_by_id(context.current_user.id)
-            if not self.authorization_service.is_allowed(user, SystemPermissions.ADMIN_MANAGE_ROLES.value):
-                log.warning(
-                    "Unauthorized attempt to update role", 
-                    user_id=user.id if user else None
-                )
-                raise DomainError("Not authorized to manage roles", code="FORBIDDEN")
-
             try:
                 role = self.role_service.update_role_permissions(uow, role_name, permission_names)
                 uow.commit()
                 
-                log.info(
-                    "Role updated",
-                    role_name=role.name,
-                    updated_by=user.id if user else "system"
-                )
+                log.info("Role updated", role_name=role.name)
                 return RoleResponse.from_role(role)
             except ValueError as e:
                 log.error("Role update failed", error=str(e))
