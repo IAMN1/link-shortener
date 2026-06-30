@@ -85,16 +85,18 @@ class JwtAuthenticationService(AuthenticationService):
             # Return a detached entity (session will be closed).
             return user
     
-    def _create_token(self, user: User, expires_delta: timedelta) -> str:
+    def _create_token(self, user: User, expires_delta: timedelta, token_type: str) -> str:
         """
         Internal helper to build a signed JWT.
 
-        The payload includes ``sub`` (user ID), ``email``, ``roles``, and
-        standard ``exp``/``iat`` claims.
+        The payload includes ``sub`` (user ID), ``email``, ``roles``,
+        standard ``exp``/``iat`` claims, and a ``type`` claim to distinguish
+        access and refresh tokens.
 
         Args:
             user: The authenticated user.
             expires_delta: Token lifetime.
+            token_type: Either "access" or "refresh".
 
         Returns:
             Encoded JWT string.
@@ -105,6 +107,7 @@ class JwtAuthenticationService(AuthenticationService):
             "roles": [role.name for role in user.roles],
             "exp": datetime.now(timezone.utc) + expires_delta,
             "iat": datetime.now(timezone.utc),
+            "type": token_type,
         }
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
     
@@ -118,7 +121,7 @@ class JwtAuthenticationService(AuthenticationService):
         Returns:
             JWT access token string.
         """
-        return self._create_token(user, self.access_expire)
+        return self._create_token(user, self.access_expire, "access")
     
     def create_refresh_token(self, user: User) -> str:
         """
@@ -130,20 +133,23 @@ class JwtAuthenticationService(AuthenticationService):
         Returns:
             JWT refresh token string.
         """
-        return self._create_token(user, self.refresh_expire)
+        return self._create_token(user, self.refresh_expire, "refresh")
     
-    def validate_token(self, token: str) -> Optional[Dict[str, Any]]:
+    def validate_token(self, token: str, expected_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Decode and validate a JWT.
 
         Args:
             token: The JWT string.
+            expected_type: If provided, the token's ``type`` claim must match.
 
         Returns:
             Dictionary with payload claims if valid, else None.
         """
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+            if expected_type and payload.get("type") != expected_type:
+                return None
             return payload
         except jwt.PyJWTError:
             return None
@@ -159,7 +165,7 @@ class JwtAuthenticationService(AuthenticationService):
             New access token string, or None if refresh token is invalid
             or the user no longer exists.
         """
-        payload = self.validate_token(token=refresh_token)
+        payload = self.validate_token(token=refresh_token, expected_type="refresh")
         if not payload:
             return None
         
