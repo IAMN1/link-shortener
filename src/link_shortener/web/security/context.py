@@ -7,7 +7,7 @@ current request.
 """
 
 from typing import Optional
-from flask import g, request
+from flask import current_app, g, request
 
 from link_shortener.application import RequestContext
 from link_shortener.domain import User
@@ -15,16 +15,21 @@ from link_shortener.domain import User
 
 def get_client_ip() -> str:
     """
-    Extract the real client IP address, accounting for proxies.
+    Extract the real client IP address, accounting for trusted proxies.
 
-    If the ``X-Forwarded-For`` header is present, the first IP in the list
-    is returned. Otherwise ``request.remote_addr`` is used.
+    Only trusts X-Forwarded-For when the request comes from a trusted proxy.
+    Falls back to request.remote_addr.
 
     Returns:
         Client IP string, or an empty string if unavailable.
     """
-    if request.headers.get('X-Forwarded-For'):
-        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    trusted_proxies = current_app.config.get("TRUSTED_PROXIES", [])
+
+    if request.remote_addr in trusted_proxies:
+        forwarded_for = request.headers.get('X-Forwarded-For')
+        if forwarded_for:
+            return forwarded_for.split(',')[0].strip()
+
     return request.remote_addr or ''
 
 

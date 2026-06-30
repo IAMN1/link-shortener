@@ -359,6 +359,23 @@ class BaseConfig:
     Useful during development and testing. Never set to true in production.
     """
 
+    CORS_ORIGINS: list = os.environ.get("CORS_ORIGINS", "http://localhost:5000").split(",")
+    """
+    List of allowed CORS origins.
+    Set via CORS_ORIGINS env var, comma-separated (e.g. "https://example.com,https://app.example.com").
+    """
+
+    TRUSTED_PROXIES: list = (
+        os.environ.get("TRUSTED_PROXIES", "").split(",")
+        if os.environ.get("TRUSTED_PROXIES")
+        else []
+    )
+    """
+    List of trusted proxy IP addresses.
+    X-Forwarded-For header is only honored when request.remote_addr is in this list.
+    Set via TRUSTED_PROXIES env var, comma-separated (e.g. "10.0.0.1,10.0.0.2").
+    """
+
 
     # ==========================================================================
     # Alembic Integration
@@ -383,16 +400,19 @@ class BaseConfig:
     # ==========================================================================
     # Database Settings
     # ==========================================================================
-    SQLALCHEMY_ECHO: bool = os.environ.get("SQLALCHEMY_ECHO", "true").lower() == "true"
+    SQLALCHEMY_ECHO: bool = os.environ.get("SQLALCHEMY_ECHO", "false").lower() == "true"
     """
     If True, SQLAlchemy logs all SQL statements.
     Should be False in production due to performance and security.
     """
 
-    DATABASE_TYPE: str = os.environ.get("DATABASE_TYPE","sqlite") # "sqlite" or "postgressql"
-    """
-    Database backend: "sqlite" or "postgresql".
-    """
+    @property
+    def DATABASE_TYPE(self) -> str:
+        """
+        Database backend: "sqlite" or "postgresql".
+        Read lazily to pick up values loaded by load_dotenv().
+        """
+        return os.environ.get("DATABASE_TYPE", "sqlite")
 
     DATABASE_HOST: str = os.environ.get("DATABASE_HOST", "localhost")
     DATABASE_PORT: int = int(os.environ.get("DATABASE_PORT", 5432))
@@ -400,10 +420,13 @@ class BaseConfig:
     DATABASE_USER: str = os.environ.get("DATABASE_USER", "")
     DATABASE_PASSWORD: str = os.environ.get("DATABASE_PASSWORD", "")
     
-    DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
-    """
-    Full database connection URL. If set, overrides individual DATABASE_* settings.
-    """
+    @property
+    def DATABASE_URL(self) -> str:
+        """
+        Full database connection URL. If set, overrides individual DATABASE_* settings.
+        Read lazily to pick up values loaded by load_dotenv().
+        """
+        return os.environ.get("DATABASE_URL", "")
 
     # Pool parameters (used only for PostgreSQL)
     DATABASE_POOL_PRE_PING: bool = os.environ.get("DATABASE_POOL_PRE_PING", "true").lower() == "true"

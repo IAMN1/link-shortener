@@ -52,14 +52,9 @@ class AuthenticationMiddleware:
             g.authorization_service = self.authorization_service
 
             token = None
-            # 1. Try the Authorization header first.
             auth_header = request.headers.get("Authorization")
             if auth_header and auth_header.startswith("Bearer "):
                 token = auth_header[7:]
-
-            # 2. Fall back to the access_token cookie.
-            if not token:
-                token = request.cookies.get("access_token")
 
             if not token:
                 return

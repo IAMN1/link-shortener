@@ -23,7 +23,6 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/pyth
 COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 COPY ./src ./src/
-COPY .env .env
 
 RUN groupadd --gid 1000 appuser && \
     useradd --create-home --uid 1000 --gid 1000 appuser && \
@@ -38,8 +37,4 @@ EXPOSE 5000
 ENTRYPOINT ["/entrypoint.sh"]
 
 # Команда по умолчанию – для продакшена (gunicorn)
-CMD gunicorn --bind 0.0.0.0:${PORT:-5000} \ 
-            --workers ${GUNICORN_WORKERS:-2} \
-            --access-logfile - \
-            --error-logfile - \
-            "link_shortener.web.app_factory:create_app()"
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers ${GUNICORN_WORKERS:-2} --access-logfile - --error-logfile - link_shortener.web.app_factory:create_app()"]

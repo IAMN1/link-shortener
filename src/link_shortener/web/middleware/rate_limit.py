@@ -1,5 +1,6 @@
 from flask import g, jsonify, request
 from link_shortener.application import RateLimiter
+from link_shortener.web.security.context import get_client_ip
 
 
 class RateLimitMiddleware:
@@ -42,8 +43,7 @@ class RateLimitMiddleware:
             if hasattr(g, "current_user") and g.current_user:
                 client_id = f"user:{g.current_user.id}"
             else:
-                # Use client IP (or X-Forwarded-For if behind a proxy) as the identifier.
-                client_id = request.headers.get('X-Forwarded-For', request.remote_addr)
+                client_id = get_client_ip()
 
             # Combine client ID with endpoint to isolate limits per endpoint.
             key = f"{client_id}:{request.endpoint}"

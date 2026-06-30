@@ -83,6 +83,7 @@ def create_app(config=None) -> Flask:
     # ------------------------------------------------------------------
     CORS(
         app,
+        origins=app.config.get("CORS_ORIGINS", ["http://localhost:5000"]),
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization"],
         expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"],
@@ -100,9 +101,15 @@ def create_app(config=None) -> Flask:
     auto_load_db_roles = app.config.get("AUTO_SEED_ROLES", True)
     if auto_load_db_roles:
         with app.app_context():
-            db_manager = container.get_db_manager()
-            with db_manager.session() as session:
-                seed_base_roles(session)
+            try:
+                db_manager = container.get_db_manager()
+                with db_manager.session() as session:
+                    seed_base_roles(session)
+            except Exception as e:
+                container.get_logger(__name__).warning(
+                    "AUTO_SEED_ROLES failed (tables may not exist yet)",
+                    error=str(e),
+                )
 
     # ------------------------------------------------------------------
     # Register Middlewares (order matters)
