@@ -121,6 +121,9 @@ docker compose exec app flask <команда>
 | `SECRET_KEY` | dev-ключ | Секрет Flask (менять в продакшене) |
 | `SHORT_CODE_PEPPER` | dev-pepper | Перец для хеширования коротких кодов |
 | `COOKIE_SECURE` | false | Secure-флаг для cookie (true в production) |
+| `SESSION_COOKIE_SECURE` | false | Secure-флаг для сессионных cookie (true в ProductionConfig) |
+| `SESSION_COOKIE_SAMESITE` | Lax | SameSite policy для cookie |
+| `SESSION_COOKIE_HTTPONLY` | true | HttpOnly-флаг для cookie |
 
 ### Rate Limiting
 
@@ -193,6 +196,48 @@ API эндпоинт: `GET /api/v1/admin/health` (требует роль admin)
 > **Примечание:** результаты проверки здоровья кэшируются 15 секунд для снижения нагрузки на инфраструктуру.
 
 Docker healthcheck: `GET /health` (проверяется автоматически каждые 30 секунд)
+
+## Тестирование
+
+### Запуск тестов
+
+```bash
+# Все тесты (Docker-сервисы поднимаются автоматически)
+uv run pytest tests/ -v
+
+# Только unit-тесты
+uv run pytest tests/unit/ -v
+
+# Только интеграционные (SQLite)
+uv run pytest tests/integration/ --ignore=tests/integration/docker/ -v
+
+# Docker-интеграционные (PostgreSQL + Redis — поднимаются автоматически)
+uv run pytest tests/integration/docker/ -v
+
+# E2E тесты
+uv run pytest tests/e2e/ -v
+
+# Smoke test всех эндпоинтов
+uv run python tests/live/smoke_test.py
+
+# С покрытием
+uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
+```
+
+### Управление Docker-сервисами для тестов
+
+```bash
+# Запустить тестовые сервисы (PostgreSQL + Redis)
+docker compose -f docker-compose.test.yml up -d
+
+# Проверить статус
+docker compose -f docker-compose.test.yml ps
+
+# Остановить и удалить данные
+docker compose -f docker-compose.test.yml down -v
+```
+
+> **Примечание:** при запуске `pytest tests/integration/docker/` Docker-сервисы поднимаются и останавливаются автоматически.
 
 ## Обновление приложения
 

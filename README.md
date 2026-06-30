@@ -3,8 +3,8 @@
 Сервис сокращения ссылок на Python/Flask с архитектурой Clean Architecture. Поддерживает гостевое создание ссылок, аккаунты пользователей, RBAC, асинхронную статистику и кэширование в Redis.
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-241%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-72%25-blue.svg)]()
+[![Tests](https://img.shields.io/badge/tests-319%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-79%25-blue.svg)]()
 
 ## Возможности
 
@@ -18,6 +18,7 @@
 - **Rate limiting** — защита от brute-force на auth-эндпоинтах
 - **Health check кэширование** — результаты проверки здоровья кэшируются 15 сек
 - **CLI** — команды обслуживания для администраторов
+- **Безопасность** — JWT с разделением типов токенов, trusted proxy validation, restricted CORS
 
 ## Быстрый старт
 
@@ -48,8 +49,8 @@ docker compose exec app flask create-admin --email admin@example.com --password 
 | POST | `/api/v1/batch/shorten` | Нет | Пакетное создание ссылок |
 | POST | `/api/v1/auth/register` | Нет | Регистрация |
 | POST | `/api/v1/auth/login` | Нет | Получить JWT токены |
-| POST | `/api/v1/auth/refresh` | Cookie | Обновить access token |
-| POST | `/api/v1/auth/logout` | Cookie | Выход |
+| POST | `/api/v1/auth/refresh` | Bearer | Обновить access token |
+| POST | `/api/v1/auth/logout` | Bearer | Выход |
 | GET | `/api/v1/admin/health` | Admin | Проверка здоровья инфраструктуры |
 | GET | `/api/v1/admin/users` | Admin | Список пользователей |
 | GET | `/api/v1/admin/roles` | Admin | Список ролей |
@@ -86,21 +87,44 @@ src/link_shortener/
 
 Менеджер пакетов: **uv**
 
+Проект использует три уровня тестирования:
+
+### Уровень 1: Unit-тесты (моки, изолированно)
+
 ```bash
-# Все тесты
-uv run pytest tests/ -v
-
-# Только unit-тесты
 uv run pytest tests/unit/ -v
+```
 
-# Только интеграционные тесты
+### Уровень 2: Интеграционные тесты (реальная in-memory SQLite)
+
+```bash
 uv run pytest tests/integration/ -v
+```
+
+### Уровень 2b: Интеграционные тесты (реальный PostgreSQL + Redis)
+
+Docker-сервисы поднимаются автоматически:
+
+```bash
+uv run pytest tests/integration/docker/ -v
+```
+
+### Уровень 3: E2E тесты (полные пользовательские сценарии)
+
+```bash
+uv run pytest tests/e2e/ -v
+```
+
+### Все тесты вместе
+
+```bash
+uv run pytest tests/ -v
 
 # С покрытием
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 241 (unit + integration), покрытие: 72%
+Тесты: 319 (unit + integration + e2e), покрытие: 79%
 
 ## Технологический стек
 

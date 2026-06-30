@@ -56,21 +56,51 @@ src/link_shortener/
 
 Менеджер пакетов: **uv**
 
-```bash
-# Все тесты
-uv run pytest tests/ -v
+Проект использует три уровня тестирования:
 
-# Только unit-тесты
+```bash
+# Уровень 1: Unit-тесты (моки, изолированно)
 uv run pytest tests/unit/ -v
 
-# Только интеграционные тесты
+# Уровень 2: Интеграционные тесты (реальная in-memory SQLite)
 uv run pytest tests/integration/ -v
+
+# Уровень 2b: Интеграционные тесты (реальный PostgreSQL + Redis)
+# Docker-сервисы поднимаются автоматически
+uv run pytest tests/integration/docker/ -v
+
+# Уровень 3: E2E тесты (полные пользовательские сценарии)
+uv run pytest tests/e2e/ -v
+
+# Все тесты вместе
+uv run pytest tests/ -v
 
 # С покрытием
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 241 (unit + integration), покрытие: 72%
+Тесты: 319 (unit + integration + e2e), покрытие: 79%
+
+### Структура тестов
+
+```
+tests/
+├── unit/                          # Моки, изолированно
+│   ├── domain/                    # Сущности, value objects
+│   ├── application/               # Use cases, services
+│   ├── infrastructure/            # Config, cache, task queue
+│   └── web/                       # Controllers, middleware
+│
+├── integration/                   # Реальная in-memory SQLite
+│   ├── infrastructure/database/   # Repository CRUD, UoW
+│   ├── web/controllers/           # API, Auth, Admin
+│   ├── web/middleware/            # Authentication
+│   ├── cli/                       # CLI команды
+│   └── docker/                    # Реальный PostgreSQL + Redis (Docker)
+│
+├── e2e/                           # Полные пользовательские сценарии
+└── live/                          # Smoke test всех эндпоинтов
+```
 
 ## Ключевые файлы
 
@@ -109,6 +139,17 @@ uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 | `CACHE_LINK_TTL` | 20 | TTL кэша ссылок (секунды) |
 | `CACHE_STATS_TTL` | 20 | TTL кэша статистики (секунды) |
 | `COOKIE_SECURE` | false | Secure-флаг для cookie (true в production) |
+| `TRUSTED_PROXIES` | (пусто) | Список доверенных прокси через запятую |
+| `CORS_ORIGINS` | http://localhost:5000 | Разрешённые origins для CORS |
+| `SQLALCHEMY_ECHO` | false | Логирование SQL-запросов (true только для dev) |
+
+### Безопасность
+
+- JWT токены содержат `type` claim ("access"/"refresh") для предотвращения abuse
+- Авторизация только через `Authorization: Bearer <token>` header
+- `X-Forwarded-For` проверяется через `TRUSTED_PROXIES` перед доверием
+- CORS ограничен `CORS_ORIGINS` (по умолчанию только localhost)
+- `.env` файл не попадает в Docker image (секреты注入 через runtime env vars)
 
 ## CLI-команды
 

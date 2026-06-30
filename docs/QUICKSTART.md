@@ -166,7 +166,17 @@ curl -X DELETE http://localhost:5000/api/v1/links/<short_code> \
    ```
 7. Запустите тесты:
    ```bash
+   # Все тесты (Docker-сервисы поднимаются автоматически)
    uv run pytest tests/ -v
+
+   # Только unit-тесты
+   uv run pytest tests/unit/ -v
+
+   # Только интеграционные
+   uv run pytest tests/integration/ -v
+
+   # E2E тесты
+   uv run pytest tests/e2e/ -v
    ```
 8. (Опционально) Запустите Celery worker:
    ```bash

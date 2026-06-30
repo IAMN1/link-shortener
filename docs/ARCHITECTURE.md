@@ -208,7 +208,10 @@ src/link_shortener/
 Содержит бизнес-логику, не зависящую от инфраструктуры.
 
 - **Сущности**: `Link`, `User`, `Role`, `Permission` — неизменяемые данные с поведением
-- **Объекты-значения**: `OriginalUrl`, `ShortCode`, `UrlHash`, `OwnerID` — валидированные параметры
+  - `Role` — frozen dataclass с иммутабельным `tuple[Permission, ...]`
+  - `User` — identity-based `__eq__` и `__hash__` на основе ID
+- **Объекты-значения**: `OriginalUrl`, `ShortCode`, `UrlHash`, `Email`, `OwnerID` — валидированные параметры
+  - Все validation ошибки бросают `ValidationError(DomainError)` вместо `ValueError`
 - **Интерфейсы репозиториев**: `LinkRepository`, `UserRepository` — абстракции хранения
 - **Политики**: `HashCalculator`, `CodeGenerator` — алгоритмы, передаваемые как зависимости
 
@@ -246,9 +249,17 @@ src/link_shortener/
 ### Аутентификация
 
 - JWT токены (access + refresh) через `PyJWT`
-- Cookie-based авторизация для браузеров (HttpOnly, SameSite=Strict)
+- Токены содержат `type` claim ("access"/"refresh") для предотвращения abuse
+- Авторизация только через `Authorization: Bearer <token>` header (cookie fallback удалён для CSRF protection)
 - `COOKIE_SECURE=true` по умолчанию в production
-- CORS настроен для поддержки cookie (`supports_credentials=True`)
+- CORS настроен с явными origins (`CORS_ORIGINS` env var)
+
+### Защита от атак
+
+- **CSRF** — cookie-based JWT удалён, авторизация только через Authorization header
+- **Token type confusion** — JWT содержит `type` claim, `validate_token` проверяет тип
+- **X-Forwarded-For spoofing** — `get_client_ip()` проверяет trusted proxies перед доверием к header
+- **Rate limit bypass** — rate limiter использует secured `get_client_ip()`
 
 ### Авторизация (RBAC)
 
@@ -391,3 +402,85 @@ Health check кэшируется на 15 секунд для снижения �
 1. Определить разрешения в `domain/system_permissions.py`
 2. Добавить роль в seed data
 3. Выполнить `flask db load-base-roles`
+
+## Тестирование
+
+Проект использует три уровня тестирования, каждый из которых проверяет свой слой архитектуры:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        ТЕСТИРОВАНИЕ                             │
+│                                                                 │
+│  Уровень 1: Unit-тесты                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Моки для БД, кэша, внешних сервисов                    │   │
+│  │  Тестирует: бизнес-логику use cases, валидацию,          │   │
+│  │  доменные сущности, value objects                        │   │
+│  │  Скорость: ~5 сек                                       │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Уровень 2: Интеграционные тесты                               │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Реальная in-memory SQLite (уровень 2a)                  │   │
+│  │  Реальный PostgreSQL + Redis в Docker (уровень 2b)       │   │
+│  │  Тестирует: репозитории, кэш, middleware, CLI,           │   │
+│  │  DI-контейнер, маппинг ORM                              │   │
+│  │  Скорость: ~10 сек (2a), ~20 сек (2b)                   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Уровень 3: E2E тесты                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Полный стек: Flask app + БД + все слои                 │   │
+│  │  Тестирует: полные пользовательские сценарии             │   │
+│  │  Скорость: ~5 сек                                       │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Структура тестов
+
+```
+tests/
+├── unit/                          # Моки, изолированно
+│   ├── domain/                    # Сущности, value objects
+│   ├── application/               # Use cases, services, DTOs
+│   ├── infrastructure/            # Config, cache, task queue
+│   └── web/                       # Controllers, middleware, schemas
+│
+├── integration/                   # Реальная in-memory SQLite
+│   ├── infrastructure/database/   # Repository CRUD, UoW, DatabaseManager
+│   ├── web/controllers/           # API, Auth, Admin контроллеры
+│   ├── web/middleware/            # Authentication middleware
+│   ├── cli/                       # CLI команды
+│   └── docker/                    # Реальный PostgreSQL + Redis
+│       ├── test_postgres_repository.py
+│       └── test_redis_cache.py
+│
+├── e2e/                           # Полные пользовательские сценарии
+│   └── test_user_journey.py       # Guest, Registered, Duplicate, Expired
+│
+└── live/                          # Smoke test всех эндпоинтов
+    └── smoke_test.py
+```
+
+### Запуск тестов
+
+```bash
+# Все тесты (Docker-сервисы поднимаются автоматически)
+uv run pytest tests/ -v
+
+# Только unit-тесты
+uv run pytest tests/unit/ -v
+
+# Только интеграционные (SQLite)
+uv run pytest tests/integration/ --ignore=tests/integration/docker/ -v
+
+# Только Docker-интеграционные (PostgreSQL + Redis)
+uv run pytest tests/integration/docker/ -v
+
+# Только E2E
+uv run pytest tests/e2e/ -v
+
+# С покрытием
+uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
+```
