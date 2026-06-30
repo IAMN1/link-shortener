@@ -29,8 +29,8 @@ class RBACAuthorizationService(AuthorizationService):
         """
         if user is None:
             return False
-        # Администратор имеет все права
+        # Admins bypass all permission checks.
         if user.has_permission("admin:all"):
             return True
-        # Общая проверка на основе ролей
+        # Standard role-based check.
         return user.has_permission(permission)

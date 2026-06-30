@@ -7,7 +7,7 @@ current request.
 """
 
 from typing import Optional
-from flask import current_app, g, request
+from flask import g, request
 
 from link_shortener.application import RequestContext
 from link_shortener.domain import User
@@ -53,23 +53,7 @@ def get_current_domain_user() -> Optional[User]:
     """
     Load the full domain User entity for the current request.
 
-    Uses ``g.current_user`` (set by AuthenticationMiddleware) and loads the
-    corresponding User from the database in a read-only Unit of Work.
-    The result is cached in ``g._domain_user`` for the duration of the request.
-
-    Returns:
-        Domain ``User`` instance or ``None`` if no user is authenticated.
+    The domain user is cached in g._domain_user by AuthenticationMiddleware.
+    This function no longer touches the DI container.
     """
-    if not hasattr(g, "current_user") or g.current_user is None:
-        return None
-
-    # Return cached domain user if already loaded
-    if hasattr(g, "_domain_user"):
-        return g._domain_user
-
-    container = current_app.container
-    uow_factory = container.get_uow_factory()
-    with uow_factory(read_only=True) as uow:
-        user = uow.users.find_by_id(g.current_user.id)
-        g._domain_user = user
-        return user
+    return getattr(g, '_domain_user', None)
