@@ -205,10 +205,10 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
 
     def save_original_url(self, short_code: ShortCode, original_url: str) -> None:
         """Store original URL in redirect cache with TTL."""
-
-        key = self.key_gen.for_redirect(short_code.value)
-        self._redirects[key] = original_url
-        self._expiry[key] = time.time() + self.link_ttl
+        with self._lock:
+            key = self.key_gen.for_redirect(short_code.value)
+            self._redirects[key] = original_url
+            self._expiry[key] = time.time() + self.link_ttl
 
     # ========== StatsCache methods ==========
     def get_stats(self) -> Optional[Dict[str, Any]]:

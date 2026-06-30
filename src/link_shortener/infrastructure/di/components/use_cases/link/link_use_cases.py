@@ -186,6 +186,7 @@ class LinkUseCasesComponent:
         return DeleteLinkUseCase(
             uow_factory=self.uow_factory,
             cache=self.cache,
+            redirect_cache=self.redirect_cache,
             logger=self.logger,
             audit_logger=self.audit_logger,
         )

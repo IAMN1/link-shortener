@@ -21,6 +21,11 @@ def mock_cache():
 
 
 @pytest.fixture
+def mock_redirect_cache():
+    return Mock()
+
+
+@pytest.fixture
 def mock_logger():
     logger = Mock()
     logger.bind.return_value = Mock()
@@ -55,11 +60,12 @@ def sample_link():
 
 
 @pytest.fixture
-def use_case(mock_uow_factory, mock_cache, mock_logger, mock_audit_logger):
+def use_case(mock_uow_factory, mock_cache, mock_redirect_cache, mock_logger, mock_audit_logger):
     factory, _ = mock_uow_factory
     return DeleteLinkUseCase(
         uow_factory=factory,
         cache=mock_cache,
+        redirect_cache=mock_redirect_cache,
         logger=mock_logger,
         audit_logger=mock_audit_logger,
     )
@@ -69,7 +75,7 @@ class TestDeleteLinkUseCase:
     """Tests for the DeleteLinkUseCase."""
 
     def test_delete_existing_link(
-        self, use_case, mock_uow_factory, mock_cache, sample_link, context
+        self, use_case, mock_uow_factory, mock_cache, mock_redirect_cache, sample_link, context
     ):
         factory, uow = mock_uow_factory
         uow.links.find_by_code.return_value = sample_link
@@ -81,9 +87,10 @@ class TestDeleteLinkUseCase:
         uow.links.delete.assert_called_once()
         uow.commit.assert_called_once()
         mock_cache.delete.assert_called_once()
+        mock_redirect_cache.delete.assert_called_once()
 
     def test_delete_nonexistent_link(
-        self, use_case, mock_uow_factory, mock_cache, context
+        self, use_case, mock_uow_factory, mock_cache, mock_redirect_cache, context
     ):
         factory, uow = mock_uow_factory
         uow.links.find_by_code.return_value = None
@@ -93,9 +100,10 @@ class TestDeleteLinkUseCase:
         assert result is False
         uow.links.delete.assert_not_called()
         mock_cache.delete.assert_not_called()
+        mock_redirect_cache.delete.assert_not_called()
 
     def test_cache_invalidated_after_delete(
-        self, use_case, mock_uow_factory, mock_cache, sample_link, context
+        self, use_case, mock_uow_factory, mock_cache, mock_redirect_cache, sample_link, context
     ):
         factory, uow = mock_uow_factory
         uow.links.find_by_code.return_value = sample_link
@@ -104,17 +112,19 @@ class TestDeleteLinkUseCase:
         use_case.execute("abc123", context)
 
         mock_cache.delete.assert_called_once()
+        mock_redirect_cache.delete.assert_called_once()
 
     def test_invalid_short_code_returns_false(
-        self, use_case, mock_uow_factory, mock_cache, context
+        self, use_case, mock_uow_factory, mock_cache, mock_redirect_cache, context
     ):
         result = use_case.execute("", context)
 
         assert result is False
         mock_cache.delete.assert_not_called()
+        mock_redirect_cache.delete.assert_not_called()
 
     def test_delete_fails_returns_false(
-        self, use_case, mock_uow_factory, mock_cache, sample_link, context
+        self, use_case, mock_uow_factory, mock_cache, mock_redirect_cache, sample_link, context
     ):
         factory, uow = mock_uow_factory
         uow.links.find_by_code.return_value = sample_link
@@ -125,3 +135,4 @@ class TestDeleteLinkUseCase:
         assert result is False
         uow.commit.assert_not_called()
         mock_cache.delete.assert_not_called()
+        mock_redirect_cache.delete.assert_not_called()
