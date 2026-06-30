@@ -153,6 +153,12 @@ services:
         # Mount logs directory to persist logs on host
         - ${LOG_HOST_PATH}:/app/${LOG_DIR}
       command: flask run --host=0.0.0.0 --port=${PORT} --debug
+      healthcheck:
+        test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 15s
 
 
     # ==========================================================================
