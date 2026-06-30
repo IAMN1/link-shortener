@@ -37,8 +37,8 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
     def __init__(self, db_manager: DatabaseManager, read_only: bool = False):
         """
         Args:
-            db_manager: Configured DatabaseManager that provides sessions.
-            read_only: If True, the transaction is marked as read-only
+            db_manager: Configured ``DatabaseManager`` that provides sessions.
+            read_only: If ``True``, the transaction is marked as read-only
                 (no writes allowed), and commit will be skipped.
         """
         super().__init__(read_only=read_only)
@@ -56,8 +56,8 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
     def _start_transaction(self) -> None:
         """Begin a new transaction.
 
-        On PostgreSQL, if ``read_only`` is True, the transaction is
-        explicitly set to READ ONLY.
+        On PostgreSQL, if ``read_only`` is ``True``, the transaction is
+        explicitly set to ``READ ONLY``.
         """
         self._session.begin()
         if self.read_only:
@@ -69,6 +69,11 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
     # Context manager protocol
     # ------------------------------------------------------------------
     def __enter__(self) -> "SQLAlchemyUnitOfWork":
+        """Enter the runtime context, creating a session and starting a transaction.
+
+        Returns:
+            The ``SQLAlchemyUnitOfWork`` instance itself.
+        """
         if self._session is not None:
             raise RuntimeError("Unit of Work already entered")
 
@@ -88,6 +93,11 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
     ) -> None:
+        """Exit the runtime context, committing or rolling back the transaction.
+
+        On exception the transaction is rolled back; otherwise it is rolled back
+        if the caller never called ``commit()``. The session is always closed.
+        """
         # On exception, always roll back
         if exc_type:
             self.rollback()
@@ -107,8 +117,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
     # Explicit commit / flush / rollback
     # ------------------------------------------------------------------
     def commit(self) -> None:
-        """
-        Commit the current transaction.
+        """Commit the current transaction.
 
         Can only be called once per context; subsequent calls are no-ops.
         """
@@ -131,7 +140,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
     # ------------------------------------------------------------------
     @property
     def links(self) -> LinkRepository:
-        """Return the LinkRepository bound to the current session.
+        """Return the ``LinkRepository`` bound to the current session.
 
         Raises:
             RuntimeError: If the context has not been entered.
@@ -142,18 +151,33 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
 
     @property
     def users(self) -> UserRepository:
+        """Return the ``UserRepository`` bound to the current session.
+
+        Raises:
+            RuntimeError: If the context has not been entered.
+        """
         if self._users is None:
             raise RuntimeError("Unit of Work not entered")
         return self._users
 
     @property
     def roles(self) -> RoleRepository:
+        """Return the ``RoleRepository`` bound to the current session.
+
+        Raises:
+            RuntimeError: If the context has not been entered.
+        """
         if self._roles is None:
             raise RuntimeError("Unit of Work not entered")
         return self._roles
 
     @property
     def permissions(self) -> PermissionRepository:
+        """Return the ``PermissionRepository`` bound to the current session.
+
+        Raises:
+            RuntimeError: If the context has not been entered.
+        """
         if self._permissions is None:
             raise RuntimeError("Unit of Work not entered")
         return self._permissions

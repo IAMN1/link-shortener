@@ -16,5 +16,5 @@ class OwnerID:
     value: Optional[str] # None if the link is guest
 
     def __str__(self) -> str:
-        """Return the OwnerID string."""
+        """Return the OwnerID as string, 'guest' if None."""
         return self.value if self.value else "guest"

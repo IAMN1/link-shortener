@@ -10,7 +10,7 @@ class UrlHash:
     Used for deduplication. Format enforced: **64 lowercase hexadecimal characters**.
 
     Examples:
-        ``"e41bc44298fc1c149afbf4c8996fb94432ae41e11519b934da495991c7852v911"``
+        ``"e41bc44298fc1c149afbf4c8996fb94432ae41e11519b934da495991c7852911"``
         (example uses a valid-looking hash; actual validation allows only ``[a-f0-9]``).
 
     Attributes:

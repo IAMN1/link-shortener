@@ -1,14 +1,15 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from link_shortener.infrastructure.database.models.base import Base
-from link_shortener.infrastructure.database.models.role_model import RoleModel
 from link_shortener.infrastructure.database.models.associations import user_role_table
 
+if TYPE_CHECKING:
+    from .role_model import RoleModel
 
 class UserModel(Base):
     """
@@ -37,5 +38,5 @@ class UserModel(Base):
         lazy="selectin",
     )
 
-    # One-to-many to LinkModel (опционально)
+    # One-to-many to LinkModel (optional).
     # links: Mapped[List["LinkModel"]] = relationship(back_populates="owner")

@@ -80,7 +80,7 @@ class OriginalUrl:
         cannot start or end with hyphen, and total length ≤ 253.
         """
 
-        # Проврка как доменного имени
+        # Validate as a domain name.
         if not host:
             raise ValueError("Empty host")
 

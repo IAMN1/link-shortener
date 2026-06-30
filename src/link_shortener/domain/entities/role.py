@@ -23,7 +23,7 @@ class Role:
     id: str
     name: str                                           # admin, analyst, user
     description: Optional[str] = None
-    is_system: bool = False                             # Системные роли нельзя удалить
+    is_system: bool = False                             # System roles cannot be deleted.
     permissions: List[Permission] = field(default_factory=list)
 
     def __eq__(self, value):

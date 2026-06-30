@@ -1,4 +1,13 @@
-from datetime import datetime, timezone
+"""
+SQLAlchemy implementation of the ``LinkRepository`` interface.
+
+This module provides the ``SQLAlchemyLinkRepository`` class, which translates
+domain operations into SQLAlchemy queries and commands. It is designed to work
+within a unit-of-work session and handles all persistence concerns for the
+``Link`` aggregate.
+"""
+
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy import func
@@ -11,11 +20,11 @@ from link_shortener.infrastructure.database.models.link_model import LinkModel
 
 class SQLAlchemyLinkRepository(LinkRepository):
     """
-    SQLAlchemy-based persistence for Link aggregates.
+    Concrete repository for ``Link`` entities backed by SQLAlchemy.
 
-    The repository receives a session at construction and uses it for all
-    operations. It is the responsibility of the caller (usually a Unit of Work)
-    to manage transactions and session lifecycle.
+    All methods operate within the session provided at construction time.
+    Transaction management is the responsibility of the caller (typically
+    a ``UnitOfWork`` instance).
     """
 
     def __init__(self, session: Session):
@@ -46,9 +55,6 @@ class SQLAlchemyLinkRepository(LinkRepository):
     def save_many(self, links: List[Link]) -> List[Link]:
         """Bulk persist multiple Link entities.
 
-        Uses ``bulk_save_objects`` for performance; returned defaults are
-        ignored because the domain objects are considered canonical.
-
         Args:
             links: List of Link domain entities.
 
@@ -56,7 +62,7 @@ class SQLAlchemyLinkRepository(LinkRepository):
             The same list of Links.
         """
         models = [self._to_model(link) for link in links]
-        self.session.bulk_save_objects(models, return_defaults=False)
+        self.session.add_all(models)
         self.session.flush()
         return links
 
@@ -94,6 +100,28 @@ class SQLAlchemyLinkRepository(LinkRepository):
             .first()
         )
         return self._to_domain(model) if model else None
+    
+    def find_by_owner(self, user_id: str, offset: int = 0, limit: int = 50) -> List[Link]:
+        """
+        Retrieve links owned by a specific user with pagination.
+
+        Args:
+            user_id: UUID of the link owner.
+            offset: Number of links to skip (default 0).
+            limit: Maximum number of links to return (default 50).
+
+        Returns:
+            List of ``Link`` entities belonging to the user (may be empty).
+        """
+        models = (
+            self.session.query(LinkModel)
+            .filter_by(owner_id=user_id)
+            .order_by(LinkModel.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return [self._to_domain(m) for m in models]
 
     # ------------------------------------------------------------------
     # Bulk lookups
@@ -229,6 +257,54 @@ class SQLAlchemyLinkRepository(LinkRepository):
             "popular_links": [self._to_domain(m) for m in popular_links],
         }
 
+    def count_guest_links_by_identifier(self, identifier: str, since_days: int) -> int:
+        """
+        Count guest-created links for a given identifier within a time window.
+
+        Args:
+            identifier: Guest identifier (e.g. IP address).
+            since_days: Number of past days to include in the count.
+
+        Returns:
+            Number of guest links created by this identifier since the cutoff.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
+        count = self.session.query(func.count(LinkModel.id)).filter(
+            LinkModel.guest_identifier == identifier,
+            LinkModel.created_at >= cutoff
+        ).scalar()
+        return count or 0
+
+    def get_user_stats(self, user_id) -> dict:
+        """
+        Retrieve activity statistics for a specific user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Dictionary with keys:
+                - ``'total_links'``: number of links owned by the user.
+                - ``'total_clicks'``: sum of clicks across those links.
+                - ``'recent_links'``: list of the user's 10 most recent
+                  ``Link`` entities.
+        """
+        total_links = self.session.query(func.count(LinkModel.id)).filter(
+            LinkModel.owner_id == user_id
+        ).scalar() or 0
+        total_clicks = self.session.query(func.sum(LinkModel.clicks)).filter(
+            LinkModel.owner_id == user_id
+        ).scalar() or 0
+        recent = self.session.query(LinkModel).filter(
+            LinkModel.owner_id == user_id
+        ).order_by(LinkModel.created_at.desc()).limit(10).all()
+        return {
+            "total_links": total_links,
+            "total_clicks": total_clicks,
+            "recent_links": [self._to_domain(m) for m in recent],
+        }
+
+
     # ------------------------------------------------------------------
     # Deletion & cleanup
     # ------------------------------------------------------------------
@@ -316,6 +392,10 @@ class SQLAlchemyLinkRepository(LinkRepository):
         last_accessed = model.last_accessed
         if last_accessed is not None and last_accessed.tzinfo is None:
             last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+        
+        expires_at = model.expires_at
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
 
         return Link(
             id=model.id,
@@ -326,6 +406,8 @@ class SQLAlchemyLinkRepository(LinkRepository):
             clicks=model.clicks,
             last_accessed=last_accessed,
             owner=OwnerID(model.owner_id) if model.owner_id else None,
+            expires_at=expires_at,
+            guest_identifier=model.guest_identifier,
         )
 
     def _to_model(self, link: Link) -> LinkModel:
@@ -349,4 +431,6 @@ class SQLAlchemyLinkRepository(LinkRepository):
             clicks=link.clicks,
             last_accessed=link.last_accessed,
             owner_id=link.owner.value if link.owner else None,
+            expires_at=link.expires_at,
+            guest_identifier=link.guest_identifier,
         )

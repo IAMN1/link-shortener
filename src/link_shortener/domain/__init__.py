@@ -20,7 +20,7 @@ from .value_objects.owner_id import OwnerID
 
 from .exceptions import (
     DomainError, LinkNotFoundError, ValidationError,
-    CodeGenerationError
+    CodeGenerationError, LinkExpiredError, GuestLinkLimitExceededError
 )
 
 from .system_permissions import SystemPermissions
@@ -55,6 +55,8 @@ __all__ = [
     "ValidationError",
     "LinkNotFoundError",
     "CodeGenerationError",
+    "LinkExpiredError",
+    "GuestLinkLimitExceededError",
 
     # System permissions
     "SystemPermissions"

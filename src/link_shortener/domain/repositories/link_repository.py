@@ -76,6 +76,21 @@ class LinkRepository(ABC):
             Link if found, else None.
         """
         ...
+    
+    @abstractmethod
+    def find_by_owner(self, user_id: str, offset: int = 0, limit: int = 50) -> List[Link]:
+        """
+        Retrieve links owned by a specific user.
+
+        Args:
+            user_id: UUID of the link owner.
+            offset: Number of links to skip (default 0).
+            limit: Maximum number of links to return (default 50).
+
+        Returns:
+            List of Link entities belonging to the user (may be empty).
+        """
+        ...
 
     @abstractmethod
     def find_by_hashes(
@@ -164,9 +179,39 @@ class LinkRepository(ABC):
         and its ``created_at`` is older than ``cutoff``.
 
         Args:
-            cutoff: Datetime (timezone‑aware UTC) threshold.
+            cutoff: Datetime (timezone-aware UTC) threshold.
 
         Returns:
             List of short codes that were deleted.
+        """
+        ...
+    
+    @abstractmethod
+    def count_guest_links_by_identifier(self, identifier: str, since_days: int) -> int:
+        """
+        Count guest-created links for a given identifier within a time window.
+
+        Args:
+            identifier: Guest identifier (e.g. IP address).
+            since_days: Number of days to look back.
+
+        Returns:
+            Number of links created by the guest in the last `since_days` days.
+        """
+        ...
+    
+    @abstractmethod
+    def get_user_stats(self, user_id: str) -> dict:
+        """
+        Retrieve activity statistics for a specific user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Dictionary with keys:
+                - ``'total_links'``: number of links owned by the user.
+                - ``'total_clicks'``: total clicks across those links.
+                - ``'recent_links'``: list of the user's 10 most recent Link objects.
         """
         ...

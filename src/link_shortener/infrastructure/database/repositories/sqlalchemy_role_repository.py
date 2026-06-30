@@ -127,5 +127,5 @@ class SQLAlchemyRoleRepository(RoleRepository):
         new_permissions = self.session.query(PermissionModel).filter(
             PermissionModel.name.in_(permission_names)
         ).all()
-        # Заменяем коллекцию
+        # Replace the permission collection.
         model.permissions = new_permissions

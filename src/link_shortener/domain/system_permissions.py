@@ -21,6 +21,7 @@ class SystemPermissions(Enum):
     # --- Statistics permissions ---
     STATS_VIEW_BASIC = "stats:view_basic"
     STATS_VIEW_FULL = "stats:view_full"
+    STATS_VIEW_ANY = "stats:view_any"
 
     # --- Admin permissions ---
     ADMIN_VIEW_USERS = "admin:view_users"

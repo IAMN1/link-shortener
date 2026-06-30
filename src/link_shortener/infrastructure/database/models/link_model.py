@@ -11,15 +11,23 @@ class LinkModel(Base):
     """
     ORM model representing a shortened link.
 
-    Columns:
-        id: UUID primary key.
-        url_hash: SHA-256 hash of the original URL (unique, indexed).
-        original_url: Full original URL.
-        short_code: Generated short code (unique, indexed).
-        created_at: Creation timestamp (UTC).
-        clicks: Number of recorded accesses.
-        last_accessed: Timestamp of the most recent access.
-        owner_id: Foreign key to the user who created the link (nullable).
+    Maps to the ``urls`` table and holds all persistent fields of a link,
+    including audit metadata, click counts, and optional expiration.
+
+    Attributes:
+        id: UUID primary key, auto-generated if not provided.
+        url_hash: SHA-256 hash of the original URL; unique and indexed for
+            deduplication.
+        original_url: Full original URL, up to 2048 characters.
+        short_code: Generated short code (6-10 chars), unique and indexed.
+        created_at: Timestamp when the link was created (UTC).
+        clicks: Number of recorded accesses (default 0).
+        last_accessed: Timestamp of the most recent access (nullable).
+        owner_id: Foreign key to the ``users`` table; ``NULL`` for guest links,
+            ``SET NULL`` on user deletion.
+        expires_at: Optional expiration timestamp; ``NULL`` means never expires.
+        guest_identifier: Optional identifier for guest-created links
+            (e.g. IP address), stored for rate limiting purposes.
     """
     __tablename__ = "urls"
 
@@ -42,4 +50,10 @@ class LinkModel(Base):
     )
     owner_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    guest_identifier: Mapped[Optional[str]] = mapped_column(
+        String(45), nullable=True
     )

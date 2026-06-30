@@ -63,3 +63,17 @@ class CodeGenerationError(DomainError):
     """
     def __init__(self, message: str = "Failed to generate unique short code after multiple attempts"):
         super().__init__(message, code="CODE_GENERATION_FAILED")
+
+class LinkExpiredError(DomainError):
+    """Raised when an expired link is accessed."""
+    def __init__(self, short_code_str: str):
+        self.short_code_str = short_code_str
+        message = "Link has expired"
+        if short_code_str:
+            message = f"Link with code ({short_code_str}) has expired"
+        super().__init__(message, "LINK_EXPIRED")
+
+class GuestLinkLimitExceededError(DomainError):
+    """Raised when the guest link creation limit is exceeded."""
+    def __init__(self, message: str = "Guest link limit exceeded"):
+        super().__init__(message, "GUEST_LINK_LIMIT")

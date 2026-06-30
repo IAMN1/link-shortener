@@ -53,11 +53,9 @@ class RoleLoader:
         for perm_def in config.get("permissions", []):
             self._upsert_permission(perm_def, update_existing=False)
 
-        # 2. Upsert roles (skip system roles if not updating existing)
+        # 2. Upsert roles.
         for role_def in config.get("roles", []):
-            if role_def.get("is_system", False) and not update_existing:
-                continue
-            self._upsert_role(role_def, update_existing=True)
+            self._upsert_role(role_def, update_existing=update_existing)
 
     def _upsert_permission(
         self, perm_def: Dict[str, Any], update_existing: bool = False
@@ -107,11 +105,10 @@ class RoleLoader:
 
         role = self.session.query(RoleModel).filter_by(name=role_name).first()
         if role:
-            if not update_existing:
-                return role
-            # Update scalar fields
-            for key, value in role_def.items():
-                setattr(role, key, value)
+            if update_existing:
+                # Update scalar fields
+                for key, value in role_def.items():
+                    setattr(role, key, value)
         else:
             role = RoleModel(id=str(uuid.uuid4()), **role_def)
             self.session.add(role)
