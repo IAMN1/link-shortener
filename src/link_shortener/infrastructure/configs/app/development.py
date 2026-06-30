@@ -35,18 +35,16 @@ class DevelopmentConfig(BaseConfig):
 
 
     # --------------------------------------------------------------------------
-    # Database: echo SQL for debugging
+    # Database: echo SQL for debugging (off by default, enable via env)
     # --------------------------------------------------------------------------
-    SQLALCHEMY_ECHO: bool = True
-    """
-    Log all SQL queries – helpful for development.
-    """
+    @property
+    def SQLALCHEMY_ECHO(self) -> bool:
+        return os.environ.get("SQLALCHEMY_ECHO", "false").lower() == "true"
 
 
     # --------------------------------------------------------------------------
-    # Auto-seed roles at startup (safe and convenient)
+    # Auto-seed roles at startup (configurable via env)
     # --------------------------------------------------------------------------
-    AUTO_SEED_ROLES: bool = True
-    """
-    Automatically ensure base roles exist on every startup.
-    """
+    @property
+    def AUTO_SEED_ROLES(self) -> bool:
+        return os.environ.get("AUTO_SEED_ROLES", "true").lower() == "true"

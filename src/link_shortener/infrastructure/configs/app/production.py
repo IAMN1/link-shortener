@@ -97,6 +97,9 @@ class ProductionConfig(BaseConfig):
     # Security: cookies should be secure in production
     # --------------------------------------------------------------------------
     COOKIE_SECURE: bool = True
+    SESSION_COOKIE_SECURE: bool = True
+    SESSION_COOKIE_SAMESITE: str = "Lax"
+    SESSION_COOKIE_HTTPONLY: bool = True
 
 
     # --------------------------------------------------------------------------

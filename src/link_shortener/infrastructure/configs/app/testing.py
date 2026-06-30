@@ -34,9 +34,15 @@ class TestingConfig(BaseConfig):
 
 
     # --------------------------------------------------------------------------
-    # Database: in-memory SQLite for fast isolated tests
+    # Database: always SQLite in-memory for tests
     # --------------------------------------------------------------------------
-    DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+    @property
+    def DATABASE_URL(self) -> str:
+        return os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+
+    @property
+    def DATABASE_TYPE(self) -> str:
+        return "sqlite"
 
 
     # --------------------------------------------------------------------------
