@@ -62,7 +62,7 @@ class AdminApiController:
         Reads JSON body with ``email``, ``password``, ``roles``, ``is_active``.
         Returns the created user's data with status 201.
         """
-        data = request.get_json()
+        data = request.get_json() or {}
         validated = CreateUserRequest(**data)
         context = create_request_context()
         result = self.admin_service.create_user(
@@ -107,7 +107,7 @@ class AdminApiController:
 
         Reads JSON body with ``roles`` list.
         """
-        data = request.get_json()
+        data = request.get_json() or {}
         validated = UpdateUserRolesRequest(**data)
         context = create_request_context()
         result = self.admin_service.update_user_roles(user_id, validated.roles, context)
@@ -161,7 +161,7 @@ class AdminApiController:
         Reads JSON body with ``name``, ``description``, ``permissions``.
         Returns the created role with status 201.
         """
-        data = request.get_json()
+        data = request.get_json() or {}
         validated = CreateRoleRequest(**data)
         context = create_request_context()
         result = self.admin_service.create_role(
@@ -199,7 +199,7 @@ class AdminApiController:
 
         Reads JSON body with ``permissions`` list.
         """
-        data = request.get_json()
+        data = request.get_json() or {}
         validated = UpdateRolePermissionsRequest(**data)
         context = create_request_context()
         result = self.admin_service.update_role_permissions(

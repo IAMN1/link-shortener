@@ -47,7 +47,7 @@ class AuthController:
         Returns:
             JSON response containing ``access_token`` and ``user`` details.
         """
-        data = request.get_json()
+        data = request.get_json() or {}
         email = data.get("email")
         password = data.get("password")
         if not email or not password:
@@ -102,7 +102,7 @@ class AuthController:
         Expects JSON with ``email`` and ``password``.
         Returns 201 on success, 400 if validation fails.
         """
-        data = request.get_json()
+        data = request.get_json() or {}
         email = data.get("email")
         password = data.get("password")
         if not email or not password:

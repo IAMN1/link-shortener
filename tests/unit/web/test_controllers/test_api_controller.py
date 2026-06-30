@@ -173,12 +173,12 @@ class TestApiController:
         response = client.get("/api/v1/stats")
         assert response.status_code == 200
 
-    def test_get_my_links_redirects_when_unauthenticated(self, client, mock_link_service):
-        """GET /api/v1/links/mine redirects when not authenticated."""
+    def test_get_my_links_returns_401_when_unauthenticated(self, client, mock_link_service):
+        """GET /api/v1/links/mine returns 401 when not authenticated."""
         response = client.get("/api/v1/links/mine")
-        assert response.status_code == 302
+        assert response.status_code == 401
 
-    def test_get_my_links_with_pagination_redirects_when_unauthenticated(self, client, mock_link_service):
-        """GET /api/v1/links/mine with params redirects when not authenticated."""
+    def test_get_my_links_with_pagination_returns_401_when_unauthenticated(self, client, mock_link_service):
+        """GET /api/v1/links/mine with params returns 401 when not authenticated."""
         response = client.get("/api/v1/links/mine?offset=10&limit=25")
-        assert response.status_code == 302
+        assert response.status_code == 401

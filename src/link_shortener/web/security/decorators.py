@@ -6,7 +6,7 @@ Provides decorators that enforce authentication and permission checks.
 
 import functools
 
-from flask import g, redirect, url_for
+from flask import g, jsonify, redirect, request, url_for
 
 from link_shortener.domain import DomainError
 from link_shortener.web.security.context import get_current_domain_user
@@ -47,20 +47,16 @@ def require_permission(permission: str):
 
 def login_required(view_func):
     """
-    Decorator that redirects to the login page if the user is not authenticated.
+    Decorator that enforces authentication.
 
-    Intended for HTML frontend routes (dashboard panel). If ``g.current_user``
-    is not set, a redirect to ``frontend.login_page`` is returned.
-
-    Usage::
-
-        @login_required
-        def dashboard():
-            return render_template('dashboard/dashboard.html')
+    For API routes (``/api/*``), returns a 401 JSON response.
+    For HTML frontend routes, redirects to the login page.
     """
     @functools.wraps(view_func)
     def wrapper(*args, **kwargs):
         if not g.get('current_user'):
+            if request.path.startswith('/api/'):
+                return jsonify({"error": "Authentication required"}), 401
             return redirect(url_for('frontend.login_page'))
         return view_func(*args, **kwargs)
     return wrapper

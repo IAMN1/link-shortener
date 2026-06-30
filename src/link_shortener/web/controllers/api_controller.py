@@ -52,7 +52,7 @@ class ApiController:
         Accepts JSON with ``url`` and optional ``ttl_seconds``.
         Returns 201 if new, 200 if existing.
         """
-        data = request.get_json()
+        data = request.get_json() or {}
         validated = CreateShortLinkRequest(**data)
         context = create_request_context()
         ttl = validated.ttl_seconds if validated.ttl_seconds is not None else 0
@@ -86,7 +86,7 @@ class ApiController:
     # ------------------------------------------------------------------
     def batch_create(self):
         """Batch create short links."""
-        data = request.get_json()
+        data = request.get_json() or {}
         validated = BatchCreateLinkRequest(**data)
         context = create_request_context()
         result_dto = self.link_service.batch_create_short_links(validated.urls, context)

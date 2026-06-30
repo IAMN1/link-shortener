@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
@@ -28,7 +28,7 @@ class ErrorResponse(BaseModel):
     error: str
     message: str
     details: Optional[List[ErrorDetail]] = None
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -42,7 +42,7 @@ class ErrorResponse(BaseModel):
                         "code": "url_error"
                     }
                 ],
-                "timestamp": "2026-02-20T12:00:00"
+                "timestamp": "2026-02-20T12:00:00+00:00"
             }
         }
     )
