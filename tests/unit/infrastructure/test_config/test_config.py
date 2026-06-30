@@ -1,8 +1,8 @@
-from link_shortener.infrastructure.config.development import DevelopmentConfig
-from link_shortener.infrastructure.config.factory import ConfigFactory
-from link_shortener.infrastructure.config.production import ProductionConfig
-from link_shortener.infrastructure.config.staging import StagingConfig
-from link_shortener.infrastructure.config.testing import TestingConfig
+from link_shortener.infrastructure.configs.app.development import DevelopmentConfig
+from link_shortener.infrastructure.configs.app.factory import ConfigFactory
+from link_shortener.infrastructure.configs.app.production import ProductionConfig
+from link_shortener.infrastructure.configs.app.staging import StagingConfig
+from link_shortener.infrastructure.configs.app.testing import TestingConfig
 import pytest
 
 
@@ -39,6 +39,7 @@ class TestConfigFactory:
         monkeypatch.setenv("SHORT_CODE_PEPPER", "prod-pepper")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("DOMAIN", "example.com")
 
         # Act
         config = ConfigFactory.create_config()
@@ -54,13 +55,13 @@ class TestConfigFactory:
         
         monkeypatch.setenv('FLASK_ENV', 'production')
 
-        # Запрет на загрузку переменных из .env файла
+        # Prevent loading variables from .env file
         mocker.patch(
-            'link_shortener.infrastructure.config.factory.load_dotenv', 
+            'link_shortener.infrastructure.configs.app.factory.load_dotenv',
             return_value=None
         )
 
-        # Убедимся, что обязательные переменные отсутствуют
+        # Ensure required variables are absent
         monkeypatch.delenv('SECRET_KEY', raising=False)
         monkeypatch.delenv('SHORT_CODE_PEPPER', raising=False)
         monkeypatch.delenv('DATABASE_URL', raising=False)

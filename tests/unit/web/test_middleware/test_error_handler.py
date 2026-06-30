@@ -127,11 +127,10 @@ class TestErrorHandlerMiddleware:
         mock_link_service.create_short_link.side_effect = Exception("Boom")
 
         # Act
-        response = client.post("/shorten", data={"url": "https://test.com"})
+        response = client.post("/api/v1/shorten", json={"url": "https://test.com"})
 
         # Assert
         assert response.status_code == 500
-        assert b"Rendered error.html" in response.data
 
     def test_generic_exception_json(self, client, mock_link_service):
         """Unhandled exception in API route returns 500 JSON."""

@@ -34,7 +34,7 @@ class TestOriginalUrl:
     @pytest.mark.parametrize("invalid_url,expected_error", [
         ("https://" + "a" * 2048, "URL too long"),
         ("", "URL must have a scheme"),
-        ("ftp://test.com", "Unsupported URL scheme:"),
+        ("ftp://test.com", "Scheme 'ftp' is not allowed"),
         ("https://test", "Host must contain a dot"),
         ("http://", "URL must have a domain!"),
         ("https://", "URL must have a domain!"),
@@ -66,13 +66,13 @@ class TestOriginalUrl:
     # Host validation (domain name)
     # ------------------------------------------------------------------
     @pytest.mark.parametrize("invalid_host", [
-        "http://.com",                  # пустая метка в начале
-        "http://test..com",          # пустая метка
-        "http://te_st.com",          # недопустимый символ _
-        "http://-test.com",          # метка начинается с дефиса
-        "http://test-.com",          # метка заканчивается дефисом
-        "http://a" + "b"*63 + ".com",   # метка >63 символов
-        "http://" + "a"*254 + ".com",   # общая длина >253
+        "http://.com",                  # empty label at start
+        "http://test..com",          # empty label
+        "http://te_st.com",          # invalid character _
+        "http://-test.com",          # label starts with hyphen
+        "http://test-.com",          # label ends with hyphen
+        "http://a" + "b"*63 + ".com",   # label >63 chars
+        "http://" + "a"*254 + ".com",   # total length >253
     ])
     def test_invalid_host_raises_error(self, invalid_host):
         """Should raise ValueError for invalid hostnames."""

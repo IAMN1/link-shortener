@@ -20,7 +20,7 @@ def memory_cache():
 class TestInMemoryLinkCache:
     """Tests for InMemoryLinkCache."""
 
-    # =============== General методы =============================
+    # =============== General methods =============================
     def test_ttl_expiration(self, memory_cache, sample_link, monkeypatch):
         """Should expire cache entries after TTL."""
 
@@ -31,12 +31,12 @@ class TestInMemoryLinkCache:
         
         # Act & Assert
 
-        # Данные доступны
+        # Data is available
         assert memory_cache.get_by_hash(sample_link.url_hash) == sample_link
         
-        # перемещение времени вперед на TTL + 1
+        # advance time past TTL + 1
         fake_time += memory_cache.link_ttl + 1
-        # Данные уже не доступны
+        # Data is no longer available
         assert memory_cache.get_by_hash(sample_link.url_hash) is None
         assert memory_cache.get_by_code(sample_link.short_code) is None
         assert memory_cache.get_original_url(sample_link.short_code) is None
@@ -84,7 +84,7 @@ class TestInMemoryLinkCache:
         info = memory_cache.get_cache_info()
 
         # Assert
-        assert info["link_count"] == 2 # сохранено по двум ключам
+        assert info["link_count"] == 2  # stored under two keys
         assert info["redirect_count"] == 1
         assert info["has_stats"] is False
         assert info["total_keys"] == 3
@@ -93,7 +93,7 @@ class TestInMemoryLinkCache:
         """Should exclude expired entries from cache info."""
 
         memory_cache.save(sample_link)
-        # принудительно протухаем
+        # force expiry
         for key in list(memory_cache._expiry.keys()):
             memory_cache._expiry[key] = time.time() - 10
         info = memory_cache.get_cache_info()
@@ -105,7 +105,7 @@ class TestInMemoryLinkCache:
         """Should not raise error when deleting non-existent short code."""
 
         short_code = ShortCode("abc123")
-        memory_cache.delete(short_code) # не должно совпадать
+        memory_cache.delete(short_code)  # should not fail
 
     def test_save_duplicate(self, memory_cache, sample_link):
         """Should overwrite existing entry when saving same link again."""
@@ -127,15 +127,15 @@ class TestInMemoryLinkCache:
         # Arrange
         memory_cache.save(sample_link)
         key = memory_cache.key_gen.for_short_code(sample_link.short_code.value)
-        memory_cache._expiry[key] = time.time() - 10  # истек
+        memory_cache._expiry[key] = time.time() - 10  # expired
         
         # Act
-        memory_cache._clean_expired('code')
+        memory_cache._clean_expired()
         
         # Assert
         assert memory_cache.get_by_code(sample_link.short_code) is None
 
-    # =============== LinkCache методы =============================
+    # =============== LinkCache methods =============================
     def test_get_by_code(self, memory_cache, sample_link):
         """Should retrieve a link by its short code."""
 
@@ -179,7 +179,7 @@ class TestInMemoryLinkCache:
         result = memory_cache.get_by_hashes([])
         assert result == {}
 
-    # =============== RedirectCache методы =============================
+    # =============== RedirectCache methods =============================
     def test_get_original_url(self, memory_cache, sample_link):
         """Should retrieve original URL for redirect."""
         
@@ -205,7 +205,7 @@ class TestInMemoryLinkCache:
         assert url == sample_link.original_url.value
     
 
-    # =============== StatsCache методы =============================
+    # =============== StatsCache methods =============================
     def test_stats_cache(self, memory_cache):
         """Should save, retrieve, and delete stats correctly."""
 

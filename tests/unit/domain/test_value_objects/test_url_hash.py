@@ -21,11 +21,11 @@ class TestUrlHash:
         assert url_hash.value == valid_hash
     
     @pytest.mark.parametrize('invalid_hash, expected_error', [
-        ('abc', 'Invalid hash format'),     # короткий
-        ('a' * 63, 'Invalid hash format'),  # 63 символа
-        ('a' * 65, 'Invalid hash format'),  # 65 символов
-        ('g' * 64, 'Invalid hash format'),  # не hex
-        ('', 'Invalid hash format'),        # пустой
+        ('abc', 'Invalid hash format'),     # too short
+        ('a' * 63, 'Invalid hash format'),  # 63 chars
+        ('a' * 65, 'Invalid hash format'),  # 65 chars
+        ('g' * 64, 'Invalid hash format'),  # not hex
+        ('', 'Invalid hash format'),        # empty
     ])
     def test_invalid_hash_raises_value_error(self, invalid_hash, expected_error):
         """Should raise ValueError for invalid hash strings."""

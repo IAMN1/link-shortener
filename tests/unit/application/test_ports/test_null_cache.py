@@ -1,4 +1,4 @@
-from link_shortener.application.ports.cache.null_cache import NullCache
+from link_shortener.infrastructure.cache.null_cache import NullCache
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
 

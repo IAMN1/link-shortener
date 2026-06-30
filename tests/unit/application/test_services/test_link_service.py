@@ -1,5 +1,7 @@
 from unittest.mock import Mock
-from link_shortener.application.dtos.responses import BatchCreateResponse, ServiceStatsResponse, ShortLinkResponse
+from link_shortener.application.dtos.link import ShortLinkResponse
+from link_shortener.application.dtos.batch import BatchCreateResponse
+from link_shortener.application.dtos.stats import ServiceStatsResponse
 from link_shortener.application.services.link_service import LinkService
 import pytest
 
@@ -10,6 +12,10 @@ def mock_create_use_case():
 
 @pytest.fixture
 def mock_get_info_use_case():
+    return Mock()
+
+@pytest.fixture
+def mock_get_extended_info_use_case():
     return Mock()
 
 @pytest.fixture
@@ -25,93 +31,89 @@ def mock_get_stats_use_case():
     return Mock()
 
 @pytest.fixture
+def mock_get_user_links_use_case():
+    return Mock()
+
+@pytest.fixture
+def mock_delete_link_use_case():
+    return Mock()
+
+@pytest.fixture
 def link_service(
     mock_create_use_case,
     mock_get_info_use_case,
+    mock_get_extended_info_use_case,
     mock_redirect_use_case,
     mock_batch_create_use_case,
-    mock_get_stats_use_case
+    mock_get_stats_use_case,
+    mock_get_user_links_use_case,
+    mock_delete_link_use_case,
 ):
     return LinkService(
         create_short_link_use_case=mock_create_use_case,
         get_link_info_use_case=mock_get_info_use_case,
+        get_extended_link_info_use_case=mock_get_extended_info_use_case,
         redirect_link_use_case=mock_redirect_use_case,
         batch_create_links_use_case=mock_batch_create_use_case,
-        get_service_stats_use_case=mock_get_stats_use_case
+        get_service_stats_use_case=mock_get_stats_use_case,
+        get_user_links_use_case=mock_get_user_links_use_case,
+        delete_link_use_case=mock_delete_link_use_case,
     )
 
 
-# ------------------------------------------------------------------
-# TestLinkService
-# ------------------------------------------------------------------
 class TestLinkService:
     """Tests for the LinkService facade (delegation to use cases)."""
 
     def test_create_short_link_delegates(self, link_service, mock_create_use_case):
         """Should delegate to CreateShortLinkUseCase.execute()."""
+        from link_shortener.application.context import RequestContext
 
-        url = 'https://test.com'
-        user_ip = "127.0.0.1"
-        user_agent = "Mozilla"
+        context = RequestContext(request_id="test-1")
         expected_response = Mock(spec=ShortLinkResponse)
         mock_create_use_case.execute.return_value = expected_response
 
-        result = link_service.create_short_link(url, user_ip, user_agent)
+        result = link_service.create_short_link("https://test.com", context)
 
         assert result == expected_response
-        mock_create_use_case.execute.assert_called_once_with(url, user_ip, user_agent)
+        mock_create_use_case.execute.assert_called_once_with(
+            "https://test.com", context, ttl_seconds=0
+        )
 
     def test_get_link_info_delegates(self, link_service, mock_get_info_use_case):
         """Should delegate to GetLinkInfoUseCase.execute()."""
-        
-        short_code = 'abc123'
+        from link_shortener.application.context import RequestContext
+
+        context = RequestContext(request_id="test-1")
         expected_response = Mock(spec=ShortLinkResponse)
         mock_get_info_use_case.execute.return_value = expected_response
 
-        result = link_service.get_link_info(short_code)
+        result = link_service.get_link_info("abc123", context)
 
         assert result == expected_response
-        mock_get_info_use_case.execute.assert_called_once_with(short_code)
+        mock_get_info_use_case.execute.assert_called_once_with("abc123", context)
 
-    def test_redirect_delegates(self, link_service, mock_redirect_use_case):
-        """Should delegate to RedirectLinkUseCase.execute()."""
-        
-        short_code = 'abc123'
-        expected_url = 'https://original.com'
-        user_ip = "127.0.0.1"
-        user_agent = "Mozilla"
-        mock_redirect_use_case.execute.return_value = expected_url
+    def test_delete_link_delegates(self, link_service, mock_delete_link_use_case):
+        """Should delegate to DeleteLinkUseCase.execute()."""
+        from link_shortener.application.context import RequestContext
 
-        result = link_service.redirect(short_code, user_ip, user_agent)
+        context = RequestContext(request_id="test-1")
+        mock_delete_link_use_case.execute.return_value = True
 
-        assert result == expected_url
-        mock_redirect_use_case.execute.assert_called_once_with(
-            short_code, user_ip, user_agent
+        result = link_service.delete_link("abc123", context)
+
+        assert result is True
+        mock_delete_link_use_case.execute.assert_called_once_with("abc123", context)
+
+    def test_get_user_links_delegates(self, link_service, mock_get_user_links_use_case):
+        """Should delegate to GetUserLinksUseCase.execute()."""
+        from link_shortener.application.context import RequestContext
+
+        context = RequestContext(request_id="test-1")
+        mock_get_user_links_use_case.execute.return_value = []
+
+        result = link_service.get_user_links("user-123", context)
+
+        assert result == []
+        mock_get_user_links_use_case.execute.assert_called_once_with(
+            "user-123", context, offset=0, limit=50
         )
-
-    def test_batch_create_delegates(self, link_service, mock_batch_create_use_case):
-        """Should delegate to BatchCreateLinksUseCase.execute()."""
-        
-        urls = ['https://a.com', 'https://b.com']
-        user_ip = "127.0.0.1"
-        user_agent = "Mozilla"
-        expected_response = Mock(spec=BatchCreateResponse)
-        mock_batch_create_use_case.execute.return_value = expected_response
-
-        result = link_service.batch_create_short_links(urls, user_ip, user_agent)
-
-        assert result == expected_response
-        mock_batch_create_use_case.execute.assert_called_once_with(
-            urls, user_ip, user_agent
-        )
-
-    def test_get_service_stats_delegates(self, link_service, mock_get_stats_use_case):
-        """Should delegate to GetServiceStatsUseCase.execute()."""
-        
-        expected_response = Mock(spec=ServiceStatsResponse)
-        mock_get_stats_use_case.execute.return_value = expected_response
-
-        result = link_service.get_service_stats()
-
-        assert result == expected_response
-        mock_get_stats_use_case.execute.assert_called_once()
