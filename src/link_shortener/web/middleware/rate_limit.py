@@ -20,11 +20,12 @@ class RateLimitMiddleware:
         self.app = app
         self.rate_limiter = rate_limiter
 
-        # Default limits (can be overridden in Flask config)
-        self.default_limit = getattr(app.config, "DEFAULT_RATE_LIMIT", 100)
-        self.default_period = getattr(app.config, "DEFAULT_RATE_LIMIT_PERIOD", 60)
+        # Default limits (can be overridden in Flask config).
+        self.default_limit = app.config.get("DEFAULT_RATE_LIMIT", 100)
+        self.default_period = app.config.get("DEFAULT_RATE_LIMIT_PERIOD", 60)
 
-        self.rate_limits = getattr(app.config, "RATE_LIMITS", {})
+        self.rate_limits = app.config.get("RATE_LIMITS", {})
+        self.auth_disabled = app.config.get("RATE_LIMIT_AUTH_DISABLED", False)
 
         self._register_handlers()
     
@@ -46,6 +47,10 @@ class RateLimitMiddleware:
 
             # Combine client ID with endpoint to isolate limits per endpoint.
             key = f"{client_id}:{request.endpoint}"
+
+            # Skip rate limiting for auth endpoints if disabled
+            if self.auth_disabled and request.endpoint and request.endpoint.startswith("auth."):
+                return
 
             limit, period = self.rate_limits.get(
                 request.endpoint, (self.default_limit, self.default_period)

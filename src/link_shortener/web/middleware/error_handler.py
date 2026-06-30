@@ -158,6 +158,8 @@ class ErrorHandlerMiddleware:
                 "ACCOUNT_INACTIVE": 403,
                 "VALIDATION_ERROR": 400,
                 "LINK_NOT_FOUND": 404,
+                "LINK_EXPIRED": 410,
+                "GUEST_LINK_LIMIT": 429,
                 "CODE_GENERATION_FAILED": 500,
                 "CONFIGURATION_ERROR": 500,
                 "ROLE_CREATION_FAILED": 400,
@@ -180,7 +182,7 @@ class ErrorHandlerMiddleware:
                 "Domain error", error=error.message, code=error.code
             )
 
-            return jsonify(response.model_dump()), 400
+            return jsonify(response.model_dump()), status_code
 
         @self.app.errorhandler(ValueError)
         def handle_value_error(error: ValueError):

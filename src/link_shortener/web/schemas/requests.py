@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -9,11 +9,17 @@ class CreateShortLinkRequest(BaseModel):
         description="Url to shorten",
         examples=["https://example.com/so-long-url"]
     )
+    ttl_seconds: Optional[int] = Field(
+        None,
+        ge=0,          # 0 means no expiration
+        description="Time to live in seconds (0 = forever, None = default behaviour)"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "url": "https://example.com/so-long-url"
+                "url": "https://example.com/so-long-url",
+                "ttl_seconds": 3600
             }
         }
     )

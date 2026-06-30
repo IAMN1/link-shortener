@@ -14,9 +14,9 @@ from link_shortener.infrastructure import (
 )
 
 from link_shortener.web.controllers.admin_api_controller import AdminApiController
-from link_shortener.web.controllers.admin_frontend_controller import AdminFrontendController
 from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.auth_controller import AuthController
+from link_shortener.web.controllers.dashboard_controller import DashboardController
 from link_shortener.web.controllers.frontend_controller import FrontendController
 from link_shortener.web.middleware.authentication import AuthenticationMiddleware
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
@@ -79,9 +79,14 @@ def create_app(config=None) -> Flask:
     register_flask_commands(app)
 
     # ------------------------------------------------------------------
-    # CORS
+    # CORS (supports cookie-based auth)
     # ------------------------------------------------------------------
-    CORS(app)
+    CORS(
+        app,
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization"],
+        expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"],
+    )
 
     # ------------------------------------------------------------------
     # Dependency Injection Container
@@ -108,6 +113,7 @@ def create_app(config=None) -> Flask:
     AuthenticationMiddleware(
         app,
         container.get_authentication_service(),
+        container.get_authorization_service(),
         container.get_uow_factory()
     )
     ## 3. Error handling
@@ -118,19 +124,23 @@ def create_app(config=None) -> Flask:
     # ------------------------------------------------------------------
     # Register Controllers (Blueprints)
     # ------------------------------------------------------------------
-    api_controller = ApiController(container.get_link_service())
-    frontend_controller = FrontendController(container.get_link_service())
-    admin_api_controller = AdminApiController(container.get_admin_service())
-    admin_frontend_controller = AdminFrontendController(
-        admin_servie=container.get_admin_service(),
-        auth_service=container.get_authorization_service()
-    )
-    auth_controller = AuthController(container.get_authentication_service())
+    link_service = container.get_link_service()
+    admin_service = container.get_admin_service()
+    authentication_service = container.get_authentication_service()
+    authorization_service = container.get_authorization_service()
+    login_uc = container.get_login_use_case()
+    register_uc = container.get_register_use_case()
+
+    api_controller = ApiController(link_service, admin_service, authorization_service)
+    frontend_controller = FrontendController()
+    admin_api_controller = AdminApiController(admin_service)
+    dashboard_controller = DashboardController(link_service, admin_service)
+    auth_controller = AuthController(authentication_service, login_uc, register_uc)
 
     app.register_blueprint(api_controller.bp)
     app.register_blueprint(frontend_controller.bp)
     app.register_blueprint(admin_api_controller.bp)
-    app.register_blueprint(admin_frontend_controller.bp)
+    app.register_blueprint(dashboard_controller.bp)
     app.register_blueprint(auth_controller.bp)
 
     # ------------------------------------------------------------------
@@ -178,11 +188,9 @@ def create_app(config=None) -> Flask:
 
     cache_type = getattr(cache, "cache_type", "unknown")
 
-    if app.config.get("USE_ALEMBIC", True) and app.config.get("AUTO_SEED_ROLES", True):
-        logger.warning(
-            "Both USE_ALEMBIC and AUTO_SEED_ROLES are enabled. "
-            "Roles are already seeded by the Alembic migration. "
-            "Consider setting AUTO_SEED_ROLES=False to avoid redundant work."
+    if app.config.get("AUTO_SEED_ROLES", True):
+        logger.info(
+            "AUTO_SEED_ROLES is enabled. Basic roles and permissions will be ensured at startup."
         )
 
     logger.info(

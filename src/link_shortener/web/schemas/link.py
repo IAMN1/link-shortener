@@ -27,6 +27,7 @@ class ShortLinkResponse(BaseModel):
     last_accessed: Optional[datetime]
     is_new: bool
     from_cache: bool
+    owner_id: Optional[str] = None
 
     @field_serializer('created_at', 'last_accessed')
     def serialize_dt(self, value: Optional[datetime]) -> Optional[str]:
@@ -53,7 +54,8 @@ class ShortLinkResponse(BaseModel):
                 "created_at": "2026-02-20T12:00:00",
                 "last_accessed": "2026-02-20T15:30:00",
                 "is_new": False,
-                "from_cache": True
+                "from_cache": True,
+                "owner_id": "550e8400-e29b-41d4-a716-446655440000"
             }
         }
     )
@@ -70,6 +72,7 @@ class ShortLinkResponse(BaseModel):
             last_accessed=dto.last_accessed,
             is_new=dto.is_new,
             from_cache=dto.from_cache,
+            owner_id=dto.owner_id,
         )
 
 
@@ -102,6 +105,7 @@ class ExtendedLinkInfoResponse(BaseModel):
     age_days: int
     clicks_per_day: float
     last_access_days_ago: Optional[int]
+    owner_id: Optional[str] = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -116,7 +120,8 @@ class ExtendedLinkInfoResponse(BaseModel):
                 "is_recent": False,
                 "age_days": 36,
                 "clicks_per_day": 4.17,
-                "last_access_days_ago": 1
+                "last_access_days_ago": 1,
+                "owner_id": "550e8400-e29b-41d4-a716-446655440000"
             }
         }
     )
@@ -158,5 +163,6 @@ class ExtendedLinkInfoResponse(BaseModel):
             is_recent=dto.is_recent,
             age_days=dto.age_days,
             clicks_per_day=dto.clicks_per_day,
-            last_access_days_ago=dto.last_access_days_ago
+            last_access_days_ago=dto.last_access_days_ago,
+            owner_id=dto.owner_id,
         )

@@ -73,7 +73,7 @@ class CreateRoleRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "name": "editor",
-                "description": "Роль для контент-менеджеров",
+                "description": "Role for content managers",
                 "permissions": ["link:create", "link:view_own", "stats:view_basic"]
             }
         }

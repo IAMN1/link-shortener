@@ -1,9 +1,20 @@
-from flask import Blueprint, jsonify, request
+"""
+Administrative API controller.
 
+Handles endpoints for managing users, roles, viewing user statistics,
+and checking service health.  All methods require the corresponding
+administrative permissions.
+"""
+
+from flask import Blueprint, jsonify, request
 from link_shortener.application import AdminService
 from link_shortener.domain import SystemPermissions
-from link_shortener.web.schemas.admin.admin_request import CreateRoleRequest, CreateUserRequest, UpdateRolePermissionsRequest, UpdateUserRolesRequest
+from link_shortener.web.schemas.admin.admin_request import (
+    CreateRoleRequest, CreateUserRequest,
+    UpdateRolePermissionsRequest, UpdateUserRolesRequest
+)
 from link_shortener.web.schemas.admin.admin_responses import RoleResponseSchema, UserResponseSchema
+from link_shortener.web.schemas.link import ShortLinkResponse
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.decorators import require_permission
 
@@ -12,9 +23,10 @@ class AdminApiController:
     """
     RESTful controller for administrative operations.
 
-    Exposes endpoints for managing users and roles under ``/api/v1/admin``.
-    All endpoints require appropriate permissions (checked by decorators).
+    Exposes endpoints for managing users, roles, as well as
+    viewing user statistics and service health.
     """
+
     def __init__(self, admin_service: AdminService):
         self.admin_service = admin_service
         self.bp = Blueprint("admin_api", __name__, url_prefix="/api/v1/admin")
@@ -29,14 +41,15 @@ class AdminApiController:
         self.bp.add_url_rule("/users/<user_id>/deactivate", view_func=self.deactivate_user, methods=["POST"])
         self.bp.add_url_rule("/users/<user_id>/activate", view_func=self.activate_user, methods=["POST"])
         self.bp.add_url_rule("/users/<user_id>", view_func=self.delete_user, methods=["DELETE"])
-
+        self.bp.add_url_rule("/users/<user_id>/stats", view_func=self.get_user_stats, methods=["GET"])
         # Roles
         self.bp.add_url_rule("/roles", view_func=self.create_role, methods=["POST"])
         self.bp.add_url_rule("/roles", view_func=self.list_roles, methods=["GET"])
         self.bp.add_url_rule("/roles/<role_name>", view_func=self.get_role, methods=["GET"])
         self.bp.add_url_rule("/roles/<role_name>/permissions", view_func=self.update_role_permissions, methods=["PUT"])
         self.bp.add_url_rule("/roles/<role_name>", view_func=self.delete_role, methods=["DELETE"])
-
+        # Health
+        self.bp.add_url_rule("/health", view_func=self.get_health, methods=["GET"])
 
     # ------------------------------------------------------------------
     # Users
@@ -125,6 +138,17 @@ class AdminApiController:
             return jsonify({"error": "User not found"}), 404
         return jsonify({"message": "User deleted"})
 
+    @require_permission(SystemPermissions.ADMIN_VIEW_USERS.value)
+    def get_user_stats(self, user_id):
+        """Retrieve activity statistics for any user (admin only)."""
+        context = create_request_context()
+        stats = self.admin_service.get_user_activity_stats(user_id, context)
+        return jsonify({
+            "total_links": stats.total_links,
+            "total_clicks": stats.total_clicks,
+            "avg_clicks_per_link": stats.avg_clicks_per_link,
+            "recent_links": [ShortLinkResponse.from_dto(link).model_dump() for link in stats.recent_links]
+        })
 
     # ------------------------------------------------------------------
     # Roles
@@ -195,3 +219,17 @@ class AdminApiController:
         if not deleted:
             return jsonify({"error": "Role not found or is system"}), 404
         return jsonify({"message": "Role deleted"})
+
+    # ------------------------------------------------------------------
+    # Health
+    # ------------------------------------------------------------------
+    @require_permission(SystemPermissions.ADMIN_VIEW_SYSTEM_HEALTH.value)
+    def get_health(self):
+        """Check the health of the service infrastructure."""
+        context = create_request_context()
+        health = self.admin_service.get_service_health(context)
+        return jsonify({
+            "database": health.database,
+            "cache": health.redis,
+            "task_queue": health.task_queue,
+        })
