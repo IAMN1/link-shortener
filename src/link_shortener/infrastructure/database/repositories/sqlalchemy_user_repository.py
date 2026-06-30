@@ -145,7 +145,7 @@ class SQLAlchemyUserRepository(UserRepository):
                 name=role_model.name,
                 description=role_model.description,
                 is_system=role_model.is_system,
-                permissions=perms,
+                permissions=tuple(perms),
             )
             roles.append(role)
         return User(

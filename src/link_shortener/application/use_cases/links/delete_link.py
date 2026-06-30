@@ -3,11 +3,13 @@ from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.cache.link_cache import LinkCache
+from link_shortener.application.ports.cache.redirect_cache import RedirectCache
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import ShortCode
+from link_shortener.domain.exceptions import ValidationError
 
 
 @dataclass
@@ -20,6 +22,7 @@ class DeleteLinkUseCase(BaseUseCase):
 
     uow_factory: Callable[[], UnitOfWork]
     cache: LinkCache
+    redirect_cache: RedirectCache
     logger: Logger
     audit_logger: AuditLogger
 
@@ -59,6 +62,7 @@ class DeleteLinkUseCase(BaseUseCase):
                 # Invalidate caches so deleted link is not served stale
                 try:
                     self.cache.delete(short_code)
+                    self.redirect_cache.delete(short_code)
                 except Exception as e:
                     log.warning(
                         "Cache invalidation failed after link deletion",
@@ -73,6 +77,6 @@ class DeleteLinkUseCase(BaseUseCase):
 
                 log.info("Link deleted successfully", code=link.short_code.value)
                 return deleted
-        except ValueError as e:
+        except (ValueError, ValidationError) as e:
             log.error("Invalid short code format", error=str(e))
             return False

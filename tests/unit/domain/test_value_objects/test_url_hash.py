@@ -1,5 +1,6 @@
 import pytest
 from link_shortener.domain.value_objects.url_hash import UrlHash
+from link_shortener.domain.exceptions import ValidationError
 
 
 # ------------------------------------------------------------------
@@ -28,9 +29,9 @@ class TestUrlHash:
         ('', 'Invalid hash format'),        # empty
     ])
     def test_invalid_hash_raises_value_error(self, invalid_hash, expected_error):
-        """Should raise ValueError for invalid hash strings."""
+        """Should raise ValidationError for invalid hash strings."""
         
-        with pytest.raises(ValueError, match=expected_error):
+        with pytest.raises(ValidationError, match=expected_error):
             UrlHash(invalid_hash)
     
     def test_str_representation(self, valid_url_hash_str):

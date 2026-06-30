@@ -4,6 +4,8 @@ from typing import Tuple
 from urllib.parse import ParseResult, urlparse
 import re
 
+from link_shortener.domain.exceptions import ValidationError
+
 @dataclass(frozen=True)
 class OriginalUrl:
     """
@@ -17,7 +19,7 @@ class OriginalUrl:
         allowed_schemes: Tuple of permitted URL schemes (default http, https).
 
     Raises:
-        ValueError: If the URL does not pass validation (length, scheme, host, path).
+        ValidationError: If the URL does not pass validation (length, scheme, host, path).
     """
 
     value: str
@@ -39,36 +41,38 @@ class OriginalUrl:
         """Ensure URL does not exceed the maximum allowed length."""
 
         if len(self.value) > 2048:
-            raise ValueError("URL too long (max 2048 characters)")
+            raise ValidationError("URL too long (max 2048 characters)", field="url")
 
     def _validate_scheme(self, parsed: ParseResult) -> None:
         """Check that the scheme is present and allowed."""
         if not parsed.scheme:
-            raise ValueError("URL must have a scheme!")
+            raise ValidationError("URL must have a scheme!", field="url")
 
         if parsed.scheme not in self.allowed_schemes:
             allowed_list = ", ".join(self.allowed_schemes)
-            raise ValueError(
+            raise ValidationError(
                 f"Scheme '{parsed.scheme}' is not allowed. "
-                f"Allowed schemes: {allowed_list}"
+                f"Allowed schemes: {allowed_list}",
+                field="url",
             )
 
     def _validate_netloc(self, parsed: ParseResult) -> None:
         """Validate the network location (hostname and optional port)."""
 
         if not parsed.netloc:
-            raise ValueError("URL must have a domain!")
-        
+            raise ValidationError("URL must have a domain!", field="url")
+
         hostname = parsed.hostname
         if not hostname:
-            raise ValueError("URL must have a hostname")
-        
+            raise ValidationError("URL must have a hostname", field="url")
+
         # Validate port if present (must be between 1 and 65535)
         try:
-            if parsed.port is not None and not (1 <= parsed.port <= 65535):
-                raise ValueError("Invalid port number")
-        except ValueError as e:
-            raise ValueError("Invalid port number") from e
+            port = parsed.port
+        except ValueError:
+            raise ValidationError("Invalid port number", field="url")
+        if port is not None and not (1 <= port <= 65535):
+            raise ValidationError("Invalid port number", field="url")
         
         self._validate_host(hostname)
     
@@ -82,7 +86,7 @@ class OriginalUrl:
 
         # Validate as a domain name.
         if not host:
-            raise ValueError("Empty host")
+            raise ValidationError("Empty host", field="url")
 
         # Check if it's a valid IP address (IPv4 or IPv6)
         try:
@@ -97,23 +101,23 @@ class OriginalUrl:
 
         # Otherwise must be a domain with at least one dot
         if '.' not in host:
-            raise ValueError("Host must contain a dot (e.g., example.com)")
-        
+            raise ValidationError("Host must contain a dot (e.g., example.com)", field="url")
+
         # Total length limit
         if len(host) > 253:
-            raise ValueError("Host too long")
-        
+            raise ValidationError("Host too long", field="url")
+
         # Validate each label
         labels = host.split(".")
         for label in labels:
             if not label:
-                raise ValueError ("Empty label in host")
+                raise ValidationError("Empty label in host", field="url")
             if len(label) > 63:
-                raise ValueError("Label too long")
-            
+                raise ValidationError("Label too long", field="url")
+
             # Label must start/end with alphanumeric, may contain hyphens inside
             if not re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$', label):
-                raise ValueError(f"Invalid characters in host label: {label}")
+                raise ValidationError(f"Invalid characters in host label: {label}", field="url")
     
     def _validate_path(self, parsed) -> None:
         """Validate that the URL path does not contain control characters.
@@ -124,10 +128,10 @@ class OriginalUrl:
             parsed: The parsed URL result from urllib.parse.urlparse.
 
         Raises:
-            ValueError: If a control character is found in the path."""
+            ValidationError: If a control character is found in the path."""
 
         if parsed.path and any(ord(c) < 32 or ord(c) == 127 for c in parsed.path):
-            raise ValueError("Path contains control characters")
+            raise ValidationError("Path contains control characters", field="url")
 
     # ------------------------------------------------------------------
     # Public methods

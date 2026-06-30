@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Optional, Tuple
 
 from link_shortener.domain.entities.permission import Permission
 
@@ -24,7 +24,7 @@ class Role:
     name: str                                           # admin, analyst, user
     description: Optional[str] = None
     is_system: bool = False                             # System roles cannot be deleted.
-    permissions: List[Permission] = field(default_factory=list)
+    permissions: Tuple[Permission, ...] = ()
 
     def __eq__(self, value):
         """Equality based on role ID."""

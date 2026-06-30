@@ -107,7 +107,7 @@ class SQLAlchemyRoleRepository(RoleRepository):
             name=model.name,
             description=model.description,
             is_system=model.is_system,
-            permissions=perms
+            permissions=tuple(perms)
         )
 
     def _update_model(self, model: RoleModel, domain: Role):

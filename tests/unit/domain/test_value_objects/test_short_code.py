@@ -1,4 +1,5 @@
 from link_shortener.domain.value_objects.short_code import ShortCode
+from link_shortener.domain.exceptions import ValidationError
 import pytest
 
 
@@ -29,9 +30,9 @@ class TestShortCode:
     ])
     def test_invalid_code_raises_value_error(self, invalid_code):
         """
-        Should raise ValueError with appropriate message for invalid code.
+        Should raise ValidationError with appropriate message for invalid code.
         """
-        with pytest.raises(ValueError, match='Invalid short code format'):
+        with pytest.raises(ValidationError, match='Invalid short code format'):
             ShortCode(invalid_code)
     
     def test_create_method(self, valid_short_code_str):

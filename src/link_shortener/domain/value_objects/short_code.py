@@ -1,6 +1,8 @@
 import re
 from dataclasses import dataclass
 
+from link_shortener.domain.exceptions import ValidationError
+
 
 @dataclass(frozen=True)
 class ShortCode:
@@ -26,13 +28,14 @@ class ShortCode:
         Validate the short code format upon creation.
 
         Raises:
-            ValueError: If the code does not match the required pattern.
+            ValidationError: If the code does not match the required pattern.
         """
 
         if not re.match(r"^[a-zA-Z0-9_-]{6,10}$", self.value):
-            raise ValueError(
+            raise ValidationError(
                 f"Invalid short code format: {self.value}. "
-                f"Must be 6-10 alphanumeric characters, underscore, or hyphen."
+                f"Must be 6-10 alphanumeric characters, underscore, or hyphen.",
+                field="short_code",
             )
 
     def __str__(self) -> str:

@@ -73,6 +73,16 @@ class User:
         """
         return any(role.has_permission(permission_name) for role in self.roles)
     
+    def __eq__(self, other: object) -> bool:
+        """Equality based on user ID."""
+        if not isinstance(other, User):
+            return False
+        return self.id == other.id
+
+    def __hash__(self) -> int:
+        """Hash based on user ID."""
+        return hash(self.id)
+
     def is_admin(self) -> bool:
         """
         Convenience method to check if the user has full administrative privileges.

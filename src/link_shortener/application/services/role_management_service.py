@@ -48,7 +48,7 @@ class RoleManagementService:
             name=name,
             description=description,
             is_system=False,
-            permissions=permissions
+            permissions=tuple(permissions)
         )
         return uow.roles.save(role)
     
@@ -74,8 +74,14 @@ class RoleManagementService:
             raise ValueError("Cannot modify system roles")
         
         permissions = uow.permissions.get_by_names(permission_names)
-        role.permissions = permissions
-        return uow.roles.save(role)
+        updated_role = Role(
+            id=role.id,
+            name=role.name,
+            description=role.description,
+            is_system=role.is_system,
+            permissions=tuple(permissions)
+        )
+        return uow.roles.save(updated_role)
     
     def delete_role(self, uow: UnitOfWork, role_name: str) -> None:
         """

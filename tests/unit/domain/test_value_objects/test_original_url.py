@@ -1,4 +1,5 @@
 from link_shortener.domain.value_objects.original_url import OriginalUrl
+from link_shortener.domain.exceptions import ValidationError
 import pytest
 
 
@@ -40,9 +41,9 @@ class TestOriginalUrl:
         ("https://", "URL must have a domain!"),
     ])
     def test_invalid_url_raises_error(self, invalid_url, expected_error):
-        """Should raise ValueError for malformed URLs."""
+        """Should raise ValidationError for malformed URLs."""
 
-        with pytest.raises(ValueError, match=expected_error):
+        with pytest.raises(ValidationError, match=expected_error):
             OriginalUrl(invalid_url)
     
 
@@ -56,9 +57,9 @@ class TestOriginalUrl:
         "http://test.com:port",
     ])
     def test_invalid_port_raises_error(self, invalid_port_url):
-        """Should raise ValueError for invalid port numbers."""
+        """Should raise ValidationError for invalid port numbers."""
 
-        with pytest.raises(ValueError, match="Invalid port number"):
+        with pytest.raises(ValidationError, match="Invalid port number"):
             OriginalUrl(invalid_port_url)
 
 
@@ -75,9 +76,9 @@ class TestOriginalUrl:
         "http://" + "a"*254 + ".com",   # total length >253
     ])
     def test_invalid_host_raises_error(self, invalid_host):
-        """Should raise ValueError for invalid hostnames."""
+        """Should raise ValidationError for invalid hostnames."""
 
-        with pytest.raises(ValueError, match="Empty label in host|Invalid characters|Label too long|Host too long"):
+        with pytest.raises(ValidationError, match="Empty label in host|Invalid characters|Label too long|Host too long"):
             OriginalUrl(invalid_host)
 
 
@@ -107,9 +108,9 @@ class TestOriginalUrl:
         "http://test.com/\x7F",
     ])
     def test_path_with_control_characters_raises_error(self, path_with_control):
-        """Should raise ValueError if path contains control characters."""
+        """Should raise ValidationError if path contains control characters."""
 
-        with pytest.raises(ValueError, match="Path contains control characters"):
+        with pytest.raises(ValidationError, match="Path contains control characters"):
             OriginalUrl(path_with_control)
 
 
