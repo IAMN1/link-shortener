@@ -1,1 +1,1 @@
-"""Адаптеры CLI для различных фреймворков."""
+"""CLI adapters for various frameworks."""

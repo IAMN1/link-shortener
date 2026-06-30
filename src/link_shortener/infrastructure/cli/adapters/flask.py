@@ -19,7 +19,6 @@ from ..commands.link import list_links as list_links_logic
 from ..commands.cache import check_redis_connection as check_redis_logic
 from ..commands.cache import get_cache_info as cache_info_logic
 from ..commands.cache import clear_cache as clear_cache_logic
-from ..commands.security import generate_secrets as generate_secrets_logic
 from ..commands.admin import create_admin as create_admin_logic
 
 
@@ -28,7 +27,7 @@ from ..commands.admin import create_admin as create_admin_logic
 # ------------------------------------------------------------------
 @click.group(name="db")
 def db_group():
-    """Database management commands"""
+    """Database management commands (init, drop, seed, roles, check, migrate)"""
     pass
 
 @db_group.command("init")
@@ -101,12 +100,23 @@ def check_db():
     else:
         click.echo("Database connection failed.", err=True)
 
+@db_group.command("status")
+@with_appcontext
+def db_status():
+    """Alias for 'db check' - check database connection."""
+    container = current_app.container
+    if check_db_logic(container.get_db_manager()):
+        click.echo("Database connection is healthy.")
+    else:
+        click.echo("Database connection failed.", err=True)
+
 @db_group.command("migrate")
 @with_appcontext
 def migrate_db():
-    """Apply database migrations (placeholder)."""
+    """Apply database migrations using Alembic."""
     container = current_app.container
-    migrate_db_logic(container.get_db_manager())
+    use_alembic = current_app.config.get("USE_ALEMBIC", True)
+    migrate_db_logic(container.get_db_manager(), use_alembic)
 
 # ------------------------------------------------------------------
 # Stats commands group
@@ -176,15 +186,22 @@ def check_redis():
     else:
         click.echo("Redis not used or connection failed.")
 
-@maintenance_group.command("check-db")
+@maintenance_group.command("health")
 @with_appcontext
-def check_db_maintenance():
-    """Check database connection."""
+def maintenance_health():
+    """Run all health checks (database + Redis)."""
     container = current_app.container
-    if check_db_logic(container.get_db_manager()):
-        click.echo("Database connection is healthy.")
-    else:
-        click.echo("Database connection failed.", err=True)
+
+    # Check database
+    db_ok = check_db_logic(container.get_db_manager())
+    click.echo(f"Database: {'OK' if db_ok else 'FAILED'}")
+
+    # Check Redis
+    redis_ok = check_redis_logic(container.get_cache())
+    click.echo(f"Redis: {'OK' if redis_ok else 'FAILED'}")
+
+    if not (db_ok and redis_ok):
+        raise SystemExit(1)
 
 # ------------------------------------------------------------------
 # Cache commands group
@@ -287,28 +304,189 @@ def link_list(limit):
     click.echo("=" * 80)
 
 # ------------------------------------------------------------------
-# Top‑level commands
+# Security commands group
 # ------------------------------------------------------------------
-@click.command("generate-secrets")
-def generate_secrets():
+@click.group(name="security")
+def security_group():
+    """Security management commands (secrets, users, roles, tokens)"""
+    pass
+
+@security_group.command("generate-secrets")
+def security_generate_secrets():
     """Generate new SECRET_KEY and SHORT_CODE_PEPPER."""
-    secrets = generate_secrets_logic()
+    from ..commands.security import generate_secrets as gen_secrets
+    secrets = gen_secrets()
     click.echo("=" * 80)
+    click.echo("Generated secrets (add to .env file):")
     click.echo(f"SECRET_KEY={secrets['SECRET_KEY']}")
     click.echo(f"SHORT_CODE_PEPPER={secrets['SHORT_CODE_PEPPER']}")
     click.echo("=" * 80)
+    click.echo("\nWARNING: Keep these values secure and never commit them to version control.")
 
+@security_group.command("check-secrets")
+def security_check_secrets():
+    """Check if required secrets are configured."""
+    from ..commands.security import check_secrets
+    status = check_secrets()
+    click.echo("\nSecret Configuration Status:")
+    click.echo("=" * 40)
+    for secret, configured in status.items():
+        status_text = "OK" if configured else "MISSING"
+        click.echo(f"{secret}: {status_text}")
+    click.echo("=" * 40)
 
+    if not all(status.values()):
+        click.echo("\nRun 'flask security generate-secrets' to generate missing secrets.")
+
+@security_group.command("list-users")
+@with_appcontext
+def security_list_users():
+    """List all users with their roles."""
+    from ..commands.security import list_users
+    container = current_app.container
+    users = list_users(container.get_uow_factory())
+
+    if not users:
+        click.echo("No users found.")
+        return
+
+    click.echo(f"\n{'ID':<36} {'Email':<30} {'Active':<8} {'Roles'}")
+    click.echo("=" * 100)
+    for user in users:
+        roles_str = ", ".join(user["roles"]) if user["roles"] else "none"
+        click.echo(f"{user['id']:<36} {user['email']:<30} {str(user['is_active']):<8} {roles_str}")
+
+@security_group.command("list-roles")
+@with_appcontext
+def security_list_roles():
+    """List all roles with their permissions."""
+    from ..commands.security import list_roles
+    container = current_app.container
+    roles = list_roles(container.get_uow_factory())
+
+    if not roles:
+        click.echo("No roles found.")
+        return
+
+    click.echo(f"\n{'ID':<36} {'Name':<20} {'Description':<30} {'Permissions'}")
+    click.echo("=" * 120)
+    for role in roles:
+        perms_str = ", ".join(role["permissions"]) if role["permissions"] else "none"
+        click.echo(f"{role['id']:<36} {role['name']:<20} {(role['description'] or ''):<30} {perms_str}")
+
+@security_group.command("reset-password")
+@click.option("--email", prompt=True, help="User email")
+@click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True, help="New password")
+@with_appcontext
+def security_reset_password(email, password):
+    """Reset a user's password."""
+    from ..commands.security import reset_password
+    container = current_app.container
+    user_service = container.get_user_management_service()
+
+    if reset_password(container.get_uow_factory(), user_service, email, password):
+        click.echo(f"Password reset successfully for {email}")
+    else:
+        click.echo(f"User {email} not found.", err=True)
+        raise SystemExit(1)
+
+@security_group.command("validate-token")
+@click.argument("token")
+@with_appcontext
+def security_validate_token(token):
+    """Validate a JWT token and show its claims."""
+    from ..commands.security import validate_token
+    container = current_app.container
+    auth_service = container.get_authentication_service()
+    
+    result = validate_token(auth_service, token)
+    
+    if result["valid"]:
+        click.echo("\nToken is VALID")
+        click.echo("=" * 40)
+        click.echo(f"User ID: {result.get('user_id')}")
+        click.echo(f"Email: {result.get('email')}")
+        click.echo(f"Roles: {', '.join(result.get('roles', []))}")
+        click.echo(f"Expires: {result.get('exp')}")
+    else:
+        click.echo(f"\nToken is INVALID: {result.get('error')}", err=True)
+        raise SystemExit(1)
+
+# ------------------------------------------------------------------
+# Top-level commands
+# ------------------------------------------------------------------
 @click.command("create-admin")
 @click.option("--email", prompt=True, help="Admin email")
 @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True, help="Admin password")
+@with_appcontext
 def create_admin(email, password):
-    """Create an admin user (placeholder – requires user model)."""
-    if create_admin_logic(email, password):
-        click.echo(f"Admin user {email} created.")
-    else:
-        click.echo("Failed to create admin.")
+    """Create an admin user."""
+    container = current_app.container
+    user_service = container.get_user_management_service()
+    uow_factory = container.get_uow_factory()
+    try:
+        admin_email = create_admin_logic(
+            uow_factory=uow_factory,
+            user_service=user_service,
+            role_name="admin",
+            email=email,
+            password=password,
+        )
+        click.echo(f"Admin user {admin_email} created successfully.")
+    except Exception as e:
+        click.echo(f"Failed to create admin: {e}", err=True)
+        raise SystemExit(1)
 
+# ------------------------------------------------------------------
+# Alembic commands group
+# ------------------------------------------------------------------
+@click.group(name="alembic")
+def alembic_group():
+    """Alembic migration management (status, history, upgrade, downgrade, migrate)"""
+    pass
+
+@alembic_group.command("status")
+def alembic_status():
+    """Show current migration status."""
+    from ..commands.alembic import AlembicCommands
+    click.echo(AlembicCommands.status())
+
+@alembic_group.command("history")
+@click.option("--revision", "-r", default=None, help="Show history from revision")
+def alembic_history(revision):
+    """Show migration history."""
+    from ..commands.alembic import AlembicCommands
+    click.echo(AlembicCommands.history(revision))
+
+@alembic_group.command("upgrade")
+@click.argument("revision", default="head")
+def alembic_upgrade(revision):
+    """Apply migrations to target revision."""
+    from ..commands.alembic import AlembicCommands
+    success, output = AlembicCommands.upgrade(revision)
+    click.echo(output)
+    if not success:
+        raise SystemExit(1)
+
+@alembic_group.command("downgrade")
+@click.argument("revision", default="-1")
+def alembic_downgrade(revision):
+    """Rollback migrations to target revision."""
+    from ..commands.alembic import AlembicCommands
+    success, output = AlembicCommands.downgrade(revision)
+    click.echo(output)
+    if not success:
+        raise SystemExit(1)
+
+@alembic_group.command("migrate")
+@click.argument("message")
+def alembic_migrate(message):
+    """Create new migration with auto-generated changes."""
+    from ..commands.alembic import AlembicCommands
+    success, output = AlembicCommands.migrate(message)
+    click.echo(output)
+    if not success:
+        raise SystemExit(1)
 
 # ------------------------------------------------------------------
 # Registration helper
@@ -328,5 +506,6 @@ def register_flask_commands(app):
     app.cli.add_command(maintenance_group)
     app.cli.add_command(link_group)
     app.cli.add_command(cache_group)
-    app.cli.add_command(generate_secrets)
+    app.cli.add_command(alembic_group)
+    app.cli.add_command(security_group)
     app.cli.add_command(create_admin)

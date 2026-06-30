@@ -102,13 +102,31 @@ def check_db_connection(db_manager: DatabaseManager) -> bool:
     except Exception:
         return False
 
-def migrate_db(db_manager: DatabaseManager) -> None:
+def migrate_db(db_manager: DatabaseManager, use_alembic: bool) -> None:
     """
-    Placeholder for future Alembic migrations.
+    Apply database migrations using Alembic.
 
     Args:
         db_manager: DatabaseManager instance.
-    
-    TODO Реализовать
+        use_alembic: flag indicating whether alembic is enabled
     """
-    print("Database migrations not implemented yet. Use 'init' to create tables.")
+    if not use_alembic:
+        print("Alembic is disabled. Use 'flask db init' to create tables.")
+        return
+
+    import subprocess
+    import sys
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print("Migrations applied successfully.")
+        if result.stdout:
+            print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        print(f"Migration failed: {e.stderr}", file=sys.stderr)
+        raise SystemExit(1)

@@ -1,16 +1,45 @@
-def create_admin(email: str, pswd: str) -> bool:
-    """
-    Create an admin user.
+from typing import Callable
 
-    This is a placeholder implementation that will be replaced
-    once the user model and authentication system are added.
+from link_shortener.application import UnitOfWork, UserManagementService
+
+
+def create_admin(
+        uow_factory: Callable[[], UnitOfWork],
+        user_service: UserManagementService,
+        role_name: str,
+        email: str,
+        password: str
+    ) -> str:
+    """
+    Create a new user with the specified role (typically 'admin').
 
     Args:
-        email: Admin's email address.
-        password: Admin's password (plain text for now, will be hashed).
+        uow_factory: Factory for Unit of Work instances.
+        user_service: Service for user CRUD operations.
+        role_name: Name of the role to assign (must exist in DB).
+        email: User email.
+        password: Plain-text password.
 
     Returns:
-        True if creation was successful, False otherwise
+        Email of the newly created user.
+
+    Raises:
+        RuntimeError: If the specified role is not found.
+        ValidationError, DomainError: Propagated from the service.
     """
-    print(f"create_admin not implemented. Would create admin {email}")
-    return False
+    with uow_factory() as uow:
+        role = uow.roles.get_by_name(role_name)
+        if not role:
+            raise RuntimeError(
+                f"Role '{role_name}' not found. Please seed roles first "
+                "(flask db load-base-roles)."
+            )
+        user = user_service.create_user(
+            uow=uow,
+            email=email,
+            password=password,
+            roles=[role],
+            is_active=True,
+        )
+        uow.commit()
+    return user.email.value
