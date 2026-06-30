@@ -82,7 +82,7 @@ class JwtAuthenticationService(AuthenticationService):
                 return None
             if not self.verify_password(password, user.password_hash.value):
                 return None
-            # Возвращаем detached-сущность (сессия закроется)
+            # Return a detached entity (session will be closed).
             return user
     
     def _create_token(self, user: User, expires_delta: timedelta) -> str:

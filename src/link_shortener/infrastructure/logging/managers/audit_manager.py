@@ -1,4 +1,13 @@
-import sys
+"""
+Audit manager: creates and manages audit loggers with failover support.
+
+The ``AuditManager`` builds an ordered list of audit logger implementations
+(structlog, standard, null) and optionally wraps them in a ``FailoverService``.
+When failover is active, a proxy is returned that automatically switches
+to a healthy fallback logger if the primary one fails.
+"""
+
+
 from typing import List, Optional, Tuple
 
 from link_shortener.application import AuditLogger
@@ -13,24 +22,30 @@ class AuditManager:
     """
     Manages audit logger instances with optional failover support.
 
-    Based on the configured `audit_type`, this class creates a list of
+    Based on the configured ``audit_type``, this class creates a list of
     available audit logger implementations (structlog, standard, null)
     in priority order. If multiple implementations are available, a
-    `FailoverService` is used to automatically switch to a fallback
+    ``FailoverService`` is used to automatically switch to a fallback
     when the primary fails.
 
     Lifecycle is controlled by the DI container.
     """
 
-    def __init__(self, audit_type: str,  failover_check_interval: float = 30.0, logger: Optional[MinimalLogger] = None):
+    def __init__(
+        self,
+        audit_type: str,
+        failover_check_interval: float = 30.0,
+        logger: Optional[MinimalLogger] = None
+    ):
         """
         Initialize the audit manager.
 
         Args:
-            audit_type: Type of audit logger: 'auto', 'structlog', 'standard', 'null'.
+            audit_type: Type of audit logger to use. One of:
+                ``"auto"``, ``"structlog"``, ``"standard"``, ``"null"``.
             failover_check_interval: Seconds between background health checks
                 (ignored if only one implementation is available).
-            logger: Logger for internal messages; defaults to MinimalLogger.
+            logger: Logger for internal diagnostics. Defaults to ``MinimalLogger``.
         """
         self._failover_check_interval = failover_check_interval
         self.logger = logger if logger is not None else MinimalLogger()
@@ -40,9 +55,13 @@ class AuditManager:
 
     def _init_failover_service(self, audit_type: str):
         """
-        Build the ordered list of audit logger implementations.
-        """
+        Build the ordered list of audit logger implementations based on the
+        requested type and wrap them in a ``FailoverService`` when appropriate.
 
+        Args:
+            audit_type: The configured audit type.
+        """
+        # Determine priority order
         if audit_type == "auto":
             order = ["structlog", "standard"]
         elif audit_type == "structlog":
@@ -58,38 +77,34 @@ class AuditManager:
 
         for type_ in order:
             if type_ == "structlog":
-
                 try:
                     struct_audit = StructlogAuditLogger()
                     audit_loggers.append((struct_audit, "structlog_audit"))
                 except Exception as e:
                     self.logger.warning(
-                        f"WARNING: Failed to initialize StructlogAuditLogger: {e}",
-                        file=sys.stderr
+                        f"Failed to initialize StructlogAuditLogger: {e}"
                     )
-            
             elif type_ == "standard":
-
                 try:
                     std_audit = StandardAuditLogger()
                     audit_loggers.append((std_audit, "standard_audit"))
                 except Exception as e:
                     self.logger.warning(
-                        f"WARNING: Failed to initialize StandardAuditLogger: {e}",
-                        file=sys.stderr
+                        f"Failed to initialize StandardAuditLogger: {e}"
                     )
-            
             elif type_ == "null":
                 audit_loggers.append((NullAuditLogger(), "null_audit"))
-        
+
+        # Ensure at least one logger is available
         if not audit_loggers:
             audit_loggers.append((NullAuditLogger(), "null_audit"))
 
-        if len(audit_loggers) == 1:  # only NullAuditLogger
+        # If only one logger (Null), no failover is needed
+        if len(audit_loggers) == 1:
             self._failover_service = None
             self._active_audit_logger = audit_loggers[0][0]
         else:
-            # Define health check function
+            # Use health checker based on is_healthy method
             def health_check(audit: AuditLogger) -> bool:
                 return audit.is_healthy()
 
@@ -105,12 +120,12 @@ class AuditManager:
         """
         Return the audit logger instance.
 
-        If failover is configured, returns a `FailoverAuditLoggerProxy`
-        that wraps the `FailoverService`. Otherwise returns the single
+        If failover is configured, returns a ``FailoverAuditLoggerProxy``
+        that wraps the ``FailoverService``. Otherwise returns the single
         active logger.
 
         Returns:
-            AuditLogger instance.
+            An ``AuditLogger`` instance.
         """
         if self._failover_service is None:
             return self._active_audit_logger
@@ -124,19 +139,19 @@ class AuditManager:
 
 class FailoverAuditLoggerProxy(AuditLogger):
     """
-    Proxy that forwards audit calls to the `FailoverService`.
+    Proxy that forwards audit calls to the ``FailoverService``.
 
-    It maintains its own `_bound_fields` to support `bind` operations.
+    It maintains its own ``_bound_fields`` to support ``bind`` operations.
     When a log method is called, it merges bound fields with the arguments
     and delegates to the service.
     """
 
     def __init__(self, service: FailoverService, bound_fields: dict = None):
         """
-        nitialize the proxy.
+        Initialize the proxy.
 
         Args:
-            service: The `FailoverService` that holds the actual loggers.
+            service: The ``FailoverService`` that holds the actual loggers.
             bound_fields: Initial bound fields (e.g., request context).
         """
         self._service = service
@@ -150,9 +165,11 @@ class FailoverAuditLoggerProxy(AuditLogger):
             **kwargs: Fields to bind.
 
         Returns:
-            A new `FailoverAuditLoggerProxy` instance with merged bound fields.
+            A new ``FailoverAuditLoggerProxy`` instance with merged bound fields.
         """
-        return FailoverAuditLoggerProxy(self._service, {**self._bound_fields, **kwargs})
+        return FailoverAuditLoggerProxy(
+            self._service, {**self._bound_fields, **kwargs}
+        )
 
     def log_url_created(self, short_code: str, original_url: str, **kwargs) -> None:
         """
@@ -164,7 +181,9 @@ class FailoverAuditLoggerProxy(AuditLogger):
             **kwargs: Additional context.
         """
         all_kwargs = {**self._bound_fields, **kwargs}
-        self._service.execute("log_url_created", short_code, original_url, **all_kwargs)
+        self._service.execute(
+            "log_url_created", short_code, original_url, **all_kwargs
+        )
 
     def log_url_accessed(self, short_code: str, original_url: str, **kwargs) -> None:
         """
@@ -176,7 +195,9 @@ class FailoverAuditLoggerProxy(AuditLogger):
             **kwargs: Additional context.
         """
         all_kwargs = {**self._bound_fields, **kwargs}
-        self._service.execute("log_url_accessed", short_code, original_url, **all_kwargs)
+        self._service.execute(
+            "log_url_accessed", short_code, original_url, **all_kwargs
+        )
 
     def log_url_deleted(self, short_code: str, original_url: str, **kwargs) -> None:
         """
@@ -188,9 +209,16 @@ class FailoverAuditLoggerProxy(AuditLogger):
             **kwargs: Additional context.
         """
         all_kwargs = {**self._bound_fields, **kwargs}
-        self._service.execute("log_url_deleted", short_code, original_url, **all_kwargs)
-    
+        self._service.execute(
+            "log_url_deleted", short_code, original_url, **all_kwargs
+        )
+
     def is_healthy(self) -> bool:
-        """"""
+        """
+        Check the health of the audit logger through the failover service.
+
+        Returns:
+            ``True`` if the currently active audit logger is healthy.
+        """
         result = self._service.execute("is_healthy")
         return result is True

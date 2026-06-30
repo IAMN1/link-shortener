@@ -18,7 +18,7 @@ class CeleryTaskQueue(TaskQueue):
             context: ``RequestContext`` containing request metadata.
         """
         
-        # Сериализуем RequestContext в словарь
+        # Serialize RequestContext to a plain dictionary.
         from link_shortener.infrastructure.task_queue.tasks import process_link_accessed
         context_dict = {
             'request_id': context.request_id,
@@ -27,5 +27,5 @@ class CeleryTaskQueue(TaskQueue):
             'request_path': context.request_path,
             'request_method': context.request_method,
         }
-        # Отправляем задачу асинхронно
+        # Dispatch the task asynchronously.
         process_link_accessed.delay(short_code_str, context_dict)

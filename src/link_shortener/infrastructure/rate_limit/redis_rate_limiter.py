@@ -46,7 +46,7 @@ class RedisRateLimiter(RateLimiter):
         now = time.time()
         window_start = now - period
 
-        # Lua-script для атомарности
+        # Lua script for atomicity.
         lua_script = """
         local key = KEYS[1]
         local now = tonumber(ARGV[1])

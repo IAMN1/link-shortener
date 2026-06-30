@@ -93,6 +93,11 @@ class ProductionConfig(BaseConfig):
     # --------------------------------------------------------------------------
     USE_ALEMBIC: bool = True
 
+    # --------------------------------------------------------------------------
+    # Security: cookies should be secure in production
+    # --------------------------------------------------------------------------
+    COOKIE_SECURE: bool = True
+
 
     # --------------------------------------------------------------------------
     # Database: no SQL echo in production
@@ -112,8 +117,7 @@ class ProductionConfig(BaseConfig):
     def validate(self) -> None:
         """Enforce presence of required environment variables."""
         super().validate()
-        # Принудительный вызов свойств, 
-        # чтобы убедиться, что переменные окружения заданы
+        # Force property evaluation to ensure required environment variables are set.
         _ = self.SECRET_KEY
         _ = self.SHORT_CODE_SECRET_PEPPER
         _ = self.get_database_url()

@@ -23,7 +23,7 @@ class FailoverService(Generic[T]):
         services: List[Tuple[T, str]], 
         check_interval: Optional[float] = 30.0,
         health_checker: Optional[Callable[[T], bool]] = None,
-        upgrade_coldown: float = 300.0,
+        upgrade_cooldown: float = 300.0,
         logger: Optional[MinimalLogger] = None
     ):
         """
@@ -37,7 +37,7 @@ class FailoverService(Generic[T]):
             health_checker: Optional callable that takes a service instance
                 and returns ``True`` if it is healthy. If not provided,
                 only failures during actual calls trigger switching.
-            upgrade_coldown: Minimum seconds between upgrade attempts.
+            upgrade_cooldown: Minimum seconds between upgrade attempts.
             logger: Logger for failover events. Defaults to
                 ``MinimalLogger()`` which prints to stderr
 
@@ -51,7 +51,7 @@ class FailoverService(Generic[T]):
         self._services = services
         self._check_interval = check_interval
         self._health_checker = health_checker
-        self._upgrade_cooldown = upgrade_coldown
+        self._upgrade_cooldown = upgrade_cooldown
         self._lock = threading.RLock()
         self._current_index = 0                 # index of currently active service
         self._last_upgrade_attempt = 0.0
@@ -103,8 +103,8 @@ class FailoverService(Generic[T]):
                         self.logger.warning(f"Upgrading from {self._services[self._current_index][1]} to {name}")
                         self._current_index = idx
 
-                        # Сброс cooldown после успешного апгрейда, чтобы можно было
-                        # позже попытаться вернуться на ещё более приоритетный
+                        # Reset cooldown after a successful upgrade so we can
+                        # attempt to fall back to a higher-priority service later.
                         self._last_upgrade_attempt = 0.0
                         return
                 except Exception as e:

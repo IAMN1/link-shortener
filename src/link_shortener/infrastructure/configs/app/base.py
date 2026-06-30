@@ -255,6 +255,24 @@ class BaseConfig:
     Maximum number of URLs allowed in a single batch creation request.
     """
 
+    GUEST_LINK_LIMIT: int = int(os.environ.get("GUEST_LINK_LIMIT", 10))
+    """
+    Maximum number of short links a guest (unauthenticated user) can create
+    within the window defined by GUEST_LINK_WINDOW_DAYS.
+    """
+
+    GUEST_LINK_WINDOW_DAYS: int = int(os.environ.get("GUEST_LINK_WINDOW_DAYS", 1))
+    """
+    Time window (in days) during which guest links are counted toward the limit.
+    """
+
+    DEFAULT_GUEST_TTL_SECONDS: int = int(
+        os.environ.get("DEFAULT_GUEST_TTL_SECONDS", 7 * 24 * 3600)
+    )
+    """
+    Default time-to-live (in seconds) for guest-created links.
+    Applied when no explicit TTL is provided.
+    """
 
     # ==========================================================================
     # JWT Authentication Settings
@@ -323,11 +341,22 @@ class BaseConfig:
         "api.get_stats": (10, 60),
         "redirect_to_original": (200, 60),
         "health": (10, 5),
+        # Auth endpoints: brute-force protection
+        "auth.login": (5, 60),          # 5 attempts per minute per IP
+        "auth.register": (3, 3600),     # 3 registrations per hour per IP
+        "auth.refresh_token": (10, 60), # 10 refresh attempts per minute
+        "auth.logout": (20, 60),        # 20 logout attempts per minute
     }
     """
     Per-endpoint rate limit configurations.
     Key is the Flask endpoint name (as used in url_for).
     Value is a tuple (limit, period_seconds).
+    """
+
+    RATE_LIMIT_AUTH_DISABLED: bool = os.environ.get("RATE_LIMIT_AUTH_DISABLED", "false").lower() == "true"
+    """
+    Disable rate limiting for auth endpoints (login, register, refresh, logout).
+    Useful during development and testing. Never set to true in production.
     """
 
 
@@ -437,7 +466,7 @@ class BaseConfig:
         """Return database URL with password masked for logging."""
         url = self.get_database_url()
         import re
-        # Маскируем пароль: заменяем часть между :// и @
+        # Mask the password: replace the portion between :// and @.
         return re.sub(r':[^:]+@', ':***@', url)
 
     def get_pool_params(self) -> dict:

@@ -25,8 +25,6 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     Implements a reconnection strategy to tolerate transient Redis failures.
     """
 
-    cache_type = "Redis"
-
     def __init__(
         self, redis_url: str, prefix: str, logger: Logger, link_ttl: int, 
         stats_ttl: int, connect_timeout: int, socket_timeout: int, retry_interval: int
@@ -214,7 +212,9 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
             "last_accessed": (
                 link.last_accessed.isoformat() if link.last_accessed else None
             ),
-            "owner_id": link.owner.value if link.owner else None
+            "owner_id": link.owner.value if link.owner else None,
+            "expires_at": link.expires_at.isoformat() if link.expires_at else None,
+            "guest_identifier": link.guest_identifier
         }
         return json.dumps(data).encode("utf-8")
 
@@ -248,6 +248,14 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
 
                 if last_accessed.tzinfo is None:
                     last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+            
+            expires_at = None
+            if data_dict.get("expires_at"):
+                expires_at = datetime.fromisoformat(data_dict["expires_at"])
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+            guest_identifier = data_dict.get("guest_identifier")
 
             return Link(
                 id=data_dict["id"],
@@ -257,7 +265,9 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
                 created_at=created_at,
                 clicks=data_dict["clicks"],
                 last_accessed=last_accessed,
-                owner=OwnerID(data_dict["owner_id"])
+                owner=OwnerID(data_dict["owner_id"]),
+                expires_at=expires_at,
+                guest_identifier=guest_identifier
             )
         except Exception as e:
             self.logger.error(
@@ -328,7 +338,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache):
     def save(self, link: Link) -> None:
         """Store a link under multiple keys (hash, code, redirect) with TTL."""
         def _pipeline():
-            # Сохраняем по нескольким ключам для быстрого поиска
+            # Store under multiple keys for fast lookup.
             hash_key = self.key_gen.for_url_hash(link.url_hash.value)
             code_key = self.key_gen.for_short_code(link.short_code.value)
             redirect = self.key_gen.for_redirect(link.short_code.value)

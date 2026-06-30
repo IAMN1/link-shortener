@@ -12,22 +12,14 @@ def get_container():
     """
     Create and cache the dependency injection container for the current worker process.
 
-    This function is called once per worker process (because of the `lru_cache`
-    decorator that will be added later). It reads the configuration and
-    builds a `Container` instance.
-
     Returns:
         Container: The DI container instance.
 
     Raises:
-        Exception: If container creation fails (logged but returns None).
+        RuntimeError: If container creation fails.
     """
     config = get_config()
-    try:
-        cont = Container(config)
-        return cont
-    except Exception:
-        return None
+    return Container(config)
 
 @celery_app.task(bind=True, max_retries=3)
 def process_link_accessed(self, short_code: str, context_dict: dict):
@@ -48,8 +40,6 @@ def process_link_accessed(self, short_code: str, context_dict: dict):
     try:
         context = RequestContext(**context_dict)
         container = get_container()
-        if container is None:
-            raise RuntimeError("Container is None")
         use_case = container.get_update_link_stats_use_case()
         use_case.execute(short_code, context)
         logger.info("Stats updated", short_code=short_code)

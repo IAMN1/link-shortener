@@ -44,7 +44,7 @@ class TestingConfig(BaseConfig):
     # --------------------------------------------------------------------------
     REDIS_ENABLED: bool = False
     REDIS_URL: str = (
-        "redis://localhost:6379/0"  # не используется, но определена (пока что)
+        "redis://localhost:6379/0"  # Not used in tests, but defined for completeness.
     )
 
 

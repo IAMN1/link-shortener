@@ -217,10 +217,10 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         with self._lock:
             self._clean_expired()
             key = self.key_gen.for_stats()
-            # Если ключ есть в _expiry и не истек – возвращаем данные
+            # Return cached data if the key exists and has not expired.
             if key in self._expiry and not self._is_expired(key):
                 return self._stats
-            # Иначе сбрасываем статистику и возвращаем None
+            # Otherwise invalidate and return None.
             self._stats = None
             return None
 
