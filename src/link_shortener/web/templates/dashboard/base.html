@@ -1,0 +1,55 @@
+{% extends "layout/base.html" %}
+{% block extra_head %}
+    <link rel="stylesheet" href="{{ url_for('frontend.static', filename='css/dashboard.css') }}">
+{% endblock %}
+{% block content %}
+{% if g.current_user %}
+<div class="dash">
+    <nav class="dash-side" id="dash-side">
+        <div class="dash-side-header">
+            <span class="avatar avatar--sm">{{ g.current_user.email[0]|upper }}</span>
+            <div>
+                <div class="dash-side-user">{{ g.current_user.email }}</div>
+                <div class="dash-side-role">{{ g.current_user.roles|join(', ') }}</div>
+            </div>
+        </div>
+
+        <div class="dash-side-section">Links</div>
+        <a href="{{ url_for('dashboard.my_links') }}">My Links</a>
+        <a href="{{ url_for('dashboard.create_link_form') }}">Create Link</a>
+
+        <div class="dash-side-section">Analytics</div>
+        <a href="{{ url_for('dashboard.my_stats') }}">My Stats</a>
+        {% if 'analyst' in g.current_user.roles or 'admin' in g.current_user.roles %}
+            <a href="{{ url_for('dashboard.service_stats') }}">Service Stats</a>
+        {% endif %}
+
+        {% if 'admin' in g.current_user.roles %}
+            <div class="dash-side-section">Administration</div>
+            <a href="{{ url_for('dashboard.users_list') }}">Users</a>
+            <a href="{{ url_for('dashboard.roles_list') }}">Roles</a>
+            <a href="{{ url_for('dashboard.service_health') }}">Health Check</a>
+        {% endif %}
+
+        <div class="dash-side-bottom">
+            <a href="{{ url_for('frontend.index') }}">Back to Home</a>
+            <button class="dash-side-logout" id="logout-btn">Logout</button>
+        </div>
+    </nav>
+
+    <div class="dash-main">
+        {% block dashboard_content %}{% endblock %}
+    </div>
+</div>
+
+<button class="dash-toggle" id="dash-toggle">&#9776;</button>
+{% else %}
+    <div class="container mt-3">
+        <p class="text-muted">You are not logged in. <a href="{{ url_for('frontend.login_page') }}">Login</a></p>
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('frontend.static', filename='js/dashboard.js') }}"></script>
+{% endblock %}
