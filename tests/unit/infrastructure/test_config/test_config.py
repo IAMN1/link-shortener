@@ -127,3 +127,49 @@ class TestConfigFactory:
         config = ConfigFactory.create_config()
         assert config.BASE_URL == "https://test.com"
 
+    def test_database_type_reads_from_env(self, monkeypatch):
+        """DATABASE_TYPE property should read from env at runtime."""
+        monkeypatch.setenv("DATABASE_TYPE", "postgresql")
+        config = DevelopmentConfig()
+        assert config.DATABASE_TYPE == "postgresql"
+        monkeypatch.setenv("DATABASE_TYPE", "sqlite")
+        config = DevelopmentConfig()
+        assert config.DATABASE_TYPE == "sqlite"
+
+    def test_development_config_echo_from_env(self, monkeypatch):
+        """DevelopmentConfig.SQLALCHEMY_ECHO should read from env."""
+        monkeypatch.setenv("SQLALCHEMY_ECHO", "true")
+        config = DevelopmentConfig()
+        assert config.SQLALCHEMY_ECHO is True
+        monkeypatch.setenv("SQLALCHEMY_ECHO", "false")
+        config = DevelopmentConfig()
+        assert config.SQLALCHEMY_ECHO is False
+
+    def test_development_config_seed_from_env(self, monkeypatch):
+        """DevelopmentConfig.AUTO_SEED_ROLES should read from env."""
+        monkeypatch.setenv("AUTO_SEED_ROLES", "false")
+        config = DevelopmentConfig()
+        assert config.AUTO_SEED_ROLES is False
+        monkeypatch.setenv("AUTO_SEED_ROLES", "true")
+        config = DevelopmentConfig()
+        assert config.AUTO_SEED_ROLES is True
+
+    def test_production_config_cookie_security(self, monkeypatch):
+        """ProductionConfig should enforce secure cookie settings."""
+        monkeypatch.setenv("FLASK_ENV", "production")
+        monkeypatch.setenv("SECRET_KEY", "prod-key")
+        monkeypatch.setenv("SHORT_CODE_PEPPER", "prod-pepper")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("DOMAIN", "example.com")
+        config = ConfigFactory.create_config()
+        assert config.SESSION_COOKIE_SECURE is True
+        assert config.SESSION_COOKIE_SAMESITE == "Lax"
+        assert config.SESSION_COOKIE_HTTPONLY is True
+
+    def test_testing_config_uses_sqlite(self):
+        """TestingConfig should always use SQLite."""
+        config = TestingConfig()
+        assert config.DATABASE_TYPE == "sqlite"
+        assert config.DATABASE_URL == "sqlite:///:memory:"
+

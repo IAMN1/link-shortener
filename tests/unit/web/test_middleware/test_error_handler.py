@@ -140,3 +140,14 @@ class TestErrorHandlerMiddleware:
         assert response.status_code == 500
         data = response.get_json()
         assert data["error"] == "INTERNAL_SERVER_ERROR"
+
+    def test_malformed_json_returns_400(self, client):
+        """POST with invalid JSON body returns 400, not 500."""
+        response = client.post(
+            "/api/v1/shorten",
+            data="not json",
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["error"] == "BAD_REQUEST"
