@@ -28,6 +28,3 @@ db_shortener
 htmlcov/
 test-results/
 coverage.xml
-
-# Compose skill outputs (not tracked)
-docs/compose/
