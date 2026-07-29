@@ -57,6 +57,9 @@ class AuthenticationMiddleware:
                 token = auth_header[7:]
 
             if not token:
+                token = request.cookies.get("access_token")
+
+            if not token:
                 return
 
             payload = self.authentication_service.validate_token(token)
