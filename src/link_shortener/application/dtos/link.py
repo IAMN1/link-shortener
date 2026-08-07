@@ -18,8 +18,12 @@ class ShortLinkResponse:
         clicks: Number of times the link has been accessed.
         created_at: Timestamp of creation.
         last_accessed: Timestamp of last access (if any).
+        expires_at: When the link expires; ``None`` for a permanent one.
         is_new: True if the link was just created.
         from_cache: True if data came from cache.
+        link_id: Identifier of the stored row. Internal: the web layer signs
+            it into the deletion token handed to a guest, and never puts it
+            in a response.
     """
     short_code: str
     short_url: str
@@ -27,8 +31,11 @@ class ShortLinkResponse:
     clicks: int
     created_at: datetime
     last_accessed: Optional[datetime]
+    expires_at: Optional[datetime] = None
     is_new: bool = False
     from_cache: bool = False
+    owner_id: Optional[str] = None
+    link_id: Optional[str] = None
 
     @classmethod
     def from_link(
@@ -54,10 +61,13 @@ class ShortLinkResponse:
             clicks=link.clicks,
             created_at=link.created_at,
             last_accessed=link.last_accessed,
+            expires_at=link.expires_at,
             is_new=is_new,
             from_cache=from_cache,
+            owner_id=link.owner.value if link.owner else None,
+            link_id=link.id,
         )
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Serialize to a dictionary (e.g., for caching).
@@ -73,6 +83,9 @@ class ShortLinkResponse:
             "created_at": self.created_at.isoformat(),
             "last_accessed": (
                 self.last_accessed.isoformat() if self.last_accessed else None
+            ),
+            "expires_at": (
+                self.expires_at.isoformat() if self.expires_at else None
             ),
             "is_new": self.is_new,
             "from_cache": self.from_cache,
@@ -108,6 +121,7 @@ class ExtendedLinkInfoResponse:
     age_days: int
     clicks_per_day: float
     last_access_days_ago: Optional[int]
+    owner_id: Optional[str] = None
 
     @classmethod
     def from_link(
@@ -147,4 +161,5 @@ class ExtendedLinkInfoResponse:
             age_days=age_days,
             clicks_per_day=clicks_per_day,
             last_access_days_ago=last_access_days_ago,
+            owner_id=link.owner.value if link.owner else None
         )

@@ -6,19 +6,23 @@ Provides decorators that enforce authentication and permission checks.
 
 import functools
 
-from flask import current_app, g, redirect, url_for
+from flask import g, jsonify, redirect, request, url_for
 
-from link_shortener.application import AuthorizationService
 from link_shortener.domain import DomainError
 from link_shortener.web.security.context import get_current_domain_user
 
 
 def require_permission(permission: str):
     """
-    Decorator that ensures the current user has a specific permission.
+    Decorator that ensures the current caller has a specific permission.
 
-    If the user is not authenticated or lacks the required permission,
-    a ``DomainError`` with code ``FORBIDDEN`` is raised.
+    A caller who lacks the permission is refused with a ``DomainError``:
+    ``UNAUTHENTICATED`` (401) if nobody is logged in, ``FORBIDDEN`` (403)
+    otherwise. Both used to be 403, which left a client unable to tell
+    "log in" from "logging in will not help".
+
+    Anonymous callers are not refused outright -- they act under the
+    ``guest`` role, so a permission that role grants passes here.
 
     Args:
         permission: Permission string (e.g., ``"link:create"``).
@@ -33,9 +37,20 @@ def require_permission(permission: str):
         @functools.wraps(view_func)
         def wrapper(*args, **kwargs):
             user = get_current_domain_user()
-            auth_service: AuthorizationService = current_app.container.get_authorization_service()
-            if not auth_service.is_allowed(user, permission):
+            authorization_service = g.get('authorization_service')
+
+            if authorization_service is None:
+                raise RuntimeError("AuthorizationService not found in g.authorization_service")
+
+            if not authorization_service.is_allowed(user, permission):
+                # Asked after the permission check, not before: what the
+                # caller is missing decides which refusal is truthful.
+                if user is None:
+                    raise DomainError(
+                        "Authentication required", code="UNAUTHENTICATED"
+                    )
                 raise DomainError("Not authorized", code="FORBIDDEN")
+
             return view_func(*args, **kwargs)
         return wrapper
     return decorator
@@ -43,20 +58,16 @@ def require_permission(permission: str):
 
 def login_required(view_func):
     """
-    Decorator that redirects to the login page if the user is not authenticated.
+    Decorator that enforces authentication.
 
-    Intended for HTML frontend routes (admin panel). If ``g.current_user``
-    is not set, a redirect to ``admin_frontend.login_page`` is returned.
-
-    Usage::
-
-        @login_required
-        def dashboard():
-            return render_template('admin/dashboard.html')
+    For API routes (``/api/*``), returns a 401 JSON response.
+    For HTML frontend routes, redirects to the login page.
     """
     @functools.wraps(view_func)
     def wrapper(*args, **kwargs):
         if not g.get('current_user'):
-            return redirect(url_for('admin_frontend.login_page'))
+            if request.path.startswith('/api/'):
+                return jsonify({"error": "Authentication required"}), 401
+            return redirect(url_for('frontend.login_page'))
         return view_func(*args, **kwargs)
     return wrapper

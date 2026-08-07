@@ -8,6 +8,7 @@ from link_shortener.application import (
     UrlGrouper,
     BatchResponseBuilder,
     LinkCache,
+    StatsCache,
     AuditLogger,
     Logger,
     UnitOfWork,
@@ -26,14 +27,20 @@ class BatchUseCasesComponent:
 
     uow_factory: Callable[[], UnitOfWork]
     cache: LinkCache
+    stats_cache: StatsCache
     hash_calculator: HashCalculator
     code_generator: CodeGenerator
     base_url: str
     logger: Logger
     audit_logger: AuditLogger
     allowed_schemes: List[str]
+    max_url_length: int
+    allow_internal_targets: bool
     max_collision_attempts: int
     batch_limit: int
+    guest_link_limit: int
+    guest_link_window_days: int
+    default_guest_ttl_seconds: int
 
     def get_batch_create_links_use_case(self) -> BatchCreateLinksUseCase:
         """
@@ -49,6 +56,8 @@ class BatchUseCasesComponent:
         """
         grouper = UrlGrouper(
             allowed_schemes=self.allowed_schemes,
+            max_url_length=self.max_url_length,
+            allow_internal_targets=self.allow_internal_targets,
             hash_calculator=self.hash_calculator,
             logger=self.logger,
         )
@@ -63,10 +72,14 @@ class BatchUseCasesComponent:
         return BatchCreateLinksUseCase(
             uow_factory=self.uow_factory,
             cache=self.cache,
+            stats_cache=self.stats_cache,
             base_url=self.base_url,
             logger=self.logger,
             audit_logger=self.audit_logger,
             batch_limit=self.batch_limit,
+            guest_link_limit=self.guest_link_limit,
+            guest_link_window_days=self.guest_link_window_days,
+            default_guest_ttl_seconds=self.default_guest_ttl_seconds,
             grouper=grouper,
             fetcher=fetcher,
             creator=creator,

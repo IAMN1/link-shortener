@@ -4,6 +4,7 @@ import uuid
 from flask import Flask, Response, g, request
 
 from link_shortener.application import Logger
+from link_shortener.web.middleware.hooks import response_hook
 
 
 class RequestLoggingMiddleware:
@@ -36,6 +37,9 @@ class RequestLoggingMiddleware:
             Sets start time and generates a request ID, stored in Flask's `g` object.
             Logs the start of the request.
             """
+            # Skip logging for static file requests.
+            if request.path.startswith('/static/'):
+                return
 
             g.start_time = time.time()
             g.request_id = str(uuid.uuid4())[:10]
@@ -52,11 +56,16 @@ class RequestLoggingMiddleware:
             )
 
         @self.app.after_request
+        @response_hook(self.logger)
         def after_request(response: Response):
             """
             Executed after each request (before sending response).
             Calculates request duration and logs completion.
             """
+            # Skip if the request was for a static file.
+            if request.path.startswith('/static/'):
+                return response
+
             if hasattr(g, 'start_time'):
                 
                 duration = time.time() - g.start_time

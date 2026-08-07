@@ -8,7 +8,9 @@ RBAC configuration from a YAML file idempotently.
 from pathlib import Path
 from sqlalchemy.orm import Session
 
-from link_shortener.infrastructure.database.role_loader import RoleLoader
+from link_shortener.infrastructure.database.role_loader import (
+    LoadSummary, RoleLoader
+)
 
 
 # Path to the default RBAC configuration file.
@@ -17,20 +19,29 @@ DEFAULT_RBAC_CONFIG_PATH = (
     Path(__file__).parent.parent / "configs" / "rbac" / "roles.yaml"
 )
 
-def seed_base_roles(session: Session) -> None:
+def seed_base_roles(session: Session) -> LoadSummary:
     """
     Ensure the standard system roles and permissions exist in the database.
 
     The function loads the RBAC configuration from the default YAML file
-    and creates any missing records without modifying existing ones.
+    and creates any missing records without modifying existing ones -- an
+    existing role keeps both its fields and its permissions, so an edit made
+    through the admin API survives.
 
     This is safe to call multiple times. It is used by:
     * Application startup (when ``AUTO_SEED_ROLES=True``)
     * The CLI command ``flask db load-base-roles``
-    * Alembic migrations (after table creation)
+
+    Not by any Alembic migration. This docstring used to say otherwise, as
+    did ``BaseConfig.AUTO_SEED_ROLES``; no revision has ever called it, and a
+    deployment that trusted the claim came up with an empty ``roles`` table
+    and answered 401 to anonymous shortening.
 
     Args:
         session: An active database session.
+
+    Returns:
+        What the pass did, including the roles it deliberately left alone.
 
     Raises:
         FileNotFoundError: If the default YAML configuration file is missing.
@@ -44,4 +55,6 @@ def seed_base_roles(session: Session) -> None:
     
     loader = RoleLoader(session)
     # We do not update existing records to avoid overwriting manual changes.
-    loader.load_from_yaml(DEFAULT_RBAC_CONFIG_PATH, update_existing=False)
+    return loader.load_from_yaml(
+        DEFAULT_RBAC_CONFIG_PATH, update_existing=False
+    )

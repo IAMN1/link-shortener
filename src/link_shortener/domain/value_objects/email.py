@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 import re
 
+from link_shortener.domain.exceptions import ValidationError
+
 
 @dataclass(frozen=True)
 class Email:
@@ -20,10 +22,14 @@ class Email:
         Validate the email format immediately after initialisation.
 
         Raises:
-            ValueError: If the email does not match the expected pattern.
+            ValidationError: If the email does not match the expected pattern.
         """
         if not re.match(r"^[^@]+@[^@]+\.[^@]+$", self.value):
-            raise ValueError(f"Invalid email format: {self.value}")
+            # The offending value is deliberately left out: this message
+            # reaches the client, and the same object is built from database
+            # rows, so echoing it would reflect user input and leak stored
+            # data on the read path.
+            raise ValidationError("Invalid email format", field="email")
     
     def __str__(self) -> str:
         """Return the email string."""

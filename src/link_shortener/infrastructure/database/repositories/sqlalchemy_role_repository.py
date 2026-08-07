@@ -107,7 +107,7 @@ class SQLAlchemyRoleRepository(RoleRepository):
             name=model.name,
             description=model.description,
             is_system=model.is_system,
-            permissions=perms
+            permissions=tuple(perms)
         )
 
     def _update_model(self, model: RoleModel, domain: Role):
@@ -127,5 +127,5 @@ class SQLAlchemyRoleRepository(RoleRepository):
         new_permissions = self.session.query(PermissionModel).filter(
             PermissionModel.name.in_(permission_names)
         ).all()
-        # Заменяем коллекцию
+        # Replace the permission collection.
         model.permissions = new_permissions

@@ -1,5 +1,5 @@
-from link_shortener.infrastructure.config.testing import TestingConfig
-from link_shortener.infrastructure.database.base import Base
+from link_shortener.infrastructure.configs.app.testing import TestingConfig
+from link_shortener.infrastructure.database.models.base import Base
 from link_shortener.infrastructure.database.manager import DatabaseManager
 import pytest
 from sqlalchemy import create_engine
@@ -33,7 +33,7 @@ def db_session(in_memory_db_engine):
 def db_manager(test_config):
     """Provide a DatabaseManager for testing (in-memory)."""
     
-    manager = DatabaseManager(test_config.DATABASE_URL, echo=False)
+    manager = DatabaseManager(test_config.DATABASE_URL, echo=False, database_type="sqlite")
     manager.connect()
     manager.create_tables()
     yield manager

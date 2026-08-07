@@ -6,15 +6,19 @@ Suitable for development and testing when Redis is unavailable.
 """
 
 import time
+from datetime import datetime, timezone
 from threading import RLock
 from typing import Any, Dict, List, Optional
 
-from link_shortener.application import LinkCache, RedirectCache, StatsCache, CacheKeyBuilder
-from link_shortener.domain import Link, ShortCode, UrlHash
+from link_shortener.application import (
+    CachedRedirect, CacheHealth, LinkCache, RedirectCache, StatsCache,
+    CacheKeyBuilder
+)
+from link_shortener.domain import DedupScope, Link, ShortCode, UrlHash
 
 
 
-class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
+class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
     """
     In-memory cache that stores data in Python dictionaries.
 
@@ -35,7 +39,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
 
         # Internal storage
         self._links: Dict[str, Link] = {}               # key -> Link object
-        self._redirects: Dict[str, str] = {}            # key -> original_url string
+        self._redirects: Dict[str, CachedRedirect] = {}  # key -> cached redirect
         self._stats: Optional[Dict[str, Any]] = None
 
         # Expiry timestamps: key -> expiration time (monotonic seconds)
@@ -44,6 +48,15 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         self.stats_ttl = stats_ttl
 
         self._lock = RLock()
+
+    # ========== CacheHealth methods ==========
+    def is_configured(self) -> bool:
+        """No backend is involved; there is nothing to be up or down."""
+        return False
+
+    def ping(self) -> bool:
+        """A cache with nothing to connect to cannot be unreachable."""
+        return True
 
     def _is_expired(self, key: str) -> bool:
         """
@@ -120,17 +133,21 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
             key = self.key_gen.for_short_code(short_code.value)
             return self._links.get(key)
 
-    def get_by_hash(self, url_hash: UrlHash) -> Optional[Link]:
-        """Retrieve a link by its URL hash."""
+    def get_by_hash(
+        self, url_hash: UrlHash, scope: DedupScope
+    ) -> Optional[Link]:
+        """Retrieve a link by its URL hash within one deduplication scope."""
 
         with self._lock:
             self._clean_expired()
-            key = self.key_gen.for_url_hash(url_hash.value)
+            key = self.key_gen.for_url_hash(url_hash.value, scope.token())
             return self._links.get(key)
 
-    def get_by_hashes(self, url_hashes: List[UrlHash]) -> Dict[UrlHash, Optional[Link]]:
+    def get_by_hashes(
+        self, url_hashes: List[UrlHash], scope: DedupScope
+    ) -> Dict[UrlHash, Optional[Link]]:
         """
-        Retrieve multiple links by their URL hashes.
+        Retrieve multiple links by their URL hashes within one scope.
 
         Returns a dictionary mapping each input hash to either the found Link or None.
         """
@@ -138,28 +155,45 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         with self._lock:
             self._clean_expired()
 
+            token = scope.token()
             result = {}
             for url_hash in url_hashes:
-                key = self.key_gen.for_url_hash(url_hash.value)
+                key = self.key_gen.for_url_hash(url_hash.value, token)
                 result[url_hash] = self._links.get(key)
             return result
 
     def save(self, link: Link) -> None:
         """Store a link under multiple keys (hash, code, and redirect) with TTL."""
         with self._lock:
-            hash_key = self.key_gen.for_url_hash(link.url_hash.value)
+            hash_key = self.key_gen.for_url_hash(
+                link.url_hash.value, link.dedup_scope().token()
+            )
             code_key = self.key_gen.for_short_code(link.short_code.value)
             redirect_key = self.key_gen.for_redirect(link.short_code.value)
 
             self._links[hash_key] = link
             self._links[code_key] = link
-            self._redirects[redirect_key] = link.original_url.value
 
             # Set expiration timestamps
             current_time = time.time()
             self._expiry[hash_key] = current_time + self.link_ttl
             self._expiry[code_key] = current_time + self.link_ttl
-            self._expiry[redirect_key] = current_time + self.link_ttl
+
+            # The redirect entry goes through the same rules as
+            # save_redirect: it carries the expiry and never outlives the
+            # link. Storing a bare URL on the full cache TTL is how an
+            # expired link kept being served from L1.
+            redirect_ttl = self._redirect_ttl(link.expires_at)
+            if redirect_ttl is None:
+                self._redirects.pop(redirect_key, None)
+                self._expiry.pop(redirect_key, None)
+            else:
+                self._redirects[redirect_key] = CachedRedirect(
+                    short_code=link.short_code.value,
+                    original_url=link.original_url.value,
+                    expires_at=link.expires_at,
+                )
+                self._expiry[redirect_key] = current_time + redirect_ttl
 
     def save_many(self, links: List[Link]) -> None:
         """Bulk store multiple links."""
@@ -167,48 +201,116 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
             for link in links:
                 self.save(link)
 
-    def delete(self, short_code: ShortCode) -> None:
+    def delete_by_code(self, short_code: ShortCode) -> bool:
         """
-        Remove all data associated with a short code (hash, code, redirect keys).
+        Remove the two entries a code can name, for a link already gone.
+
+        Returns:
+            ``True`` -- an in-process dictionary cannot fail to forget.
         """
         with self._lock:
-            key_code = self.key_gen.for_short_code(short_code.value)
-            key_redirect = self.key_gen.for_redirect(short_code.value)
+            keys = [
+                self.key_gen.for_short_code(short_code.value),
+                self.key_gen.for_redirect(short_code.value),
+            ]
+            for key in keys:
+                self._links.pop(key, None)
+                self._redirects.pop(key, None)
+                self._expiry.pop(key, None)
+            return True
 
-            # Remove redirect entry
-            if key_redirect in self._redirects:
-                del self._redirects[key_redirect]
-            if key_redirect in self._expiry:
-                del self._expiry[key_redirect]
+    def delete(self, link: Link) -> bool:
+        """
+        Remove every entry written for a link (hash, code, redirect keys).
 
-            # Remove link entries
-            if key_code in self._links:
-                link = self._links[key_code]
-                key_hash = self.key_gen.for_url_hash(link.url_hash.value)
+        Keys are named from the entity rather than discovered by reading the
+        code entry first: that entry may already be gone, and the hash entry
+        left behind then keeps answering deduplication lookups.
 
-                if key_hash in self._links:
-                    del self._links[key_hash]
-                del self._links[key_code]
+        Returns:
+            ``True`` -- an in-process dictionary cannot fail to forget.
+        """
+        with self._lock:
+            keys = [
+                self.key_gen.for_short_code(link.short_code.value),
+                self.key_gen.for_redirect(link.short_code.value),
+                self.key_gen.for_url_hash(
+                    link.url_hash.value, link.dedup_scope().token()
+                ),
+            ]
+            for key in keys:
+                self._links.pop(key, None)
+                self._redirects.pop(key, None)
+                self._expiry.pop(key, None)
+            return True
 
-                for key in [key_code, key_hash, key_redirect]:
-                    if key in self._expiry:
-                        del self._expiry[key]
+    def delete_redirect(self, short_code: ShortCode) -> None:
+        """Remove only the redirect entry for a short code."""
+        with self._lock:
+            key = self.key_gen.for_redirect(short_code.value)
+            self._redirects.pop(key, None)
+            self._expiry.pop(key, None)
 
     # ========== RedirectCache methods ==========
-    def get_original_url(self, short_code: ShortCode) -> Optional[str]:
-        """Retrieve original URL from redirect cache (L1)."""
+    def _redirect_ttl(self, expires_at: Optional[datetime]) -> Optional[float]:
+        """
+        Work out how long a redirect entry may live.
+
+        Capped at the link's own remaining lifetime, so the entry cannot
+        outlive what it points at.
+
+        Args:
+            expires_at: When the link expires, or ``None`` if never.
+
+        Returns:
+            TTL in seconds, or ``None`` if the link has already expired.
+        """
+        if expires_at is None:
+            return self.link_ttl
+
+        remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
+        if remaining <= 0:
+            return None
+
+        return min(self.link_ttl, remaining)
+
+    def get_redirect(self, short_code: ShortCode) -> Optional[CachedRedirect]:
+        """Retrieve the cached redirect for a short code (L1)."""
 
         with self._lock:
             self._clean_expired()
             key = self.key_gen.for_redirect(short_code.value)
-            return self._redirects.get(key)
+            entry = self._redirects.get(key)
 
-    def save_original_url(self, short_code: ShortCode, original_url: str) -> None:
-        """Store original URL in redirect cache with TTL."""
+        if entry is None:
+            return None
 
-        key = self.key_gen.for_redirect(short_code.value)
-        self._redirects[key] = original_url
-        self._expiry[key] = time.time() + self.link_ttl
+        # Same rules as the Redis implementation: an entry that cannot
+        # vouch for itself is a miss, not an answer.
+        if not entry.is_for(short_code) or entry.is_expired():
+            return None
+
+        return entry
+
+    def save_redirect(
+        self,
+        short_code: ShortCode,
+        original_url: str,
+        expires_at: Optional[datetime] = None,
+    ) -> None:
+        """Store a redirect entry, capped at the link's own lifetime."""
+        ttl = self._redirect_ttl(expires_at)
+        if ttl is None:
+            return
+
+        with self._lock:
+            key = self.key_gen.for_redirect(short_code.value)
+            self._redirects[key] = CachedRedirect(
+                short_code=short_code.value,
+                original_url=original_url,
+                expires_at=expires_at,
+            )
+            self._expiry[key] = time.time() + ttl
 
     # ========== StatsCache methods ==========
     def get_stats(self) -> Optional[Dict[str, Any]]:
@@ -217,10 +319,10 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache):
         with self._lock:
             self._clean_expired()
             key = self.key_gen.for_stats()
-            # Если ключ есть в _expiry и не истек – возвращаем данные
+            # Return cached data if the key exists and has not expired.
             if key in self._expiry and not self._is_expired(key):
                 return self._stats
-            # Иначе сбрасываем статистику и возвращаем None
+            # Otherwise invalidate and return None.
             self._stats = None
             return None
 

@@ -1,4 +1,5 @@
 from link_shortener.domain.value_objects.short_code import ShortCode
+from link_shortener.domain.exceptions import ValidationError
 import pytest
 
 
@@ -26,14 +27,29 @@ class TestShortCode:
         'superverylongcode', # > 10
         'abc@123', # bad symbol - @
         'Ра_Си_Я', # not ascii
+        'abc123\n',   # trailing newline: "$" used to match before it
+        'abc123\n\n',
+        'abc123\r\n',
     ])
     def test_invalid_code_raises_value_error(self, invalid_code):
         """
-        Should raise ValueError with appropriate message for invalid code.
+        Should raise ValidationError with appropriate message for invalid code.
         """
-        with pytest.raises(ValueError, match='Invalid short code format'):
+        with pytest.raises(ValidationError, match='Invalid short code format'):
             ShortCode(invalid_code)
     
+    def test_a_trailing_newline_is_not_the_same_code(self):
+        """
+        ``re.match(r"^...$")`` accepted ``"abc123\\n"``, because "$" in
+        Python matches before a trailing newline as well as at the end. Two
+        strings then validated as the same code while comparing unequal --
+        harmless while lookup and deletion each work on one string, and a
+        mine under any future comparison of codes or under a cache key
+        built from one.
+        """
+        with pytest.raises(ValidationError):
+            ShortCode('abc123\n')
+
     def test_create_method(self, valid_short_code_str):
         """Should create a ShortCode using the factory method 'create'."""
         code = ShortCode(valid_short_code_str)

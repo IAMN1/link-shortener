@@ -1,8 +1,10 @@
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.value_objects.dedup_scope import DedupScope
 from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.owner_id import OwnerID
 from link_shortener.domain.value_objects.short_code import ShortCode
@@ -23,6 +25,8 @@ class Link:
         clicks: Number of times the link has been accessed.
         last_accessed: Timestamp of the last access (if any).
         owner: Owner of the link (value object, None for guests).
+        expires_at: Optional datetime when the link expires.
+        guest_identifier: Optional identifier for guest-created links (e.g. IP address).
     """
 
     id: str
@@ -33,6 +37,8 @@ class Link:
     clicks: int = 0
     last_accessed: Optional[datetime] = None
     owner: Optional[OwnerID] = None
+    expires_at: Optional[datetime] = None
+    guest_identifier: Optional[str] = None
 
     @classmethod
     def create(
@@ -41,7 +47,9 @@ class Link:
         short_code: ShortCode,
         original_url: OriginalUrl,
         link_id: Optional[str] = None,
-        owner: Optional[OwnerID] = None
+        owner: Optional[OwnerID] = None,
+        guest_identifier: Optional[str] = None,
+        ttl_seconds: int = 0,
     ) -> "Link":
         """
         Factory method to create a new Link instance.
@@ -52,20 +60,61 @@ class Link:
             original_url: Original URL value object.
             link_id: Optional UUID; if not provided, a new one is generated.
             owner: Optional OwnerID value object representing the link owner.
+            guest_identifier: Optional identifier for guest links.
+            ttl_seconds: Time-to-live in seconds. 0 means no expiration.
 
         Returns:
             A new Link instance with default values (clicks=0, created_at=now).
+
+        Raises:
+            ValidationError: If the lifetime asked for cannot be expressed as
+                a date at all.
         """
+        now = datetime.now(timezone.utc)
+        expires_at = None
+        if ttl_seconds > 0:
+            try:
+                expires_at = now + timedelta(seconds=ttl_seconds)
+            except (OverflowError, OSError) as exc:
+                # The ceiling that decides policy is MAX_TTL_SECONDS, and it
+                # is configurable, which is why this floor is here as well:
+                # a lifetime past year 9999 is not a strict setting to be
+                # widened but a value with no date behind it. Left to
+                # arithmetic it raised OverflowError, no relation to
+                # ValueError, so every handler on the way out missed it and
+                # an unauthenticated request body of two fields returned 500.
+                raise ValidationError(
+                    "ttl_seconds is too large to be a date",
+                    field="ttl_seconds",
+                ) from exc
+
         return cls(
             id=link_id if link_id is not None else str(uuid.uuid4()),
             url_hash=url_hash,
             short_code=short_code,
             original_url=original_url,
-            created_at=datetime.now(timezone.utc),
+            created_at=now,
             clicks=0,
             last_accessed=None,
-            owner=owner or OwnerID(None)
+            owner=owner,
+            expires_at=expires_at,
+            guest_identifier=guest_identifier,
         )
+
+    def dedup_scope(self) -> DedupScope:
+        """
+        Return the scope this link deduplicates within.
+
+        Args:
+            None.
+
+        Returns:
+            The owning account's scope, the guest's scope, or the anonymous
+            scope for a link created with neither.
+        """
+        if self.owner is not None:
+            return DedupScope.for_owner(self.owner.value)
+        return DedupScope.for_guest(self.guest_identifier)
 
     def increment_clicks(self) -> None:
         """
@@ -98,6 +147,26 @@ class Link:
         """
         age = datetime.now(timezone.utc) - self.created_at
         return age.days <= days
+    
+    def is_expired(self) -> bool:
+        """
+        Check whether the link has expired.
+
+        Returns:
+            True if the expiration timestamp has passed, False otherwise.
+        """
+        if self.expires_at is None:
+            return False
+        return datetime.now(timezone.utc) >= self.expires_at
+    
+    def is_active(self) -> bool:
+        """
+        Check if the link is active (not expired).
+
+        Returns:
+            True if not expired, False otherwise.
+        """
+        return not self.is_expired()
 
     def __eq__(self, other: object) -> bool:
         """Equality check based on link ID."""

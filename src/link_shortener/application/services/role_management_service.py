@@ -13,6 +13,28 @@ class RoleManagementService:
     ensuring system roles are protected.
     """
     
+    @staticmethod
+    def _refuse_unknown_permissions(requested: List[str], found) -> None:
+        """
+        Refuse a permission name the system does not know.
+
+        Args:
+            requested: Permission names as the caller wrote them.
+            found: Permission entities the repository returned for them.
+
+        Raises:
+            ValueError: If any requested name has no permission behind it.
+
+        Updating a role used to skip this check, so a typo did not fail --
+        it narrowed the role to whatever names happened to match and
+        answered 200. Creating a role with the same typo raised. The
+        comparison is by name rather than by count, so repeating a name is
+        not mistaken for an unknown one.
+        """
+        missing = set(requested) - {permission.name for permission in found}
+        if missing:
+            raise ValueError(f"Permissions not found: {sorted(missing)}")
+
     def create_role(self,
                     uow: UnitOfWork,
                     name: str,
@@ -38,17 +60,14 @@ class RoleManagementService:
         if existing:
             raise ValueError(f"Role '{name}' already exists")
         permissions = uow.permissions.get_by_names(permission_names)
+        self._refuse_unknown_permissions(permission_names, permissions)
 
-        if len(permissions) != len(permission_names):
-            missing = set(permission_names) - {p.name for p in permissions}
-            raise ValueError(f"Permissions not found: {missing}")
-        
         role = Role(
             id=str(uuid.uuid4()),
             name=name,
             description=description,
             is_system=False,
-            permissions=permissions
+            permissions=tuple(permissions)
         )
         return uow.roles.save(role)
     
@@ -65,17 +84,26 @@ class RoleManagementService:
             Updated Role entity.
 
         Raises:
-            ValueError: If the role does not exist or is a system role.
+            ValueError: If the role does not exist, is a system role, or any
+                requested permission does not exist.
         """
         role = uow.roles.get_by_name(role_name)
         if not role:
             raise ValueError(f"Role '{role_name}' not found")
         if role.is_system:
             raise ValueError("Cannot modify system roles")
-        
+
         permissions = uow.permissions.get_by_names(permission_names)
-        role.permissions = permissions
-        return uow.roles.save(role)
+        self._refuse_unknown_permissions(permission_names, permissions)
+
+        updated_role = Role(
+            id=role.id,
+            name=role.name,
+            description=role.description,
+            is_system=role.is_system,
+            permissions=tuple(permissions)
+        )
+        return uow.roles.save(updated_role)
     
     def delete_role(self, uow: UnitOfWork, role_name: str) -> None:
         """

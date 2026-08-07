@@ -1,0 +1,74 @@
+{% extends "layout/base.html" %}
+{% block extra_head %}
+<style>
+  .api-doc { max-width: 60rem; margin: 0 auto; padding: 1rem; }
+  .api-op { border: 1px solid rgba(128,128,128,.35); border-radius: .5rem;
+            margin-bottom: 1rem; overflow: hidden; }
+  .api-op-head { display: flex; gap: .75rem; align-items: baseline;
+                 padding: .6rem .9rem; background: rgba(128,128,128,.08); }
+  .api-verb { font-family: monospace; font-weight: 700; text-transform: uppercase;
+              font-size: .8rem; padding: .15rem .5rem; border-radius: .25rem;
+              background: rgba(128,128,128,.2); }
+  .api-path { font-family: monospace; }
+  .api-op-body { padding: .6rem .9rem; }
+  .api-op-body p { margin: 0 0 .6rem; }
+  .api-status { font-family: monospace; font-weight: 700; }
+  .api-doc table { width: 100%; border-collapse: collapse; }
+  .api-doc td { padding: .2rem .5rem .2rem 0; vertical-align: top; }
+  .api-doc code { font-size: .9em; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="api-doc">
+  <h1>{{ doc.info.title }}</h1>
+  <p>{{ doc.info.description }}</p>
+  <p>
+    The machine-readable document is at
+    <a href="{{ url_for('frontend.openapi') }}"><code>/api/openapi.json</code></a>
+    — point Swagger UI, Redoc, Postman or a client generator at it. Nothing
+    is bundled here: a megabyte and a half of vendored viewer, or a script
+    tag pointing at somebody else's CDN, is not something a redirect service
+    needs to carry.
+  </p>
+
+  {% for tag in doc.tags %}
+    <h2>{{ tag.name }}</h2>
+    <p>{{ tag.description }}</p>
+    {% for path, operations in doc.paths.items() %}
+      {% for verb, operation in operations.items() %}
+        {% if tag.name in operation.tags %}
+          <div class="api-op">
+            <div class="api-op-head">
+              <span class="api-verb">{{ verb }}</span>
+              <span class="api-path">{{ path }}</span>
+              <span>{{ operation.summary }}</span>
+            </div>
+            <div class="api-op-body">
+              {% if operation.description %}<p>{{ operation.description }}</p>{% endif %}
+              {% if operation.parameters %}
+                <table>
+                  {% for parameter in operation.parameters %}
+                    <tr>
+                      <td><code>{{ parameter.name }}</code></td>
+                      <td>{{ parameter.in }}{% if parameter.required %}, required{% endif %}</td>
+                      <td>{{ parameter.description }}</td>
+                    </tr>
+                  {% endfor %}
+                </table>
+              {% endif %}
+              <table>
+                {% for status, response in operation.responses.items() %}
+                  <tr>
+                    <td class="api-status">{{ status }}</td>
+                    <td>{{ response.description }}</td>
+                  </tr>
+                {% endfor %}
+              </table>
+            </div>
+          </div>
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+  {% endfor %}
+</div>
+{% endblock %}

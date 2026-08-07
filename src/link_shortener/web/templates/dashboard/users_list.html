@@ -1,0 +1,44 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Users – Linkr{% endblock %}
+{% block dashboard_content %}
+<div class="flex items-center justify-between mb-2">
+    <h1 class="dash-title" style="margin:0;">Users</h1>
+    <a href="{{ url_for('dashboard.create_user_form') }}" class="btn btn--primary btn--sm">+ New User</a>
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>Email</th><th>Roles</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.email }}</td>
+                    <td>
+                        {% for role in user.roles %}
+                            <span class="badge badge--blue">{{ role.name }}</span>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        {% if user.is_active %}
+                            <span class="badge badge--green">Active</span>
+                        {% else %}
+                            <span class="badge badge--red">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('dashboard.edit_user', user_id=user.id) }}" class="btn btn--ghost btn--sm">Edit</a>
+                        <a href="{{ url_for('dashboard.user_stats', user_id=user.id) }}" class="btn btn--ghost btn--sm">Stats</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if not users %}
+    <div class="empty"><p>No users found.</p></div>
+    {% endif %}
+</div>
+{% endblock %}

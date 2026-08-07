@@ -36,7 +36,7 @@ class MemoryRateLimiter(RateLimiter):
             now = time.time()
             window_start = now - period
 
-            # Оставляем только запросы в окне
+            # Retain only timestamps within the current window.
             self._storage[key] = [ts for ts in self._storage[key] if ts > window_start]
 
             if len(self._storage[key]) < limit:

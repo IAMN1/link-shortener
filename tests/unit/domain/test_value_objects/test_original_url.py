@@ -1,4 +1,5 @@
 from link_shortener.domain.value_objects.original_url import OriginalUrl
+from link_shortener.domain.exceptions import ValidationError
 import pytest
 
 
@@ -12,9 +13,6 @@ class TestOriginalUrl:
         "https://test.com",
         "http://test.com",
         "https://sub.domain.test.com",
-        "http://localhost",
-        "http://127.0.0.1",
-        "http://[::1]",
         "https://test.com:8080",
         "http://test.com/path",
         "https://test.com/path?query=1",
@@ -34,15 +32,15 @@ class TestOriginalUrl:
     @pytest.mark.parametrize("invalid_url,expected_error", [
         ("https://" + "a" * 2048, "URL too long"),
         ("", "URL must have a scheme"),
-        ("ftp://test.com", "Unsupported URL scheme:"),
+        ("ftp://test.com", "Scheme 'ftp' is not allowed"),
         ("https://test", "Host must contain a dot"),
         ("http://", "URL must have a domain!"),
         ("https://", "URL must have a domain!"),
     ])
     def test_invalid_url_raises_error(self, invalid_url, expected_error):
-        """Should raise ValueError for malformed URLs."""
+        """Should raise ValidationError for malformed URLs."""
 
-        with pytest.raises(ValueError, match=expected_error):
+        with pytest.raises(ValidationError, match=expected_error):
             OriginalUrl(invalid_url)
     
 
@@ -56,9 +54,9 @@ class TestOriginalUrl:
         "http://test.com:port",
     ])
     def test_invalid_port_raises_error(self, invalid_port_url):
-        """Should raise ValueError for invalid port numbers."""
+        """Should raise ValidationError for invalid port numbers."""
 
-        with pytest.raises(ValueError, match="Invalid port number"):
+        with pytest.raises(ValidationError, match="Invalid port number"):
             OriginalUrl(invalid_port_url)
 
 
@@ -66,18 +64,18 @@ class TestOriginalUrl:
     # Host validation (domain name)
     # ------------------------------------------------------------------
     @pytest.mark.parametrize("invalid_host", [
-        "http://.com",                  # пустая метка в начале
-        "http://test..com",          # пустая метка
-        "http://te_st.com",          # недопустимый символ _
-        "http://-test.com",          # метка начинается с дефиса
-        "http://test-.com",          # метка заканчивается дефисом
-        "http://a" + "b"*63 + ".com",   # метка >63 символов
-        "http://" + "a"*254 + ".com",   # общая длина >253
+        "http://.com",                  # empty label at start
+        "http://test..com",          # empty label
+        "http://te_st.com",          # invalid character _
+        "http://-test.com",          # label starts with hyphen
+        "http://test-.com",          # label ends with hyphen
+        "http://a" + "b"*63 + ".com",   # label >63 chars
+        "http://" + "a"*254 + ".com",   # total length >253
     ])
     def test_invalid_host_raises_error(self, invalid_host):
-        """Should raise ValueError for invalid hostnames."""
+        """Should raise ValidationError for invalid hostnames."""
 
-        with pytest.raises(ValueError, match="Empty label in host|Invalid characters|Label too long|Host too long"):
+        with pytest.raises(ValidationError, match="Empty label in host|Invalid characters|Label too long|Host too long"):
             OriginalUrl(invalid_host)
 
 
@@ -85,14 +83,18 @@ class TestOriginalUrl:
     # IP addresses (should be valid)
     # ------------------------------------------------------------------
     @pytest.mark.parametrize("valid_ip_url", [
-        "http://192.168.1.1",
-        "http://10.0.0.1",
-        "http://[2001:db8::1]",
-        "http://[::1]",
-        "http://[::ffff:192.0.2.128]",
+        "http://8.8.8.8",
+        "http://93.184.216.34",
+        "http://[2606:4700:4700::1111]",
+        "http://[2a00:1450:4001:82f::200e]",
     ])
     def test_valid_ip_address(self, valid_ip_url):
-        """Should accept valid IPv4 and IPv6 addresses."""
+        """Should accept valid IPv4 and IPv6 addresses.
+
+        Public ones. The private, loopback and link-local addresses this
+        list used to carry are refused now -- see
+        ``test_url_internal_targets``.
+        """
 
         url = OriginalUrl(valid_ip_url)
         assert url.value == valid_ip_url
@@ -107,9 +109,14 @@ class TestOriginalUrl:
         "http://test.com/\x7F",
     ])
     def test_path_with_control_characters_raises_error(self, path_with_control):
-        """Should raise ValueError if path contains control characters."""
+        """Should raise ValidationError if path contains control characters.
 
-        with pytest.raises(ValueError, match="Path contains control characters"):
+        The message now says "URL", not "Path": the check runs against the
+        whole submitted string, because the parser deletes some control
+        characters before any component can be inspected.
+        """
+
+        with pytest.raises(ValidationError, match="contains control characters"):
             OriginalUrl(path_with_control)
 
 

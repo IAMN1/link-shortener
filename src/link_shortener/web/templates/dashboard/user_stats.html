@@ -1,0 +1,58 @@
+{% extends "dashboard/base.html" %}
+{% block title %}User Stats – Linkr{% endblock %}
+{% block dashboard_content %}
+<h1 class="dash-title">Stats for {{ user.email }}</h1>
+
+<div class="stats-grid mb-2">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-links">-</div>
+        <div class="stat-label">Links</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-clicks">-</div>
+        <div class="stat-label">Total Clicks</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-avg">-</div>
+        <div class="stat-label">Avg Clicks</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Recent Links</span>
+    </div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>Short URL</th><th>Original</th><th>Clicks</th><th>Created</th></tr></thead>
+            <tbody id="recent-tbody"><tr><td colspan="4" class="text-muted text-center">Loading...</td></tr></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    var userId = '{{ user.id }}';
+    try {
+        var resp = await apiFetch('/api/v1/admin/users/' + userId + '/stats');
+        if (!resp || !resp.ok) throw new Error('Failed');
+        var data = await resp.json();
+        document.getElementById('stat-links').textContent = data.total_links;
+        document.getElementById('stat-clicks').textContent = data.total_clicks;
+        document.getElementById('stat-avg').textContent = data.avg_clicks_per_link;
+        var tbody = document.getElementById('recent-tbody');
+        if (data.recent_links && data.recent_links.length) {
+            tbody.innerHTML = data.recent_links.map(function(l) {
+                return '<tr><td class="table-mono">' + l.short_url + '</td>'
+                    + '<td class="truncate" style="max-width:250px">' + l.original_url + '</td>'
+                    + '<td>' + l.clicks + '</td>'
+                    + '<td>' + new Date(l.created_at).toLocaleDateString() + '</td></tr>';
+            }).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">No links</td></tr>';
+        }
+    } catch(e) { console.error(e); }
+});
+</script>
+{% endblock %}

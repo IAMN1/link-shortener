@@ -1,5 +1,9 @@
+import sys
 from pathlib import Path
+from typing import Optional
+
 from link_shortener.application import RequestContext, SeedDatabaseUseCase
+from link_shortener.application.use_cases.admin.database.seed_database import SeedResult
 from link_shortener.infrastructure.database.models.base import Base
 from link_shortener.infrastructure.database.manager import DatabaseManager
 from link_shortener.infrastructure.database.role_loader import RoleLoader
@@ -43,7 +47,7 @@ def drop_db(db_manager: DatabaseManager, use_alembic: bool, confirm: bool = Fals
     Base.metadata.drop_all(bind=db_manager.engine)
     print("All tables dropped successfully!")
 
-def seed_db(use_case: SeedDatabaseUseCase, count: int, context: RequestContext) -> int:
+def seed_db(use_case: SeedDatabaseUseCase, count: int, context: RequestContext) -> SeedResult:
     """
     Fill database with test links using SeedDatabaseUseCase.
 
@@ -53,7 +57,7 @@ def seed_db(use_case: SeedDatabaseUseCase, count: int, context: RequestContext) 
         context: Request context.
 
     Returns:
-        Number of successfully created links.
+        SeedResult with the created / already-existing counts.
     """
     return use_case.execute(count, context)
 
@@ -63,8 +67,12 @@ def load_base_roles_from_cfg(db_manager: DatabaseManager) -> None:
     This function is idempotent and safe to run multiple times.
     """
     with db_manager.session() as session:
-        seed_base_roles(session)
-    print("Roles and permissions seeded successfully.")
+        summary = seed_base_roles(session)
+    # Reported rather than merely done: seeding leaves existing roles alone,
+    # so "seeded successfully" was equally true for a pass that created the
+    # whole of RBAC and for one that changed nothing at all -- including
+    # when the operator had just edited the YAML.
+    print(f"Roles and permissions seeded. {summary.describe()}")
 
 def load_custom_roles_from_cfg(
     db_manager: DatabaseManager, file_path: str, update_existing: bool = False
@@ -79,9 +87,12 @@ def load_custom_roles_from_cfg(
     """
     with db_manager.session() as session:
         loader = RoleLoader(session)
-        loader.load_from_yaml(Path(file_path), update_existing=update_existing)
+        summary = loader.load_from_yaml(
+            Path(file_path), update_existing=update_existing
+        )
     action = "Updated" if update_existing else "Loaded"
     print(f"{action} roles and permission from {file_path}")
+    print(summary.describe())
     
 
 def check_db_connection(db_manager: DatabaseManager) -> bool:
@@ -102,13 +113,34 @@ def check_db_connection(db_manager: DatabaseManager) -> bool:
     except Exception:
         return False
 
-def migrate_db(db_manager: DatabaseManager) -> None:
+def migrate_db(
+    db_manager: DatabaseManager,
+    use_alembic: bool,
+    database_url: Optional[str] = None,
+) -> None:
     """
-    Placeholder for future Alembic migrations.
+    Apply database migrations using Alembic.
+
+    Delegates to ``AlembicCommands`` rather than launching alembic itself.
+    It used to run its own subprocess, and that copy never received the
+    caller's database URL, so this command migrated whatever database the
+    ambient environment named -- while ``flask alembic upgrade``, three
+    lines of configuration away, migrated the right one.
 
     Args:
         db_manager: DatabaseManager instance.
-    
-    TODO Реализовать
+        use_alembic: flag indicating whether alembic is enabled
+        database_url: Database to migrate. Handed to alembic so the schema
+            change lands where the application actually looks.
     """
-    print("Database migrations not implemented yet. Use 'init' to create tables.")
+    if not use_alembic:
+        print("Alembic is disabled. Use 'flask db init' to create tables.")
+        return
+
+    from link_shortener.infrastructure.cli.commands.alembic import AlembicCommands
+
+    success, output = AlembicCommands.upgrade("head", database_url=database_url)
+    if not success:
+        print(output, file=sys.stderr)
+        raise SystemExit(1)
+    print(output)

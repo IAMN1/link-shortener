@@ -6,6 +6,7 @@ a ``RequestContext`` as well as load the full domain ``User`` for the
 current request.
 """
 
+import ipaddress
 from typing import Optional
 from flask import current_app, g, request
 
@@ -15,17 +16,71 @@ from link_shortener.domain import User
 
 def get_client_ip() -> str:
     """
-    Extract the real client IP address, accounting for proxies.
+    Extract the real client IP address, accounting for trusted proxies.
 
-    If the ``X-Forwarded-For`` header is present, the first IP in the list
-    is returned. Otherwise ``request.remote_addr`` is used.
+    Only trusts X-Forwarded-For when the request comes from a trusted proxy,
+    and then reads the **last** entry, not the first.
+
+    A proxy appends; it does not prepend. Nginx's
+    ``$proxy_add_x_forwarded_for`` writes whatever the client sent and then
+    the address it actually saw, so the rightmost entry is the only one the
+    client could not choose and every entry to its left is a string the
+    client typed. Reading the leftmost handed the caller their own identity
+    to declare: a fresh value per request made the guest quota count
+    nothing, and a victim's address made the attacker's links come out of
+    the victim's allowance and lock them out for the day.
+
+    The value is also required to be an address, and returned in its
+    canonical form. It becomes ``urls.guest_identifier``, a ``VARCHAR(45)``:
+    a long header used to fail the insert on PostgreSQL, and the two
+    spellings of one IPv6 address used to count as two guests.
 
     Returns:
         Client IP string, or an empty string if unavailable.
     """
-    if request.headers.get('X-Forwarded-For'):
-        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    return request.remote_addr or ''
+    trusted_proxies = current_app.config.get("TRUSTED_PROXIES", [])
+    remote_addr = request.remote_addr or ''
+
+    if remote_addr in trusted_proxies:
+        forwarded_for = request.headers.get('X-Forwarded-For')
+        if forwarded_for:
+            nearest = _as_ip_address(forwarded_for.rsplit(',', 1)[-1])
+            if nearest:
+                return nearest
+
+    return remote_addr
+
+
+def _as_ip_address(value: str) -> Optional[str]:
+    """
+    Return the canonical form of an IP address, or ``None``.
+
+    Args:
+        value: One entry of an ``X-Forwarded-For`` header.
+
+    Returns:
+        The address in canonical form, or ``None`` if the entry is not a
+        bare IP address -- in which case the header is not usable and the
+        connection's own address is the truthful answer.
+    """
+    candidate = value.strip()
+    if candidate.startswith("[") and candidate.endswith("]"):
+        candidate = candidate[1:-1]  # Some proxies bracket IPv6 addresses
+
+    if "%" in candidate:
+        # A scope identifier names an interface on the machine reading it,
+        # so it says nothing about a caller two hops away -- and Python
+        # accepts any text after "%". That made the identity both forgeable
+        # and unbounded: ``fe80::1%eth0``, ``%eth1``, ``%eth2`` are one
+        # address and three guests, which empties the guest quota, and a
+        # long enough tail overran ``guest_identifier`` (VARCHAR(45)) and
+        # failed the insert on PostgreSQL.
+        return None
+
+    try:
+        return str(ipaddress.ip_address(candidate))
+    except ValueError:
+        return None
 
 
 def create_request_context() -> RequestContext:
@@ -53,23 +108,7 @@ def get_current_domain_user() -> Optional[User]:
     """
     Load the full domain User entity for the current request.
 
-    Uses ``g.current_user`` (set by AuthenticationMiddleware) and loads the
-    corresponding User from the database in a read-only Unit of Work.
-    The result is cached in ``g._domain_user`` for the duration of the request.
-
-    Returns:
-        Domain ``User`` instance or ``None`` if no user is authenticated.
+    The domain user is cached in g._domain_user by AuthenticationMiddleware.
+    This function no longer touches the DI container.
     """
-    if not hasattr(g, "current_user") or g.current_user is None:
-        return None
-
-    # Return cached domain user if already loaded
-    if hasattr(g, "_domain_user"):
-        return g._domain_user
-
-    container = current_app.container
-    uow_factory = container.get_uow_factory()
-    with uow_factory(read_only=True) as uow:
-        user = uow.users.find_by_id(g.current_user.id)
-        g._domain_user = user
-        return user
+    return getattr(g, '_domain_user', None)

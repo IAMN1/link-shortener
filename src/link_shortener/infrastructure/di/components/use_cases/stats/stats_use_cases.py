@@ -3,6 +3,7 @@ from typing import Callable
 
 from link_shortener.application import (
     GetServiceStatsUseCase,
+    GetUserActivityStatsUseCase,
     StatsCache,
     Logger,
     UnitOfWork,
@@ -35,4 +36,10 @@ class StatsUseCasesComponent:
             base_url=self.base_url,
             cache=self.cache,
             logger=self.logger,
+        )
+    
+    def get_user_activity_stats_use_case(self) -> GetUserActivityStatsUseCase:
+        return GetUserActivityStatsUseCase(
+            uow_factory=self.uow_factory,
+            base_url=self.base_url,
         )

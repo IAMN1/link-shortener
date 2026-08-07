@@ -8,7 +8,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
-    User, ValidationError,
+    DomainError, User, ValidationError,
     Email, PasswordHash
 )
 
@@ -21,9 +21,9 @@ class RegisterUseCase(BaseUseCase):
     The password is hashed by the AuthenticationService before storage.
     """
     uow_factory: Callable[[], UnitOfWork]
-    auth_service: AuthenticationService
+    authentication_service: AuthenticationService
     logger: Logger
-    default_role_name: str  # роль, назначаемая пользователю по умолчанию
+    default_role_name: str  # Role assigned to new users by default.
 
     def execute(self, email: str, password: str, context: RequestContext) -> UserResponse:
         """
@@ -53,16 +53,21 @@ class RegisterUseCase(BaseUseCase):
                 raise ValidationError("Email already registered", field="email")
         
             # Hash the password
-            hashed = self.auth_service.hash_password(password)
+            hashed = self.authentication_service.hash_password(password)
             password_hash_vo = PasswordHash(hashed)
 
             # Retrieve default role
             default_role = uow.roles.get_by_name(self.default_role_name)
             if not default_role:
                 log.error("Default role not found", role_name=self.default_role_name)
-                raise ValidationError(
-                    "System configuration error: default role missing",
-                    field="system"
+                # Reported as a server failure, because that is what it is:
+                # the caller did nothing wrong and retrying with different
+                # input will not help. As a 400 carrying "default role
+                # missing" it also told an anonymous caller that this
+                # deployment is misconfigured, and in which part.
+                raise DomainError(
+                    "Registration is unavailable",
+                    code="CONFIGURATION_ERROR",
                 )
 
             # Create user entity

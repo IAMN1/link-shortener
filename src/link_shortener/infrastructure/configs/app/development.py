@@ -1,6 +1,5 @@
-import os
-
 from link_shortener.infrastructure.configs.app.base import BaseConfig
+from link_shortener.infrastructure.configs.app.env import env_bool, env_int, env_str
 
 
 class DevelopmentConfig(BaseConfig):
@@ -17,36 +16,30 @@ class DevelopmentConfig(BaseConfig):
     # --------------------------------------------------------------------------
     # Cache: shorter TTLs for faster feedback during development
     # --------------------------------------------------------------------------
-    CACHE_LINK_TTL: int = int(os.environ.get("CACHE_LINK_TTL", 20))
-    CACHE_STATS_TTL: int = int(os.environ.get("CACHE_STATS_TTL", 20))
+    CACHE_LINK_TTL: int = env_int("CACHE_LINK_TTL", 20)
+    CACHE_STATS_TTL: int = env_int("CACHE_STATS_TTL", 20)
 
 
     # --------------------------------------------------------------------------
     # Redis: disabled by default for simpler local setup (use in-memory cache)
     # --------------------------------------------------------------------------
-    REDIS_ENABLED: bool = os.environ.get("REDIS_ENABLED", "false").lower() == "true"
-    REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_ENABLED: bool = env_bool("REDIS_ENABLED", False)
+    REDIS_URL: str = env_str("REDIS_URL", "redis://localhost:6379/0")
 
 
     # --------------------------------------------------------------------------
     # Alembic: enabled by default for consistency, but can be overridden
     # --------------------------------------------------------------------------
-    USE_ALEMBIC: bool = os.environ.get("USE_ALEMBIC", "true").lower() == "true"
+    USE_ALEMBIC: bool = env_bool("USE_ALEMBIC", True)
 
 
     # --------------------------------------------------------------------------
-    # Database: echo SQL for debugging
+    # Database: echo SQL for debugging (off by default, enable via env)
     # --------------------------------------------------------------------------
-    SQLALCHEMY_ECHO: bool = True
-    """
-    Log all SQL queries – helpful for development.
-    """
+    SQLALCHEMY_ECHO: bool = env_bool("SQLALCHEMY_ECHO", False)
 
 
     # --------------------------------------------------------------------------
-    # Auto-seed roles at startup (safe and convenient)
+    # Auto-seed roles at startup (configurable via env)
     # --------------------------------------------------------------------------
-    AUTO_SEED_ROLES: bool = True
-    """
-    Automatically ensure base roles exist on every startup.
-    """
+    AUTO_SEED_ROLES: bool = env_bool("AUTO_SEED_ROLES", True)

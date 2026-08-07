@@ -41,6 +41,7 @@ class AdminLinkUseCasesComponent:
         return CleanExpiredLinksUseCase(
             uow_factory=self.uow_factory,
             cache=self.cache,
+            stats_cache=self.cache,
             logger=self.logger,
         )
 

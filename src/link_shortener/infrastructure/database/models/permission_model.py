@@ -1,13 +1,14 @@
 import uuid
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from link_shortener.infrastructure.database.models.base import Base
-from link_shortener.infrastructure.database.models.role_model import RoleModel
 from link_shortener.infrastructure.database.models.associations import role_permission_table
 
+if TYPE_CHECKING:
+    from .role_model import RoleModel
 
 class PermissionModel(Base):
     """

@@ -20,7 +20,7 @@ class AuthUseCasesComponent:
     """
 
     uow_factory: Callable[[], UnitOfWork]
-    auth_service: AuthenticationService
+    authentication_service: AuthenticationService
     logger: Logger
     default_role_name: str
 
@@ -32,8 +32,9 @@ class AuthUseCasesComponent:
         JWT tokens.
         """
         return LoginUseCase(
-            auth_service=self.auth_service,
+            authentication_service=self.authentication_service,
             logger=self.logger,
+            uow_factory=self.uow_factory,
         )
 
     def get_register_use_case(self) -> RegisterUseCase:
@@ -44,7 +45,7 @@ class AuthUseCasesComponent:
         """
         return RegisterUseCase(
             uow_factory=self.uow_factory,
-            auth_service=self.auth_service,
+            authentication_service=self.authentication_service,
             logger=self.logger,
             default_role_name=self.default_role_name,
         )

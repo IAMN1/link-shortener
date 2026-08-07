@@ -1,6 +1,7 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session, selectinload
 
+from link_shortener.infrastructure.database.models.permission_model import PermissionModel
 from link_shortener.infrastructure.database.models.role_model import RoleModel
 from link_shortener.infrastructure.database.models.user_model import UserModel
 from link_shortener.domain import (
@@ -37,7 +38,7 @@ class SQLAlchemyUserRepository(UserRepository):
             The same user instance (the session is flushed but the entity
             is not re-hydrated from the ORM).
         """
-        model = self.session.query(UserModel).get(user.id)
+        model = self.session.get(UserModel, user.id)
         if not model:
             model = UserModel(id=user.id)
             self.session.add(model)
@@ -99,6 +100,31 @@ class SQLAlchemyUserRepository(UserRepository):
         )
         return [self._orm_to_domain(m) for m in models]
 
+    def count_active_with_permission(
+        self, permission_name: str, excluding_user_id: Optional[str] = None
+    ) -> int:
+        """Count active users holding a permission through any role.
+
+        Args:
+            permission_name: Permission to look for (e.g. ``"admin:all"``).
+            excluding_user_id: User to leave out of the count.
+
+        Returns:
+            Number of matching active users.
+        """
+        query = (
+            self.session.query(UserModel.id)
+            .join(UserModel.roles)
+            .join(RoleModel.permissions)
+            .filter(PermissionModel.name == permission_name)
+            .filter(UserModel.is_active.is_(True))
+        )
+        if excluding_user_id is not None:
+            query = query.filter(UserModel.id != excluding_user_id)
+        # Distinct because a user holding the permission through two roles
+        # is still one administrator.
+        return query.distinct().count()
+
     def delete(self, user_id: str) -> bool:
         """Permanently delete a user.
 
@@ -108,7 +134,7 @@ class SQLAlchemyUserRepository(UserRepository):
         Returns:
             ``True`` if a user was deleted, ``False`` if it did not exist.
         """
-        model = self.session.query(UserModel).get(user_id)
+        model = self.session.get(UserModel, user_id)
         if model:
             self.session.delete(model)
             return True
@@ -145,7 +171,7 @@ class SQLAlchemyUserRepository(UserRepository):
                 name=role_model.name,
                 description=role_model.description,
                 is_system=role_model.is_system,
-                permissions=perms,
+                permissions=tuple(perms),
             )
             roles.append(role)
         return User(

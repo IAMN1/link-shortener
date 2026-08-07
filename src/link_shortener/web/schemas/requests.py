@@ -1,5 +1,7 @@
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
+
+from link_shortener.infrastructure.configs.app.base import MAX_BATCH_ITEMS
 
 
 class CreateShortLinkRequest(BaseModel):
@@ -9,11 +11,17 @@ class CreateShortLinkRequest(BaseModel):
         description="Url to shorten",
         examples=["https://example.com/so-long-url"]
     )
+    ttl_seconds: Optional[int] = Field(
+        None,
+        ge=0,          # 0 means no expiration
+        description="Time to live in seconds (0 = forever, None = default behaviour)"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "url": "https://example.com/so-long-url"
+                "url": "https://example.com/so-long-url",
+                "ttl_seconds": 3600
             }
         }
     )
@@ -25,8 +33,8 @@ class BatchCreateLinkRequest(BaseModel):
     urls: List[str] = Field(
         ...,
         min_length=1,
-        max_length=100,
-        description="List of URLs to shorten (max 100)",
+        max_length=MAX_BATCH_ITEMS,
+        description=f"List of URLs to shorten (max {MAX_BATCH_ITEMS})",
         examples=[
             "https://example.com/so-long-url-1",
             "https://example.com/so-long-url-2",

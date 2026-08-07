@@ -1,1 +1,1 @@
-"""Команды CLI (чистая логика, не зависящая от фреймворка)."""
+"""CLI commands (framework-agnostic pure logic)."""

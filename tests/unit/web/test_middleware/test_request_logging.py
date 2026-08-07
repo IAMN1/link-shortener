@@ -7,7 +7,7 @@ def test_request_logging(client, test_logger):
     response = client.get("/health")
 
     assert response.status_code == 200
-    # Проверяем, что в test_logger.messages есть нужные записи
+    # Check that test_logger.messages has the expected entries
     started = any(msg[1] == "Request started" for msg in test_logger.messages)
     completed = any(msg[1] == "Request completed" for msg in test_logger.messages)
     assert started, "Message 'Request started' not found"

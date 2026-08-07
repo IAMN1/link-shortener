@@ -1,5 +1,6 @@
 """Abstract interface for generating a short code from an input string."""
 
+import uuid
 from abc import ABC, abstractmethod
 
 from link_shortener.domain.value_objects.original_url import OriginalUrl
@@ -66,3 +67,30 @@ class CodeGenerator(ABC):
             return self.generate(base)
         salted = f"{base}#collision_{attempt}"
         return self.generate(salted)
+
+    def generate_fresh(self, original_url: OriginalUrl) -> ShortCode:
+        """
+        Generate a code for a URL whose deterministic codes are all taken.
+
+        ``generate_unique`` is a pure function of the URL and the attempt
+        number, so a URL has exactly as many codes as there are attempts --
+        five, service-wide, for all time. That ceiling was invisible while a
+        URL could only ever have one link: deduplication matched on the URL
+        alone. It is not invisible now. Links deduplicate per owner and
+        expired ones are skipped, so one URL legitimately needs a code per
+        owner and another after each expiry, and the sixth caller ran into a
+        failure no retry could clear -- the URL became unshortenable for
+        everybody, permanently.
+
+        Entropy is what removes the ceiling. The code is still derived from
+        the URL; a nonce merely makes the supply unbounded.
+
+        Args:
+            original_url: The original URL value object.
+
+        Returns:
+            ShortCode: A code unrelated to any previously issued one.
+        """
+        return self.generate(
+            f"{original_url.normalize()}#fresh_{uuid.uuid4().hex}"
+        )

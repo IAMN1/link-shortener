@@ -25,7 +25,8 @@ class CacheComponent:
                  connect_timeout: int,
                  socket_timeout: int,
                  retry_interval: int,
-                 logger: Logger):
+                 logger: Logger,
+                 secret_key: str):
         """
         Args:
             cache_enabled: Global toggle; if False, NullCache is used.
@@ -38,8 +39,10 @@ class CacheComponent:
             socket_timeout: Redis socket timeout (seconds).
             retry_interval: Seconds between reconnection attempts.
             logger: Application logger.
+            secret_key: Key the Redis cache signs its values with.
         """
         
+        self.secret_key = secret_key
         self.cache_enabled = cache_enabled
         self.redis_enabled = redis_enabled
         self.redis_url = redis_url
@@ -78,7 +81,8 @@ class CacheComponent:
                         stats_ttl=self.stats_ttl,
                         connect_timeout=self.connect_timeout,
                         socket_timeout=self.socket_timeout,
-                        retry_interval=self.retry_interval
+                        retry_interval=self.retry_interval,
+                        secret_key=self.secret_key,
                     )
                 except Exception as e:
                     self.logger.error("Failed to init Redis cache. Falling back to NullCache.", error=str(e), exc_info=True)
