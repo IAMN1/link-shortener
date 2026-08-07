@@ -1,5 +1,7 @@
 import logging
 
+from link_shortener.infrastructure.logging.utils import STANDARD_RECORD_ATTRS
+
 
 class ConsoleFormatter(logging.Formatter):
     """
@@ -24,12 +26,11 @@ class ConsoleFormatter(logging.Formatter):
         """
         super().__init__(fmt, datefmt)
         self.datefmt = datefmt
-        self.standard_attrs = {
-            'args', 'asctime', 'created', 'exc_info', 'exc_text', 'filename',
-            'funcName', 'levelname', 'levelno', 'lineno', 'module', 'msecs',
-            'message', 'msg', 'name', 'pathname', 'process', 'processName',
-            'relativeCreated', 'stack_info', 'thread', 'threadName'
-        }
+        # Computed from a reference record rather than enumerated: the
+        # list this replaced predated Python 3.12 and let its new
+        # ``taskName`` attribute through, so every console line ended in
+        # ``- [taskName=None]``.
+        self.standard_attrs = STANDARD_RECORD_ATTRS
     
     def format(self, record: logging.LogRecord) -> str:
         """

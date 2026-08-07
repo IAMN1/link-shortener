@@ -2,6 +2,8 @@ from datetime import datetime
 import json
 import logging
 
+from link_shortener.infrastructure.logging.utils import STANDARD_RECORD_ATTRS
+
 
 class JSONFormatter(logging.Formatter):
     """
@@ -46,14 +48,10 @@ class JSONFormatter(logging.Formatter):
             "logger": record.name,
             "event": record.getMessage(),
         }
-        skip_keys = {
-            'args', 'msg', 'created', 'asctime',
-            'exc_info', 'exc_text', 'filename', 'funcName',
-            'id', 'levelname', 'levelno', 'lineno', 'module',
-            'msecs', 'name', 'pathname','process', 'processName',
-            'relativeCreated', 'stack_info', 'thread', 'threadName',
-            'message'
-        }
+        # Computed from a reference record, not enumerated: the hand-written
+        # list this replaced predated Python 3.12 and let its new ``taskName``
+        # attribute through, so every line carried ``"taskName": null``.
+        skip_keys = STANDARD_RECORD_ATTRS
         for key, value in record.__dict__.items():
             if key in skip_keys or key in log_entry:
                 continue
