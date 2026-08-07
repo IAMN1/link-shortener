@@ -1,5 +1,6 @@
 import time
 from link_shortener.domain.entities.link import Link
+from link_shortener.domain.value_objects.dedup_scope import DedupScope
 from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
@@ -32,14 +33,14 @@ class TestInMemoryLinkCache:
         # Act & Assert
 
         # Data is available
-        assert memory_cache.get_by_hash(sample_link.url_hash) == sample_link
+        assert memory_cache.get_by_hash(sample_link.url_hash, sample_link.dedup_scope()) == sample_link
         
         # advance time past TTL + 1
         fake_time += memory_cache.link_ttl + 1
         # Data is no longer available
-        assert memory_cache.get_by_hash(sample_link.url_hash) is None
+        assert memory_cache.get_by_hash(sample_link.url_hash, sample_link.dedup_scope()) is None
         assert memory_cache.get_by_code(sample_link.short_code) is None
-        assert memory_cache.get_original_url(sample_link.short_code) is None
+        assert memory_cache.get_redirect(sample_link.short_code) is None
 
     def test_delete(self, memory_cache, sample_link):
         """Should delete all data associated with a short code."""
@@ -48,12 +49,12 @@ class TestInMemoryLinkCache:
         memory_cache.save(sample_link)
         
         # Act
-        memory_cache.delete(sample_link.short_code)
+        memory_cache.delete(sample_link)
 
         # Assert
-        assert memory_cache.get_by_hash(sample_link.url_hash) is None
+        assert memory_cache.get_by_hash(sample_link.url_hash, sample_link.dedup_scope()) is None
         assert memory_cache.get_by_code(sample_link.short_code) is None
-        assert memory_cache.get_original_url(sample_link.short_code) is None
+        assert memory_cache.get_redirect(sample_link.short_code) is None
 
     def test_save_many(
         self, memory_cache, sample_link
@@ -101,11 +102,10 @@ class TestInMemoryLinkCache:
         assert info['redirect_count'] == 0
         assert info['total_keys'] == 0
 
-    def test_delete_nonexistent(self, memory_cache):
-        """Should not raise error when deleting non-existent short code."""
+    def test_delete_nonexistent(self, memory_cache, sample_link):
+        """Should not raise error when deleting a link that was never cached."""
 
-        short_code = ShortCode("abc123")
-        memory_cache.delete(short_code)  # should not fail
+        memory_cache.delete(sample_link)  # should not fail
 
     def test_save_duplicate(self, memory_cache, sample_link):
         """Should overwrite existing entry when saving same link again."""
@@ -155,7 +155,7 @@ class TestInMemoryLinkCache:
         memory_cache.save(sample_link)
         
         # Act
-        retrieved = memory_cache.get_by_hash(sample_link.url_hash)
+        retrieved = memory_cache.get_by_hash(sample_link.url_hash, sample_link.dedup_scope())
         
         # Assert
         assert retrieved == sample_link
@@ -169,40 +169,57 @@ class TestInMemoryLinkCache:
         memory_cache.save(sample_link)
         
         # Act
-        result = memory_cache.get_by_hashes([sample_link.url_hash])
+        result = memory_cache.get_by_hashes([sample_link.url_hash], sample_link.dedup_scope())
         
         # Assert
         assert result[sample_link.url_hash] == sample_link
 
     def test_get_by_hashes_empty(self, memory_cache):
         """Should return empty dict when given empty list of hashes."""
-        result = memory_cache.get_by_hashes([])
+        result = memory_cache.get_by_hashes([], DedupScope())
         assert result == {}
 
     # =============== RedirectCache methods =============================
-    def test_get_original_url(self, memory_cache, sample_link):
-        """Should retrieve original URL for redirect."""
-        
+    def test_get_redirect(self, memory_cache, sample_link):
+        """Should retrieve the redirect entry for a short code."""
+
         # Arrage
         memory_cache.save(sample_link)
-        
+
         # Act
-        url = memory_cache.get_original_url(sample_link.short_code)
-        
+        entry = memory_cache.get_redirect(sample_link.short_code)
+
         # Assert
-        assert url == sample_link.original_url.value
-    
-    def test_save_original_url_direct(self, memory_cache, sample_link):
-        """Should save original URL directly and retrieve it from L1 cache."""
+        assert entry.original_url == sample_link.original_url.value
+        # The entry has to answer the expiry question on its own, otherwise
+        # an L1 hit cannot complete a redirect.
+        assert entry.expires_at == sample_link.expires_at
+
+    def test_save_redirect_direct(self, memory_cache, sample_link):
+        """Should save a redirect directly and retrieve it from L1 cache."""
 
         # Arrange
-        memory_cache.save_original_url(sample_link.short_code, sample_link.original_url.value)
-        
+        memory_cache.save_redirect(
+            sample_link.short_code, sample_link.original_url.value
+        )
+
         # Act
-        url = memory_cache.get_original_url(sample_link.short_code)
-        
+        entry = memory_cache.get_redirect(sample_link.short_code)
+
         # Assert
-        assert url == sample_link.original_url.value
+        assert entry.original_url == sample_link.original_url.value
+
+    def test_an_expired_link_is_not_served_from_l1(self, memory_cache, sample_link):
+        """An entry must never outlive the link it points at."""
+        from datetime import datetime, timedelta, timezone
+
+        memory_cache.save_redirect(
+            sample_link.short_code,
+            sample_link.original_url.value,
+            datetime.now(timezone.utc) - timedelta(seconds=1),
+        )
+
+        assert memory_cache.get_redirect(sample_link.short_code) is None
     
 
     # =============== StatsCache methods =============================

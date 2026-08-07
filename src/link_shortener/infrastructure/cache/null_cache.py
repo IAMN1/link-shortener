@@ -1,12 +1,16 @@
+from datetime import datetime
 from typing import Dict, List, Optional
 
+from link_shortener.application.ports.cache.cache_health import CacheHealth
 from link_shortener.application.ports.cache.link_cache import LinkCache
 from link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
-from link_shortener.application.ports.cache.redirect_cache import RedirectCache
-from link_shortener.domain import Link, ShortCode, UrlHash
+from link_shortener.application.ports.cache.redirect_cache import (
+    CachedRedirect, RedirectCache
+)
+from link_shortener.domain import DedupScope, Link, ShortCode, UrlHash
 
 
-class NullCache(LinkCache, RedirectCache, StatsCache):
+class NullCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
     """
     Null-object cache that discards all data.
 
@@ -16,16 +20,29 @@ class NullCache(LinkCache, RedirectCache, StatsCache):
 
     cache_type = "Null"
 
+    # ========== CacheHealth methods ==========
+    def is_configured(self) -> bool:
+        """No backend is involved; there is nothing to be up or down."""
+        return False
+
+    def ping(self) -> bool:
+        """A cache with nothing to connect to cannot be unreachable."""
+        return True
+
     # ========== Link Cache methods ==========
     def get_by_code(self, short_code: ShortCode) -> Optional[Link]:
         """No-op: always return None."""
         return None
 
-    def get_by_hash(self, url_hash: UrlHash) -> Optional[Link]:
+    def get_by_hash(
+        self, url_hash: UrlHash, scope: DedupScope
+    ) -> Optional[Link]:
         """No-op: always return None."""
         return None
 
-    def get_by_hashes(self, url_hashes: List[UrlHash]) -> Dict[UrlHash, Optional[Link]]:
+    def get_by_hashes(
+        self, url_hashes: List[UrlHash], scope: DedupScope
+    ) -> Dict[UrlHash, Optional[Link]]:
         """No-op: return dict with all None values."""
         return {h: None for h in url_hashes}
 
@@ -37,16 +54,29 @@ class NullCache(LinkCache, RedirectCache, StatsCache):
         """No-op: do nothing."""
         pass
 
-    def delete(self, short_code: ShortCode) -> None:
+    def delete(self, link: Link) -> bool:
+        """No-op: a cache that stores nothing has nothing left behind."""
+        return True
+
+    def delete_by_code(self, short_code: ShortCode) -> bool:
+        """No-op: a cache that stores nothing has nothing left behind."""
+        return True
+
+    def delete_redirect(self, short_code: ShortCode) -> None:
         """No-op: do nothing."""
         pass
 
     # ========== RedirectCache methods ==========
-    def get_original_url(self, short_code: ShortCode) -> Optional[str]:
+    def get_redirect(self, short_code: ShortCode) -> Optional[CachedRedirect]:
         """No-op: always return None."""
         return None
 
-    def save_original_url(self, short_code: ShortCode, original_url: str) -> None:
+    def save_redirect(
+        self,
+        short_code: ShortCode,
+        original_url: str,
+        expires_at: Optional[datetime] = None,
+    ) -> None:
         """No-op: do nothing."""
         pass
 

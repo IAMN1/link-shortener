@@ -34,19 +34,44 @@ class TestRedisConnection:
 class TestRedisCacheIntegration:
     """Test application cache layer against real Redis."""
 
-    def test_cache_save_and_get_original_url(self, app):
+    def test_cache_save_and_get_redirect(self, app):
         with app.app_context():
             cache = app.container.get_cache()
             code = ShortCode("redtest")
-            cache.save_original_url(code, "https://cached.com")
-            result = cache.get_original_url(code)
-            assert result == "https://cached.com"
+            cache.save_redirect(code, "https://cached.com")
+            result = cache.get_redirect(code)
+            assert result.original_url == "https://cached.com"
 
     def test_cache_delete_invalidates(self, app):
         with app.app_context():
             cache = app.container.get_cache()
             code = ShortCode("deltest")
-            cache.save_original_url(code, "https://to-delete.com")
-            cache.delete(code)
-            result = cache.get_original_url(code)
+            cache.save_redirect(code, "https://to-delete.com")
+            cache.delete_redirect(code)
+            result = cache.get_redirect(code)
             assert result is None
+
+    def test_an_expired_link_is_not_served_from_l1(self, app):
+        """Against a real Redis: the entry must not outlive the link."""
+        from datetime import datetime, timedelta, timezone
+
+        with app.app_context():
+            cache = app.container.get_cache()
+            code = ShortCode("exptest")
+            cache.save_redirect(
+                code,
+                "https://expired.com",
+                datetime.now(timezone.utc) - timedelta(seconds=1),
+            )
+            assert cache.get_redirect(code) is None
+
+    def test_an_entry_from_the_old_format_ages_out_quietly(self, app):
+        """Bare URL strings are still in live caches; they must not raise."""
+        with app.app_context():
+            cache = app.container.get_cache()
+            code = ShortCode("oldfmt1")
+            key = cache.key_gen.for_redirect(code.value)
+            cache._client.setex(key, 60, "https://written-before-the-envelope.com")
+
+            # Unusable -- it carries no expiry, so its age cannot be judged.
+            assert cache.get_redirect(code) is None

@@ -43,17 +43,22 @@ class CacheKeyBuilder:
         """
         return self._build_key("code", short_code)
     
-    def for_url_hash(self, url_hash: str) -> str:
+    def for_url_hash(self, url_hash: str, scope: str) -> str:
         """
-        Build key for Link by URL hash.
+        Build key for Link by URL hash within one deduplication scope.
+
+        The scope is part of the key because the entry answers the question
+        "has *this caller* already shortened this URL". A key without it let
+        one caller's entry answer for another.
 
         Args:
             url_hash: 64-char hex hash.
+            scope: Scope token from ``DedupScope.token()``.
 
         Returns:
             Key string.
         """
-        return self._build_key("hash", url_hash)
+        return self._build_key("hash", scope, url_hash)
     
     def for_stats(self) -> str:
         """
