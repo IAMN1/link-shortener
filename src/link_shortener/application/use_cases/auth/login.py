@@ -40,8 +40,9 @@ class LoginUseCase(BaseUseCase):
             LoginResponse with tokens and user data.
 
         Raises:
-            DomainError: If authentication fails (invalid credentials,
-                inactive account).
+            DomainError: If authentication fails. A deactivated account is
+                reported as invalid credentials so that the response does
+                not distinguish the two cases.
         """
         log = self._get_logger(self.logger, context)
         log.info("Login attempt", email=email)
@@ -52,8 +53,11 @@ class LoginUseCase(BaseUseCase):
             raise DomainError("Invalid email or password", code="INVALID_CREDENTIALS")
 
         if not user.is_active:
+            # Answered exactly like a wrong password. Saying "deactivated"
+            # only when the password is right confirms both that the account
+            # exists and that the password guess landed.
             log.warning("Login attempt on inactive user", user_id=user.id)
-            raise DomainError("Account is deactivated", code="ACCOUNT_INACTIVE")
+            raise DomainError("Invalid email or password", code="INVALID_CREDENTIALS")
 
         # Update last_login timestamp.
         user.last_login = datetime.now(timezone.utc)
@@ -61,15 +65,14 @@ class LoginUseCase(BaseUseCase):
             uow.users.save(user)
             uow.commit()
 
-        # Generate tokens
-        access_token = self.authentication_service.create_access_token(user)
-        refresh_token = self.authentication_service.create_refresh_token(user)
+        # Open a session and take its pair of tokens.
+        tokens = self.authentication_service.create_session_tokens(user)
 
         log.info("login successful", user_id=user.id, email=user.email.value)
 
         user_dto = UserResponse.from_user(user)
         return LoginResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
             user=user_dto,
         )

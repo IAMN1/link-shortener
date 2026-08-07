@@ -8,7 +8,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
-    User, ValidationError,
+    DomainError, User, ValidationError,
     Email, PasswordHash
 )
 
@@ -60,9 +60,14 @@ class RegisterUseCase(BaseUseCase):
             default_role = uow.roles.get_by_name(self.default_role_name)
             if not default_role:
                 log.error("Default role not found", role_name=self.default_role_name)
-                raise ValidationError(
-                    "System configuration error: default role missing",
-                    field="system"
+                # Reported as a server failure, because that is what it is:
+                # the caller did nothing wrong and retrying with different
+                # input will not help. As a 400 carrying "default role
+                # missing" it also told an anonymous caller that this
+                # deployment is misconfigured, and in which part.
+                raise DomainError(
+                    "Registration is unavailable",
+                    code="CONFIGURATION_ERROR",
                 )
 
             # Create user entity

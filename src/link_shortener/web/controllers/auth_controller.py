@@ -4,10 +4,103 @@ Authentication controller -- /api/v1/auth/* endpoints.
 Handles login, registration, token refresh, and logout.
 """
 
-from flask import Blueprint, current_app, jsonify, make_response, request
+from flask import Blueprint, current_app, g, jsonify, make_response, request
 
 from link_shortener.application import AuthenticationService, LoginUseCase, RegisterUseCase
+from link_shortener.domain import DomainError, ValidationError
+from link_shortener.web.middleware.csrf import (
+    CSRF_COOKIE_NAME, build_csrf_token, set_csrf_cookie
+)
 from link_shortener.web.security.context import create_request_context
+
+
+def _decoded_body():
+    """
+    Decode the request body, treating anything undecodable as absent.
+
+    ``get_json(silent=True)`` swallows a malformed body but not a body the
+    decoder cannot get through at all: ``"[" * 10000`` is twenty kilobytes
+    and exhausts the stack, and ``RecursionError`` is not a ``ValueError``,
+    so it escaped the silent parse and left every endpoint here answering
+    500 to an unauthenticated request.
+
+    Returns:
+        The decoded body, or ``None``.
+    """
+    try:
+        return request.get_json(silent=True)
+    except RecursionError:
+        return None
+
+
+def _read_credentials():
+    """
+    Pull ``email`` and ``password`` out of the request body.
+
+    Guards the shape of the body as well as its contents: a JSON document
+    that is not an object, or fields that are not strings, would otherwise
+    crash further down and surface as a 500.
+
+    Returns:
+        Tuple of (email, password), or (None, None) if the body does not
+        carry usable credentials.
+    """
+    data = _decoded_body()
+    if not isinstance(data, dict):
+        return None, None
+
+    email = data.get("email")
+    password = data.get("password")
+    if not isinstance(email, str) or not isinstance(password, str):
+        return None, None
+
+    return email or None, password or None
+
+
+def _read_refresh_token() -> str:
+    """
+    Take the refresh token from wherever this client keeps it.
+
+    Browsers send the HttpOnly cookie; programmatic clients have no cookie
+    jar and pass the token they were given at login in the body.
+
+    Returns:
+        The refresh token, or None if the request carries none.
+    """
+    cookie_token = request.cookies.get("refresh_token")
+    if cookie_token:
+        return cookie_token
+
+    body = _decoded_body()
+    if isinstance(body, dict):
+        token = body.get("refresh_token")
+        if isinstance(token, str) and token:
+            return token
+
+    return None
+
+
+def _access_cookie_max_age() -> int:
+    """
+    Lifetime of the access token cookie, in seconds.
+
+    Derived from the configured token lifetime so the cookie and the JWT
+    inside it always expire together.
+
+    Returns:
+        Cookie ``max_age`` in seconds.
+    """
+    return current_app.config.get("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 15) * 60
+
+
+def _refresh_cookie_max_age() -> int:
+    """
+    Lifetime of the refresh token cookie, in seconds.
+
+    Returns:
+        Cookie ``max_age`` in seconds.
+    """
+    return current_app.config.get("JWT_REFRESH_TOKEN_EXPIRE_DAYS", 7) * 24 * 3600
 
 
 class AuthController:
@@ -41,27 +134,42 @@ class AuthController:
         """
         Authenticate user and return access/refresh tokens.
 
-        Reads JSON body with ``email`` and ``password``.
-        On success, the refresh token is stored in an HttpOnly cookie.
+        Reads JSON body with ``email`` and ``password``. Both tokens are
+        returned in the body and also set as cookies: browsers use the
+        cookies and never touch the body's refresh token, while programmatic
+        clients keep no cookie jar and need the body to be able to refresh
+        at all.
 
         Returns:
-            JSON response containing ``access_token`` and ``user`` details.
+            JSON response containing ``access_token``, ``refresh_token``
+            and ``user`` details.
         """
-        data = request.get_json() or {}
-        email = data.get("email")
-        password = data.get("password")
+        email, password = _read_credentials()
         if not email or not password:
             return jsonify({"error": "Email and password are required"}), 400
 
         context = create_request_context()
         try:
             result = self.login_use_case.execute(email, password, context)
-        except Exception as e:
-            return jsonify({"error": str(e)}), 401
+        except ValidationError:
+            # A malformed email is a malformed request, not a refused one.
+            # ValidationError is a DomainError, so the branch below used to
+            # take it and answer 401 -- the same status as a wrong password,
+            # for an input the same class of error is reported as 400 for
+            # everywhere else in the API. Left to the global handler, which
+            # is where every other ValidationError is answered.
+            raise
+        except DomainError as e:
+            # Only domain failures carry a message meant for the client.
+            # Anything else propagates to the global error handler, which
+            # logs it and answers with a generic 500 instead of leaking
+            # internal exception text.
+            return jsonify({"error": e.message}), 401
 
         # Build the response with access token in body and refresh token in HttpOnly cookie.
         resp = make_response(jsonify({
             "access_token": result.access_token,
+            "refresh_token": result.refresh_token,
             "user": {
                 "id": result.user.id,
                 "email": result.user.email,
@@ -78,7 +186,7 @@ class AuthController:
             httponly=True,
             secure=cookie_secure,
             samesite="Strict",
-            max_age=7 * 24 * 3600,
+            max_age=_refresh_cookie_max_age(),
             path="/"
         )
         resp.set_cookie(
@@ -87,8 +195,18 @@ class AuthController:
             httponly=True,
             secure=cookie_secure,
             samesite="Strict",
-            max_age=15 * 60,
+            max_age=_access_cookie_max_age(),
             path="/"
+        )
+        # The browser authenticates with cookies, so every write it makes
+        # needs a CSRF token to go with them. The token is bound to this
+        # user, so logging in as someone else replaces it.
+        set_csrf_cookie(
+            resp,
+            secure=cookie_secure,
+            token=build_csrf_token(
+                current_app.config.get("SECRET_KEY", ""), result.user.id
+            ),
         )
         return resp
 
@@ -102,9 +220,7 @@ class AuthController:
         Expects JSON with ``email`` and ``password``.
         Returns 201 on success, 400 if validation fails.
         """
-        data = request.get_json() or {}
-        email = data.get("email")
-        password = data.get("password")
+        email, password = _read_credentials()
         if not email or not password:
             return jsonify({"error": "Email and password are required"}), 400
 
@@ -120,17 +236,37 @@ class AuthController:
                     "is_active": result.is_active
                 }
             }), 201
-        except Exception as e:
-            return jsonify({"error": str(e)}), 400
+        except DomainError as e:
+            # Same rule as login: internal failures must not reach the client.
+            return jsonify({"error": e.message}), 400
 
     # ------------------------------------------------------------------
     # POST /api/v1/auth/logout
     # ------------------------------------------------------------------
     def logout(self):
-        """Clear the refresh token cookie and confirm logout."""
+        """
+        End the session and clear the authentication cookies.
+
+        The session is revoked server-side, so deleting the cookies is not
+        the only thing standing between a copied token and the account --
+        the access tokens issued for this session stop working too. Only
+        this session ends; the user's other devices stay signed in.
+
+        Works for a client that has only an access token: that token names
+        its session, so no refresh token is needed to end it.
+        """
+        refresh_token = _read_refresh_token()
+        if refresh_token:
+            self.authentication_service.revoke_refresh_token(refresh_token)
+        elif g.get("auth_session_id"):
+            self.authentication_service.revoke_session_chain(
+                g.get("auth_session_id")
+            )
+
         resp = jsonify({"message": "Logged out"})
         resp.delete_cookie('refresh_token', path='/')
         resp.delete_cookie('access_token', path='/')
+        resp.delete_cookie(CSRF_COOKIE_NAME, path='/')
         return resp, 200
 
     # ------------------------------------------------------------------
@@ -138,19 +274,53 @@ class AuthController:
     # ------------------------------------------------------------------
     def refresh_token(self):
         """
-        Issue a new access token using a valid refresh token cookie.
+        Exchange a refresh token for a fresh pair.
+
+        The token is taken from the HttpOnly cookie, or from a
+        ``refresh_token`` field in the body for clients that keep no cookie
+        jar. Both new tokens are returned in the body and written back into
+        the cookies, which is what the browser-facing pages authenticate
+        with.
 
         Returns:
-            JSON with ``access_token`` on success, 401 otherwise.
+            JSON with ``access_token`` and ``refresh_token`` on success,
+            401 otherwise.
         """
-        refresh_token = request.cookies.get("refresh_token")
+        refresh_token = _read_refresh_token()
         if not refresh_token:
             return jsonify({"error": "No refresh token"}), 401
 
-        new_access_token = self.authentication_service.refresh_access_token(refresh_token)
-        if not new_access_token:
+        tokens = self.authentication_service.refresh_access_token(refresh_token)
+        if not tokens:
             resp = jsonify({"error": "Invalid or expired refresh token"})
-            resp.delete_cookie("refresh_token")
+            resp.delete_cookie("refresh_token", path="/")
+            resp.delete_cookie("access_token", path="/")
+            resp.delete_cookie(CSRF_COOKIE_NAME, path="/")
             return resp, 401
 
-        return jsonify({"access_token": new_access_token}), 200
+        cookie_secure = current_app.config.get("COOKIE_SECURE", False)
+        resp = make_response(jsonify({
+            "access_token": tokens.access_token,
+            "refresh_token": tokens.refresh_token,
+        }), 200)
+        resp.set_cookie(
+            key="access_token",
+            value=tokens.access_token,
+            httponly=True,
+            secure=cookie_secure,
+            samesite="Strict",
+            max_age=_access_cookie_max_age(),
+            path="/"
+        )
+        # The refresh token is rotated, so the cookie has to carry the new
+        # one: the old value is spent and would be read as a replay.
+        resp.set_cookie(
+            key="refresh_token",
+            value=tokens.refresh_token,
+            httponly=True,
+            secure=cookie_secure,
+            samesite="Strict",
+            max_age=_refresh_cookie_max_age(),
+            path="/"
+        )
+        return resp
