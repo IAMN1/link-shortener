@@ -1,4 +1,3 @@
-import time
 from dataclasses import dataclass
 
 from link_shortener.application.context import RequestContext
@@ -13,11 +12,22 @@ class ServiceHealthStatus:
     database: bool
     redis: bool
     task_queue: bool
+    rate_limiter: bool = True
+    """Whether request limits are currently being enforced."""
 
 class GetServiceHealthUseCase(BaseUseCase):
-    """Check the health of all infrastructure dependencies."""
+    """Check the health of all infrastructure dependencies.
 
-    CACHE_TTL = 15  # seconds
+    Takes the same bounded snapshot ``/health`` does. It used to run its own
+    checks and cache the result for 15 seconds, so the admin panel and the
+    container probe could disagree about the same component for as long as
+    that cache lived -- with nothing to tell an operator which of the two
+    was out of date. Two surfaces reporting one system have to read it from
+    one place.
+
+    The snapshot carries its own time budget, which is what the cache was
+    really protecting against; there is nothing left for the cache to buy.
+    """
 
     def __init__(self, health_check_port: HealthCheck, logger: Logger):
         """
@@ -27,8 +37,6 @@ class GetServiceHealthUseCase(BaseUseCase):
         """
         self.health_check = health_check_port
         self.logger = logger
-        self._cached_result: ServiceHealthStatus | None = None
-        self._cache_timestamp: float = 0.0
 
     def execute(self, context: RequestContext) -> ServiceHealthStatus:
         """
@@ -40,18 +48,14 @@ class GetServiceHealthUseCase(BaseUseCase):
         Returns:
             ServiceHealthStatus indicating which components are healthy.
         """
-        now = time.time()
-        if self._cached_result is not None and (now - self._cache_timestamp) < self.CACHE_TTL:
-            return self._cached_result
-
         log = self._get_logger(self.logger, context)
         log.debug("Checking service health")
 
-        db_ok = self.health_check.check_database()
-        cache_ok = self.health_check.check_cache()
-        celery_ok = self.health_check.check_task_queue()
+        state = self.health_check.snapshot()
 
-        self._cached_result = ServiceHealthStatus(db_ok, cache_ok, celery_ok)
-        self._cache_timestamp = now
-
-        return self._cached_result
+        return ServiceHealthStatus(
+            database=state.database,
+            redis=state.cache,
+            task_queue=state.task_queue,
+            rate_limiter=state.rate_limiter,
+        )
