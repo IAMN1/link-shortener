@@ -329,8 +329,10 @@ print("\n=== DELETE LINK ===")
 @test("DELETE /api/v1/links/<code> (unauthenticated)")
 def _():
     r = client.delete(f"/api/v1/links/{short_code}")
-    # Endpoint returns 200 even without auth (design choice)
-    assert r.status_code in (200, 401, 302)
+    # 401 and nothing else. The old assertion accepted 200 as well, with a
+    # comment calling it a design choice -- so it would have stayed green
+    # if anonymous deletion of anyone's link ever came back.
+    assert r.status_code == 401
 
 @test("DELETE /api/v1/links/<code> (nonexistent)")
 def _():

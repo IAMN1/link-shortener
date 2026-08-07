@@ -7,11 +7,13 @@ These tests verify that all layers work together correctly.
 
 import pytest
 
+from tests.integration.conftest import csrf_headers
+
 
 class TestGuestUserJourney:
     """Journey: anonymous user shortens a link and uses it."""
 
-    def test_shorten_and_redirect(self, client):
+    def test_shorten_and_redirect(self, app, client):
         # 1. User visits homepage
         r = client.get("/")
         assert r.status_code == 200
@@ -32,10 +34,18 @@ class TestGuestUserJourney:
         assert r.status_code == 302
         assert "example.com" in r.headers["Location"]
 
-        # 5. Click counter is incremented
-        r = client.get(f"/api/v1/links/{code}")
-        data = r.get_json()
-        clicks = data.get("clicks") or data.get("link", {}).get("clicks", 0)
+        # 5. Click counter is incremented. Read from the row: the public
+        # endpoint withholds the counter from callers with no claim on the
+        # link, and a guest link has no owner to make that claim.
+        from sqlalchemy import text
+
+        with app.app_context():
+            db = app.container.get_db_manager()
+            with db.session() as session:
+                clicks = session.execute(
+                    text("SELECT clicks FROM urls WHERE short_code=:c"),
+                    {"c": code},
+                ).fetchone()[0]
         assert clicks >= 1
 
     def test_batch_shorten(self, client):
@@ -91,7 +101,7 @@ class TestRegisteredUserJourney:
         assert r.status_code == 302
 
         # 7. Logout
-        r = client.post("/api/v1/auth/logout", headers=headers)
+        r = client.post("/api/v1/auth/logout", headers=csrf_headers(client, headers))
         assert r.status_code in (200, 401)
 
 
