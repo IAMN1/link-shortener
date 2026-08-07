@@ -15,6 +15,7 @@ from link_shortener.domain.entities.link import Link
 from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
+from link_shortener.domain.value_objects.dedup_scope import DedupScope
 from link_shortener.domain.value_objects.owner_id import OwnerID
 from link_shortener.infrastructure.database.repositories.sqlalchemy_link_repository import (
     SQLAlchemyLinkRepository,
@@ -54,15 +55,15 @@ class TestPostgresRepositoryCRUD:
         link = _make_link("pgtest002")
         repo.save(link)
 
-        found = repo.find_by_hash(link.url_hash)
+        found = repo.find_live_by_hash(link.url_hash, link.dedup_scope())
         assert found is not None
 
     def test_delete(self, app, db_session):
         repo = SQLAlchemyLinkRepository(db_session)
         link = _make_link("pgtest003")
-        repo.save(link)
+        saved = repo.save(link)
 
-        repo.delete(ShortCode("pgtest003"))
+        repo.delete(saved.id)
         assert repo.find_by_code(ShortCode("pgtest003")) is None
 
     def test_increment_clicks(self, app, db_session):

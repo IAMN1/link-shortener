@@ -7,15 +7,18 @@ within a unit-of-work session and handles all persistence concerns for the
 ``Link`` aggregate.
 """
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+import hashlib
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, or_, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from link_shortener.domain import (Link, LinkRepository, OriginalUrl,
-                                   ShortCode, UrlHash, LinkNotFoundError,
-                                   OwnerID)
+                                   ShortCode, UrlHash, LinkConflictError,
+                                   LinkNotFoundError, DedupScope, OwnerID)
 from link_shortener.infrastructure.database.models.link_model import LinkModel
 
 class SQLAlchemyLinkRepository(LinkRepository):
@@ -26,6 +29,32 @@ class SQLAlchemyLinkRepository(LinkRepository):
     Transaction management is the responsibility of the caller (typically
     a ``UnitOfWork`` instance).
     """
+
+    DELETE_CHUNK_SIZE = 500
+    """Rows per delete statement; keeps bind parameters well under every
+    driver's ceiling (32 766 on SQLite, 65 535 on PostgreSQL)."""
+
+    @contextmanager
+    def _conflicts_reported(self):
+        """
+        Turn a uniqueness violation into something the domain can act on.
+
+        The unique index on ``short_code`` is the only authority on whether a
+        code is free. A lookup beforehand is a hint that goes stale the
+        moment another transaction commits, so the write has to be able to
+        say "somebody got there first" instead of surfacing a driver error
+        as a 500.
+
+        Raises:
+            LinkConflictError: On any integrity violation from the wrapped
+                statements.
+        """
+        try:
+            yield
+        except IntegrityError as error:
+            # The session is unusable after this; the unit of work rolls it
+            # back on the way out and the caller retries in a fresh one.
+            raise LinkConflictError() from error
 
     def __init__(self, session: Session):
         """
@@ -38,32 +67,56 @@ class SQLAlchemyLinkRepository(LinkRepository):
     # Save operations
     # ------------------------------------------------------------------
     def save(self, link: Link) -> Link:
-        """Persist a new or updated Link entity.
+        """Insert a Link, or overwrite the stored row if one already exists.
+
+        ``merge`` is what makes the second half of that promise true. Adding
+        a freshly built model unconditionally -- which is what this did --
+        made every save an insert, so saving an entity that had been read
+        back from the database raised ``IntegrityError`` on its own primary
+        key instead of updating it.
+
+        The update writes *every* column from the entity, this being the
+        whole aggregate rather than a patch. An entity read a while ago and
+        saved back therefore reverts whatever changed meanwhile -- notably
+        the click counter, which ``increment_clicks`` moves in the database
+        without telling any entity. Callers that only mean to bump counters
+        must use that method, not this one.
 
         Args:
             link: Domain Link entity to save.
 
         Returns:
             The same Link instance (the entity is not mutated here; the ORM
-            model is added to the session).
+            model is merged into the session).
+
+        Raises:
+            LinkConflictError: If another link claimed the short code first.
         """
-        model = self._to_model(link)
-        self.session.add(model)
-        self.session.flush()
+        with self._conflicts_reported():
+            self.session.merge(self._to_model(link))
+            self.session.flush()
         return link
 
     def save_many(self, links: List[Link]) -> List[Link]:
-        """Bulk persist multiple Link entities.
+        """Bulk insert Link entities.
+
+        Insert path only, unlike ``save``: this serves batch creation, where
+        every link is new by construction.
 
         Args:
             links: List of Link domain entities.
 
         Returns:
             The same list of Links.
+
+        Raises:
+            LinkConflictError: If another link claimed one of the short codes
+                first.
         """
         models = [self._to_model(link) for link in links]
-        self.session.add_all(models)
-        self.session.flush()
+        with self._conflicts_reported():
+            self.session.add_all(models)
+            self.session.flush()
         return links
 
     # ------------------------------------------------------------------
@@ -85,22 +138,29 @@ class SQLAlchemyLinkRepository(LinkRepository):
         )
         return self._to_domain(model) if model else None
 
-    def find_by_hash(self, url_hash: UrlHash) -> Optional[Link]:
-        """Retrieve a Link by its URL hash (used for deduplication).
+    def find_live_by_hash(
+        self, url_hash: UrlHash, scope: DedupScope
+    ) -> Optional[Link]:
+        """Find the link a URL deduplicates against, within one scope.
 
         Args:
             url_hash: UrlHash value object.
+            scope: The scope to deduplicate within.
 
         Returns:
-            Link entity if found, otherwise ``None``.
+            The oldest live link for this hash in this scope, or ``None``.
         """
         model = (
-            self.session.query(LinkModel)
-            .filter_by(url_hash=url_hash.value)
+            self._live_in_scope(scope)
+            .filter(LinkModel.url_hash == url_hash.value)
+            # Deterministic winner: nothing prevents two concurrent
+            # creations from landing in the same scope, and every caller
+            # must then be handed the same one of them.
+            .order_by(LinkModel.created_at.asc(), LinkModel.id.asc())
             .first()
         )
         return self._to_domain(model) if model else None
-    
+
     def find_by_owner(self, user_id: str, offset: int = 0, limit: int = 50) -> List[Link]:
         """
         Retrieve links owned by a specific user with pagination.
@@ -153,24 +213,32 @@ class SQLAlchemyLinkRepository(LinkRepository):
             result.setdefault(code, None)
         return result
 
-    def find_by_hashes(
-        self, url_hashes: List[UrlHash]
+    def find_live_by_hashes(
+        self, url_hashes: List[UrlHash], scope: DedupScope
     ) -> Dict[UrlHash, Optional[Link]]:
-        """Bulk lookup by URL hashes.
+        """Bulk form of ``find_live_by_hash``.
 
         Args:
             url_hashes: List of UrlHash value objects.
+            scope: The scope to deduplicate within.
 
         Returns:
-            Dictionary mapping each UrlHash to the corresponding Link or ``None``.
+            Dictionary mapping each requested UrlHash to its live link in
+            this scope, or ``None``.
         """
         hash_values = [h.value for h in url_hashes]
         models = (
-            self.session.query(LinkModel)
+            self._live_in_scope(scope)
             .filter(LinkModel.url_hash.in_(hash_values))
+            .order_by(LinkModel.created_at.asc(), LinkModel.id.asc())
             .all()
         )
-        result = {UrlHash(m.url_hash): self._to_domain(m) for m in models}
+
+        result: Dict[UrlHash, Optional[Link]] = {}
+        for model in models:
+            # Ordered oldest first, so the first row seen for a hash is the
+            # one the single-hash lookup would return.
+            result.setdefault(UrlHash(model.url_hash), self._to_domain(model))
         for url_hash in url_hashes:
             result.setdefault(url_hash, None)
         return result
@@ -257,6 +325,51 @@ class SQLAlchemyLinkRepository(LinkRepository):
             "popular_links": [self._to_domain(m) for m in popular_links],
         }
 
+    GUEST_QUOTA_LOCK_NAMESPACE = 1029701804
+    """First half of the advisory lock key.
+
+    Advisory lock keys are one flat namespace per database, shared with
+    anything else that takes them, so the pair form is used with a constant
+    that identifies this application's guest quota. The value is
+    ``blake2b(b"link_shortener.guest_link_quota", digest_size=4)`` read as a
+    signed 32-bit integer -- derived from a name so it can be re-derived,
+    fixed in the source so it can never drift.
+    """
+
+    def lock_guest_quota(self, identifier: str) -> None:
+        """Serialise link creation for one guest identifier.
+
+        Uses ``pg_advisory_xact_lock``: it needs no row to lock, which is
+        the whole difficulty here -- a guest who has created nothing yet has
+        nothing to take a row lock on, and that is exactly the caller who
+        can spend the allowance twice.
+
+        Held until the transaction ends, released by the database whichever
+        way it ends. A holder that hangs does not block others forever
+        either: the wait is a statement, so ``statement_timeout`` bounds it.
+
+        On any other engine this does nothing, and the quota is advisory
+        there. PostgreSQL is what production runs; SQLite serves local
+        development and the test suite, where concurrent guests do not
+        arise. The gap is stated rather than hidden.
+
+        Args:
+            identifier: Guest identifier the quota is counted under.
+        """
+        if self.session.get_bind().dialect.name != "postgresql":
+            return
+
+        digest = hashlib.blake2b(
+            identifier.encode("utf-8"), digest_size=4
+        ).digest()
+        self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:namespace, :key)"),
+            {
+                "namespace": self.GUEST_QUOTA_LOCK_NAMESPACE,
+                "key": int.from_bytes(digest, "big", signed=True),
+            },
+        )
+
     def count_guest_links_by_identifier(self, identifier: str, since_days: int) -> int:
         """
         Count guest-created links for a given identifier within a time window.
@@ -270,6 +383,12 @@ class SQLAlchemyLinkRepository(LinkRepository):
         """
         cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
         count = self.session.query(func.count(LinkModel.id)).filter(
+            # Owned links are nobody's guest links. Without this the count
+            # was wrong wherever the identifier is NULL -- a caller with no
+            # address, such as the CLI -- because every registered user's
+            # link also has a NULL guest identifier, and ten of them were
+            # enough to report the guest quota as spent.
+            LinkModel.owner_id.is_(None),
             LinkModel.guest_identifier == identifier,
             LinkModel.created_at >= cutoff
         ).scalar()
@@ -308,23 +427,31 @@ class SQLAlchemyLinkRepository(LinkRepository):
     # ------------------------------------------------------------------
     # Deletion & cleanup
     # ------------------------------------------------------------------
-    def delete(self, short_code: ShortCode) -> bool:
-        """Delete a link by its short code.
+    def delete(self, link_id: str) -> bool:
+        """Delete a link by its identifier.
+
+        Answers from the number of rows the statement actually removed, not
+        from a read that preceded it. Under READ COMMITTED two concurrent
+        deletions both see the row in their own snapshot, both issue a
+        DELETE, and only one of them matches anything -- while the other,
+        judging by its earlier read, used to report success as well. Ten
+        simultaneous requests then answered 200 ten times over one row, and
+        each of them wrote its own "link deleted" line into the audit trail,
+        which is supposed to be the record of what happened.
 
         Args:
-            short_code: ShortCode of the link to delete.
+            link_id: Identifier of the link to delete.
 
         Returns:
-            ``True`` if a link was deleted, ``False`` if no matching link existed.
+            ``True`` if this call removed the row, ``False`` if it was
+            already gone -- including when another transaction took it
+            between the lookup and the delete.
         """
-        model = self.session.query(LinkModel).filter_by(
-            short_code=short_code.value
-        ).first()
-        if not model:
-            return False
-        self.session.delete(model)
+        removed = self.session.query(LinkModel).filter(
+            LinkModel.id == link_id
+        ).delete(synchronize_session=False)
         self.session.flush()
-        return True
+        return bool(removed)
 
     def get_recent(self, limit: int = 10) -> List[Link]:
         """Return the most recently created links.
@@ -343,31 +470,113 @@ class SQLAlchemyLinkRepository(LinkRepository):
         )
         return [self._to_domain(m) for m in models]
 
-    def delete_unaccessed_before(self, cutoff: datetime) -> List[ShortCode]:
-        """Delete links that have not been accessed since a cutoff date.
+    def delete_by_owner(self, user_id: str) -> List[Link]:
+        """Delete every link belonging to one account.
 
-        A link is considered unaccessed if:
-            - ``last_accessed`` is before ``cutoff``, OR
-            - ``last_accessed`` is NULL and ``created_at`` is before ``cutoff``.
+        Chunked for the same reason as ``delete_expired``: the delete names
+        its rows by primary key, every key is a bind parameter, and one
+        statement for an account with tens of thousands of links hits the
+        driver's parameter ceiling and deletes nothing at all.
 
         Args:
-            cutoff: Timezone-aware UTC datetime threshold.
+            user_id: Identifier of the owning account.
 
         Returns:
-            List of ShortCode objects that were deleted.
+            The deleted Link entities.
         """
-        models = self.session.query(LinkModel).filter(
-            (LinkModel.last_accessed < cutoff)
-            | ((LinkModel.last_accessed.is_(None)) & (LinkModel.created_at < cutoff))
-        ).all()
+        deleted: List[Link] = []
 
-        short_codes = [ShortCode(m.short_code) for m in models]
-        if short_codes:
+        while True:
+            models = self.session.query(LinkModel).filter(
+                LinkModel.owner_id == user_id
+            ).limit(self.DELETE_CHUNK_SIZE).all()
+
+            if not models:
+                return deleted
+
+            chunk = [self._to_domain(model) for model in models]
             self.session.query(LinkModel).filter(
-                LinkModel.short_code.in_([sc.value for sc in short_codes])
+                LinkModel.id.in_([link.id for link in chunk])
             ).delete(synchronize_session=False)
-        self.session.flush()
-        return short_codes
+            self.session.flush()
+
+            deleted.extend(chunk)
+
+    def delete_expired(self, now: datetime) -> List[Link]:
+        """Delete links whose expiry has passed.
+
+        Worked in chunks, because the delete names its rows by primary key
+        and every key is a bind parameter: one statement for the whole
+        backlog hits the driver's parameter ceiling -- 32 766 on SQLite,
+        65 535 on PostgreSQL -- and raises instead of deleting anything.
+        That failure is self-perpetuating: nothing gets removed, the backlog
+        only grows, and every later run fails the same way.
+
+        Args:
+            now: Timezone-aware UTC instant to judge expiry against.
+
+        Returns:
+            The deleted Link entities.
+
+        Note:
+            ``now`` is the caller's clock, not the database's. A host whose
+            clock runs ahead deletes links that have not expired yet.
+        """
+        deleted: List[Link] = []
+
+        while True:
+            models = self.session.query(LinkModel).filter(
+                LinkModel.expires_at.is_not(None),
+                LinkModel.expires_at <= now,
+            ).limit(self.DELETE_CHUNK_SIZE).all()
+
+            if not models:
+                return deleted
+
+            chunk = [self._to_domain(model) for model in models]
+            # Deleted by primary key rather than by re-stating the expiry
+            # condition: every selected row must go, or the next query
+            # selects it again and the loop never ends. The cost is a
+            # window -- a row whose expiry is extended between the select
+            # and the delete is removed anyway -- and nothing writes
+            # ``expires_at`` after creation today.
+            self.session.query(LinkModel).filter(
+                LinkModel.id.in_([link.id for link in chunk])
+            ).delete(synchronize_session=False)
+            self.session.flush()
+
+            deleted.extend(chunk)
+
+    # ------------------------------------------------------------------
+    # Scope helpers
+    # ------------------------------------------------------------------
+    def _live_in_scope(self, scope: DedupScope) -> Any:
+        """
+        Build a query restricted to unexpired links inside one scope.
+
+        Args:
+            scope: The scope to restrict to.
+
+        Returns:
+            A SQLAlchemy query over ``LinkModel``.
+        """
+        now = datetime.now(timezone.utc)
+        query = self.session.query(LinkModel).filter(
+            or_(LinkModel.expires_at.is_(None), LinkModel.expires_at > now)
+        )
+
+        if scope.owner_id is not None:
+            return query.filter(LinkModel.owner_id == scope.owner_id)
+
+        # An owner-less scope has to say so explicitly. Filtering on the
+        # guest identifier alone would let an owned link answer for a guest
+        # who happened to share the address it was created from.
+        query = query.filter(LinkModel.owner_id.is_(None))
+        if scope.guest_identifier is not None:
+            return query.filter(
+                LinkModel.guest_identifier == scope.guest_identifier
+            )
+        return query.filter(LinkModel.guest_identifier.is_(None))
 
     # ------------------------------------------------------------------
     # Domain <-> ORM conversion helpers
@@ -401,7 +610,8 @@ class SQLAlchemyLinkRepository(LinkRepository):
             id=model.id,
             url_hash=UrlHash(model.url_hash),
             short_code=ShortCode(model.short_code),
-            original_url=OriginalUrl(model.original_url),
+            # Rebuilt as stored, not re-admitted: see OriginalUrl.from_storage.
+            original_url=OriginalUrl.from_storage(model.original_url),
             created_at=created_at,
             clicks=model.clicks,
             last_accessed=last_accessed,
@@ -409,6 +619,27 @@ class SQLAlchemyLinkRepository(LinkRepository):
             expires_at=expires_at,
             guest_identifier=model.guest_identifier,
         )
+
+    @staticmethod
+    def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+        """
+        Convert an aware timestamp to UTC before it is stored.
+
+        SQLite has no timestamp type: the driver writes the wall clock and
+        drops the offset, so ``12:00+05:00`` comes back as ``12:00`` and is
+        then read as UTC -- five hours out. PostgreSQL converts properly, so
+        without this the two backends disagree about the same entity.
+        Nothing writes non-UTC times today; this is what keeps it that way.
+
+        Args:
+            value: Timestamp to normalise, or ``None``.
+
+        Returns:
+            The same instant expressed in UTC, or ``None``.
+        """
+        if value is None or value.tzinfo is None:
+            return value
+        return value.astimezone(timezone.utc)
 
     def _to_model(self, link: Link) -> LinkModel:
         """
@@ -427,10 +658,10 @@ class SQLAlchemyLinkRepository(LinkRepository):
             url_hash=link.url_hash.value,
             short_code=link.short_code.value,
             original_url=link.original_url.value,
-            created_at=link.created_at,
+            created_at=self._as_utc(link.created_at),
             clicks=link.clicks,
-            last_accessed=link.last_accessed,
+            last_accessed=self._as_utc(link.last_accessed),
             owner_id=link.owner.value if link.owner else None,
-            expires_at=link.expires_at,
+            expires_at=self._as_utc(link.expires_at),
             guest_identifier=link.guest_identifier,
         )

@@ -12,11 +12,12 @@ from sqlalchemy import text
 from link_shortener.application import UnitOfWork
 from link_shortener.domain import (
     LinkRepository, PermissionRepository,
-    RoleRepository, UserRepository
+    RefreshSessionRepository, RoleRepository, UserRepository
 )
 from link_shortener.infrastructure.database.manager import DatabaseManager
 from link_shortener.infrastructure.database.repositories.sqlalchemy_link_repository import SQLAlchemyLinkRepository
 from link_shortener.infrastructure.database.repositories.sqlalchemy_permission_repository import SQLAlchemyPermissionRepository
+from link_shortener.infrastructure.database.repositories.sqlalchemy_refresh_session_repository import SQLAlchemyRefreshSessionRepository
 from link_shortener.infrastructure.database.repositories.sqlalchemy_role_repository import SQLAlchemyRoleRepository
 from link_shortener.infrastructure.database.repositories.sqlalchemy_user_repository import SQLAlchemyUserRepository
 
@@ -48,6 +49,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         self._users = None
         self._roles = None
         self._permissions = None
+        self._refresh_sessions = None
         self._committed = False
 
     # ------------------------------------------------------------------
@@ -82,6 +84,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         self._users = SQLAlchemyUserRepository(self._session)
         self._roles = SQLAlchemyRoleRepository(self._session)
         self._permissions = SQLAlchemyPermissionRepository(self._session)
+        self._refresh_sessions = SQLAlchemyRefreshSessionRepository(self._session)
         self._committed = False
 
         self._start_transaction()
@@ -112,6 +115,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         self._users = None
         self._roles = None
         self._permissions = None
+        self._refresh_sessions = None
 
     # ------------------------------------------------------------------
     # Explicit commit / flush / rollback
@@ -181,3 +185,14 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         if self._permissions is None:
             raise RuntimeError("Unit of Work not entered")
         return self._permissions
+
+    @property
+    def refresh_sessions(self) -> RefreshSessionRepository:
+        """Return the ``RefreshSessionRepository`` bound to the current session.
+
+        Raises:
+            RuntimeError: If the context has not been entered.
+        """
+        if self._refresh_sessions is None:
+            raise RuntimeError("Unit of Work not entered")
+        return self._refresh_sessions

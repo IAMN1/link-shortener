@@ -67,6 +67,27 @@ class UserRepository(ABC):
         ...
 
     @abstractmethod
+    def count_active_with_permission(
+        self, permission_name: str, excluding_user_id: Optional[str] = None
+    ) -> int:
+        """
+        Count active users holding a permission through any of their roles.
+
+        Exists so that "would this leave no administrator?" can be asked as
+        one statement inside the transaction that answers it, rather than
+        by listing every user and counting in Python.
+
+        Args:
+            permission_name: Permission to look for (e.g. ``"admin:all"``).
+            excluding_user_id: User to leave out of the count -- the one the
+                operation is about, whose privileges are about to change.
+
+        Returns:
+            Number of matching active users.
+        """
+        ...
+
+    @abstractmethod
     def delete(self, user_id: str) -> bool:
         """
         Permanently delete a user.

@@ -6,11 +6,35 @@ from link_shortener.domain.entities.link import Link
 from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
+from link_shortener.domain.value_objects.dedup_scope import DedupScope
 from link_shortener.domain.value_objects.owner_id import OwnerID
 from link_shortener.infrastructure.database.repositories.sqlalchemy_link_repository import (
     SQLAlchemyLinkRepository,
 )
+from tests.integration.conftest import ensure_user
 from link_shortener.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
+
+
+class _RepoThatCreatesOwners(SQLAlchemyLinkRepository):
+    """
+    A repository that inserts the owning account before it saves a link.
+
+    Foreign keys are enforced on SQLite now, as they always were on
+    PostgreSQL, so a link cannot name an account that does not exist. The
+    tests below are about which rows a query selects, not about account
+    creation, so the account is made here rather than in every case.
+    """
+
+    def save(self, link):
+        if link.owner:
+            ensure_user(self.session, link.owner.value)
+        return super().save(link)
+
+    def save_many(self, links):
+        for link in links:
+            if link.owner:
+                ensure_user(self.session, link.owner.value)
+        return super().save_many(links)
 
 
 @pytest.fixture()
@@ -19,7 +43,7 @@ def repo(app):
     with app.app_context():
         db_manager = app.container.get_db_manager()
         with db_manager.session() as session:
-            yield SQLAlchemyLinkRepository(session)
+            yield _RepoThatCreatesOwners(session)
 
 
 _counter = 0
@@ -58,18 +82,21 @@ class TestLinkRepositoryCRUD:
         link = _make_link("repo0002")
         repo.save(link)
 
-        found = repo.find_by_hash(link.url_hash)
+        found = repo.find_live_by_hash(link.url_hash, link.dedup_scope())
         assert found is not None
         assert found.short_code.value == "repo0002"
 
-    def test_delete_by_code(self, repo):
+    def test_delete_by_id(self, repo):
         link = _make_link("repo0003")
-        repo.save(link)
+        saved = repo.save(link)
 
-        repo.delete(ShortCode("repo0003"))
+        repo.delete(saved.id)
 
         found = repo.find_by_code(ShortCode("repo0003"))
         assert found is None
+
+    def test_delete_reports_a_missing_row(self, repo):
+        assert repo.delete("no-such-link-id") is False
 
     def test_increment_clicks(self, repo):
         link = _make_link("repo0004")
@@ -143,3 +170,30 @@ class TestUnitOfWorkIntegration:
             with SQLAlchemyUnitOfWork(db_manager, read_only=True) as uow:
                 found = uow.links.find_by_code(ShortCode("uow0002"))
                 assert found is None
+
+
+class TestDeletionReportsWhatItActuallyDid:
+    """
+    ``delete()`` answered from a read that preceded the statement, not from
+    the statement. Under READ COMMITTED two concurrent deletions both see
+    the row in their own snapshot, both issue a DELETE, and only one matches
+    anything -- while the other reported success too. Ten simultaneous
+    requests answered 200 ten times over one row, and each wrote its own
+    "link deleted" line into the audit trail.
+    """
+
+    def test_deleting_a_row_reports_true_once(self, repo):
+        link = _make_link(code="delrep1")
+        repo.save(link)
+
+        assert repo.delete(link.id) is True
+
+    def test_deleting_it_again_reports_false(self, repo):
+        link = _make_link(code="delrep2")
+        repo.save(link)
+        repo.delete(link.id)
+
+        assert repo.delete(link.id) is False
+
+    def test_deleting_something_that_never_existed_reports_false(self, repo):
+        assert repo.delete("no-such-link") is False
