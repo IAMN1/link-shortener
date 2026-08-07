@@ -6,6 +6,13 @@ from link_shortener.infrastructure.configs.app.testing import TestingConfig
 import pytest
 
 
+# Every test here builds a profile that reads `.env`, and `find_dotenv`
+# searches upwards from the working directory -- from the repository root
+# that is the developer's own file. Without this the results of the module
+# depend on a file that is not in the repository, and the values it carries
+# outlive the test that read them (see tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("detached_env")
+
 
 # ------------------------------------------------------------------
 # TestConfigFactory
@@ -166,6 +173,10 @@ class TestConfigFactory:
         followed the instructions. What is under test is the profile's own
         rule, not the profile plus whatever the machine has lying around.
         """
+        # Redundant since the module opted into `detached_env`, which enters
+        # an empty directory and removes these anyway. Kept on purpose: this
+        # test is the one that broke, and it should not depend on a
+        # module-level mark staying where it is.
         monkeypatch.chdir(tmp_path)
         for name in (
             "SESSION_COOKIE_SECURE", "SESSION_COOKIE_HTTPONLY",

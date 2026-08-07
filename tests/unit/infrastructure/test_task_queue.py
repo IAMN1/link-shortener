@@ -8,6 +8,14 @@ from link_shortener.infrastructure.task_queue.celery_queue import CeleryTaskQueu
 from link_shortener.infrastructure.task_queue.null_queue import NullTaskQueue
 
 
+# Patching the Celery task imports `task_queue.tasks`, which finalises the
+# Celery application, and `LinkShortenerCelery.on_configure` builds a real
+# configuration profile at that moment. The profile reads `.env`, so without
+# this the module answers to the developer's file: a single bad line there
+# turned this into a fixture error while the code under test was untouched.
+pytestmark = pytest.mark.usefixtures("detached_env")
+
+
 class TestNullTaskQueue:
     """Tests for NullTaskQueue synchronous fallback."""
 

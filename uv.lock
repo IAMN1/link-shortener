@@ -594,6 +594,7 @@ dev = [
     { name = "pylint" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pytest-error-for-skips" },
     { name = "pytest-mock" },
 ]
 
@@ -628,6 +629,7 @@ dev = [
     { name = "pylint", specifier = ">=4.0.4" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-error-for-skips", specifier = ">=2.0.2" },
     { name = "pytest-mock", specifier = ">=3.15.1" },
 ]
 
@@ -1052,6 +1054,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5e/f7/c933acc76f5208b3b00089573cf6a2bc26dc80a8aece8f52bb7d6b1855ca/pytest_cov-7.0.0.tar.gz", hash = "sha256:33c97eda2e049a0c5298e91f519302a1334c26ac65c1a483d6206fd458361af1", size = 54328, upload-time = "2025-09-09T10:57:02.113Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ee/49/1377b49de7d0c1ce41292161ea0f721913fa8722c19fb9c1e3aa0367eecb/pytest_cov-7.0.0-py3-none-any.whl", hash = "sha256:3b8e9558b16cc1479da72058bdecf8073661c7f57f7d3c5f22a1c23507f2d861", size = 22424, upload-time = "2025-09-09T10:57:00.695Z" },
+]
+
+[[package]]
+name = "pytest-error-for-skips"
+version = "2.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5a/96/3d77e3446430168df51af2033cb24675301b29c474b64a10c1abc5f2577a/pytest-error-for-skips-2.0.2.tar.gz", hash = "sha256:d4d0c89036a4105cabbc5e488c4078756c29cc2e5805b0694c3d9e49e52c0d11", size = 3612, upload-time = "2019-12-19T20:31:17.401Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8f/0b/1408ee0604b2cdb7f095149751809403622abd6ebec2566db88ad8314de1/pytest_error_for_skips-2.0.2-py3-none-any.whl", hash = "sha256:ccc4029c04f1737aa81445c5f3599247f8a64d279741b4a66bf003782fa00492", size = 3965, upload-time = "2019-12-19T20:31:15.715Z" },
 ]
 
 [[package]]

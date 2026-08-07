@@ -3,7 +3,7 @@
 Сервис сокращения ссылок на Python/Flask с архитектурой Clean Architecture. Поддерживает гостевое создание ссылок, аккаунты пользователей, RBAC, асинхронную статистику и кэширование в Redis.
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-1229%20passed-brightgreen.svg)]()
+[![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Coverage](https://img.shields.io/badge/coverage-88%25-blue.svg)]()
 
 ## Возможности
@@ -297,7 +297,28 @@ uv run pytest tests/ -v
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 1229 (unit + integration + e2e), покрытие: 88%
+Тесты: 1239 (unit + integration + e2e), покрытие: 88%
+
+### CI
+
+`.github/workflows/tests.yml` на каждый push гоняет набор **дважды**: в
+чистом окружении и во враждебном — с `.env` из `.env.example` (плюс значения,
+расходящиеся с умолчаниями) и экспортированными `GUEST_LINK_LIMIT`,
+`BATCH_CREATE_LIMIT`, `DATABASE_URL`, `SQLALCHEMY_ECHO`. Второй прогон ловит
+тесты, читающие конфигурацию, которую им не давали; в чистом окружении такое
+не проявляется, потому что там нечему утечь. Тест, пропущенный на исполнении,
+в CI считается отказом (`--error-for-skips`); отдельно проверяются число
+собранных тестов по нижней границе — «прошло N» ничего не значит, пока
+неизвестно, сколько собралось, — и соответствие `requirements.txt` файлу
+`uv.lock`, иначе Docker-образ разойдётся с тем, что тестирует CI.
+
+Бейдж вверху показывает состояние последнего прогона **в ветке по
+умолчанию**, а не последнего вообще. Он оживёт, когда
+workflow окажется в ветке по умолчанию, а репозиторий станет публичным:
+пока репозиторий приватный, GitHub отдаёт картинку бейджа только по
+аутентифицированному запросу, а README тянет её анонимно.
+
+Подробнее: [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#ci-набор-гоняется-дважды)
 
 ## Технологический стек
 
