@@ -12,24 +12,39 @@ class ShortLinkResponse(BaseModel):
         short_code: The generated short code.
         short_url: Full short URL (base + code).
         original_url: The original long URL.
-        clicks: Number of recorded accesses.
+        clicks: Number of recorded accesses; ``None`` when withheld.
         created_at: Timestamp when the link was created.
         last_accessed: Timestamp of the last access (if any).
+        expires_at: When the link expires; ``None`` for a permanent one.
         is_new: ``True`` if the link was just created.
         from_cache: ``True`` if data came from cache.
+        deletion_token: Returned once, and only to whoever just created a
+            link with no account behind it. It is the only way such a link
+            can be deleted by the person who made it -- there is no owner
+            to compare against, and the address it came from is neither
+            stable nor private to one person.
     """
 
     short_code: str
     short_url: str
     original_url: str
-    clicks: int
+    # Optional because a caller who is not entitled to the link's traffic
+    # gets ``None`` rather than a number. Keeping the field and emptying it
+    # is deliberate: an absent key would make "withheld" and "this build is
+    # older than the field" the same thing on the wire.
+    clicks: Optional[int]
     created_at: datetime
     last_accessed: Optional[datetime]
+    # Withheld until now, while the dashboard rendered a column from it:
+    # every link read "never", including the guest links that had seven
+    # days to live.
+    expires_at: Optional[datetime] = None
     is_new: bool
     from_cache: bool
     owner_id: Optional[str] = None
+    deletion_token: Optional[str] = None
 
-    @field_serializer('created_at', 'last_accessed')
+    @field_serializer('created_at', 'last_accessed', 'expires_at')
     def serialize_dt(self, value: Optional[datetime]) -> Optional[str]:
         """
         Serialize datetime fields to ISO 8601 strings.
@@ -53,9 +68,11 @@ class ShortLinkResponse(BaseModel):
                 "clicks": 42,
                 "created_at": "2026-02-20T12:00:00",
                 "last_accessed": "2026-02-20T15:30:00",
+                "expires_at": "2026-02-27T12:00:00",
                 "is_new": False,
                 "from_cache": True,
-                "owner_id": "550e8400-e29b-41d4-a716-446655440000"
+                "owner_id": "550e8400-e29b-41d4-a716-446655440000",
+                "deletion_token": None
             }
         }
     )
@@ -70,6 +87,7 @@ class ShortLinkResponse(BaseModel):
             clicks=dto.clicks,
             created_at=dto.created_at,
             last_accessed=dto.last_accessed,
+            expires_at=dto.expires_at,
             is_new=dto.is_new,
             from_cache=dto.from_cache,
             owner_id=dto.owner_id,
@@ -121,7 +139,8 @@ class ExtendedLinkInfoResponse(BaseModel):
                 "age_days": 36,
                 "clicks_per_day": 4.17,
                 "last_access_days_ago": 1,
-                "owner_id": "550e8400-e29b-41d4-a716-446655440000"
+                "owner_id": "550e8400-e29b-41d4-a716-446655440000",
+                "deletion_token": None
             }
         }
     )

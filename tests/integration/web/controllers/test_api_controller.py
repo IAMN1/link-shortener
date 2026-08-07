@@ -4,6 +4,26 @@ import pytest
 from tests.integration.conftest import register_and_login, auth_headers
 
 
+
+def _stored_clicks(app, code):
+    """
+    Read the click count from the database.
+
+    Not from ``GET /api/v1/links/<code>``: that endpoint withholds the
+    counter from callers who are not entitled to the link's traffic, and a
+    guest link belongs to nobody. What these tests are about is whether the
+    redirect increments the counter, so they ask the row.
+    """
+    from sqlalchemy import text
+
+    with app.app_context():
+        db = app.container.get_db_manager()
+        with db.session() as session:
+            row = session.execute(
+                text("SELECT clicks FROM urls WHERE short_code=:c"), {"c": code}
+            ).fetchone()
+    return row[0] if row else 0
+
 class TestShortenEndpoint:
     """POST /api/v1/shorten — full flow with real DB."""
 
@@ -84,14 +104,22 @@ class TestRedirectEndpoint:
         assert r.status_code == 302
         assert "redirect-test.com" in r.headers.get("Location", "")
 
-    def test_click_counter_increments(self, client):
+    def test_click_counter_increments(self, app, client):
         code = self._create(client)
         for _ in range(5):
             client.get(f"/{code}", follow_redirects=False)
-        r = client.get(f"/api/v1/links/{code}")
-        data = r.get_json()
-        clicks = data.get("clicks") or data.get("link", {}).get("clicks", 0)
-        assert clicks >= 5
+
+        assert _stored_clicks(app, code) >= 5
+
+    def test_the_counter_is_not_public(self, client):
+        """A guest link belongs to nobody, so nobody unentitled sees it."""
+        code = self._create(client)
+        client.get(f"/{code}", follow_redirects=False)
+
+        data = client.get(f"/api/v1/links/{code}").get_json()
+
+        assert data["clicks"] is None
+        assert data["last_accessed"] is None
 
     def test_nonexistent_returns_404(self, client):
         r = client.get("/xyz999", follow_redirects=False)

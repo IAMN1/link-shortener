@@ -106,28 +106,23 @@ class TestApiController:
         data = response.get_json()
         assert data["short_code"] == "abc123"
 
-    def test_get_extended_link_info(self, client, mock_link_service):
-        """GET /api/v1/links/<code>/extended returns extended link info."""
+    def test_get_extended_link_info_refuses_anonymous(
+        self, client, mock_link_service
+    ):
+        """GET /api/v1/links/<code>/extended is not public."""
         expected_dto = MagicMock()
-        expected_dto.model_dump.return_value = {
-            "short_code": "abc123",
-            "short_url": "http://testserver/abc123",
-            "original_url": "https://test.com",
-            "clicks": 5,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "last_accessed": datetime.now(timezone.utc).isoformat(),
-            "is_popular": True,
-            "is_recent": True,
-            "age_days": 1,
-            "clicks_per_day": 5.0,
-            "last_access_days_ago": 0,
-            "owner_id": "user-1",
-        }
+        expected_dto.owner_id = "user-1"
         mock_link_service.get_extended_link_info.return_value = expected_dto
-        # NOTE: ExtendedLinkInfoResponse.from_dto() doesn't exist (pre-existing bug)
-        # The controller will return 400 due to AttributeError; just verify the route exists
+
         response = client.get("/api/v1/links/abc123/extended")
-        assert response.status_code in (200, 400)
+
+        # 401, not 403: nobody is logged in, and the two answers mean
+        # different things to a client.
+        assert response.status_code == 401
+        # The entitled paths are covered against a real authorization
+        # service in tests/integration/web/controllers/test_link_access.py:
+        # the service is a bare Mock here, so every permission check in
+        # this module passes regardless of what the code asks for.
 
     def test_batch_create_success(self, client, mock_link_service):
         """POST /api/v1/batch/shorten creates multiple links."""

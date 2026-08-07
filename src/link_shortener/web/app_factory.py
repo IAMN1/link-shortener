@@ -7,6 +7,7 @@ from flask_cors import CORS
 from link_shortener.infrastructure import (
     LoggingSettings,
     Container,
+    ConfigFactory,
     get_config,
     setup_logging,
     register_flask_commands,
@@ -19,10 +20,56 @@ from link_shortener.web.controllers.auth_controller import AuthController
 from link_shortener.web.controllers.dashboard_controller import DashboardController
 from link_shortener.web.controllers.frontend_controller import FrontendController
 from link_shortener.web.middleware.authentication import AuthenticationMiddleware
+from link_shortener.web.middleware.csrf import CsrfProtectionMiddleware
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
 from link_shortener.web.middleware.rate_limit import RateLimitMiddleware
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
 from link_shortener.web.security.context import create_request_context
+
+RBAC_TABLES = ("roles", "permissions")
+"""Tables ``seed_base_roles`` writes to.
+
+Their absence is the ordinary state of a database nobody has migrated yet,
+which is a step the documented setup goes through on purpose: create, then
+migrate, then seed.
+"""
+
+
+def _seed_base_roles_if_ready(container) -> None:
+    """
+    Seed the base roles, unless the schema is not in place yet.
+
+    Startup seeding runs in every process, CLI invocations included. On a
+    database without tables the attempt used to be reported as a failed
+    seed, so every single command against a fresh database greeted the
+    operator with a warning carrying a driver error -- for a state that is
+    expected and that the next command fixes. An empty schema is now stated
+    plainly and told what to do about it; a real failure (unreachable
+    database, refused permission, malformed YAML) still warns.
+
+    Must be called inside an application context.
+
+    Args:
+        container: DI container providing the database manager and logger.
+    """
+    logger = container.get_logger(__name__)
+
+    try:
+        db_manager = container.get_db_manager()
+        missing = db_manager.missing_tables(RBAC_TABLES)
+        if missing:
+            logger.info(
+                "Skipping role seeding: database schema is not initialised",
+                missing_tables=", ".join(missing),
+                next_step="flask alembic upgrade head && flask db load-base-roles",
+            )
+            return
+
+        with db_manager.session() as session:
+            seed_base_roles(session)
+    except Exception as e:
+        logger.warning("AUTO_SEED_ROLES failed", error=str(e))
+
 
 def create_app(config=None) -> Flask:
     """
@@ -37,8 +84,11 @@ def create_app(config=None) -> Flask:
     """
 
     if config is None:
-        # Load configuration from environment
-        env = os.environ.get("FLASK_ENV", "development")
+        # Resolve the profile through the factory so that the same rules apply
+        # everywhere: FLASK_ENV is case-insensitive and may come from `.env`.
+        # Reading os.environ directly here used to make `FLASK_ENV=Production`
+        # fail with "Unknown environment" while get_config() accepted it.
+        env = ConfigFactory.resolve_env()
         config = get_config(env)
     else:
         env = getattr(config, "ENV", 'custom')
@@ -101,15 +151,7 @@ def create_app(config=None) -> Flask:
     auto_load_db_roles = app.config.get("AUTO_SEED_ROLES", True)
     if auto_load_db_roles:
         with app.app_context():
-            try:
-                db_manager = container.get_db_manager()
-                with db_manager.session() as session:
-                    seed_base_roles(session)
-            except Exception as e:
-                container.get_logger(__name__).warning(
-                    "AUTO_SEED_ROLES failed (tables may not exist yet)",
-                    error=str(e),
-                )
+            _seed_base_roles_if_ready(container)
 
     # ------------------------------------------------------------------
     # Register Middlewares (order matters)
@@ -121,12 +163,23 @@ def create_app(config=None) -> Flask:
         app,
         container.get_authentication_service(),
         container.get_authorization_service(),
-        container.get_uow_factory()
+        container.get_uow_factory(),
+        container.get_logger(AuthenticationMiddleware.__module__)
     )
-    ## 3. Error handling
+    ## 3. CSRF protection (guards cookie-authenticated writes)
+    CsrfProtectionMiddleware(
+        app,
+        container.get_logger(CsrfProtectionMiddleware.__module__),
+        container.get_authentication_service()
+    )
+    ## 4. Error handling
     ErrorHandlerMiddleware(app, container.get_logger(ErrorHandlerMiddleware.__module__))
-    ## 4. Rate limiting
-    RateLimitMiddleware(app, container.get_rate_limiter())
+    ## 5. Rate limiting
+    RateLimitMiddleware(
+        app,
+        container.get_rate_limiter(),
+        container.get_logger(RateLimitMiddleware.__module__),
+    )
 
     # ------------------------------------------------------------------
     # Register Controllers (Blueprints)
@@ -172,8 +225,70 @@ def create_app(config=None) -> Flask:
     # ------------------------------------------------------------------
     @app.route('/health', methods=['GET'])
     def health():
-        """Simple health check endpoint."""
-        return {"status": "healthy"}, 200
+        """
+        Liveness endpoint, also used by the container healthcheck.
+
+        Reports unhealthy only for the database, because that is the one
+        dependency the service cannot serve a single request without: the
+        cache and the task queue both degrade to working fallbacks. Their
+        state is still reported, so a degraded deployment is visible rather
+        than silent.
+
+        The whole answer is bounded by ``HEALTH_CHECK_TIMEOUT``. A component
+        that runs out of budget is reported ``timeout`` rather than
+        ``unavailable``: both mean "not usable", but only one of them tells
+        the operator which dependency is hanging.
+
+        ``status`` is ``healthy``, ``degraded`` or ``unhealthy``; the HTTP
+        code is 200 or 503. They answer different questions -- see below.
+
+        Returns:
+            JSON body and 200 when the service can serve, 503 otherwise.
+        """
+        state = container.health_check.snapshot()
+
+        def describe(name: str, ok: bool) -> str:
+            """Render one component's state."""
+            if name in state.timed_out:
+                return "timeout"
+            return "ok" if ok else "unavailable"
+
+        components = {
+            "database": describe("database", state.database),
+            # "ok" would claim a working cache on a deployment that runs
+            # without one.
+            "cache": (
+                describe("cache", state.cache)
+                if state.cache_configured
+                else "disabled"
+            ),
+            "task_queue": describe("task_queue", state.task_queue),
+            # Not "ok"/"unavailable": the limiter is reachable or not, but
+            # what matters to an operator is whether limits are on.
+            "rate_limiter": (
+                "enforcing" if state.rate_limiter else "not_enforcing"
+            ),
+        }
+
+        # Three states, two response codes, on purpose. The code answers the
+        # container's question -- "should this be restarted?" -- and for a
+        # failed cache or broker the answer is no: a restart does not fix
+        # them and does take down a service that still works. The body
+        # answers the operator's question, which the code cannot.
+        if not state.database:
+            status = "unhealthy"
+        elif all(value in ("ok", "disabled", "enforcing") for value in components.values()):
+            status = "healthy"
+        else:
+            status = "degraded"
+
+        return (
+            {
+                "status": status,
+                "components": components,
+            },
+            200 if state.database else 503,
+        )
 
     # ------------------------------------------------------------------
     # Cleanup on exit
@@ -198,6 +313,19 @@ def create_app(config=None) -> Flask:
     if app.config.get("AUTO_SEED_ROLES", True):
         logger.info(
             "AUTO_SEED_ROLES is enabled. Basic roles and permissions will be ensured at startup."
+        )
+
+    # Said out loud, even where validate() tolerates it. The default is
+    # generated once per process, so more than one worker means more than
+    # one value: a token issued by one is rejected by the others, and cache
+    # entries written by one are refused by the rest. The symptom is
+    # intermittent 401s that read as a bug in authentication rather than as
+    # a missing setting.
+    generated = config.default_secrets_in_use()
+    if generated:
+        logger.warning(
+            "Running on generated secrets; each worker process has its own",
+            settings=", ".join(generated),
         )
 
     logger.info(

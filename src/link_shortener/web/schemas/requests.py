@@ -1,6 +1,8 @@
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
+from link_shortener.infrastructure.configs.app.base import MAX_BATCH_ITEMS
+
 
 class CreateShortLinkRequest(BaseModel):
     """Request schema for creating a single short link."""
@@ -31,8 +33,8 @@ class BatchCreateLinkRequest(BaseModel):
     urls: List[str] = Field(
         ...,
         min_length=1,
-        max_length=100,
-        description="List of URLs to shorten (max 100)",
+        max_length=MAX_BATCH_ITEMS,
+        description=f"List of URLs to shorten (max {MAX_BATCH_ITEMS})",
         examples=[
             "https://example.com/so-long-url-1",
             "https://example.com/so-long-url-2",

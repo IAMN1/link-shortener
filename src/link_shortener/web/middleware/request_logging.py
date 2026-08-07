@@ -4,6 +4,7 @@ import uuid
 from flask import Flask, Response, g, request
 
 from link_shortener.application import Logger
+from link_shortener.web.middleware.hooks import response_hook
 
 
 class RequestLoggingMiddleware:
@@ -55,6 +56,7 @@ class RequestLoggingMiddleware:
             )
 
         @self.app.after_request
+        @response_hook(self.logger)
         def after_request(response: Response):
             """
             Executed after each request (before sending response).

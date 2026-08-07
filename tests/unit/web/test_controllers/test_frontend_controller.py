@@ -16,4 +16,4 @@ class TestFrontend_controller:
         """GET /health returns 200."""
         response = client.get("/health")
         assert response.status_code == 200
-        assert response.get_json() == {"status": "healthy"}
+        assert response.get_json()["status"] == "healthy"

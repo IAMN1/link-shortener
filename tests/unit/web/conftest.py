@@ -8,11 +8,18 @@ from link_shortener.infrastructure.di.container import Container
 import pytest
 
 
+TEST_SECRET_KEY = "test-secret-key"
+"""Signing key the web-layer tests build CSRF tokens with."""
+
+TEST_USER_ID = "user-1"
+"""Identity the mocked authentication service resolves every request to."""
+
+
 class TestConfig(TestingConfig):
     """Simple config object for testing web layer."""
     TESTING = True
     DEBUG = False
-    SECRET_KEY = "test-secret-key"
+    SECRET_KEY = TEST_SECRET_KEY
     SHORT_CODE_SECRET_PEPPER = "test-pepper"
     DATABASE_URL = "sqlite:///:memory:"
     REDIS_ENABLED = False
@@ -76,7 +83,21 @@ def test_logger():
     return TestLogger()
 
 @pytest.fixture
-def app(test_config, mock_link_service, monkeypatch, test_logger):
+def mock_auth_service():
+    """
+    Authentication service shared by the middlewares and the controllers.
+
+    The real container hands out one instance, and the CSRF layer asks it
+    who the request belongs to, so the tests need the same object the
+    controller holds rather than a fresh mock per call site.
+    """
+    mock = Mock()
+    mock.validate_token.return_value = {"sub": TEST_USER_ID, "type": "refresh"}
+    return mock
+
+
+@pytest.fixture
+def app(test_config, mock_link_service, mock_auth_service, monkeypatch, test_logger):
     """
     Create a Flask app for testing with mocked services.
     """
@@ -92,7 +113,17 @@ def app(test_config, mock_link_service, monkeypatch, test_logger):
     monkeypatch.setattr(Container, "get_admin_service", lambda self: Mock())
     monkeypatch.setattr(Container, "get_logger", lambda self, *a, **kw: test_logger)
     monkeypatch.setattr(Container, "get_active_logger_name", lambda self: "test")
-    monkeypatch.setattr(Container, "get_authentication_service", lambda self: Mock())
+    monkeypatch.setattr(
+        Container, "get_authentication_service", lambda self: mock_auth_service
+    )
+    # WARNING: a bare Mock answers every is_allowed(...) with a truthy Mock,
+    # so `@require_permission` in this module cannot refuse anyone. Nothing
+    # here tests authorization, and a test that asserts 200 for an
+    # unauthenticated request is asserting the mock, not the endpoint --
+    # removing the decorator from every admin endpoint leaves this suite
+    # green. Authorization is covered against the real service in
+    # tests/integration/web/controllers/ (test_link_access.py,
+    # test_admin_controller.py); put new access-control tests there.
     monkeypatch.setattr(Container, "get_authorization_service", lambda self: Mock())
     monkeypatch.setattr(Container, "get_uow_factory", lambda self: Mock())
     monkeypatch.setattr(Container, "get_rate_limiter", lambda self: Mock())
