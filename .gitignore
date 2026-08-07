@@ -11,6 +11,8 @@ wheels/
 
 .env
 .env.*
+# Шаблон конфигурации — единственный env-файл, который должен быть в git
+!.env.example
 
 #  dev/tests and other Databases
 *.db

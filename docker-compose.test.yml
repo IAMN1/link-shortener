@@ -6,6 +6,10 @@
 #   uv run pytest tests/integration/docker/ -v
 #   docker compose -f docker-compose.test.yml down -v
 
+# Отдельное имя проекта, чтобы тестовый стек не пересекался с основным
+# docker-compose.yml (см. комментарий там).
+name: link-shortener-test
+
 services:
   test-db:
     image: postgres:15-alpine
