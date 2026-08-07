@@ -10,10 +10,19 @@ wheels/
 .venv
 
 .env
+.env.*
+# Шаблон конфигурации — единственный env-файл, который должен быть в git
+!.env.example
 
 #  dev/tests and other Databases
 *.db
 :memory
+
+# logs-catalog
+logs/
+
+# accidental files
+db_shortener
 
 # Pytest-generated files
 .pytest_cache/

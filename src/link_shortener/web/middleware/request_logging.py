@@ -1,111 +1,79 @@
 import time
-from typing import Any, Dict
+import uuid
 
 from flask import Flask, Response, g, request
 
-from src.link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application import Logger
+from link_shortener.web.middleware.hooks import response_hook
 
 
 class RequestLoggingMiddleware:
     """
-    Middleware для логирования HTTP запросов.
+    Logs incoming requests and their outcomes.
+
+    Sets ``g.start_time`` and ``g.request_id`` early in the request
+    lifecycle, then logs request and response metadata.
     """
     
     def __init__(self, app: Flask, logger: Logger):
+        """
+        Args:
+            app: Flask application instance.
+            logger: Logger for request logs.
+        """
+
         self.app = app
         self.logger = logger
         self._register_handlers()
 
-        logger.info('middleware_initialized', middleware_name=self.__class__.__name__)
-    
-    def _generate_request_id(self) -> str:
-        """Генарция уникального id запроса"""
-        import uuid
-        return str(uuid.uuid4)[:10]
-
     def _register_handlers(self):
-        """Регистрация обработчиков Flask"""
-        
+        """Register before_request and after_request hooks."""
+
         @self.app.before_request
         def before_request():
-            """Логирование начала обработки запроса"""
+            """
+            Executed before each request.
 
-            g.request_start_time = time.time()
-            g.request_id = self._generate_request_id()
-            
-            context = self._get_request_context()
-            self.logger.info('Request started', **context)
-        
+            Sets start time and generates a request ID, stored in Flask's `g` object.
+            Logs the start of the request.
+            """
+            # Skip logging for static file requests.
+            if request.path.startswith('/static/'):
+                return
+
+            g.start_time = time.time()
+            g.request_id = str(uuid.uuid4())[:10]
+
+            user_agent = request.headers.get('User-Agent')
+
+            self.logger.info(
+                "Request started", 
+                method=request.method,
+                path=request.path, 
+                remote_addr=request.remote_addr,
+                request_id=g.request_id,
+                user_agent=user_agent
+            )
+
         @self.app.after_request
-        def after_request(response: Response) -> Response:
-            """Логирование Завершения обработки запроса"""
+        @response_hook(self.logger)
+        def after_request(response: Response):
+            """
+            Executed after each request (before sending response).
+            Calculates request duration and logs completion.
+            """
+            # Skip if the request was for a static file.
+            if request.path.startswith('/static/'):
+                return response
 
-            if hasattr(g, 'request_start_time'):
-                processing_time = time.time() - g.request_start_time
+            if hasattr(g, 'start_time'):
                 
-                context = self._get_response_context(response, processing_time)
+                duration = time.time() - g.start_time
                 
-                # Логируем в зависимости от статуса
-                if response.status_code >= 500:
-                    self.logger.error('Request completed', **context)
-                elif response.status_code >= 400:
-                    self.logger.warning('Request completed', **context)
-                else:
-                    self.logger.info('Request completed', **context)
-            
+                self.logger.info(
+                    "Request completed",
+                    status=response.status_code,
+                    duration_ms=round(duration * 1000, 2),
+                    request_id=getattr(g, "request_id", None)
+                )
             return response
-        
-        @self.app.teardown_request
-        def teardown_request(exception: Exception = None):
-            """Очистка контекста запроса"""
-            if exception:
-                context = {
-                    'path': request.path,
-                    'method': request.method,
-                    'exception': str(exception)
-                }
-                self.logger.error('Request teardown with exception', **context)
-    
-
-    def _get_request_context(self) -> Dict[str, Any]:
-        """Сбор контекста запроса"""
-        context = {
-            'request_id': g.get('request_id'),
-            'method': request.method,
-            'path': request.path,
-            'remote_addr': request.remote_addr,
-            'user_agent': request.user_agent.string[:200] if request.user_agent else None,
-        }
-        
-        # Добавление query parameters (если есть)
-        if request.args:
-            context['query_params'] = dict(request.args)
-        
-        # Добавление заголовков (без чувствительных данных)
-        safe_headers = {
-            'content_type': request.content_type,
-            'content_length': request.content_length,
-            'accept': request.headers.get('Accept'),
-            'accept_encoding': request.headers.get('Accept-Encoding'),
-        }
-        context.update(safe_headers)
-        
-        return context
-    
-    def _get_response_context(self, response: Response, processing_time: float) -> Dict[str, Any]:
-        """Сбор контекста ответа"""
-        context = {
-            'request_id': g.get('request_id'),
-            'method': request.method,
-            'path': request.path,
-            'status_code': response.status_code,
-            'processing_time_ms': round(processing_time * 1000, 2),
-            'response_size': response.content_length,
-            'response_content_type': response.content_type,
-        }
-        
-        # Добавление информации о скорости
-        if processing_time > 0:
-            context['requests_per_second'] = round(1 / processing_time, 2)
-        
-        return context

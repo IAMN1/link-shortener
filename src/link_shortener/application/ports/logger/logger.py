@@ -1,57 +1,68 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 class Logger(ABC):
-    """Интерфейс логирования"""
+    """
+    Abstract interface for application logging.
+
+    This allows the application core to remain decoupled
+    from concrete logging implementations.
+    """
+
+    def bind(self, **kwargs) -> "Logger":
+        """
+        Return a new logger instance with additional bound fields.
+
+        Bound fields are included in every subsequent log call.
+        This is useful for adding contextual information like request ID,
+        user IP, etc., without ...ing them explicitly each time.
+
+        Args:
+            **kwargs: Key-value pairs to bind to the logger.
+
+        Returns:
+            A new Logger instance with the bound fields.
+        """
+        return self
 
     @abstractmethod
     def debug(self, message: str, **kwargs: Any) -> None:
-        pass
+        """
+        Log a debug message with optional keyword arguments as structured data.
+        """
+        ...
 
     @abstractmethod
     def info(self, message: str, **kwargs: Any) -> None:
-        pass
+        """Log an info message with optional structured data."""
+        ...
 
     @abstractmethod
     def warning(self, message: str, **kwargs: Any) -> None:
-        pass
+        """Log a warning message with optional structured data."""
+        ...
 
     @abstractmethod
     def error(self, message: str, **kwargs: Any) -> None:
-        pass
+        """Log an error message with optional structured data."""
+        ...
 
     @abstractmethod
     def exception(
         self, message: str, exc_info: Optional[Exception] = None, **kwargs: Any
     ) -> None:
-        pass
+        """
+        Log an exception with traceback.
 
-    def with_context(self, **context: Any) -> "Logger":
-        """Возвращает новый логер в добавленным контекстом"""
-        return ContextLogger(self, context)
+        Args:
+            message: Log message.
+            exc_info: Exception to log (if None, current exception is captured). Optional.
+            **kwargs: Additional structured data.
+        """
+        ...
 
-
-class ContextLogger(Logger):
-    """Логгер с добавленным контекстом"""
-
-    def __init__(self, inner_logger: Logger, context: Dict[str, Any]):
-        self.inner_logger = inner_logger
-        self.context = context
-
-    def debug(self, message: str, **kwargs: Any) -> None:
-        self.inner_logger.debug(message, **{**self.context, **kwargs})
-
-    def info(self, message: str, **kwargs: Any) -> None:
-        self.inner_logger.info(message, **{**self.context, **kwargs})
-
-    def warning(self, message: str, **kwargs: Any) -> None:
-        self.inner_logger.warning(message, **{**self.context, **kwargs})
-
-    def error(self, message: str, **kwargs: Any) -> None:
-        self.inner_logger.error(message, **{**self.context, **kwargs})
-
-    def exception(
-        self, message: str, exc_info: Optional[Exception] = None, **kwargs: Any
-    ) -> None:
-        self.inner_logger.exception(message, exc_info, **{**self.context, **kwargs})
+    @abstractmethod
+    def is_healthy(self) -> bool:
+        """Check if logger can write messages right now."""
+        ...

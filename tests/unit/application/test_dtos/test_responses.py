@@ -1,9 +1,11 @@
-from link_shortener.application.dtos.responses import BatchCreateResponse, BatchItemResponse, ExtendedLinkInfoResponse, ServiceStatsResponse, ShortLinkResponse, StatsItemResponse
+from link_shortener.application.dtos.link import ShortLinkResponse, ExtendedLinkInfoResponse
+from link_shortener.application.dtos.batch import BatchCreateResponse, BatchItemResponse
+from link_shortener.application.dtos.stats import ServiceStatsResponse, StatsItemResponse
 from link_shortener.domain.value_objects.url_hash import UrlHash
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.entities.link import Link
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytest
 
 
@@ -24,7 +26,7 @@ class TestShortLinkResponse:
             short_code=short_code,
             original_url=original_url
         )
-        # установка некоторые значения для проверки
+        # set some values for testing
         link.clicks = 42
         link.last_accessed = datetime.now() - timedelta(days=1)
 
@@ -79,7 +81,7 @@ class TestShortLinkResponse:
 class TestBatchItemResponse:
     """Tests for BatchItemResponse DTO."""
 
-    def test_success_factory(self):
+    def test_success_factory(self, base_url):
         """Should create success BatchItemResponse with given fields."""
 
         url = 'https://example.com'
@@ -89,6 +91,7 @@ class TestBatchItemResponse:
             url=url,
             short_code=short_code,
             original_url=original_url,
+            base_url=base_url,
             clicks=10,
             is_new=True,
             from_cache=False,
@@ -98,6 +101,7 @@ class TestBatchItemResponse:
         assert response.url == url
         assert response.short_code == short_code
         assert response.original_url == original_url
+        assert response.short_url == f"{base_url.rstrip("/")}/{short_code}"
         assert response.clicks == 10
         assert response.is_new is True
         assert response.from_cache is False
@@ -109,10 +113,13 @@ class TestBatchItemResponse:
         
         url = 'https://example.com'
         error = 'Invalid URL'
+
         response = BatchItemResponse.error_(url, error)
+
         assert response.success is False
         assert response.url == url
         assert response.error == error
+        assert response.short_url is None
 
 
 # ------------------------------------------------------------------
@@ -121,13 +128,14 @@ class TestBatchItemResponse:
 class TestBatchCreateResponse:
     """Tests for BatchCreateResponse DTO."""
 
-    def test_from_results_calculates_counts(self):
+    def test_from_results_calculates_counts(self, base_url):
         """Should calculate total, successful, failed, cache/db/new counts from items."""
         items = [
             BatchItemResponse.success_(
                 url='https://a.com',
                 short_code='a1',
                 original_url='https://a.com',
+                base_url=base_url,
                 clicks=0,
                 is_new=True,
                 from_cache=False
@@ -136,6 +144,7 @@ class TestBatchCreateResponse:
                 url='https://b.com',
                 short_code='b1',
                 original_url='https://b.com',
+                base_url=base_url,
                 clicks=5,
                 is_new=False,
                 from_cache=True
@@ -144,9 +153,10 @@ class TestBatchCreateResponse:
                 url='https://c.com',
                 short_code='c1',
                 original_url='https://c.com',
+                base_url=base_url,
                 clicks=2,
                 is_new=False,
-                from_cache=False  # из БД
+                from_cache=False  # from DB
             ),
             BatchItemResponse.error_('https://d.com', 'Invalid')
         ]
@@ -156,7 +166,7 @@ class TestBatchCreateResponse:
         assert response.successful == 3
         assert response.failed == 1
         assert response.from_cache_count == 1
-        assert response.from_db_count == 1  # успешный, не новый, не из кэша
+        assert response.from_db_count == 1  # successful, not new, not from cache
         assert response.new_count == 1
         assert len(response.items) == 4
         assert response.created_at is not None
@@ -215,17 +225,19 @@ class TestExtendLinkInfoResponse:
             short_code=short_code,
             original_url=original_url
         )
-        # подмена даты для предсказуемости
-        link.created_at = datetime.now() - timedelta(days=5)
+        # override date for predictability
+        link.created_at = datetime.now(timezone.utc) - timedelta(days=5)
         link.clicks = 20
-        link.last_accessed = datetime.now() - timedelta(days=1)
+        link.last_accessed = datetime.now(timezone.utc) - timedelta(days=1)
         return link
     
     def test_from_link_computes_correct_fields(self, sample_link):
         """Should compute age_days, clicks_per_day, last_access_days_ago correctly."""
 
         base_url = 'https://short.link'
-        response = ExtendedLinkInfoResponse.from_link(sample_link, base_url)
+        response = ExtendedLinkInfoResponse.from_link(
+            sample_link, base_url, popular_threshold=100, recent_days=7
+        )
 
         assert response.short_code == 'abc123'
         assert response.short_url == 'https://short.link/abc123'
@@ -236,4 +248,3 @@ class TestExtendLinkInfoResponse:
         assert response.last_access_days_ago == 1
         assert response.is_popular is False  # threshold 100
         assert response.is_recent is True    # days=7
-    

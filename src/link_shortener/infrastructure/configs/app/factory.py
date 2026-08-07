@@ -1,0 +1,199 @@
+import os
+from typing import Dict, Optional
+
+from dotenv import dotenv_values, find_dotenv
+from link_shortener.infrastructure.configs.app.base import BaseConfig
+from link_shortener.infrastructure.configs.app.env import is_unset
+from link_shortener.infrastructure.configs.app.development import DevelopmentConfig
+from link_shortener.infrastructure.configs.app.production import ProductionConfig
+from link_shortener.infrastructure.configs.app.staging import StagingConfig
+from link_shortener.infrastructure.configs.app.testing import TestingConfig
+
+
+
+class ConfigFactory:
+    """
+    Factory for creating configuration objects
+        based on environment name.
+
+    The environment name selects the configuration profile (its class and the
+    defaults it declares); a ``.env`` file only overrides individual values
+    inside the selected profile. The resulting precedence is:
+
+        real environment variable  >  .env.<profile>  >  .env  >  profile default
+
+    Values are resolved lazily by the descriptors in
+    ``link_shortener.infrastructure.configs.app.env``, so a ``.env`` loaded
+    here is picked up even though the configuration classes were imported
+    earlier.
+    """
+
+    CONFIG_MAP = {
+        "development": DevelopmentConfig,
+        "staging": StagingConfig,
+        "production": ProductionConfig,
+        "testing": TestingConfig,
+    }
+
+    DEFAULT_ENV = "development"
+    """Profile used when neither the argument nor FLASK_ENV says otherwise."""
+
+    NO_DOTENV_ENVS = ("testing",)
+    """
+    Environments that must ignore ``.env`` files.
+    Automated tests have to be reproducible on any machine, so they rely only
+    on the values hardcoded in ``TestingConfig`` and on explicit monkeypatching.
+    ``TestingConfig`` additionally sets ``IGNORE_ENV = True``, which detaches it
+    from ``os.environ`` as well – skipping the files alone would not be enough,
+    because another profile created earlier in the same process may already
+    have loaded them.
+    """
+
+    @staticmethod
+    def _read_env_file(filename: str) -> Dict[str, str]:
+        """
+        Read a ``.env``-style file without touching ``os.environ``.
+
+        The file is looked up from the current working directory upwards, so
+        commands started from a subdirectory (``src/``, ``migrations/``) still
+        find the project-level file instead of silently falling back to the
+        profile defaults.
+
+        Args:
+            filename: File name to look for, e.g. ``".env"``.
+
+        Returns:
+            Mapping of variable names to values; empty if the file is absent.
+        """
+        path = find_dotenv(filename, usecwd=True)
+        if not path:
+            return {}
+
+        return {k: v for k, v in dotenv_values(path).items() if v is not None}
+
+    @staticmethod
+    def _dotenv_was_preloaded() -> bool:
+        """
+        Detect whether the Flask CLI already merged ``.env`` into the process
+        environment before the application was imported.
+
+        ``flask`` calls ``load_dotenv()`` in its entry point and marks the run
+        with ``FLASK_RUN_FROM_CLI``. Outside that path (gunicorn, ``python -m``,
+        celery, alembic) ``os.environ`` still contains only variables the
+        operator really exported.
+
+        Returns:
+            ``True`` when ``os.environ`` may already contain ``.env`` values.
+        """
+        return bool(os.environ.get("FLASK_RUN_FROM_CLI"))
+
+    @classmethod
+    def _apply_env_files(cls, env: str, shared: Dict[str, str]) -> None:
+        """
+        Publish the ``.env`` files into ``os.environ`` with the documented
+        precedence.
+
+        Values are assigned explicitly instead of relying on
+        ``load_dotenv(override=False)``: with a plain ``override=False`` the
+        entries the Flask CLI had already injected from ``.env`` would occupy
+        the variables and ``.env.<profile>`` could never win, so the precedence
+        would silently depend on how the process was started.
+
+        Two regimes therefore apply:
+
+        * **Environment untouched** (gunicorn, ``python``, celery, alembic) –
+          anything already present was exported by the operator and always
+          wins. No guessing is involved.
+        * **Flask CLI** – a variable that holds exactly what ``.env`` says is
+          assumed to come from that file and may be overridden by
+          ``.env.<profile>``. Only one case stays genuinely ambiguous: an
+          exported variable whose value is byte-identical to the ``.env``
+          entry. It is indistinguishable from the injected one, because the
+          Flask CLI runs before any of this code.
+
+        A blank value counts as unset in both regimes, so an empty ``${VAR}``
+        coming from ``docker compose`` falls through to the files instead of
+        masking them.
+
+        Args:
+            env: Selected profile name.
+            shared: Contents of the shared ``.env`` file.
+        """
+        profile = cls._read_env_file(f".env.{env}")
+        preloaded = cls._dotenv_was_preloaded()
+
+        def is_replaceable(key: str) -> bool:
+            current = os.environ.get(key)
+            if is_unset(current):
+                return True
+            return preloaded and current == shared.get(key)
+
+        for key, value in profile.items():
+            if is_replaceable(key):
+                os.environ[key] = value
+
+        for key, value in shared.items():
+            if is_unset(os.environ.get(key)):
+                os.environ[key] = value
+
+    @classmethod
+    def resolve_env(cls, env: Optional[str] = None) -> str:
+        """
+        Determine which configuration profile to use.
+
+        Order of resolution: explicit argument, ``FLASK_ENV`` from the real
+        environment, ``FLASK_ENV`` from ``.env``, then ``DEFAULT_ENV``. The
+        ``.env`` lookup matters because the file is the documented place to put
+        ``FLASK_ENV``, and outside the Flask CLI nothing else would read it.
+
+        Args:
+            env: Explicit profile name, or ``None`` to resolve automatically.
+
+        Returns:
+            Normalised (lower-case) profile name.
+        """
+        if env is None or is_unset(env):
+            env = os.environ.get("FLASK_ENV")
+
+        if is_unset(env):
+            env = cls._read_env_file(".env").get("FLASK_ENV")
+
+        if is_unset(env):
+            env = cls.DEFAULT_ENV
+
+        return env.strip().lower()
+
+    @classmethod
+    def create_config(cls, env: str = None) -> BaseConfig:
+        """
+        Create a configuration object for the given environment.
+
+        Args:
+            env: Environment name (development, staging, production, testing).
+                 If None, resolved from FLASK_ENV or `.env` (default: development).
+
+        Returns:
+            Configuration instance.
+
+        Raises:
+            ValueError: If environment is unknown.
+        """
+
+        env = cls.resolve_env(env)
+
+        config_class = cls.CONFIG_MAP.get(env)
+        if not config_class:
+            known = ", ".join(sorted(cls.CONFIG_MAP))
+            raise ValueError(f"Unknown environment: {env} (known: {known})")
+
+        if env not in cls.NO_DOTENV_ENVS:
+            cls._apply_env_files(env, cls._read_env_file(".env"))
+
+        config = config_class()
+        config.validate()
+        return config
+
+
+def get_config(env: str = None) -> BaseConfig:
+    """Convenience function to get configuration."""
+    return ConfigFactory.create_config(env)

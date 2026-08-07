@@ -2,16 +2,11 @@ from unittest.mock import Mock
 from link_shortener.application.ports.cache.link_cache import LinkCache
 from link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
 from link_shortener.application.ports.cache.redirect_cache import RedirectCache
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.domain.repositories.link_repository import LinkRepository
-from link_shortener.domain.policies.impl.hash_based import HashBasedShorteningPolicy
 import pytest
 
-
-@pytest.fixture
-def shortening_policy():
-    """Provide a hash-based shortening policy with default code length 7."""
-    return HashBasedShorteningPolicy(code_length=7)
 
 @pytest.fixture
 def mock_link_repository():
@@ -37,6 +32,11 @@ def mock_stats_cache():
 def mock_logger():
     """Provide a mock for Logger."""
     return Mock(spec=Logger)
+
+@pytest.fixture
+def mock_audit_logger():
+    """Provide a mock for audit logger"""
+    return Mock(spec=AuditLogger)
 
 @pytest.fixture
 def base_url():

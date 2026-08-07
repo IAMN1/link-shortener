@@ -1,0 +1,184 @@
+import threading
+from typing import Callable, Generic, List, Optional, Tuple, TypeVar
+import time
+
+from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
+
+T = TypeVar('T')
+
+class FailoverService(Generic[T]):
+    """
+    Failover manager for a group of interchangeable services.
+
+    Type parameter ``T`` represents the service interface (e.g., ``Logger``,
+    ``AuditLogger``). The first service in the list is considered the primary;
+    subsequent entries are fallbacks.
+
+    Background health checks attempt to upgrade to a higher-priority service
+    if it becomes healthy again.
+    """
+
+    def __init__(
+        self, 
+        services: List[Tuple[T, str]], 
+        check_interval: Optional[float] = 30.0,
+        health_checker: Optional[Callable[[T], bool]] = None,
+        upgrade_cooldown: float = 300.0,
+        logger: Optional[MinimalLogger] = None
+    ):
+        """
+        Initialize the failover service.
+
+        Args:
+            services: List of ``(service_instance, service_name)`` in
+                priority order (highest first). Must not be empty.
+            check_interval: Seconds between background health checks.
+                If ``None``, background checks are disabled.
+            health_checker: Optional callable that takes a service instance
+                and returns ``True`` if it is healthy. If not provided,
+                only failures during actual calls trigger switching.
+            upgrade_cooldown: Minimum seconds between upgrade attempts.
+            logger: Logger for failover events. Defaults to
+                ``MinimalLogger()`` which prints to stderr
+
+        Raises:
+            ValueError: If ``services`` is empty.
+        """
+
+        if not services:
+            raise ValueError("At least one service required")
+        
+        self._services = services
+        self._check_interval = check_interval
+        self._health_checker = health_checker
+        self._upgrade_cooldown = upgrade_cooldown
+        self._lock = threading.RLock()
+        self._current_index = 0                 # index of currently active service
+        self._last_upgrade_attempt = 0.0
+
+        self._stop_event = threading.Event()
+        self._thread = None
+
+        # Use provided logger or default to a simple stderr logger
+        self.logger = logger if logger is not None else MinimalLogger()
+
+        if self._check_interval is not None:
+            self._thread = threading.Thread(
+                target=self._periodic_check,
+                daemon=True
+            )
+            self._thread.start()
+
+    def get_current_service_name(self) -> str:
+        """Return the name of the currently active service"""
+        with self._lock:
+            return self._services[self._current_index][1]
+
+    def _periodic_check(self):
+        """
+        Background thread: periodically try to upgrade to a higher-priority service.
+        Runs every `_check_interval` seconds until `shutdown()` is called.
+        """
+        while not self._stop_event.wait(self._check_interval):
+            self._attempt_upgrade()
+
+    def _attempt_upgrade(self):
+        """
+        Try to switch to a service with higher priority (lower index) if it is healthy.
+        If a healthy higher-priority service is found, switch to it and log the event.
+        """
+        now = time.time()
+        if now - self._last_upgrade_attempt < self._upgrade_cooldown:
+            return
+        self._last_upgrade_attempt = now
+
+        with self._lock:
+            if self._current_index == 0:
+                return # already the best
+            
+            for idx, (service, name) in enumerate(self._services[:self._current_index]):
+                try:
+                
+                    if self._health_checker is None or self._health_checker(service):
+                        self.logger.warning(f"Upgrading from {self._services[self._current_index][1]} to {name}")
+                        self._current_index = idx
+
+                        # Reset cooldown after a successful upgrade so we can
+                        # attempt to fall back to a higher-priority service later.
+                        self._last_upgrade_attempt = 0.0
+                        return
+                except Exception as e:
+                    self.logger.warning(f"Health check for {name} failed: {e}")
+
+    def _is_service_healthly(self, service: T) -> bool:
+        """
+        Check if a service is healthy using the provided health checker.
+
+        If no health checker is provided, assume the service is healthy.
+
+        Args:
+            service: The service instance to check.
+
+        Returns:
+            True if healthy, False otherwise.
+        """
+
+        if self._health_checker is None:
+            return True
+
+        try:
+            return self._health_checker(service)
+        except Exception:
+            return False
+
+    def _switch_to_next(self) -> bool:
+        """
+        Switch to the next available service (higher index).
+
+        Returns:
+            True if a fallback service was found and switched to, False if none left.
+        """
+        with self._lock:
+            for idx in range(self._current_index + 1, len(self._services)):
+                self._current_index = idx
+                self.logger.warning(f"Switched to {self._services[idx][1]}")
+                return True
+            return False
+    
+    def execute(self, method_name: str, *args, **kwargs):
+        """
+        Call a method on the current active service.
+
+        If the call fails, automatically switch to the next service and retry.
+        Returns the result of the successful call, or ``None`` if all services fail.
+
+        Args:
+            method_name: Name of the method to call on the service.
+            *args, **kwargs: Arguments to pass to the method.
+
+        Returns:
+            Result of the method call, or ``None``.
+        """
+        with self._lock:
+            attempts = 0
+            max_attempts = len(self._services)
+            while attempts < max_attempts:
+                service, name = self._services[self._current_index]
+                try:
+                    method = getattr(service, method_name)
+                    return method(*args, **kwargs)
+                except Exception as e:
+                    self.logger.warning(f"Service {name} failed for {method_name}: {e}. Attempting switch.")
+
+                    if not self._switch_to_next():
+                        break
+                attempts += 1
+            
+            # All services failed
+            return None
+
+    def shutdown(self):
+        """Stop the background health check thread and wait for it to finish."""
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=1)

@@ -5,9 +5,27 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.18.4",
+    "bcrypt>=5.0.0",
+    "celery>=5.6.3",
     "flask>=3.1.2",
     "flask-cors>=6.0.2",
+    # Runtime, not tooling: it is the production image's CMD. Absent from
+    # here, the image built and then failed on start -- masked in compose,
+    # which overrides the command with `flask run`.
+    "gunicorn>=23.0.0",
+    # Разбор интернационализированных доменов (IDNA 2008 + UTS-46).
+    # Встроенный кодек 'idna' в стандартной библиотеке — это IDNA 2003:
+    # он не знает раскладки UTS-46, спотыкается о метки длиннее 63 байт
+    # после кодирования и по-другому обходится с ß и ς.
+    "idna>=3.10",
+    # Приходит транзитивно с Flask, но используется напрямую — подпись
+    # значений кэша. Объявлено явно, чтобы смена зависимостей Flask не
+    # унесла её молча.
+    "itsdangerous>=2.2.0",
+    "psycopg[binary]>=3.3.3",
     "pydantic>=2.12.5",
+    "pyjwt>=2.12.1",
     "python-dotenv>=1.2.1",
     "redis>=7.1.0",
     "sqlalchemy[asyncio]>=2.0.45",
@@ -29,9 +47,31 @@ dev = [
     "pytest-mock>=3.15.1",
 ]
 
+# Без этой секции uv не устанавливает проект в виртуальное окружение,
+# и пакет link_shortener не импортируется без ручного PYTHONPATH=src.
+# С ней `uv sync` ставит проект в editable-режиме, и команды
+# `flask run`, `flask db ...`, `alembic upgrade head` работают из коробки.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["link_shortener", "link_shortener.*"]
+
+# Без этого в установленный пакет попадает только код. Обнаружено при
+# запуске продакшн-образа: `flask db load-base-roles` падал с
+# `RBAC configuration file not found`, потому что roles.yaml остался в
+# репозитории. Не косметика — без ролей анонимное сокращение отвечает 401.
+# Шаблоны и статика по той же причине: без них не отрисовывается ни одна
+# HTML-страница.
+[tool.setuptools.package-data]
+link_shortener = [
+    "infrastructure/configs/rbac/*.yaml",
+    "web/templates/*.html",
+    "web/templates/**/*.html",
+    "web/static/**/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

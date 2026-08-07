@@ -1,0 +1,84 @@
+{% extends "layout/base.html" %}
+{% block title %}Link Shortener{% endblock %}
+{% block extra_head %}
+<style>
+    .hero { text-align: center; margin-bottom: 2rem; }
+    .hero h1 { font-size: 2.5rem; font-weight: 700; background: linear-gradient(135deg, #2563eb, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem; }
+    .hero p { color: #6b7280; font-size: 1.1rem; }
+    .modes { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .mode-btn { padding: 0.5rem 1.25rem; border: 1px solid #e5e7eb; border-radius: 999px; background: #fff; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all .15s; }
+    .mode-btn:hover { border-color: #2563eb; color: #2563eb; }
+    .mode-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .mode-content { display: none; }
+    .mode-content.active { display: block; }
+    .result-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,.05); }
+    .result-field { display: flex; align-items: center; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.5rem 1rem; margin: 0.75rem 0; }
+    .result-url { flex: 1; word-break: break-all; font-family: monospace; font-size: 0.9rem; }
+    .result-copy { background: none; border: none; color: #2563eb; cursor: pointer; padding: 0.5rem; font-size: 1.1rem; }
+    .result-copy:hover { color: #1d4ed8; }
+    .result-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem; }
+    .stat-item { text-align: center; }
+    .stat-item strong { display: block; font-size: 1.25rem; color: #2563eb; }
+    .stat-item span { font-size: 0.75rem; color: #6b7280; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container" style="max-width: 640px;">
+    <section class="hero">
+        <h1>Link Shortener</h1>
+        <p>Paste a long URL and get a short one</p>
+    </section>
+
+    <div class="modes">
+        <button class="mode-btn active" data-mode="single">Single URL</button>
+        <button class="mode-btn" data-mode="batch">Batch</button>
+        <button class="mode-btn" data-mode="info">Info</button>
+        <button class="mode-btn" data-mode="extended">Extended</button>
+    </div>
+
+    <div id="mode-single" class="mode-content active">
+        <form id="form-single" class="card">
+            <div class="form-group">
+                <label class="form-label" for="url-single">URL</label>
+                <input type="url" id="url-single" class="form-input" placeholder="https://example.com/very/long/url" required>
+            </div>
+            <button type="submit" class="btn btn--primary btn--block">Shorten</button>
+        </form>
+    </div>
+
+    <div id="mode-batch" class="mode-content">
+        <form id="form-batch" class="card">
+            <div class="form-group">
+                <label class="form-label" for="urls-batch">URLs (one per line)</label>
+                <textarea id="urls-batch" class="form-input" rows="5" placeholder="https://example.com/1&#10;https://example.com/2"></textarea>
+            </div>
+            <button type="submit" class="btn btn--primary btn--block">Shorten All</button>
+        </form>
+    </div>
+
+    <div id="mode-info" class="mode-content">
+        <form id="form-info" class="card">
+            <div class="form-group">
+                <label class="form-label" for="code-info">Short Code</label>
+                <input type="text" id="code-info" class="form-input" placeholder="abc123" required pattern="[A-Za-z0-9_-]{6,10}">
+            </div>
+            <button type="submit" class="btn btn--primary btn--block">Get Info</button>
+        </form>
+    </div>
+
+    <div id="mode-extended" class="mode-content">
+        <form id="form-extended" class="card">
+            <div class="form-group">
+                <label class="form-label" for="code-extended">Short Code</label>
+                <input type="text" id="code-extended" class="form-input" placeholder="abc123" required pattern="[A-Za-z0-9_-]{6,10}">
+            </div>
+            <button type="submit" class="btn btn--primary btn--block">Get Extended Info</button>
+        </form>
+    </div>
+
+    <div id="result" style="display: none;"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('frontend.static', filename='js/pages/home.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Create User – Linkr{% endblock %}
+{% block dashboard_content %}
+<h1 class="dash-title">Create User</h1>
+
+<div class="card" style="max-width:480px;">
+    <form id="create-user-form">
+        <div class="form-group">
+            <label class="form-label" for="email">Email</label>
+            <input type="email" id="email" class="form-input" required>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="password">Password</label>
+            <input type="password" id="password" class="form-input" required minlength="6">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Roles</label>
+            {% for role in roles %}
+            <label style="display:block; margin-bottom:0.25rem;">
+                <input type="checkbox" name="roles" value="{{ role.name }}"> {{ role.name }}
+            </label>
+            {% endfor %}
+        </div>
+        <div id="create-user-error" class="form-error hidden"></div>
+        <button type="submit" class="btn btn--primary btn--block mt-1">Create User</button>
+    </form>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script src="{{ url_for('frontend.static', filename='js/pages/create_user.js') }}"></script>
+{% endblock %}

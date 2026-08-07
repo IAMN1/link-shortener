@@ -1,0 +1,315 @@
+"""
+Logger manager: creates and manages application loggers with failover.
+
+The ``LoggerManager`` builds an ordered list of logger implementations
+(structlog, standard, null) and optionally wraps them in a ``FailoverService``.
+Module-specific loggers are created via proxies that add ``module`` context.
+"""
+
+
+from typing import Dict, List, Optional, Tuple
+
+from link_shortener.application import Logger
+from link_shortener.infrastructure.failover.failover_service import FailoverService
+from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
+from link_shortener.infrastructure.logging.handlers.logger.null_logger import NullLogger
+from link_shortener.infrastructure.logging.handlers.logger.standard import StandardLogger
+from link_shortener.infrastructure.logging.handlers.logger.structlog import StructLogger
+
+
+class LoggerManager:
+    """
+    Manages logger instances with failover support.
+
+    This class is not a singleton – its lifecycle is controlled by the DI
+    container. It provides loggers for different modules, each potentially
+    wrapped to add module context.
+    """
+
+    def __init__(
+        self,
+        logger_type: str,
+        failover_check_interval: float = 30.0,
+        logger: Optional[MinimalLogger] = None
+    ):
+        """
+        Initialize the logger manager.
+
+        Args:
+            logger_type: Type of logger to use. One of:
+                ``"auto"``, ``"structlog"``, ``"standard"``, ``"null"``.
+            failover_check_interval: Seconds between background health checks.
+            logger: Logger for internal messages; defaults to ``MinimalLogger``.
+        """
+        self._failover_check_interval = failover_check_interval
+        self.logger = logger if logger is not None else MinimalLogger()
+        self._failover_service: Optional[FailoverService] = None
+        self._active_logger: Optional[Logger] = None
+        self._loggers_cache: Dict[str, Logger] = {}
+        self._init_failover_service(logger_type)
+
+    def _init_failover_service(self, logger_type: str):
+        """
+        Build the ordered list of logger implementations based on the requested
+        type and set up failover if multiple implementations are available.
+
+        Args:
+            logger_type: The configured logger type.
+        """
+        # Determine priority order
+        if logger_type == "auto":
+            order = ["structlog", "standard"]
+        elif logger_type == "structlog":
+            order = ["structlog", "standard"]
+        elif logger_type == "standard":
+            order = ["standard", "structlog"]
+        elif logger_type == "null":
+            order = ["null"]
+        else:
+            order = ["structlog", "standard"]
+
+        loggers: List[Tuple[Logger, str]] = []
+
+        for type_ in order:
+            if type_ == "structlog":
+                try:
+                    logger = StructLogger(name="global")
+                    loggers.append((logger, "structlog"))
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to initialize StructLogger: {e}"
+                    )
+            elif type_ == "standard":
+                try:
+                    logger = StandardLogger(name="global")
+                    loggers.append((logger, "standard"))
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to initialize StandardLogger: {e}"
+                    )
+            elif type_ == "null":
+                loggers.append((NullLogger(), "null"))
+
+        # Ensure at least one logger is available
+        if not loggers:
+            loggers.append((NullLogger(), "null"))
+
+        # Single logger: no failover
+        if len(loggers) == 1:
+            self._failover_service = None
+            self._active_logger = loggers[0][0]
+        else:
+            # Health checker using is_healthy
+            def health_check(logger: Logger) -> bool:
+                return logger.is_healthy()
+
+            self._failover_service = FailoverService(
+                services=loggers,
+                check_interval=self._failover_check_interval,
+                health_checker=health_check,
+                upgrade_cooldown=300,
+                logger=self.logger,
+            )
+
+    def get_logger(self, module_name: str) -> Logger:
+        """
+        Return a logger for the given module name.
+
+        If a proxy for this module already exists, returns it from cache.
+        Otherwise creates a new wrapper that delegates calls through the
+        failover service (or directly to the active logger).
+
+        Args:
+            module_name: Name of the module requesting the logger.
+
+        Returns:
+            A ``Logger`` instance.
+        """
+        if module_name in self._loggers_cache:
+            return self._loggers_cache[module_name]
+
+        if self._failover_service is None:
+            logger = _ModuleLogger(self._active_logger, module_name)
+        else:
+            logger = FailoverLoggerProxy(self._failover_service, module_name)
+
+        self._loggers_cache[module_name] = logger
+        return logger
+
+    def get_active_logger_name(self) -> str:
+        """
+        Return the name of the currently active logger implementation.
+
+        Returns:
+            One of ``"structlog"``, ``"standard"``, ``"null"``, or ``"unknown"``.
+        """
+        if self._failover_service:
+            return self._failover_service.get_current_service_name()
+        elif self._active_logger:
+            if isinstance(self._active_logger, StructLogger):
+                return "structlog"
+            elif isinstance(self._active_logger, StandardLogger):
+                return "standard"
+            else:
+                return "null"
+        return "unknown"
+
+    def shutdown(self):
+        """Stop the background failover checker if it exists."""
+        if self._failover_service:
+            self._failover_service.shutdown()
+
+
+class FailoverLoggerProxy(Logger):
+    """
+    Proxy that forwards logging calls to the ``FailoverService``.
+
+    It adds the module name as a bound field and supports additional
+    ``bind`` operations. This allows contextual logging across multiple
+    logger instances.
+    """
+
+    def __init__(
+        self,
+        service: FailoverService,
+        module_name: str,
+        bound_fields: Optional[Dict] = None
+    ):
+        """
+        Initialize the proxy.
+
+        Args:
+            service: The ``FailoverService`` that holds the actual loggers.
+            module_name: Name of the module requesting the logger.
+            bound_fields: Initial bound fields.
+        """
+        self._service = service
+        self._module_name = module_name
+        self._bound_fields = bound_fields if bound_fields else {}
+
+    def bind(self, **kwargs) -> "FailoverLoggerProxy":
+        """
+        Return a new proxy with additional bound fields.
+
+        Args:
+            **kwargs: Fields to bind.
+
+        Returns:
+            A new ``FailoverLoggerProxy`` instance with merged bound fields.
+        """
+        new_bound = {**self._bound_fields, **kwargs}
+        return FailoverLoggerProxy(self._service, self._module_name, new_bound)
+
+    def _call(self, method_name: str, message: str, **kwargs):
+        """
+        Internal method to forward a logging call to the failover service.
+
+        Args:
+            method_name: Name of the log method (e.g. ``"info"``).
+            message: The log message.
+            **kwargs: Additional structured data.
+        """
+        all_kwargs = {**self._bound_fields, **kwargs}
+        all_kwargs["module"] = self._module_name
+        return self._service.execute(method_name, message, **all_kwargs)
+
+    def debug(self, message: str, **kwargs):
+        """Log a debug message."""
+        self._call("debug", message, **kwargs)
+
+    def info(self, message: str, **kwargs):
+        """Log an informational message."""
+        self._call("info", message, **kwargs)
+
+    def warning(self, message: str, **kwargs):
+        """Log a warning message."""
+        self._call("warning", message, **kwargs)
+
+    def error(self, message: str, **kwargs):
+        """Log an error message."""
+        self._call("error", message, **kwargs)
+
+    def exception(self, message: str, exc_info=None, **kwargs):
+        """Log an exception with traceback."""
+        kwargs["exc_info"] = exc_info
+        self._call("exception", message, **kwargs)
+
+    def is_healthy(self) -> bool:
+        """Check health through the failover service."""
+        result = self._service.execute("is_healthy")
+        return result is True
+
+
+class _ModuleLogger(Logger):
+    """
+    Simple wrapper for a single logger when failover is disabled.
+
+    It adds the module name as the ``"module"`` field on every log call
+    and supports ``bind`` for additional context.
+
+    This is an internal helper; its lifecycle is managed by ``LoggerManager``.
+    """
+
+    def __init__(
+        self,
+        logger: Logger,
+        module_name: str,
+        bound_fields: Optional[Dict] = None
+    ):
+        """
+        Initialize the module logger.
+
+        Args:
+            logger: The underlying logger instance.
+            module_name: Name of the module requesting the logger.
+            bound_fields: Initial bound fields.
+        """
+        self._logger = logger
+        self._module_name = module_name
+        self._bound_fields = bound_fields if bound_fields else {}
+
+    def bind(self, **kwargs) -> "_ModuleLogger":
+        """
+        Return a new module logger with additional bound fields.
+
+        Args:
+            **kwargs: Fields to bind.
+
+        Returns:
+            A new ``_ModuleLogger`` instance with merged bound fields.
+        """
+        new_bound = {**self._bound_fields, **kwargs}
+        return _ModuleLogger(self._logger, self._module_name, new_bound)
+
+    def _log(self, level: str, message: str, **kwargs):
+        """
+        Perform the actual logging by calling the underlying logger's method.
+
+        Args:
+            level: Log level (e.g. ``"info"``).
+            message: The log message.
+            **kwargs: Additional structured data.
+        """
+        all_kwargs = {**self._bound_fields, **kwargs}
+        all_kwargs["module"] = self._module_name
+        getattr(self._logger, level)(message, **all_kwargs)
+
+    def debug(self, message: str, **kwargs):
+        self._log("debug", message, **kwargs)
+
+    def info(self, message: str, **kwargs):
+        self._log("info", message, **kwargs)
+
+    def warning(self, message: str, **kwargs):
+        self._log("warning", message, **kwargs)
+
+    def error(self, message: str, **kwargs):
+        self._log("error", message, **kwargs)
+
+    def exception(self, message: str, exc_info=None, **kwargs):
+        kwargs["exc_info"] = exc_info
+        self._log("exception", message, **kwargs)
+
+    def is_healthy(self) -> bool:
+        """Delegate health check to the underlying logger."""
+        return self._logger.is_healthy()
