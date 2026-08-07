@@ -13,6 +13,7 @@ from ..commands.database import migrate_db as migrate_db_logic
 from ..commands.stats import refresh_stats as refresh_stats_logic
 from ..commands.stats import get_stats as get_stats_logic
 from ..commands.maintenance import clean_expired_links as clean_expired_logic
+from ..commands.maintenance import clean_expired_sessions as clean_sessions_logic
 from ..commands.link import delete_link as delete_link_logic
 from ..commands.link import get_link_info as link_info_logic
 from ..commands.link import list_links as list_links_logic
@@ -68,8 +69,22 @@ def seed_db(count):
     container = current_app.container
     context = RequestContext(request_id="cli-seed")
     use_case = container.get_seed_database_use_case()
-    created = seed_db_logic(use_case, count, context)
-    click.echo(f"Created {created} test links")
+    try:
+        result = seed_db_logic(use_case, count, context)
+    except Exception as e:
+        # Not the guest limit, whatever this used to say. Seeding goes
+        # through the regular create use case, but with a context carrying
+        # no address -- and both the guest quota and the guest expiry are
+        # keyed on one, so a CLI call is neither counted nor expired. It
+        # creates permanent, unattributed links, by design; pointing the
+        # operator at GUEST_LINK_LIMIT only sent them looking in the wrong
+        # place.
+        click.echo(f"ERROR: seeding failed: {e}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Created {result.created} test links")
+    if result.existing:
+        click.echo(f"{result.existing} of the requested URLs already existed")
 
 @db_group.command("load-base-roles")
 @with_appcontext
@@ -98,7 +113,10 @@ def check_db():
     if check_db_logic(container.get_db_manager()):
         click.echo("Database connection is healthy.")
     else:
+        # Non-zero exit: this command is meant to be usable from monitoring
+        # and CI, where a failure that returns 0 is indistinguishable from ok.
         click.echo("Database connection failed.", err=True)
+        raise SystemExit(1)
 
 @db_group.command("status")
 @with_appcontext
@@ -109,6 +127,7 @@ def db_status():
         click.echo("Database connection is healthy.")
     else:
         click.echo("Database connection failed.", err=True)
+        raise SystemExit(1)
 
 @db_group.command("migrate")
 @with_appcontext
@@ -116,7 +135,11 @@ def migrate_db():
     """Apply database migrations using Alembic."""
     container = current_app.container
     use_alembic = current_app.config.get("USE_ALEMBIC", True)
-    migrate_db_logic(container.get_db_manager(), use_alembic)
+    if not use_alembic:
+        # Объявлять базу до отказа незачем: команда её не тронет.
+        migrate_db_logic(container.get_db_manager(), use_alembic)
+        return
+    migrate_db_logic(container.get_db_manager(), use_alembic, _echo_target())
 
 # ------------------------------------------------------------------
 # Stats commands group
@@ -149,7 +172,9 @@ def stats_show():
 def stats_refresh():
     """Force refresh of cached statistics"""
     container = current_app.container
-    stats = refresh_stats_logic(container.get_get_service_stats_use_case())
+    stats = refresh_stats_logic(
+        container.get_get_service_stats_use_case(), container.get_cache()
+    )
     click.echo("\n\t\t\tSTATISTIC REFRESHED IN CACHE:")
     click.echo("=" * 80)
     click.echo(f"\t\t\tTotal URL's: {stats['total_urls']}")
@@ -166,25 +191,46 @@ def maintenance_group():
     pass
 
 @maintenance_group.command("clean-expired")
-@click.option("--days", default=30, help="Delete links older than N days")
 @with_appcontext
-def clean_expired(days):
-    """Delete links that have not been accessed for N days."""
+def clean_expired():
+    """Delete links whose expiry has passed.
+
+    Takes no threshold: an expired link is expired, and a redirect to it
+    already answers 410. The former ``--days`` option belonged to a
+    different sweep -- everything untouched for N days, permanent links
+    included -- and is gone rather than redefined, so an old cron line
+    fails loudly instead of quietly doing something else.
+    """
     container = current_app.container
     context = RequestContext(request_id="cli-clean")
     use_case = container.get_clean_expired_links_use_case()
-    deleted = clean_expired_logic(use_case, days, context)
+    deleted = clean_expired_logic(use_case, context)
     click.echo(f"Deleted {deleted} expired links.")
+
+@maintenance_group.command("clean-sessions")
+@with_appcontext
+def clean_sessions():
+    """Delete refresh sessions whose tokens have already expired."""
+    container = current_app.container
+    deleted = clean_sessions_logic(container.get_uow_factory())
+    click.echo(f"Deleted {deleted} expired refresh sessions.")
 
 @maintenance_group.command("check-redis")
 @with_appcontext
 def check_redis():
     """Check Redis connection (if Redis cache is used)."""
     container = current_app.container
+    redis_expected = current_app.config.get("REDIS_ENABLED", False) and \
+        current_app.config.get("CACHE_ENABLED", True)
+
     if check_redis_logic(container.get_cache()):
         click.echo("Redis connection is healthy.")
+    elif not redis_expected:
+        # Deliberately disabled cache is not a failure.
+        click.echo("Redis is disabled by configuration.")
     else:
-        click.echo("Redis not used or connection failed.")
+        click.echo("Redis connection failed.", err=True)
+        raise SystemExit(1)
 
 @maintenance_group.command("health")
 @with_appcontext
@@ -196,9 +242,19 @@ def maintenance_health():
     db_ok = check_db_logic(container.get_db_manager())
     click.echo(f"Database: {'OK' if db_ok else 'FAILED'}")
 
-    # Check Redis
-    redis_ok = check_redis_logic(container.get_cache())
-    click.echo(f"Redis: {'OK' if redis_ok else 'FAILED'}")
+    # Check Redis. A deliberately disabled cache is not a failure: the
+    # documented local setup runs with REDIS_ENABLED=false and an in-memory
+    # cache, and reporting FAILED there made a healthy install look broken
+    # (and any exit-code based monitoring go red).
+    redis_expected = current_app.config.get("REDIS_ENABLED", False) and \
+        current_app.config.get("CACHE_ENABLED", True)
+
+    if not redis_expected:
+        click.echo("Redis: SKIPPED (disabled by configuration)")
+        redis_ok = True
+    else:
+        redis_ok = check_redis_logic(container.get_cache())
+        click.echo(f"Redis: {'OK' if redis_ok else 'FAILED'}")
 
     if not (db_ok and redis_ok):
         raise SystemExit(1)
@@ -253,11 +309,14 @@ def link_delete(short_code):
     use_case = container.get_delete_link_use_case()
 
     click.echo("=" * 80)
-    if delete_link_logic(use_case, short_code, context):
+    deleted = delete_link_logic(use_case, short_code, context)
+    if deleted:
         click.echo(f"\t\t\tLink '{short_code}' has been deleted")
     else:
-        click.echo(f"Link '{short_code}' not found or invalid.")
+        click.echo(f"Link '{short_code}' not found or invalid.", err=True)
     click.echo("=" * 80)
+    if not deleted:
+        raise SystemExit(1)
 
 @link_group.command("info")
 @click.argument("short_code")
@@ -279,8 +338,10 @@ def link_info(short_code):
         click.echo(f"\t\t\tLast accessed: {info['last_accessed'] or 'never'}")
     else:
         click.echo("=" * 80)
-        click.echo(f"\t\t\tLink '{short_code}' not found.")
+        click.echo(f"\t\t\tLink '{short_code}' not found.", err=True)
     click.echo("=" * 80)
+    if not info:
+        raise SystemExit(1)
 
 
 @link_group.command("list")
@@ -305,7 +366,11 @@ def link_list(limit):
 
 @link_group.command("create")
 @click.option("--url", required=True, help="Original URL to shorten")
-@click.option("--code", default=None, help="Custom short code (optional)")
+@click.option(
+    "--code",
+    default=None,
+    help="Custom short code (6-10 of A-Z a-z 0-9 _ -). Generated if omitted.",
+)
 @with_appcontext
 def link_create(url, code):
     """Create a new short link."""
@@ -361,6 +426,7 @@ def security_check_secrets():
 
     if not all(status.values()):
         click.echo("\nRun 'flask security generate-secrets' to generate missing secrets.")
+        raise SystemExit(1)
 
 @security_group.command("list-users")
 @with_appcontext
@@ -424,14 +490,25 @@ def security_validate_token(token):
     auth_service = container.get_authentication_service()
     
     result = validate_token(auth_service, token)
-    
+
     if result["valid"]:
-        click.echo("\nToken is VALID")
+        # The type is named in the verdict, not buried among the claims. A
+        # bare "VALID" said the same thing about an access token and a
+        # refresh token, and they are not interchangeable: a refresh token
+        # opens no endpoint, and reading "VALID" against one was a way to
+        # conclude the opposite.
+        token_type = result.get("type") or "unknown"
+        click.echo(f"\nToken is VALID (type: {token_type})")
         click.echo("=" * 40)
         click.echo(f"User ID: {result.get('user_id')}")
         click.echo(f"Email: {result.get('email')}")
         click.echo(f"Roles: {', '.join(result.get('roles', []))}")
         click.echo(f"Expires: {result.get('exp')}")
+        if token_type != "access":
+            click.echo(
+                f"\nNote: this is a {token_type} token -- it authenticates "
+                "no request. Only an access token does."
+            )
     else:
         click.echo(f"\nToken is INVALID: {result.get('error')}", err=True)
         raise SystemExit(1)
@@ -497,45 +574,122 @@ def alembic_group():
     """Alembic migration management (status, history, upgrade, downgrade, migrate)"""
     pass
 
+
+def _configured_database_url() -> str:
+    """
+    Return the database URL the running application is configured with.
+
+    Alembic runs in a subprocess that inherits the ambient environment, not
+    the application's configuration. Handing the URL over keeps the two in
+    agreement; without it a command issued under one profile could report on,
+    or migrate, the database of another.
+
+    Returns:
+        SQLAlchemy-compatible database URL.
+    """
+    return current_app.container.config.get_database_url()
+
+
+def _echo_target() -> str:
+    """
+    Announce which database the command is about to work on.
+
+    A migration command that says only "Migrations applied." leaves the
+    operator no way to tell a real upgrade from a no-op against the wrong
+    database. The password is masked -- this goes to a terminal and often
+    into a deployment log.
+
+    Returns:
+        The database URL to hand to alembic.
+    """
+    url = _configured_database_url()
+    click.echo(f"Database: {current_app.container.config.display_database_url}")
+    return url
+
+
+def _require_alembic_enabled() -> str:
+    """
+    Refuse a schema change when the schema is not managed by Alembic.
+
+    ``USE_ALEMBIC`` picks one of two ways to build the schema, and the two
+    must not be mixed: ``flask db init`` creates the tables straight from
+    the models and writes no revision, so a database built that way and
+    then migrated tries to create tables that already exist. ``db init``,
+    ``db drop`` and ``db migrate`` have always honoured the flag; this
+    group did not, so the very path the flag exists to close stayed open.
+
+    Returns:
+        The database URL to hand to alembic.
+
+    Raises:
+        SystemExit: If Alembic is switched off for this configuration.
+    """
+    if not current_app.config.get("USE_ALEMBIC", True):
+        click.echo(
+            "USE_ALEMBIC is disabled. The schema is managed from the models "
+            "-- use 'flask db init' to create it and 'flask db drop' to "
+            "remove it.",
+            err=True,
+        )
+        raise SystemExit(1)
+    return _echo_target()
+
+
 @alembic_group.command("status")
+@with_appcontext
 def alembic_status():
     """Show current migration status."""
     from ..commands.alembic import AlembicCommands
-    click.echo(AlembicCommands.status())
+    success, output = AlembicCommands.status(_echo_target())
+    click.echo(output, err=not success)
+    if not success:
+        raise SystemExit(1)
 
 @alembic_group.command("history")
 @click.option("--revision", "-r", default=None, help="Show history from revision")
+@with_appcontext
 def alembic_history(revision):
     """Show migration history."""
     from ..commands.alembic import AlembicCommands
-    click.echo(AlembicCommands.history(revision))
+    success, output = AlembicCommands.history(revision, _echo_target())
+    click.echo(output, err=not success)
+    if not success:
+        raise SystemExit(1)
 
 @alembic_group.command("upgrade")
 @click.argument("revision", default="head")
+@with_appcontext
 def alembic_upgrade(revision):
     """Apply migrations to target revision."""
     from ..commands.alembic import AlembicCommands
-    success, output = AlembicCommands.upgrade(revision)
+    success, output = AlembicCommands.upgrade(revision, _require_alembic_enabled())
     click.echo(output)
     if not success:
         raise SystemExit(1)
 
-@alembic_group.command("downgrade")
+# ignore_unknown_options: relative revisions start with a dash ("-1", "-2"),
+# and Click would otherwise reject them as unknown options before the command
+# body ever runs, making the documented `alembic downgrade -1` impossible.
+@alembic_group.command(
+    "downgrade", context_settings={"ignore_unknown_options": True}
+)
 @click.argument("revision", default="-1")
+@with_appcontext
 def alembic_downgrade(revision):
     """Rollback migrations to target revision."""
     from ..commands.alembic import AlembicCommands
-    success, output = AlembicCommands.downgrade(revision)
+    success, output = AlembicCommands.downgrade(revision, _require_alembic_enabled())
     click.echo(output)
     if not success:
         raise SystemExit(1)
 
 @alembic_group.command("migrate")
 @click.argument("message")
+@with_appcontext
 def alembic_migrate(message):
     """Create new migration with auto-generated changes."""
     from ..commands.alembic import AlembicCommands
-    success, output = AlembicCommands.migrate(message)
+    success, output = AlembicCommands.migrate(message, _require_alembic_enabled())
     click.echo(output)
     if not success:
         raise SystemExit(1)

@@ -2,6 +2,7 @@ import secrets
 import os
 from typing import Optional, Callable
 from link_shortener.application import UnitOfWork
+from link_shortener.domain import Email
 
 
 def validate_token(
@@ -11,11 +12,21 @@ def validate_token(
     """Validate a JWT token and return its claims."""
     try:
         claims = auth_service.validate_token(token)
+        if not claims:
+            # validate_token returns None for an invalid or expired token
+            # instead of raising, so this case has to be handled explicitly.
+            return {
+                "valid": False,
+                "error": "Token is invalid or expired",
+            }
         return {
             "valid": True,
-            "user_id": claims.get("user_id"),
+            # The user id lives in the standard "sub" claim, not "user_id" -
+            # see JwtAuthenticationService._create_token.
+            "user_id": claims.get("sub"),
             "email": claims.get("email"),
             "roles": claims.get("roles", []),
+            "type": claims.get("type"),
             "exp": claims.get("exp"),
         }
     except Exception as e:
@@ -79,7 +90,7 @@ def reset_password(
 ) -> bool:
     """Reset a user's password."""
     with uow_factory() as uow:
-        user = uow.users.get_by_email(email)
+        user = uow.users.find_by_email(Email(email))
         if not user:
             return False
         user_service.update_password(uow, user, new_password)
