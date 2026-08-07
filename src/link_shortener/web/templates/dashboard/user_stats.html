@@ -30,16 +30,13 @@
     </div>
 </div>
 {% endblock %}
-{% block scripts %}
+{% block page_scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', async function() {
     var userId = '{{ user.id }}';
     try {
-        var resp = await fetch('/api/v1/admin/users/' + userId + '/stats', {
-            credentials: 'same-origin',
-            headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') }
-        });
-        if (!resp.ok) throw new Error('Failed');
+        var resp = await apiFetch('/api/v1/admin/users/' + userId + '/stats');
+        if (!resp || !resp.ok) throw new Error('Failed');
         var data = await resp.json();
         document.getElementById('stat-links').textContent = data.total_links;
         document.getElementById('stat-clicks').textContent = data.total_clicks;

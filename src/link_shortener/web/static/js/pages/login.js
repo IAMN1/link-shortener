@@ -13,12 +13,13 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             var resp = await fetch('/api/v1/auth/login', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders(null, 'POST'),
+                credentials: 'same-origin',
                 body: JSON.stringify({ email: email, password: password })
             });
             var data = await resp.json();
             if (!resp.ok) throw new Error(data.error || 'Login failed');
-            localStorage.setItem('admin_token', data.access_token);
+            // The session arrives as HttpOnly cookies; nothing to store here.
             window.location.href = '/dashboard/';
         } catch(err) {
             errEl.textContent = err.message;

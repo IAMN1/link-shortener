@@ -13,7 +13,8 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             var resp = await fetch('/api/v1/auth/register', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders(null, 'POST'),
+                credentials: 'same-origin',
                 body: JSON.stringify({ email: email, password: password })
             });
             var data = await resp.json();

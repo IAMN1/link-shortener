@@ -2,19 +2,32 @@
  * main.js – Global utilities: API helpers, dropdown, logout.
  */
 
-function getToken() { return localStorage.getItem('admin_token'); }
-function setToken(t) { localStorage.setItem('admin_token', t); }
+var SAFE_METHODS = ['GET', 'HEAD', 'OPTIONS', 'TRACE'];
+
+// The session lives in HttpOnly cookies, which scripts cannot read. The only
+// token the page handles is the CSRF one, which is readable by design.
+function getCsrfToken() {
+    var match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : null;
+}
+
+// Adds the CSRF header to state-changing requests. Exposed for the few pages
+// that call fetch directly instead of going through apiFetch.
+function csrfHeaders(base, method) {
+    var headers = Object.assign({ 'Content-Type': 'application/json' }, base || {});
+    if (SAFE_METHODS.indexOf((method || 'POST').toUpperCase()) === -1) {
+        var csrf = getCsrfToken();
+        if (csrf) headers['X-CSRF-Token'] = csrf;
+    }
+    return headers;
+}
 
 async function apiFetch(url, opts) {
     opts = opts || {};
-    var headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
-    var token = getToken();
-    if (token) headers['Authorization'] = 'Bearer ' + token;
-    opts.headers = headers;
+    opts.headers = csrfHeaders(opts.headers, opts.method || 'GET');
     opts.credentials = 'same-origin';
     var resp = await fetch(url, opts);
     if (resp.status === 401) {
-        localStorage.removeItem('admin_token');
         window.location.href = '/login';
         return null;
     }
@@ -22,8 +35,7 @@ async function apiFetch(url, opts) {
 }
 
 async function logoutUser() {
-    localStorage.removeItem('admin_token');
-    await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    await apiFetch('/api/v1/auth/logout', { method: 'POST' });
     window.location.href = '/login';
 }
 
@@ -38,6 +50,7 @@ function formatDate(iso) {
 }
 
 window.apiFetch = apiFetch;
+window.csrfHeaders = csrfHeaders;
 window.logoutUser = logoutUser;
 window.escapeHtml = escapeHtml;
 window.formatDate = formatDate;

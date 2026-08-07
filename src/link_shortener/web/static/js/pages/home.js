@@ -30,7 +30,8 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 var resp = await fetch('/api/v1/shorten', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: csrfHeaders(null, 'POST'),
+                    credentials: 'same-origin',
                     body: JSON.stringify({ url: url })
                 });
                 var data = await resp.json();
@@ -53,7 +54,8 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 var resp = await fetch('/api/v1/batch/shorten', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: csrfHeaders(null, 'POST'),
+                    credentials: 'same-origin',
                     body: JSON.stringify({ urls: urls })
                 });
                 var data = await resp.json();
@@ -86,12 +88,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 var resp = await fetch('/api/v1/links/' + encodeURIComponent(code));
                 var data = await resp.json();
                 if (!resp.ok) throw new Error(data.error || 'Not found');
+                // clicks is null unless the viewer is entitled to the
+                // link's traffic, so the stats a signed-out visitor gets
+                // are the ones that say nothing about its owner.
+                var stats = '<div class="stat-item"><strong>' + new Date(data.created_at).toLocaleDateString() + '</strong><span>Created</span></div>';
+                if (data.clicks !== null && data.clicks !== undefined) {
+                    stats = '<div class="stat-item"><strong>' + data.clicks + '</strong><span>Clicks</span></div>'
+                        + stats
+                        + '<div class="stat-item"><strong>' + (data.last_accessed ? new Date(data.last_accessed).toLocaleDateString() : 'Never') + '</strong><span>Last Access</span></div>';
+                }
                 var html = '<div class="result-card"><h3 style="margin-bottom:1rem;">Link Info</h3>'
                     + '<div class="result-field"><span class="result-url">' + escapeHtml(data.short_url) + '</span></div>'
                     + '<div style="font-size:0.875rem;color:#374151;margin:0.5rem 0;">' + escapeHtml(data.original_url) + '</div>'
-                    + '<div class="result-stats"><div class="stat-item"><strong>' + data.clicks + '</strong><span>Clicks</span></div>'
-                    + '<div class="stat-item"><strong>' + new Date(data.created_at).toLocaleDateString() + '</strong><span>Created</span></div>'
-                    + '<div class="stat-item"><strong>' + (data.last_accessed ? new Date(data.last_accessed).toLocaleDateString() : 'Never') + '</strong><span>Last Access</span></div></div></div>';
+                    + '<div class="result-stats">' + stats + '</div></div>';
                 showHtml(html);
             } catch(err) { showError(err.message); }
             btn.disabled = false; btn.textContent = 'Get Info';

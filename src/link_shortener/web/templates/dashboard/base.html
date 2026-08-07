@@ -50,6 +50,14 @@
 {% endif %}
 {% endblock %}
 
+{# dashboard.js drives the sidebar toggle and the logout button, so every
+   page under this layout needs it. Pages used to add their own script by
+   overriding `scripts`, this very block, and an override replaces what it
+   overrides: dashboard.js reached two pages out of twelve, and on the other
+   ten both controls were dead. A page now overrides `page_scripts`, which
+   is nested inside this one, so its script is added rather than swapped in
+   and a new page has nothing to remember. #}
 {% block scripts %}
 <script src="{{ url_for('frontend.static', filename='js/dashboard.js') }}"></script>
+{% block page_scripts %}{% endblock %}
 {% endblock %}

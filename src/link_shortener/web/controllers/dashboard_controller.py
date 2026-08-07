@@ -42,15 +42,21 @@ class DashboardController:
     def home(self):
         return render_template("dashboard/home.html")
 
+    # These pages are shells; their data comes from the API endpoints that
+    # ask for the same permissions. Gating the page too keeps a caller who
+    # will only be refused from being handed an empty screen to puzzle over.
     @login_required
+    @require_permission(SystemPermissions.LINK_VIEW_OWN.value)
     def my_links(self):
         return render_template("dashboard/my_links.html", user=g.current_user)
 
     @login_required
+    @require_permission(SystemPermissions.LINK_VIEW_OWN.value)
     def my_stats(self):
         return render_template("dashboard/my_stats.html")
 
     @login_required
+    @require_permission(SystemPermissions.LINK_CREATE.value)
     def create_link_form(self):
         return render_template("dashboard/create_link.html")
 
