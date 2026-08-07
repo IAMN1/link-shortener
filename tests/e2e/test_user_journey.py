@@ -22,7 +22,7 @@ class TestGuestUserJourney:
         r = client.post("/api/v1/shorten", json={"url": "https://example.com"})
         assert r.status_code == 201
         data = r.get_json()
-        code = data.get("short_code") or data.get("link", {}).get("short_code")
+        code = data.get("short_code")
         assert code is not None
 
         # 3. User checks link info
@@ -86,7 +86,7 @@ class TestRegisteredUserJourney:
             "url": "https://my-link.com"
         }, headers=headers)
         assert r.status_code == 201
-        code = r.get_json().get("short_code") or r.get_json().get("link", {}).get("short_code")
+        code = r.get_json().get("short_code")
 
         # 4. View my links
         r = client.get("/api/v1/links/mine", headers=headers)
@@ -102,7 +102,7 @@ class TestRegisteredUserJourney:
 
         # 7. Logout
         r = client.post("/api/v1/auth/logout", headers=csrf_headers(client, headers))
-        assert r.status_code in (200, 401)
+        assert r.status_code == 200
 
 
 class TestDuplicateUrlJourney:
@@ -112,12 +112,12 @@ class TestDuplicateUrlJourney:
         # 1. User A creates link
         r1 = client.post("/api/v1/shorten", json={"url": "https://shared.com"})
         assert r1.status_code == 201
-        code1 = r1.get_json().get("short_code") or r1.get_json().get("link", {}).get("short_code")
+        code1 = r1.get_json().get("short_code")
 
         # 2. User B creates link for same URL (guest with different IP)
         r2 = client.post("/api/v1/shorten", json={"url": "https://shared.com"})
-        assert r2.status_code in (200, 201)
-        code2 = r2.get_json().get("short_code") or r2.get_json().get("link", {}).get("short_code")
+        assert r2.status_code == 200
+        code2 = r2.get_json().get("short_code")
 
         # 3. Both codes should be the same (deduplication)
         assert code1 == code2
@@ -174,15 +174,15 @@ class TestErrorHandlingJourney:
 
     def test_nonexistent_link_returns_404(self, client):
         r = client.get("/nonexistent")
-        assert r.status_code in (400, 404)
+        assert r.status_code == 404
 
     def test_wrong_method_returns_405(self, client):
         r = client.post("/api/v1/stats")
         assert r.status_code == 405
 
-    def test_unauthorized_admin_returns_403(self, client):
+    def test_unauthorized_admin_returns_401(self, client):
         r = client.get("/api/v1/admin/health")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401
 
 
 class TestHealthCheckJourney:

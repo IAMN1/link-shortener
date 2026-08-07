@@ -179,7 +179,7 @@ class TestAnonymousActsAsGuest:
 
     def test_anonymous_can_still_shorten(self, client):
         r = client.post("/api/v1/shorten", json={"url": "https://guest-ok.example"})
-        assert r.status_code in (200, 201)
+        assert r.status_code == 201
 
     def test_revoking_link_create_from_guest_stops_anonymous_shortening(
         self, app, client, restore_guest_role

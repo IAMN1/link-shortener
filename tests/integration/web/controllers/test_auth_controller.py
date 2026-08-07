@@ -13,7 +13,11 @@ class TestRegister:
         })
         assert r.status_code == 201
         data = r.get_json()
-        assert "user" in data or "access_token" in data
+        # Registration answers with the user and nothing else: no tokens,
+        # so signing up does not sign you in. The `or "access_token"` half
+        # said otherwise and was never reached.
+        assert "user" in data
+        assert "access_token" not in data
 
     def test_register_duplicate_email(self, client):
         client.post("/api/v1/auth/register", json={
@@ -22,14 +26,13 @@ class TestRegister:
         r = client.post("/api/v1/auth/register", json={
             "email": "dup@example.com", "password": "StrongPass1!"
         })
-        assert r.status_code in (400, 409)
+        assert r.status_code == 400
 
     def test_register_weak_password(self, client):
         r = client.post("/api/v1/auth/register", json={
             "email": "weak@example.com", "password": "123"
         })
-        # API may accept or reject weak passwords depending on validation config
-        assert r.status_code in (201, 400)
+        assert r.status_code == 400
 
     def test_register_missing_fields(self, client):
         r = client.post("/api/v1/auth/register", json={})
@@ -101,7 +104,7 @@ class TestErrorDisclosure:
             "email": probe, "password": "StrongPass1!"
         })
 
-        assert r.status_code in (400, 401)
+        assert r.status_code == 400
         assert probe not in r.get_data(as_text=True)
 
     def test_login_gives_same_answer_for_known_and_unknown_email(self, client):
@@ -225,7 +228,7 @@ class TestLogout:
 
     def test_logout(self, client):
         r = client.post("/api/v1/auth/logout")
-        assert r.status_code in (200, 401)
+        assert r.status_code == 200
 
 
 class TestRefresh:
@@ -233,7 +236,7 @@ class TestRefresh:
 
     def test_refresh_no_token(self, client):
         r = client.post("/api/v1/auth/refresh", json={})
-        assert r.status_code in (200, 400, 401)
+        assert r.status_code == 401
 
 
 class TestAuthFlow:
@@ -263,7 +266,7 @@ class TestAuthFlow:
         # The browser holds session cookies here, so logout acts on the
         # cookie and needs the CSRF token to go with it.
         r = client.post("/api/v1/auth/logout", headers=csrf_headers(client, headers))
-        assert r.status_code in (200, 401)
+        assert r.status_code == 200
 
 
 class TestPasswordStrength:

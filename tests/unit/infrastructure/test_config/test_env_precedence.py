@@ -219,6 +219,50 @@ class TestTestingIsolation:
         assert config.DATABASE_URL == "sqlite:///:memory:"
         assert config.CORS_ORIGINS == ["http://localhost:5000"]
 
+    def test_ignores_exported_pool_settings(self, env_dir, monkeypatch):
+        """
+        Should ignore the environment for the pool sizes too.
+
+        They are the group ``BaseConfig`` declares as properties reading
+        through ``read_env`` instead of as ``EnvField`` descriptors, and
+        the descriptor is where ``IGNORE_ENV`` is obeyed -- so these three
+        went on reading the machine. ``production`` and ``staging``
+        declare their secrets the same way and are still blind to the
+        flag; see the open decisions in docs/DEVELOPER_GUIDE.md. The subclass below is what
+        ``tests/integration/docker/conftest.py`` builds: a detached profile
+        that does run on PostgreSQL, which is the only shape in which the
+        values are consulted at all.
+        """
+        monkeypatch.setenv("DATABASE_POOL_SIZE", "999")
+        monkeypatch.setenv("DATABASE_MAX_OVERFLOW", "888")
+        monkeypatch.setenv("DATABASE_POOL_RECYCLE", "777")
+
+        class OnPostgres(TestingConfig):
+            DATABASE_TYPE = "postgresql"
+
+        config = OnPostgres()
+
+        assert config.DATABASE_POOL_SIZE == 20
+        assert config.DATABASE_MAX_OVERFLOW == 10
+        assert config.DATABASE_POOL_RECYCLE == 3600
+
+    def test_a_broken_exported_pool_setting_cannot_reach_it(
+        self, env_dir, monkeypatch
+    ):
+        """
+        Should not even parse the value, let alone fail on it.
+
+        A non-numeric ``DATABASE_POOL_SIZE`` used to raise out of
+        ``get_pool_params()`` and take the DI container down with it, on a
+        profile that had promised to ignore the environment.
+        """
+        monkeypatch.setenv("DATABASE_POOL_SIZE", "not-a-number")
+
+        class OnPostgres(TestingConfig):
+            DATABASE_TYPE = "postgresql"
+
+        assert OnPostgres().DATABASE_POOL_SIZE == 20
+
     def test_survives_another_profile_loading_dotenv(self, env_dir):
         """
         Should stay isolated after a different profile pulled `.env` into

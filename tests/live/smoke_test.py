@@ -160,7 +160,7 @@ def _():
     r = client.post("/api/v1/shorten", json={"url": "https://example.com"})
     assert r.status_code == 201
     data = r.get_json()
-    short_code = data.get("short_code") or data.get("link", {}).get("short_code")
+    short_code = data.get("short_code")
     assert short_code
 
 @test("POST /api/v1/shorten (invalid URL)")
@@ -190,7 +190,7 @@ def _():
     r = client.post("/api/v1/shorten", json={"url": "https://example.com"})
     assert r.status_code in (200, 201)
     data = r.get_json()
-    code = data.get("short_code") or data.get("link", {}).get("short_code")
+    code = data.get("short_code")
     assert code == short_code
 
 @test("POST /api/v1/shorten with TTL")
@@ -245,7 +245,7 @@ def _():
         client.get(f"/{short_code}", follow_redirects=False)
     r = client.get(f"/api/v1/links/{short_code}")
     data = r.get_json()
-    clicks = data.get("clicks") or data.get("link", {}).get("clicks", 0)
+    clicks = data.get("clicks")
     assert clicks > 0, f"Expected clicks > 0, got {clicks}"
 
 @test("GET /nonexistent_code (400 or 404)")

@@ -123,7 +123,23 @@ class TestConfigFactory:
         config = ConfigFactory.create_config()
 
         # Assert
-        config.BASE_URL == f"http://{config.HOST}:{config.PORT}/"
+        # Compared against a literal rather than against
+        # f"http://{config.HOST}:{config.PORT}/". Built from the same object,
+        # the expectation restates the implementation and holds whatever HOST
+        # and PORT turn out to be -- and it stood here for a while without an
+        # `assert` at all, quietly checking nothing either way.
+        assert config.BASE_URL == "http://localhost:5000/"
+
+        # Again with HOST and PORT off their defaults. The line above pins
+        # what the defaults are; this one pins that BASE_URL is built from
+        # the two settings at all. A BASE_URL returning the default string
+        # outright satisfied the first assertion and the whole suite.
+        monkeypatch.setenv("HOST", "example.test")
+        monkeypatch.setenv("PORT", "8080")
+        config = ConfigFactory.create_config()
+        assert config.BASE_URL == "http://example.test:8080/"
+        monkeypatch.delenv("HOST")
+        monkeypatch.delenv("PORT")
 
         monkeypatch.setenv("FLASK_ENV", "production")
         monkeypatch.setenv("DOMAIN", "test.com")
@@ -134,6 +150,13 @@ class TestConfigFactory:
         monkeypatch.setenv("REDIS_URL", "redis://...")
         config = ConfigFactory.create_config()
         assert config.BASE_URL == "https://test.com"
+
+        # And that USE_HTTPS is what decides the scheme. Without this, a
+        # BASE_URL hard-coding https satisfies the line above -- a service
+        # behind plain HTTP would then hand out https:// short links.
+        monkeypatch.setenv("USE_HTTPS", "false")
+        config = ConfigFactory.create_config()
+        assert config.BASE_URL == "http://test.com"
 
     def test_database_type_reads_from_env(self, monkeypatch):
         """DATABASE_TYPE property should read from env at runtime."""

@@ -63,7 +63,10 @@ class TestDatabaseCommands:
     def test_db_check(self, runner, app):
         result = runner.invoke(app.cli, ["db", "check"])
         assert result.exit_code == 0
-        assert "healthy" in result.output.lower() or "failed" in result.output.lower()
+        # The disjunction that stood here was already dead: the failure
+        # branch exits 1, and the assertion above rules that out, so
+        # "failed" could never appear. Naming the one word that can.
+        assert "healthy" in result.output.lower()
 
     def test_db_status(self, runner, app):
         result = runner.invoke(app.cli, ["db", "status"])
@@ -202,7 +205,13 @@ class TestMaintenanceCommands:
 
     def test_maintenance_health(self, runner, app):
         result = runner.invoke(app.cli, ["maintenance", "health"])
-        assert result.exit_code in [0, 1]
+        # `in [0, 1]` accepted the failing exit code the command uses to
+        # report an unhealthy service, so it could not tell the two apart.
+        assert result.exit_code == 0
+        # "Database: OK", not just "database": the line is printed either
+        # way, with OK or FAILED after it, so the word alone asserts only
+        # that the command produced its usual output.
+        assert "Database: OK" in result.output
 
     def test_maintenance_check_redis(self, runner, app):
         result = runner.invoke(app.cli, ["maintenance", "check-redis"])

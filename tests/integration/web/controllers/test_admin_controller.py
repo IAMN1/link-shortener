@@ -9,25 +9,25 @@ from tests.integration.conftest import (
 class TestAdminHealthUnauthorized:
     """GET /api/v1/admin/health — requires admin role."""
 
-    def test_unauthorized_returns_403(self, client):
+    def test_unauthorized_returns_401(self, client):
         r = client.get("/api/v1/admin/health")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401
 
 
 class TestAdminUsersUnauthorized:
     """GET /api/v1/admin/users — requires admin role."""
 
-    def test_unauthorized_returns_403(self, client):
+    def test_unauthorized_returns_401(self, client):
         r = client.get("/api/v1/admin/users")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401
 
 
 class TestAdminRolesUnauthorized:
     """GET /api/v1/admin/roles — requires admin role."""
 
-    def test_unauthorized_returns_403(self, client):
+    def test_unauthorized_returns_401(self, client):
         r = client.get("/api/v1/admin/roles")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401
 
 
 class TestAdminWithAdminUser:
@@ -100,7 +100,7 @@ class TestAdminWithAdminUser:
             },
             headers=csrf_headers(client, auth_headers(self.token)),
         )
-        assert created.status_code in (200, 201), created.get_json()
+        assert created.status_code == 201, created.get_json()
 
         updated = client.put(
             "/api/v1/admin/roles/editor-typo-check/permissions",

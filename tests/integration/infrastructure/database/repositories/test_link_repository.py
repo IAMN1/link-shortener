@@ -3,6 +3,7 @@
 import pytest
 from datetime import datetime, timedelta, timezone
 from link_shortener.domain.entities.link import Link
+from link_shortener.domain.exceptions import LinkNotFoundError
 from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
@@ -110,7 +111,12 @@ class TestLinkRepositoryCRUD:
         assert updated2.clicks == 2
 
     def test_increment_clicks_nonexistent(self, repo):
-        with pytest.raises(Exception):
+        # LinkNotFoundError, not Exception: the documented contract is that
+        # particular error, and a bare Exception cannot tell it from a typo
+        # in the query or a broken session. `match` pins the short code into
+        # the message -- without it, raising LinkNotFoundError() with no
+        # argument passes while the error stops saying which link.
+        with pytest.raises(LinkNotFoundError, match="noexist"):
             repo.increment_clicks(ShortCode("noexist"))
 
     def test_count_guest_links(self, repo):

@@ -4,7 +4,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/badge/coverage-88%25-blue.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-89%25-blue.svg)]()
 
 ## Возможности
 
@@ -297,7 +297,7 @@ uv run pytest tests/ -v
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 1239 (unit + integration + e2e), покрытие: 88%
+Тесты: 1241 (unit + integration + e2e), покрытие: 89%
 
 ### CI
 

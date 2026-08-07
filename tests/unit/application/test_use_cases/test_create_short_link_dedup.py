@@ -308,14 +308,20 @@ class TestAnInternalFailureIsNotReportedAsBadInput:
     def test_a_value_error_from_the_repository_is_not_turned_into_400(
         self, use_case, uow
     ):
-        uow.links.find_live_by_hash.side_effect = ValueError(
+        internal = ValueError(
             "could not convert string to float: internal-column-42"
         )
+        uow.links.find_live_by_hash.side_effect = internal
 
         with pytest.raises(ValueError) as raised:
             use_case.execute(URL, _context(user_id="user-a"))
 
-        assert not isinstance(raised.value, ValidationError)
+        # The very object the repository raised, neither replaced nor
+        # wrapped. `assert not isinstance(raised.value, ValidationError)`
+        # stood here and could never fail: ValidationError descends from
+        # DomainError, not from ValueError, so pytest.raises(ValueError)
+        # had already excluded it a line earlier.
+        assert raised.value is internal
 
     def test_the_internal_message_is_not_rewritten_into_the_answer(
         self, use_case, uow

@@ -59,9 +59,13 @@ class TestDatabaseManager:
                 result = session.execute(
                     text("SELECT COUNT(*) FROM urls WHERE id='rollback-id'")
                 )
-                # Rollback behavior depends on session configuration
+                # Zero, not "either": `in (0, 1)` stood here and accepted the
+                # broken outcome. Measured -- replacing the rollback in
+                # DatabaseManager.session() with a commit leaves the whole
+                # suite green, so this is the only test that can notice a
+                # failed request committing its partial writes.
                 count = result.fetchone()[0]
-                assert count in (0, 1)  # Accept either behavior
+                assert count == 0
 
     def test_seed_roles(self, app):
         with app.app_context():

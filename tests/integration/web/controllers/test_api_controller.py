@@ -31,7 +31,10 @@ class TestShortenEndpoint:
         r = client.post("/api/v1/shorten", json={"url": "https://example.com"})
         assert r.status_code == 201
         data = r.get_json()
-        assert "short_code" in data or "link" in data
+        # `or "link" in data` stood here and named a key the response has
+        # never carried, so the disjunction only ever tested the first half.
+        assert "short_code" in data
+        assert "short_url" in data
 
     def test_create_with_ttl(self, client):
         r = client.post("/api/v1/shorten", json={
@@ -42,12 +45,12 @@ class TestShortenEndpoint:
     def test_duplicate_returns_same_code(self, client):
         r1 = client.post("/api/v1/shorten", json={"url": "https://dup.com"})
         r2 = client.post("/api/v1/shorten", json={"url": "https://dup.com"})
-        assert r1.status_code in (200, 201)
-        assert r2.status_code in (200, 201)
+        assert r1.status_code == 201
+        assert r2.status_code == 200
         d1 = r1.get_json()
         d2 = r2.get_json()
-        c1 = d1.get("short_code") or d1.get("link", {}).get("short_code")
-        c2 = d2.get("short_code") or d2.get("link", {}).get("short_code")
+        c1 = d1.get("short_code")
+        c2 = d2.get("short_code")
         assert c1 == c2
 
     def test_invalid_url_returns_400(self, client):
@@ -78,7 +81,7 @@ class TestLinkInfoEndpoint:
     def _create(self, client):
         r = client.post("/api/v1/shorten", json={"url": "https://info-test.com"})
         data = r.get_json()
-        return data.get("short_code") or data.get("link", {}).get("short_code")
+        return data.get("short_code")
 
     def test_get_existing_link(self, client):
         code = self._create(client)
@@ -87,7 +90,7 @@ class TestLinkInfoEndpoint:
 
     def test_get_nonexistent_returns_error(self, client):
         r = client.get("/api/v1/links/nonexist999")
-        assert r.status_code in (400, 404)
+        assert r.status_code == 404
 
 
 class TestRedirectEndpoint:
@@ -96,7 +99,7 @@ class TestRedirectEndpoint:
     def _create(self, client):
         r = client.post("/api/v1/shorten", json={"url": "https://redirect-test.com"})
         data = r.get_json()
-        return data.get("short_code") or data.get("link", {}).get("short_code")
+        return data.get("short_code")
 
     def test_redirect_302(self, client):
         code = self._create(client)
@@ -123,7 +126,7 @@ class TestRedirectEndpoint:
 
     def test_nonexistent_returns_404(self, client):
         r = client.get("/xyz999", follow_redirects=False)
-        assert r.status_code in (400, 404)
+        assert r.status_code == 404
 
 
 class TestBatchEndpoint:

@@ -567,13 +567,25 @@ class BaseConfig:
             default: Value used when the variable is unset or blank.
 
         Returns:
-            The configured value, or 0 when the backend is not PostgreSQL.
+            The configured value, 0 when the backend is not PostgreSQL, or
+            ``default`` when the profile is detached from the environment.
 
         Raises:
             ValueError: If the value is not a valid integer.
         """
         if self.DATABASE_TYPE != "postgresql":
             return 0
+
+        # IGNORE_ENV has to be honoured here as well, and was not. Reading
+        # through read_env() bypasses the EnvField descriptor, which is where
+        # the flag is otherwise obeyed -- so `testing`, the one profile that
+        # promises detachment, was reading these three from the machine.
+        # Not hypothetical: DockerTestConfig sets DATABASE_TYPE to postgresql,
+        # so the developer's own DATABASE_POOL_SIZE reached it, and a
+        # non-numeric one raised out of get_pool_params() and took the DI
+        # container down with it.
+        if self.IGNORE_ENV:
+            return default
 
         raw = read_env(name)
         if raw is None:
