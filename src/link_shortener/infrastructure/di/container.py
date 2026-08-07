@@ -78,6 +78,8 @@ class Container:
             echo=self.config.SQLALCHEMY_ECHO,
             db_type=self.config.DATABASE_TYPE,
             pool_params=self.config.get_pool_params(),
+            connect_timeout=self.config.DATABASE_CONNECT_TIMEOUT,
+            statement_timeout=self.config.DATABASE_STATEMENT_TIMEOUT,
         )
 
         # ------------------------------------------------------------------
@@ -96,6 +98,10 @@ class Container:
         self.rate_limiter_component = RateLimiterComponent(
             redis_enabled=self.config.REDIS_ENABLED,
             redis_url=self.config.REDIS_URL,
+            connect_timeout=self.config.REDIS_CONNECT_TIMEOUT,
+            socket_timeout=self.config.REDIS_SOCKET_TIMEOUT,
+            logger=self.logger_component.get_logger(__name__),
+            retry_interval=self.config.REDIS_RETRY_INTERVAL,
         )
 
         # ------------------------------------------------------------------
@@ -104,6 +110,7 @@ class Container:
         self.task_queue_component = TaskQueueComponent(
             celery_enabled=self.config.CELERY_ENABLED,
             logger=self.logger_component.get_logger(__name__),
+            retry_interval=self.config.REDIS_RETRY_INTERVAL,
         )
 
         # ------------------------------------------------------------------
@@ -120,6 +127,7 @@ class Container:
             socket_timeout=self.config.REDIS_SOCKET_TIMEOUT,
             retry_interval=self.config.REDIS_RETRY_INTERVAL,
             logger=self.logger_component.get_logger(__name__),
+            secret_key=self.config.SECRET_KEY,
         )
 
         # ------------------------------------------------------------------
@@ -128,6 +136,9 @@ class Container:
         self.health_check = InfrastructureHealthCheck(
             db_manager=self.db_component.get_db_manager(),
             cache=self.cache_component.get_cache(),
+            task_queue=self.task_queue_component.get_task_queue(),
+            timeout=self.config.HEALTH_CHECK_TIMEOUT,
+            rate_limiter=self.rate_limiter_component.get_rate_limiter(),
         )
 
         # ------------------------------------------------------------------
@@ -149,6 +160,7 @@ class Container:
             jwt_refresh_expire_days=self.config.JWT_REFRESH_TOKEN_EXPIRE_DAYS,
             jwt_algorithm=self.config.JWT_ALGORITHM,
             uow_factory=self._uow_factory,
+            logger=self.logger_component.get_logger(__name__),
         )
 
         # ------------------------------------------------------------------
@@ -224,12 +236,16 @@ class Container:
                 audit_logger=self.audit_component.get_audit_logger(),
                 task_queue=self.task_queue_component.get_task_queue(),
                 allowed_schemes=self.config.ALLOWED_SCHEMES,
+                max_url_length=self.config.MAX_URL_LENGTH,
+                allow_internal_targets=self.config.ALLOW_INTERNAL_TARGETS,
                 max_collision_attempts=self.config.MAX_COLLISION_ATTEMPTS,
                 popular_threshold=self.config.POPULAR_THRESHOLD,
                 recent_days=self.config.RECENT_DAYS,
                 guest_link_limit=self.config.GUEST_LINK_LIMIT,
                 guest_link_window_days=self.config.GUEST_LINK_WINDOW_DAYS,
                 default_guest_ttl_seconds=self.config.DEFAULT_GUEST_TTL_SECONDS,
+                max_ttl_seconds=self.config.MAX_TTL_SECONDS,
+                authorization_service=self.auth_component.get_authorization_service(),
             )
             # Wire synchronous fallback for NullTaskQueue
             if not self.config.CELERY_ENABLED:
@@ -243,14 +259,20 @@ class Container:
             self._batch_use_cases = BatchUseCasesComponent(
                 uow_factory=self._uow_factory,
                 cache=self.cache_component.get_cache(),
+                stats_cache=self.cache_component.get_cache(),
                 hash_calculator=self.policy_component.get_hash_calculator(),
                 code_generator=self.policy_component.get_code_generator(),
                 base_url=self.config.BASE_URL,
                 logger=self.logger_component.get_logger(__name__),
                 audit_logger=self.audit_component.get_audit_logger(),
                 allowed_schemes=self.config.ALLOWED_SCHEMES,
+                max_url_length=self.config.MAX_URL_LENGTH,
+                allow_internal_targets=self.config.ALLOW_INTERNAL_TARGETS,
                 max_collision_attempts=self.config.MAX_COLLISION_ATTEMPTS,
                 batch_limit=self.config.BATCH_CREATE_LIMIT,
+                guest_link_limit=self.config.GUEST_LINK_LIMIT,
+                guest_link_window_days=self.config.GUEST_LINK_WINDOW_DAYS,
+                default_guest_ttl_seconds=self.config.DEFAULT_GUEST_TTL_SECONDS,
             )
         return self._batch_use_cases
 
@@ -292,7 +314,11 @@ class Container:
             self._admin_user_use_cases = AdminUserUseCasesComponent(
                 uow_factory=self._uow_factory,
                 user_service=self._user_management_service,
+                cache=self.cache_component.get_cache(),
+                redirect_cache=self.cache_component.get_cache(),
+                stats_cache=self.cache_component.get_cache(),
                 logger=self.logger_component.get_logger(__name__),
+                audit_logger=self.audit_component.get_audit_logger(),
             )
         return self._admin_user_use_cases
 

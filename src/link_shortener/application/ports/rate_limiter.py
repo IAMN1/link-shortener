@@ -1,4 +1,24 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class RateLimitDecision:
+    """
+    The verdict on one request, plus what is left of its quota.
+
+    Both answers come from the same observation. Asking for them separately
+    meant a second round trip on every allowed request, purely to fill in a
+    response header -- and against a backend that had stopped answering,
+    that header cost a second full socket timeout.
+
+    Attributes:
+        allowed: Whether the request is within the quota.
+        remaining: Requests still available in the current window.
+    """
+
+    allowed: bool
+    remaining: int
 
 
 class RateLimiter(ABC):
@@ -37,3 +57,40 @@ class RateLimiter(ABC):
             Non-negative integer remaining.
         """
         ...
+
+    def check(self, key: str, limit: int, period: int) -> RateLimitDecision:
+        """
+        Decide on a request and report the remaining quota together.
+
+        Implementations backed by a network service should override this to
+        answer in a single round trip. The default spares implementations
+        with nothing to gain from it -- the in-memory limiter -- from having
+        to say so.
+
+        Args:
+            key: Client identifier.
+            limit: Max requests per window.
+            period: Window length in seconds.
+
+        Returns:
+            The verdict and the remaining quota.
+        """
+        allowed = self.is_allowed(key, limit, period)
+
+        return RateLimitDecision(
+            allowed=allowed, remaining=self.get_remaining(key, limit, period)
+        )
+
+    def is_enforcing(self) -> bool:
+        """
+        Report whether limits are actually being applied right now.
+
+        A limiter that cannot reach its backend lets every request through,
+        which is the right call for availability but leaves brute-force
+        protection switched off. Doing so *silently* is the part that is
+        not acceptable: this is what lets a health check say otherwise.
+
+        Returns:
+            ``True`` when the configured limits are in force.
+        """
+        return True

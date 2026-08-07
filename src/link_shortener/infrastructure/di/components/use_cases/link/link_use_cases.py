@@ -24,6 +24,9 @@ from link_shortener.application import (
     TaskQueue,
     UnitOfWork,
 )
+from link_shortener.application.ports.auth.authorization_service import (
+    AuthorizationService,
+)
 from link_shortener.domain import CodeGenerator, HashCalculator
 
 
@@ -45,12 +48,18 @@ class LinkUseCasesComponent:
         audit_logger: Audit logger for security-relevant events.
         task_queue: Asynchronous task queue for offloading work.
         allowed_schemes: URL schemes permitted for shortening.
+        max_url_length: Longest URL admitted, from ``MAX_URL_LENGTH``.
+        allow_internal_targets: Whether destinations inside the
+            deployment's own network are admitted.
         max_collision_attempts: Max retries for code generation on collision.
         popular_threshold: Click threshold for a link to be considered popular.
         recent_days: Number of days to consider a link as recent.
         guest_link_limit: Max guest links allowed in a given window.
         guest_link_window_days: Time window (days) for guest link counting.
-        default_guest_ttl_seconds: Default TTL applied to guest-created links.
+        default_guest_ttl_seconds: TTL applied to guest-created links, and
+            the most a guest may ask for.
+        max_ttl_seconds: Longest lifetime any caller may ask for.
+        authorization_service: Service that answers permission questions.
     """
 
     uow_factory: Callable[[], UnitOfWork]
@@ -63,12 +72,16 @@ class LinkUseCasesComponent:
     audit_logger: AuditLogger
     task_queue: TaskQueue
     allowed_schemes: List[str]
+    max_url_length: int
+    allow_internal_targets: bool
     max_collision_attempts: int
     popular_threshold: int
     recent_days: int
     guest_link_limit: int
     guest_link_window_days: int
     default_guest_ttl_seconds: int
+    max_ttl_seconds: int
+    authorization_service: AuthorizationService
 
     # ------------------------------------------------------------------
     # Creation
@@ -86,16 +99,20 @@ class LinkUseCasesComponent:
         return CreateShortLinkUseCase(
             uow_factory=self.uow_factory,
             cache=self.cache,
+            stats_cache=self.cache,
             hash_calculator=self.hash_calculator,
             code_generator=self.code_generator,
             base_url=self.base_url,
             logger=self.logger,
             audit_logger=self.audit_logger,
             allowed_schemes=self.allowed_schemes,
+            max_url_length=self.max_url_length,
+            allow_internal_targets=self.allow_internal_targets,
             max_collision_attempts=self.max_collision_attempts,
             guest_link_limit=self.guest_link_limit,
             guest_link_window_days=self.guest_link_window_days,
             default_guest_ttl_seconds=self.default_guest_ttl_seconds,
+            max_ttl_seconds=self.max_ttl_seconds,
         )
 
     # ------------------------------------------------------------------
@@ -104,15 +121,14 @@ class LinkUseCasesComponent:
     def get_get_link_info_use_case(self) -> GetLinkInfoUseCase:
         """Return a configured ``GetLinkInfoUseCase``.
 
-        Retrieves basic information about a link by its short code,
-        with cache-first lookup and authorisation checks.
+        Retrieves basic information about a link by its short code from the
+        repository. Takes no cache: it neither reads nor writes one.
 
         Returns:
             A ready-to-use ``GetLinkInfoUseCase`` instance.
         """
         return GetLinkInfoUseCase(
             uow_factory=self.uow_factory,
-            cache=self.cache,
             base_url=self.base_url,
             logger=self.logger,
         )
@@ -128,7 +144,6 @@ class LinkUseCasesComponent:
         """
         return GetExtendedLinkInfoUseCase(
             uow_factory=self.uow_factory,
-            cache=self.cache,
             base_url=self.base_url,
             logger=self.logger,
             popular_threshold=self.popular_threshold,
@@ -160,14 +175,14 @@ class LinkUseCasesComponent:
         """Return a configured ``UpdateLinkStatsUseCase``.
 
         Designed to be called asynchronously (e.g. by a Celery worker);
-        increments click counts and refreshes the link cache.
+        increments click counts. Takes no cache: writing one here brought
+        deleted links back to life.
 
         Returns:
             A ready-to-use ``UpdateLinkStatsUseCase`` instance.
         """
         return UpdateLinkStatsUseCase(
             uow_factory=self.uow_factory,
-            link_cache=self.cache,
             logger=self.logger,
         )
 
@@ -187,8 +202,10 @@ class LinkUseCasesComponent:
             uow_factory=self.uow_factory,
             cache=self.cache,
             redirect_cache=self.redirect_cache,
+            stats_cache=self.cache,
             logger=self.logger,
             audit_logger=self.audit_logger,
+            authorization_service=self.authorization_service,
         )
 
     def get_get_user_links_use_case(self) -> GetUserLinksUseCase:

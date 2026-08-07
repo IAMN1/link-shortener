@@ -10,7 +10,11 @@ from link_shortener.application import (
     GetUserUseCase,
     DeleteUserUseCase,
     UserManagementService,
+    AuditLogger,
+    LinkCache,
     Logger,
+    RedirectCache,
+    StatsCache,
     UnitOfWork,
 )
 
@@ -25,7 +29,11 @@ class AdminUserUseCasesComponent:
 
     uow_factory: Callable[[], UnitOfWork]
     user_service: UserManagementService
+    cache: LinkCache
+    redirect_cache: RedirectCache
+    stats_cache: StatsCache
     logger: Logger
+    audit_logger: AuditLogger
 
     def get_create_user_use_case(self) -> CreateUserUseCase:
         """Return a configured ``CreateUserUseCase``."""
@@ -79,6 +87,10 @@ class AdminUserUseCasesComponent:
         """Return a configured ``DeleteUserUseCase``."""
         return DeleteUserUseCase(
             user_service=self.user_service,
+            cache=self.cache,
+            redirect_cache=self.redirect_cache,
+            stats_cache=self.stats_cache,
             logger=self.logger,
+            audit_logger=self.audit_logger,
             uow_factory=self.uow_factory,
         )

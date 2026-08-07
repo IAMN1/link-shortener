@@ -1,5 +1,5 @@
 from typing import Callable
-from link_shortener.application import UnitOfWork
+from link_shortener.application import Logger, UnitOfWork
 from link_shortener.infrastructure.auth.jwt_auth_service import JwtAuthenticationService
 from link_shortener.infrastructure.auth.rbac_authorization_service import RBACAuthorizationService
 
@@ -17,8 +17,9 @@ class AuthComponent:
                  jwt_refresh_expire_days: int,
                  jwt_algorithm: str,
                  uow_factory: Callable[[], UnitOfWork],
+                 logger: Logger,
     ):
-        
+
         """
         Args:
             secret_key: Secret used to sign JWT tokens.
@@ -26,6 +27,7 @@ class AuthComponent:
             jwt_refresh_expire_days: Refresh token lifetime in days.
             jwt_algorithm: JWT signing algorithm (default HS256).
             uow_factory: Factory to create Unit of Work instances.
+            logger: Application logger.
         """
 
         self.secret_key = secret_key
@@ -33,6 +35,7 @@ class AuthComponent:
         self.refresh_expire = jwt_refresh_expire_days
         self.algorithm = jwt_algorithm
         self.uow_factory = uow_factory
+        self.logger = logger
 
         self._authentication_service = None
         self._authorization_service = None
@@ -58,9 +61,13 @@ class AuthComponent:
         """
         Return the singleton ``RBACAuthorizationService``.
 
-        The service checks whether a user has a specific permission
-        based on their assigned roles.
+        The service checks whether a caller has a specific permission
+        based on their assigned roles. It needs a Unit of Work because an
+        anonymous caller is answered from the stored ``guest`` role.
         """
         if self._authorization_service is None:
-            self._authorization_service = RBACAuthorizationService()
+            self._authorization_service = RBACAuthorizationService(
+                uow_factory=self.uow_factory,
+                logger=self.logger,
+            )
         return self._authorization_service

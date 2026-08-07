@@ -12,7 +12,15 @@ class DatabaseComponent:
     The ``DatabaseManager`` is initialised lazily and remains alive for
     the lifetime of the application.
     """
-    def __init__(self, database_url: str, echo: bool, db_type: str, pool_params: dict):
+    def __init__(
+        self,
+        database_url: str,
+        echo: bool,
+        db_type: str,
+        pool_params: dict,
+        connect_timeout: int = 0,
+        statement_timeout: int = 0,
+    ):
         """
         Args:
             database_url: SQLAlchemy connection URL.
@@ -21,11 +29,15 @@ class DatabaseComponent:
             pool_params: Dictionary of connection pool parameters
                 (pool_size, max_overflow, pool_recycle, pool_pre_ping)
                 forwarded to ``create_engine`` for PostgreSQL.
+            connect_timeout: Seconds to wait for a PostgreSQL connection.
+            statement_timeout: Seconds a single statement may run.
         """
         self.database_url = database_url
         self.echo = echo
         self.db_type = db_type
         self.pool_params = pool_params
+        self.connect_timeout = connect_timeout
+        self.statement_timeout = statement_timeout
         self._manager = None
 
     def get_db_manager(self) -> DatabaseManager:
@@ -43,6 +55,8 @@ class DatabaseComponent:
                 database_url=self.database_url,
                 echo=self.echo,
                 database_type=self.db_type,
+                connect_timeout=self.connect_timeout,
+                statement_timeout=self.statement_timeout,
                 **self.pool_params
             )
             self._manager.connect()

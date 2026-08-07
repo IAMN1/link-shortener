@@ -46,6 +46,7 @@ class TestContainer:
             socket_timeout=2,
             retry_interval=10,
             logger=Mock(),
+            secret_key="di-test-secret",
         )
         cache = cache_component.get_cache()
         assert isinstance(cache, NullCache)
