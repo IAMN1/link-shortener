@@ -13,9 +13,6 @@ class TestOriginalUrl:
         "https://test.com",
         "http://test.com",
         "https://sub.domain.test.com",
-        "http://localhost",
-        "http://127.0.0.1",
-        "http://[::1]",
         "https://test.com:8080",
         "http://test.com/path",
         "https://test.com/path?query=1",
@@ -86,14 +83,18 @@ class TestOriginalUrl:
     # IP addresses (should be valid)
     # ------------------------------------------------------------------
     @pytest.mark.parametrize("valid_ip_url", [
-        "http://192.168.1.1",
-        "http://10.0.0.1",
-        "http://[2001:db8::1]",
-        "http://[::1]",
-        "http://[::ffff:192.0.2.128]",
+        "http://8.8.8.8",
+        "http://93.184.216.34",
+        "http://[2606:4700:4700::1111]",
+        "http://[2a00:1450:4001:82f::200e]",
     ])
     def test_valid_ip_address(self, valid_ip_url):
-        """Should accept valid IPv4 and IPv6 addresses."""
+        """Should accept valid IPv4 and IPv6 addresses.
+
+        Public ones. The private, loopback and link-local addresses this
+        list used to carry are refused now -- see
+        ``test_url_internal_targets``.
+        """
 
         url = OriginalUrl(valid_ip_url)
         assert url.value == valid_ip_url
@@ -108,9 +109,14 @@ class TestOriginalUrl:
         "http://test.com/\x7F",
     ])
     def test_path_with_control_characters_raises_error(self, path_with_control):
-        """Should raise ValidationError if path contains control characters."""
+        """Should raise ValidationError if path contains control characters.
 
-        with pytest.raises(ValidationError, match="Path contains control characters"):
+        The message now says "URL", not "Path": the check runs against the
+        whole submitted string, because the parser deletes some control
+        characters before any component can be inspected.
+        """
+
+        with pytest.raises(ValidationError, match="contains control characters"):
             OriginalUrl(path_with_control)
 
 

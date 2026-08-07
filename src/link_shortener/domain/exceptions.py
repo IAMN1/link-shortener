@@ -64,6 +64,44 @@ class CodeGenerationError(DomainError):
     def __init__(self, message: str = "Failed to generate unique short code after multiple attempts"):
         super().__init__(message, code="CODE_GENERATION_FAILED")
 
+class LinkConflictError(DomainError):
+    """
+    Raised when a link could not be stored because another one got there first.
+
+    Uniqueness of a short code is decided by the database, not by a lookup
+    beforehand: two requests that both check and then both insert are the
+    textbook check-then-insert race, and the loser used to surface as a 500.
+    Storage reports the conflict, and the caller retries -- by then the
+    winner's row is visible, so the retry either returns it or picks a
+    different code.
+
+    Attributes:
+        message: Error description.
+        code: Always ``"LINK_CONFLICT"``.
+    """
+
+    def __init__(
+        self, message: str = "Link conflicts with one stored concurrently"
+    ):
+        super().__init__(message, code="LINK_CONFLICT")
+
+
+class LinkCodeTakenError(DomainError):
+    """Raised when a code the caller chose is already in use.
+
+    Distinct from ``LinkConflictError``, which means a *generated* code lost
+    a race and another one will do. This one has no retry behind it: the
+    caller asked for one particular code, and answering with a different one
+    would look like the request succeeded.
+    """
+
+    def __init__(self, short_code: str):
+        self.short_code = short_code
+        super().__init__(
+            f"Short code '{short_code}' is already taken", "LINK_CODE_TAKEN"
+        )
+
+
 class LinkExpiredError(DomainError):
     """Raised when an expired link is accessed."""
     def __init__(self, short_code_str: str):
@@ -74,6 +112,19 @@ class LinkExpiredError(DomainError):
         super().__init__(message, "LINK_EXPIRED")
 
 class GuestLinkLimitExceededError(DomainError):
-    """Raised when the guest link creation limit is exceeded."""
-    def __init__(self, message: str = "Guest link limit exceeded"):
+    """Raised when the guest link creation limit is exceeded.
+
+    Attributes:
+        retry_after_seconds: How long the window lasts, so the answer can
+            say when it is worth trying again. Without it the refusal was
+            indistinguishable from the rate limiter's own 429, which clears
+            in a minute -- this one clears in a day.
+    """
+
+    def __init__(
+        self,
+        message: str = "Guest link limit exceeded",
+        retry_after_seconds: int = None,
+    ):
         super().__init__(message, "GUEST_LINK_LIMIT")
+        self.retry_after_seconds = retry_after_seconds

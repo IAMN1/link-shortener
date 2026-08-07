@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.value_objects.dedup_scope import DedupScope
 from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.owner_id import OwnerID
 from link_shortener.domain.value_objects.short_code import ShortCode
@@ -63,11 +65,28 @@ class Link:
 
         Returns:
             A new Link instance with default values (clicks=0, created_at=now).
+
+        Raises:
+            ValidationError: If the lifetime asked for cannot be expressed as
+                a date at all.
         """
         now = datetime.now(timezone.utc)
         expires_at = None
         if ttl_seconds > 0:
-            expires_at = now + timedelta(seconds=ttl_seconds)
+            try:
+                expires_at = now + timedelta(seconds=ttl_seconds)
+            except (OverflowError, OSError) as exc:
+                # The ceiling that decides policy is MAX_TTL_SECONDS, and it
+                # is configurable, which is why this floor is here as well:
+                # a lifetime past year 9999 is not a strict setting to be
+                # widened but a value with no date behind it. Left to
+                # arithmetic it raised OverflowError, no relation to
+                # ValueError, so every handler on the way out missed it and
+                # an unauthenticated request body of two fields returned 500.
+                raise ValidationError(
+                    "ttl_seconds is too large to be a date",
+                    field="ttl_seconds",
+                ) from exc
 
         return cls(
             id=link_id if link_id is not None else str(uuid.uuid4()),
@@ -77,10 +96,25 @@ class Link:
             created_at=now,
             clicks=0,
             last_accessed=None,
-            owner=owner or OwnerID(None),
+            owner=owner,
             expires_at=expires_at,
             guest_identifier=guest_identifier,
         )
+
+    def dedup_scope(self) -> DedupScope:
+        """
+        Return the scope this link deduplicates within.
+
+        Args:
+            None.
+
+        Returns:
+            The owning account's scope, the guest's scope, or the anonymous
+            scope for a link created with neither.
+        """
+        if self.owner is not None:
+            return DedupScope.for_owner(self.owner.value)
+        return DedupScope.for_guest(self.guest_identifier)
 
     def increment_clicks(self) -> None:
         """

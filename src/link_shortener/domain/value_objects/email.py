@@ -25,7 +25,11 @@ class Email:
             ValidationError: If the email does not match the expected pattern.
         """
         if not re.match(r"^[^@]+@[^@]+\.[^@]+$", self.value):
-            raise ValidationError(f"Invalid email format: {self.value}", field="email")
+            # The offending value is deliberately left out: this message
+            # reaches the client, and the same object is built from database
+            # rows, so echoing it would reflect user input and leak stored
+            # data on the read path.
+            raise ValidationError("Invalid email format", field="email")
     
     def __str__(self) -> str:
         """Return the email string."""
