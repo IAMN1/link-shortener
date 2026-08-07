@@ -21,7 +21,11 @@ class BatchItemResponse:
         is_new: True if a new link was created.
         from_cache: True if the link was retrieved from cache.
         duplicate_of: If this URL is a duplicate, the canonical original URL.
+        expires_at: When the link expires; ``None`` for a permanent one.
         processing_time_ms: Time taken to process this single URL (optional).
+        link_id: Identifier of the stored row. Internal: the web layer signs
+            it into the deletion token handed to a guest, and never puts it
+            in a response.
     """
     success: bool
     url: str
@@ -29,11 +33,15 @@ class BatchItemResponse:
     original_url: Optional[str] = None
     short_url: Optional[str] = None
     clicks: int = 0
+    # Batch is where a guest silently gets a seven-day link, so withholding
+    # the expiry here is exactly where it misleads most.
+    expires_at: Optional[datetime] = None
     error: Optional[str] = None
     is_new: bool = False
     from_cache: bool = False
     duplicate_of: Optional[str] = None
     processing_time_ms: Optional[float] = None
+    link_id: Optional[str] = None
 
     @classmethod
     def success_(
@@ -46,6 +54,8 @@ class BatchItemResponse:
         is_new: bool = False,
         from_cache: bool = False,
         duplicate_of: Optional[str] = None,
+        expires_at: Optional[datetime] = None,
+        link_id: Optional[str] = None,
     ) -> "BatchItemResponse":
         """
         Factory for a successful response item.
@@ -59,6 +69,8 @@ class BatchItemResponse:
             is_new: Whether this link was just created.
             from_cache: Whether it came from cache.
             duplicate_of: Canonical URL if this is a duplicate.
+            expires_at: When the link expires; ``None`` for a permanent one.
+            link_id: Identifier of the stored row, for the deletion token.
 
         Returns:
             BatchItemResponse with success=True.
@@ -74,6 +86,8 @@ class BatchItemResponse:
             is_new=is_new,
             from_cache=from_cache,
             duplicate_of=duplicate_of,
+            expires_at=expires_at,
+            link_id=link_id,
         )
 
     @classmethod
@@ -115,7 +129,13 @@ class BatchCreateResponse:
     from_db_count: int = 0
     new_count: int = 0
     processing_time_seconds: float = 0.0
-    created_at: datetime = field(default_factory=datetime.now(timezone.utc))
+    # A factory, not a timestamp: the field held ``datetime.now(...)`` --
+    # already a datetime -- so anything that fell back to the default
+    # raised "'datetime.datetime' object is not callable". An empty batch
+    # did exactly that and came back a 500.
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
     @classmethod
     def from_results(cls, results: List[BatchItemResponse]) -> "BatchCreateResponse":

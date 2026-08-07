@@ -50,6 +50,8 @@ class BatchResponseBuilder:
                     base_url=base_url,
                     clicks=link.clicks,
                     is_new=True,
+                    expires_at=link.expires_at,
+                    link_id=link.id,
                 )
             )
 
@@ -64,6 +66,7 @@ class BatchResponseBuilder:
                         clicks=link.clicks,
                         is_new=False,
                         duplicate_of=link.original_url.value,
+                        expires_at=link.expires_at,
                     )
                 )
         return results

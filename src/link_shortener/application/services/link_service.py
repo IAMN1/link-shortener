@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.batch import BatchCreateResponse
@@ -48,7 +48,8 @@ class LinkService:
     # Single link creation
     # ------------------------------------------------------------------
     def create_short_link(
-        self, url: str, context: RequestContext, ttl_seconds: int = 0
+        self, url: str, context: RequestContext, ttl_seconds: int = 0,
+        custom_code: Optional[str] = None,
     ) -> ShortLinkResponse:
         """Create a single short link.
 
@@ -56,11 +57,14 @@ class LinkService:
             url: Original URL to shorten.
             context: Request context (contains authentication and metadata).
             ttl_seconds: Time‑to‑live in seconds; 0 means no expiration.
+            custom_code: Code the caller chose, instead of a generated one.
 
         Returns:
             ShortLinkResponse with the created or existing link details.
         """
-        return self.create_short_link_use_case.execute(url, context, ttl_seconds=ttl_seconds)
+        return self.create_short_link_use_case.execute(
+            url, context, ttl_seconds=ttl_seconds, custom_code=custom_code
+        )
 
     # ------------------------------------------------------------------
     # Link information retrieval
@@ -158,17 +162,38 @@ class LinkService:
     # ------------------------------------------------------------------
     # Delete link
     # ------------------------------------------------------------------
-    def delete_link(self, short_code: str, context: RequestContext) -> bool:
+    def delete_link(
+        self,
+        short_code: str,
+        context: RequestContext,
+        *,
+        enforce_ownership: bool,
+        authorized_link_id: Optional[str] = None,
+    ) -> bool:
         """Delete a short link by its code.
 
         Args:
             short_code: The short code to delete.
             context: Request context.
+            enforce_ownership: Whether the requester must own the link or
+                hold ``link:delete_any``. Passed through unchanged, and
+                without a default, so this facade cannot quietly weaken the
+                use case's contract.
+            authorized_link_id: The link a verified deletion token was
+                issued for, if the request carried one.
 
         Returns:
             True if deleted, False if not found.
+
+        Raises:
+            DomainError: If the requester may not delete this link.
         """
-        return self.delete_link_use_case.execute(short_code, context)
+        return self.delete_link_use_case.execute(
+            short_code,
+            context,
+            enforce_ownership=enforce_ownership,
+            authorized_link_id=authorized_link_id,
+        )
 
     # ------------------------------------------------------------------
     # User links

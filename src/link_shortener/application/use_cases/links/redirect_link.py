@@ -20,8 +20,10 @@ class RedirectLinkUseCase(BaseUseCase):
     Resolve a short code to the original URL for HTTP redirect.
 
     Caching strategy:
-    - L1 (RedirectCache): maps short_code - original_url for fastest lookup.
-    - L2 (LinkCache): full Link object for secondary access.
+    - L1 (RedirectCache): destination plus expiry, enough to answer a
+      redirect on its own. A hit ends the request.
+    - L2 (LinkCache): full Link entity, consulted only when L1 cannot
+      answer.
 
     After returning the URL, a background task is enqueued to increment
     click counts and update audit logs asynchronously.
@@ -58,40 +60,64 @@ class RedirectLinkUseCase(BaseUseCase):
         log.debug("Redirect requested", code=short_code_str)
 
         try:
-            # Step 1: Validate short code
-            short_code = ShortCode(short_code_str)
+            # Step 1: Read the code, or answer that no link carries it
+            short_code = self._code_to_look_up(short_code_str)
 
-            # Step 2: Check L1 cache (fastest).
-            # L1 only stores the URL string, so expiration must be verified
-            # against L2 (which holds the full Link entity).
-            cached_url = self.redirect_cache.get_original_url(short_code)
-            if cached_url:
-                cached_link = self.link_cache.get_by_code(short_code)
-                if cached_link and cached_link.is_expired():
-                    log.info("Link expired (L1 cache)", short_code=short_code.value)
+            # Step 2: Ask L1. A hit is a complete answer and ends the
+            # request here -- that is the whole point of the level.
+            #
+            # It can only end the request because the entry carries its own
+            # expiry: while L1 held a bare URL string it could not say
+            # whether the link was still alive, so every hit had to consult
+            # L2 for the answer and the level saved nothing at all. An entry
+            # the cache cannot vouch for -- unreadable, written in the old
+            # format, or belonging to another code -- is reported as a miss,
+            # so it falls through to the levels that can answer.
+            cached_redirect = self.redirect_cache.get_redirect(short_code)
+
+            if cached_redirect:
+                if cached_redirect.is_expired():
+                    # Belt and braces: the entry's own lifetime is already
+                    # capped at the link's, so this should have vanished by
+                    # itself. The two clocks are not the same one.
+                    log.info("Link expired (L1)", short_code=short_code.value)
                     raise LinkExpiredError(short_code.value)
 
                 self.task_queue.enqueue_link_accessed(short_code.value, context)
-                log.info("Redirect cache hit (L1)", code=short_code.value)
-                audit.log_url_accessed(short_code=short_code.value, original_url=cached_url)
-                return cached_url
 
-            # Step 3: Check L2 cache (full link).
+                log.info(
+                    "Redirect cache hit", code=short_code.value, cache_level="L1"
+                )
+                audit.log_url_accessed(
+                    short_code=short_code.value,
+                    original_url=cached_redirect.original_url,
+                )
+
+                return cached_redirect.original_url
+
+            # Step 3: L1 could not answer. Try the full entity.
             cached_link = self.link_cache.get_by_code(short_code)
-            if cached_link:
 
+            if cached_link:
                 if cached_link.is_expired():
-                    log.info("Link expired", short_code=short_code.value)
+                    log.info("Link expired (cache)", short_code=short_code.value)
                     raise LinkExpiredError(short_code.value)
 
-                # Store in L1 cache for future fast redirects
                 orig_url = cached_link.original_url.value
-                self.redirect_cache.save_original_url(short_code, orig_url)
+                # Warm L1 from the entity, so the next request for this code
+                # is answered by one lookup instead of two.
+                self.redirect_cache.save_redirect(
+                    short_code, orig_url, cached_link.expires_at
+                )
 
                 self.task_queue.enqueue_link_accessed(short_code.value, context)
 
-                log.info("Link cache hit (L2)", code=short_code.value)
-                audit.log_url_accessed(short_code=short_code.value, original_url=orig_url)
+                log.info(
+                    "Redirect cache hit", code=short_code.value, cache_level="L2"
+                )
+                audit.log_url_accessed(
+                    short_code=short_code.value, original_url=orig_url
+                )
 
                 return orig_url
 
@@ -107,7 +133,9 @@ class RedirectLinkUseCase(BaseUseCase):
                     raise LinkExpiredError(short_code.value)
 
                 orig_url = str(link.original_url.value)
-                # Step 6: Cache on all levels
+                # Cache on all levels. save() writes the L1 redirect key too,
+                # so a stale L1 entry left over from an evicted L2 is
+                # overwritten here rather than outliving it.
                 self.link_cache.save(link)
 
             # Enqueue background stat update

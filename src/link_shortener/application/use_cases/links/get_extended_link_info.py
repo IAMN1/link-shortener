@@ -4,11 +4,10 @@ from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.link import ExtendedLinkInfoResponse
-from link_shortener.application.ports.cache.link_cache import LinkCache
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import LinkNotFoundError, ShortCode
+from link_shortener.domain import LinkExpiredError, LinkNotFoundError, ShortCode
 
 
 @dataclass
@@ -16,11 +15,12 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
     """
     Retrieve extended information including popularity, age, and clicks per day.
 
-    Flow is similar to GetLinkInfoUseCase but produces additional derived metrics.
+    Flow is the same as GetLinkInfoUseCase -- including its reasons for
+    leaving the cache alone in both directions -- but produces additional
+    derived metrics.
     """
 
     uow_factory: Callable[[], UnitOfWork]
-    cache: LinkCache
     base_url: str
     logger: Logger
     popular_threshold: int
@@ -39,6 +39,7 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
 
         Raises:
             LinkNotFoundError: If link not found.
+            LinkExpiredError: If the link exists but has expired.
             ValueError: If short code format is invalid.
             DomainError: If the user is not authorised.
         """
@@ -48,28 +49,23 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
 
         try:
 
-            short_code = ShortCode(short_code_str)
+            short_code = self._code_to_look_up(short_code_str)
 
-            # Check cache first
-            cached_link = self.cache.get_by_code(short_code)
-            if cached_link:
-                log.info("Cache hit for code", code=short_code.value)
-                return ExtendedLinkInfoResponse.from_link(
-                    cached_link, 
-                    base_url=self.base_url,
-                    popular_threshold=self.popular_threshold,
-                    recent_days=self.recent_days
-                )
-
-            # Query repository
+            # Query repository -- the authority for whether the link is
+            # still there. See GetLinkInfoUseCase for why the cache is
+            # written on this path but never read.
             with self.uow_factory(read_only=True) as uow:
                 link = uow.links.find_by_code(short_code)
                 if not link:
                     log.warning("Link not found", code=short_code.value)
                     raise LinkNotFoundError(short_code_str)
 
-            # Cache for future
-            self.cache.save(link)
+                if link.is_expired():
+                    log.info("Link expired", short_code=short_code.value)
+                    raise LinkExpiredError(short_code.value)
+
+            # Deliberately not cached -- see GetLinkInfoUseCase for why a
+            # write here reappears behind a concurrent deletion.
 
             log.info("Found in repository", short_code=short_code.value)
 
@@ -84,7 +80,7 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
             log.error("Invalid short code format", short_code=short_code_str)
             raise ValueError(f"Invalid short code: {str(e)}")
 
-        except LinkNotFoundError:
+        except (LinkNotFoundError, LinkExpiredError):
             raise
 
         except Exception as e:

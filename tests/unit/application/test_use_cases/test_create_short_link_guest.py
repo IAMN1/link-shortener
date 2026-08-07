@@ -70,15 +70,19 @@ def use_case(mock_uow_factory, mock_cache, mock_hash_calculator, mock_code_gener
     return CreateShortLinkUseCase(
         uow_factory=factory,
         cache=mock_cache,
+        stats_cache=mock_cache,
         hash_calculator=mock_hash_calculator,
         code_generator=mock_code_generator,
         base_url="https://short.link",
         logger=mock_logger,
         audit_logger=mock_audit_logger,
         allowed_schemes=["http", "https"],
+        max_url_length=2048,
+        allow_internal_targets=False,
         guest_link_limit=10,
         guest_link_window_days=1,
         default_guest_ttl_seconds=604800,
+        max_ttl_seconds=10 * 365 * 24 * 3600,
         max_collision_attempts=3,
     )
 
@@ -91,7 +95,7 @@ class TestCreateShortLinkGuest:
     ):
         factory, uow = mock_uow_factory
         mock_cache.get_by_hash.return_value = None
-        uow.links.find_by_hash.return_value = None
+        uow.links.find_live_by_hash.return_value = None
         uow.links.find_by_code.return_value = None
         uow.links.count_guest_links_by_identifier.return_value = 0
         uow.links.save.return_value = Link.create(
@@ -115,7 +119,7 @@ class TestCreateShortLinkGuest:
     ):
         factory, uow = mock_uow_factory
         mock_cache.get_by_hash.return_value = None
-        uow.links.find_by_hash.return_value = None
+        uow.links.find_live_by_hash.return_value = None
         uow.links.find_by_code.return_value = None
         uow.links.count_guest_links_by_identifier.return_value = 0
         uow.links.save.return_value = Link.create(
@@ -131,9 +135,13 @@ class TestCreateShortLinkGuest:
         assert saved_link.expires_at is not None
 
     def test_guest_limit_exceeded_raises(
-        self, use_case, mock_uow_factory, guest_context
+        self, use_case, mock_uow_factory, mock_cache, guest_context
     ):
         factory, uow = mock_uow_factory
+        # Nothing to deduplicate against, so this request really would
+        # create a link -- which is the only thing the quota charges for.
+        mock_cache.get_by_hash.return_value = None
+        uow.links.find_live_by_hash.return_value = None
         uow.links.count_guest_links_by_identifier.return_value = 10
 
         with pytest.raises(GuestLinkLimitExceededError):

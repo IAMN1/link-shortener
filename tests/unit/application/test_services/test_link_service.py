@@ -76,7 +76,23 @@ class TestLinkService:
 
         assert result == expected_response
         mock_create_use_case.execute.assert_called_once_with(
-            "https://test.com", context, ttl_seconds=0
+            "https://test.com", context, ttl_seconds=0, custom_code=None
+        )
+
+    def test_create_short_link_passes_a_chosen_code_through(
+        self, link_service, mock_create_use_case
+    ):
+        """A code the caller picked is theirs to keep, not a hint."""
+        from link_shortener.application.context import RequestContext
+
+        context = RequestContext(request_id="test-1")
+
+        link_service.create_short_link(
+            "https://test.com", context, custom_code="my-code"
+        )
+
+        mock_create_use_case.execute.assert_called_once_with(
+            "https://test.com", context, ttl_seconds=0, custom_code="my-code"
         )
 
     def test_get_link_info_delegates(self, link_service, mock_get_info_use_case):
@@ -99,10 +115,38 @@ class TestLinkService:
         context = RequestContext(request_id="test-1")
         mock_delete_link_use_case.execute.return_value = True
 
-        result = link_service.delete_link("abc123", context)
+        result = link_service.delete_link(
+            "abc123", context, enforce_ownership=True
+        )
 
         assert result is True
-        mock_delete_link_use_case.execute.assert_called_once_with("abc123", context)
+        # Passed through, not re-decided: a facade that could soften this
+        # would be a second place to get authorization wrong.
+        mock_delete_link_use_case.execute.assert_called_once_with(
+            "abc123", context, enforce_ownership=True, authorized_link_id=None
+        )
+
+    def test_delete_link_passes_the_deletion_token_through(
+        self, link_service, mock_delete_link_use_case
+    ):
+        """
+        The token is what speaks for the creator of a guest link, which has
+        no owner for ownership to match against. A facade that dropped it
+        would leave such a link undeletable by the person who made it.
+        """
+        from link_shortener.application.context import RequestContext
+
+        context = RequestContext(request_id="test-1")
+
+        link_service.delete_link(
+            "abc123", context, enforce_ownership=True,
+            authorized_link_id="link-42",
+        )
+
+        mock_delete_link_use_case.execute.assert_called_once_with(
+            "abc123", context, enforce_ownership=True,
+            authorized_link_id="link-42",
+        )
 
     def test_get_user_links_delegates(self, link_service, mock_get_user_links_use_case):
         """Should delegate to GetUserLinksUseCase.execute()."""

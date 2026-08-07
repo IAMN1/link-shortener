@@ -14,9 +14,10 @@ from .dtos.user_activity import UserActivityResponse
 # ------------------------------------------------------------------
 # Ports (interfaces)
 # ------------------------------------------------------------------
+from .ports.cache.cache_health import CacheHealth
 from .ports.cache.link_cache import LinkCache
 from .ports.cache.link_service_stats_cache import StatsCache
-from .ports.cache.redirect_cache import RedirectCache
+from .ports.cache.redirect_cache import CachedRedirect, RedirectCache
 from .ports.logger.audit import AuditLogger
 from .ports.logger.logger import Logger
 from .ports.rate_limiter import RateLimiter
@@ -104,8 +105,10 @@ __all__ = [
     "UserActivityResponse",
 
     # Ports
+    "CacheHealth",
     "LinkCache",
     "StatsCache",
+    "CachedRedirect",
     "RedirectCache",
     "AuditLogger",
     "Logger",

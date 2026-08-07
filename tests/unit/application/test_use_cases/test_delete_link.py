@@ -65,9 +65,11 @@ def use_case(mock_uow_factory, mock_cache, mock_redirect_cache, mock_logger, moc
     return DeleteLinkUseCase(
         uow_factory=factory,
         cache=mock_cache,
+        stats_cache=mock_cache,
         redirect_cache=mock_redirect_cache,
         logger=mock_logger,
         audit_logger=mock_audit_logger,
+        authorization_service=Mock(),
     )
 
 
@@ -81,13 +83,14 @@ class TestDeleteLinkUseCase:
         uow.links.find_by_code.return_value = sample_link
         uow.links.delete.return_value = True
 
-        result = use_case.execute("abc123", context)
+        result = use_case.execute("abc123", context, enforce_ownership=False)
 
         assert result is True
         uow.links.delete.assert_called_once()
         uow.commit.assert_called_once()
-        mock_cache.delete.assert_called_once()
-        mock_redirect_cache.delete.assert_called_once()
+        # The entity, not the code: only it names the deduplication key.
+        mock_cache.delete.assert_called_once_with(sample_link)
+        mock_redirect_cache.delete_redirect.assert_called_once()
 
     def test_delete_nonexistent_link(
         self, use_case, mock_uow_factory, mock_cache, mock_redirect_cache, context
@@ -95,12 +98,32 @@ class TestDeleteLinkUseCase:
         factory, uow = mock_uow_factory
         uow.links.find_by_code.return_value = None
 
-        result = use_case.execute("abc123", context)
+        result = use_case.execute("abc123", context, enforce_ownership=False)
 
         assert result is False
         uow.links.delete.assert_not_called()
+        # Nothing is deleted from the table, and the entity-keyed
+        # invalidation cannot run without an entity.
         mock_cache.delete.assert_not_called()
-        mock_redirect_cache.delete.assert_not_called()
+
+    def test_a_cache_entry_that_outlived_its_row_is_still_cleared(
+        self, use_case, mock_uow_factory, mock_cache, mock_redirect_cache, context
+    ):
+        """
+        The answer stays 404, but the code-keyed entries go.
+
+        An entry surviving its row is the state a second DELETE is issued to
+        clear: every API surface calls the link deleted while the redirect
+        keeps serving it for the rest of CACHE_LINK_TTL. Returning early
+        left no command in the service able to touch it.
+        """
+        factory, uow = mock_uow_factory
+        uow.links.find_by_code.return_value = None
+
+        use_case.execute("abc123", context, enforce_ownership=False)
+
+        mock_cache.delete_by_code.assert_called_once()
+        mock_redirect_cache.delete_redirect.assert_called_once()
 
     def test_cache_invalidated_after_delete(
         self, use_case, mock_uow_factory, mock_cache, mock_redirect_cache, sample_link, context
@@ -109,19 +132,19 @@ class TestDeleteLinkUseCase:
         uow.links.find_by_code.return_value = sample_link
         uow.links.delete.return_value = True
 
-        use_case.execute("abc123", context)
+        use_case.execute("abc123", context, enforce_ownership=False)
 
         mock_cache.delete.assert_called_once()
-        mock_redirect_cache.delete.assert_called_once()
+        mock_redirect_cache.delete_redirect.assert_called_once()
 
     def test_invalid_short_code_returns_false(
         self, use_case, mock_uow_factory, mock_cache, mock_redirect_cache, context
     ):
-        result = use_case.execute("", context)
+        result = use_case.execute("", context, enforce_ownership=False)
 
         assert result is False
         mock_cache.delete.assert_not_called()
-        mock_redirect_cache.delete.assert_not_called()
+        mock_redirect_cache.delete_redirect.assert_not_called()
 
     def test_delete_fails_returns_false(
         self, use_case, mock_uow_factory, mock_cache, mock_redirect_cache, sample_link, context
@@ -130,9 +153,9 @@ class TestDeleteLinkUseCase:
         uow.links.find_by_code.return_value = sample_link
         uow.links.delete.return_value = False
 
-        result = use_case.execute("abc123", context)
+        result = use_case.execute("abc123", context, enforce_ownership=False)
 
         assert result is False
         uow.commit.assert_not_called()
         mock_cache.delete.assert_not_called()
-        mock_redirect_cache.delete.assert_not_called()
+        mock_redirect_cache.delete_redirect.assert_not_called()
