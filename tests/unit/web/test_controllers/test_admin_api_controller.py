@@ -33,7 +33,13 @@ class TestAdminApiController:
 
         response = client.post(
             "/api/v1/admin/users",
-            json={"email": "admin@test.com", "password": "pass123", "roles": ["admin"]},
+            # Eight characters: the schema's floor now comes from the domain
+            # policy, which is what actually refuses a weaker one.
+            json={
+                "email": "admin@test.com",
+                "password": "a-password-of-their-own",
+                "roles": ["admin"],
+            },
         )
         assert response.status_code == 201
 
@@ -201,12 +207,16 @@ class TestAdminApiController:
         mock_health.database = True
         mock_health.redis = True
         mock_health.task_queue = True
+        mock_health.rate_limiter = True
         ctrl.admin_service.get_service_health.return_value = mock_health
 
         response = client.get("/api/v1/admin/health")
         assert response.status_code == 200
         data = response.get_json()
         assert data["database"] is True
+        # The admin panel reports the same components the container probe
+        # does, from the same snapshot.
+        assert set(data) == {"database", "cache", "task_queue", "rate_limiter"}
 
     def test_get_user_stats(self, app, client):
         """GET /api/v1/admin/users/<id>/stats returns user stats."""

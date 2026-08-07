@@ -6,6 +6,12 @@ from link_shortener.application.dtos.user import UserResponse
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.services.user_management_service import UserManagementService
+from link_shortener.application.use_cases.admin.privilege_guard import (
+    is_administrator,
+    require_administrator_remains,
+    require_may_grant_roles,
+    would_keep_admin,
+)
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import DomainError
 
@@ -40,7 +46,9 @@ class UpdateUserRolesUseCase(BaseUseCase):
             UserResponse reflecting the new roles.
 
         Raises:
-            DomainError: If the caller is not authorized.
+            DomainError: If the caller is not authorized, if a role carries
+                a permission the caller does not hold, or if the change
+                would leave the system without an administrator.
         """
         log = self._get_logger(self.logger, context)
 
@@ -50,7 +58,18 @@ class UpdateUserRolesUseCase(BaseUseCase):
                 role = uow.roles.get_by_name(name)
                 if not role:
                     raise DomainError(f"Role '{name}' not found", code="VALIDATION_ERROR")
-                roles.append(role) 
+                roles.append(role)
+
+            # ``admin:manage_users`` used to be a shorter spelling of
+            # ``admin:all``: assign yourself the admin role, read the
+            # permissions back. Nothing asked whether the caller was
+            # entitled to what they were handing out.
+            require_may_grant_roles(context, uow, roles)
+
+            # Asked in the same transaction that will write the change, and
+            # only when it actually takes the permission away.
+            if is_administrator(uow, user_id) and not would_keep_admin(roles):
+                require_administrator_remains(uow, user_id)
 
             updated_user = self.user_service.update_roles(uow, user_id, roles)
             uow.commit()

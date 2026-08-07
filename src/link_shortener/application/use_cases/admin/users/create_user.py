@@ -6,6 +6,9 @@ from link_shortener.application.dtos.user import UserResponse
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.services.user_management_service import UserManagementService
+from link_shortener.application.use_cases.admin.privilege_guard import (
+    require_may_grant_roles,
+)
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import DomainError
 
@@ -57,7 +60,11 @@ class CreateUserUseCase(BaseUseCase):
                     if not role:
                         raise DomainError(f"Role '{name}' not found", code="VALIDATION_ERROR")
                     roles.append(role)
-        
+
+                # Creating an account is another way of handing out a role,
+                # so it answers to the same rule as reassigning one.
+                require_may_grant_roles(context, uow, roles)
+
             try:
                 new_user = self.user_service.create_user(
                     uow=uow,

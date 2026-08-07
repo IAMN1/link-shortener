@@ -61,6 +61,11 @@ permissions:
     action: "view_full"
     description: "View extended statistics including list of popular links"
 
+  - name: "stats:view_any"
+    resource: "stats"
+    action: "view_any"
+    description: "View detailed statistics of any link, not only one's own"
+
   # --- Administrative Functions ---
   - name: "admin:view_users"
     resource: "admin"
@@ -110,14 +115,17 @@ permissions:
 #                  that this role grants.
 # ------------------------------------------------------------------------------
 roles:
-  # Guest role – represents unauthenticated visitors.
-  # This role is typically not assigned to any user; it serves as a template
-  # for public endpoints and can be used for explicit guest checks.
+  # Guest role – the role an unauthenticated request acts under.
+  # It is assigned to no user: the authorization service answers anonymous
+  # callers from this role directly. Whatever is listed here is additionally
+  # capped by ANONYMOUS_PERMISSION_CEILING in rbac_authorization_service.py,
+  # so widening this list alone cannot hand a permission to the internet.
   - name: "guest"
     description: "Unauthenticated visitor with minimal access"
     is_system: true
     permissions:
       - "stats:view_basic"
+      - "link:create"
 
   # Default role assigned to newly registered users.
   - name: "user"
@@ -137,6 +145,7 @@ roles:
       - "link:view_own"
       - "stats:view_basic"
       - "stats:view_full"
+      - "stats:view_any"
 
   # Administrator role – has full control over the system.
   - name: "admin"
@@ -157,3 +166,4 @@ roles:
       - "link:delete_own"
       - "stats:view_basic"
       - "stats:view_full"
+      - "stats:view_any"

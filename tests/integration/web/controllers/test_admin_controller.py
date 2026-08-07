@@ -1,7 +1,9 @@
 """Integration tests for admin endpoints with real DB."""
 
 import pytest
-from tests.integration.conftest import register_and_login, auth_headers
+from tests.integration.conftest import (
+    auth_headers, csrf_headers, register_and_login
+)
 
 
 class TestAdminHealthUnauthorized:
@@ -81,3 +83,58 @@ class TestAdminWithAdminUser:
     def test_admin_roles_list(self, client):
         r = client.get("/api/v1/admin/roles", headers=auth_headers(self.token))
         assert r.status_code == 200
+
+    def test_a_typo_in_a_permission_does_not_quietly_narrow_a_role(self, client):
+        """
+        Creating a role with an unknown permission raised; updating one
+        with the same typo answered 200 and dropped it. The admin sees a
+        success and a role that lost a permission -- and the two endpoints
+        disagreed about the same mistake.
+        """
+        created = client.post(
+            "/api/v1/admin/roles",
+            json={
+                "name": "editor-typo-check",
+                "description": "for the typo test",
+                "permissions": ["link:create", "link:view_own"],
+            },
+            headers=csrf_headers(client, auth_headers(self.token)),
+        )
+        assert created.status_code in (200, 201), created.get_json()
+
+        updated = client.put(
+            "/api/v1/admin/roles/editor-typo-check/permissions",
+            json={"permissions": ["link:create", "link:vew_own"]},
+            headers=csrf_headers(client, auth_headers(self.token)),
+        )
+
+        assert updated.status_code == 400, updated.get_json()
+
+        role = client.get(
+            "/api/v1/admin/roles/editor-typo-check",
+            headers=auth_headers(self.token),
+        ).get_json()
+        names = {
+            item["name"] if isinstance(item, dict) else item
+            for item in role["permissions"]
+        }
+        assert names == {"link:create", "link:view_own"}
+
+    def test_a_correct_update_still_goes_through(self, client):
+        client.post(
+            "/api/v1/admin/roles",
+            json={
+                "name": "editor-happy-path",
+                "description": "for the typo test",
+                "permissions": ["link:create"],
+            },
+            headers=csrf_headers(client, auth_headers(self.token)),
+        )
+
+        updated = client.put(
+            "/api/v1/admin/roles/editor-happy-path/permissions",
+            json={"permissions": ["link:create", "link:view_own"]},
+            headers=csrf_headers(client, auth_headers(self.token)),
+        )
+
+        assert updated.status_code == 200, updated.get_json()

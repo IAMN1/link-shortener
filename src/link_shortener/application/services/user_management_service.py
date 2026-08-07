@@ -140,6 +140,29 @@ class UserManagementService:
         user.activate()
         return uow.users.save(user)
     
+    def update_password(self, uow: UnitOfWork, user: User, new_password: str) -> User:
+        """
+        Replace a user's password with a freshly hashed one.
+
+        Args:
+            uow: Unit of work.
+            user: The user whose password is being changed.
+            new_password: New plain-text password.
+
+        Returns:
+            Updated User.
+
+        Raises:
+            ValidationError: If the password is empty.
+        """
+        if not new_password:
+            raise ValidationError("Password must not be empty", field="password")
+
+        hashed = self.authentication_service.hash_password(new_password)
+        user.password_hash = PasswordHash(hashed)
+
+        return uow.users.save(user)
+
     def list_users(self, uow: UnitOfWork, limit: int = 100, offset: int = 0) -> List[User]:
         """
         Retrieve a paginated list of users.

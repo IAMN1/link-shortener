@@ -232,4 +232,5 @@ class AdminApiController:
             "database": health.database,
             "cache": health.redis,
             "task_queue": health.task_queue,
+            "rate_limiter": health.rate_limiter,
         })

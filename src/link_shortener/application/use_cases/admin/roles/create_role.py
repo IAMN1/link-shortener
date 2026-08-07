@@ -6,6 +6,9 @@ from link_shortener.application.dtos.admin.role import RoleResponse
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.services.role_management_service import RoleManagementService
+from link_shortener.application.use_cases.admin.privilege_guard import (
+    require_may_grant_permissions,
+)
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import DomainError
 
@@ -42,11 +45,19 @@ class CreateRoleUseCase(BaseUseCase):
             RoleResponse for the created role.
 
         Raises:
-            DomainError: If the user is not authorized or a domain rule is violated.
+            DomainError: If the user is not authorized, if a requested
+                permission exceeds what the caller holds, or if a domain
+                rule is violated.
         """
         log = self._get_logger(self.logger, context)
 
         with self.uow_factory() as uow:
+            # A role is a bundle of permissions, and handing one out is
+            # handing them out. Without this, ``admin:manage_roles`` was a
+            # two-step spelling of ``admin:all``: put the permission in a
+            # role you already wear, then read it back.
+            require_may_grant_permissions(context, uow, permission_names)
+
             try:
                 role = self.role_service.create_role(
                     uow=uow,

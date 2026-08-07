@@ -6,6 +6,9 @@ from link_shortener.application.dtos.admin.role import RoleResponse
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.services.role_management_service import RoleManagementService
+from link_shortener.application.use_cases.admin.privilege_guard import (
+    require_may_grant_permissions,
+)
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import DomainError
 
@@ -39,11 +42,17 @@ class UpdateRolePermissionsUseCase(BaseUseCase):
             RoleResponse reflecting the updated role.
 
         Raises:
-            DomainError: If the user is not authorized or the role update fails.
+            DomainError: If the user is not authorized, if a requested
+                permission exceeds what the caller holds, or if the role
+                update fails.
         """
         log = self._get_logger(self.logger, context)
 
         with self.uow_factory() as uow:
+            # See CreateRoleUseCase: widening a role the caller wears is
+            # the same escalation by another route.
+            require_may_grant_permissions(context, uow, permission_names)
+
             try:
                 role = self.role_service.update_role_permissions(uow, role_name, permission_names)
                 uow.commit()
