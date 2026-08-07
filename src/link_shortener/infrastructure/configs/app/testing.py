@@ -1,6 +1,6 @@
-import os
-
-from link_shortener.infrastructure.configs.app.base import BaseConfig
+from link_shortener.infrastructure.configs.app.base import (
+    BaseConfig, MAX_BATCH_ITEMS
+)
 
 
 class TestingConfig(BaseConfig):
@@ -8,7 +8,15 @@ class TestingConfig(BaseConfig):
     Configuration for automated testing (pytest).
     Uses in-memory SQLite database, disables most external services,
     and provides dummy secrets.
+
+    The whole class is detached from the environment (see ``IGNORE_ENV``):
+    a test run must produce the same result on a developer laptop and in CI,
+    regardless of what happens to be exported in the shell or written in a
+    local ``.env``. Tests that need a different value subclass this config and
+    override the attribute directly – see ``tests/integration/conftest.py``.
     """
+
+    IGNORE_ENV: bool = True
 
     TESTING: bool = True
     DEBUG: bool = False
@@ -22,9 +30,14 @@ class TestingConfig(BaseConfig):
 
 
     # --------------------------------------------------------------------------
-    # Higher batch limit for test scenarios
+    # Batch limit: the ceiling itself
     # --------------------------------------------------------------------------
-    BATCH_CREATE_LIMIT: int = int(os.environ.get("BATCH_CREATE_LIMIT", 200))
+    BATCH_CREATE_LIMIT: int = MAX_BATCH_ITEMS
+    """Was 200, which the request schema refused at 101 anyway.
+
+    A test written against 200 measured the schema's message, not this
+    setting -- and the profile that sets it is the one the suite runs on.
+    """
 
 
     # --------------------------------------------------------------------------
@@ -36,9 +49,7 @@ class TestingConfig(BaseConfig):
     # --------------------------------------------------------------------------
     # Database: always SQLite in-memory for tests
     # --------------------------------------------------------------------------
-    @property
-    def DATABASE_URL(self) -> str:
-        return os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+    DATABASE_URL: str = "sqlite:///:memory:"
 
     @property
     def DATABASE_TYPE(self) -> str:

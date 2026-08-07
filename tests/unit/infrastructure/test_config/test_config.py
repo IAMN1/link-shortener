@@ -55,10 +55,11 @@ class TestConfigFactory:
         
         monkeypatch.setenv('FLASK_ENV', 'production')
 
-        # Prevent loading variables from .env file
-        mocker.patch(
-            'link_shortener.infrastructure.configs.app.factory.load_dotenv',
-            return_value=None
+        # Prevent loading variables from .env files: a developer machine may
+        # well have a .env with SECRET_KEY in it, and the point of this test is
+        # the behaviour when nothing is configured.
+        mocker.patch.object(
+            ConfigFactory, '_apply_env_files', return_value=None
         )
 
         # Ensure required variables are absent
