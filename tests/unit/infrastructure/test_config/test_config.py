@@ -155,8 +155,24 @@ class TestConfigFactory:
         config = DevelopmentConfig()
         assert config.AUTO_SEED_ROLES is True
 
-    def test_production_config_cookie_security(self, monkeypatch):
-        """ProductionConfig should enforce secure cookie settings."""
+    def test_production_config_cookie_security(self, monkeypatch, tmp_path):
+        """ProductionConfig should enforce secure cookie settings.
+
+        Run from an empty directory on purpose. The ``production`` profile
+        reads ``.env``, and ``.env.example`` -- which the quick start tells
+        you to copy -- sets ``SESSION_COOKIE_SECURE=false`` for local work
+        without TLS. So this passed for whoever wrote it, whose ``.env``
+        happened not to carry that key, and failed on a fresh clone that
+        followed the instructions. What is under test is the profile's own
+        rule, not the profile plus whatever the machine has lying around.
+        """
+        monkeypatch.chdir(tmp_path)
+        for name in (
+            "SESSION_COOKIE_SECURE", "SESSION_COOKIE_HTTPONLY",
+            "SESSION_COOKIE_SAMESITE", "COOKIE_SECURE",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
         monkeypatch.setenv("FLASK_ENV", "production")
         monkeypatch.setenv("SECRET_KEY", "prod-key")
         monkeypatch.setenv("SHORT_CODE_PEPPER", "prod-pepper")
