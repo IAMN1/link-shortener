@@ -30,9 +30,46 @@
 
 **Известные ограничения:**
 - Нет HTTPS в режиме разработки
-- Health check для Celery — заглушка (всегда возвращает true)
 - Нет link preview / OG-тегов
 - Нет версионирования API выше v1
+- Нагрузочный профиль не снимался: пулы соединений и таймауты выставлены по
+  рассуждению, а не по замеру
+- Нет CI — зелёный прогон держится на том, что его кто-то запускает вручную
+- `infrastructure/failover/failover_service.py` покрыт на 54%, заметно хуже
+  остальной инфраструктуры. Это компонент, который работает, когда
+  остальное уже сломалось
+
+## Открытые решения
+
+Найдено при аудите, воспроизведено, но **не изменено**: каждое меняет
+поведение так, что решать должен владелец проекта. Записано здесь, чтобы не
+всплыло через полгода как новость.
+
+**Путь к SQLite относителен рабочему каталогу.** `flask` из подкаталога
+создаёт *другую* базу — проверено, запуск из `src/` породил
+`src/db_shortener.db`, пустой. При документированном запуске из корня
+проблемы нет. Правка (разрешать относительный путь от корня проекта)
+безопасна для правильного использования, но меняет то, где ищется файл БД.
+
+**Две реализации `AuditLogger` расходятся в приоритете полей.**
+`StandardAuditLogger` даёт победить полю вызова (`{**bound, **call}`),
+`StructlogAuditLogger` — связанному. Failover переключает реализацию сам,
+без чьего-либо участия, так что для имени поля, использованного и там и там,
+содержимое аудит-журнала зависит от того, какая реализация сейчас активна.
+Оба правила зафиксированы тестами в
+`tests/unit/infrastructure/test_logging/test_audit_handlers.py`; какое из
+них верное — не решено.
+
+**`mask_url` не маскирует учётные данные.** Вопреки названию и docstring'ам
+аудит-логгеров, функция только укорачивает URL длиннее 100 символов. Адрес
+с `user:pass@` или токеном в query, если он короче, попадает в аудит-журнал
+целиком — а секреты обычно короткие. Поведение зафиксировано тестом
+`test_credentials_in_a_short_url_are_not_removed`.
+
+**PostgreSQL публикуется на `0.0.0.0`.** Оба Redis намеренно привязаны к
+петле — записи кэша ничем не защищены от того, кто может в них писать. Те же
+соображения применимы и к БД, которая хранит вообще всё, но менять привязку
+без решения владельца нельзя: это может отрезать существующие подключения.
 
 ## Архитектура
 
@@ -63,7 +100,8 @@ src/link_shortener/
 uv run pytest tests/unit/ -v
 
 # Уровень 2: Интеграционные тесты (реальная in-memory SQLite)
-uv run pytest tests/integration/ -v
+# --ignore нужен, иначе соберётся и уровень 2b, требующий Docker
+uv run pytest tests/integration/ --ignore=tests/integration/docker/ -v
 
 # Уровень 2b: Интеграционные тесты (реальный PostgreSQL + Redis)
 # Docker-сервисы поднимаются автоматически
@@ -79,28 +117,44 @@ uv run pytest tests/ -v
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 319 (unit + integration + e2e), покрытие: 79%
+Тесты: 1229 (unit + integration + e2e), покрытие: 88%
 
 ### Структура тестов
 
 ```
 tests/
 ├── unit/                          # Моки, изолированно
-│   ├── domain/                    # Сущности, value objects
-│   ├── application/               # Use cases, services
+│   ├── domain/                    # Сущности, value objects, политики
+│   ├── application/               # Use cases, services, порты
 │   ├── infrastructure/            # Config, cache, task queue
-│   └── web/                       # Controllers, middleware
+│   │   ├── test_auth/             # JWT: обязательные claim'ы, контракт authenticate()
+│   │   └── test_logging/          # Форматтеры, адаптеры логгеров и аудита
+│   └── web/                       # Controllers, middleware, security, schemas
 │
 ├── integration/                   # Реальная in-memory SQLite
-│   ├── infrastructure/database/   # Repository CRUD, UoW
+│   ├── application/               # Кэш против БД, удаление, кастомные коды
+│   ├── infrastructure/database/   # Repository CRUD, UoW, миграции
 │   ├── web/controllers/           # API, Auth, Admin
-│   ├── web/middleware/            # Authentication
+│   ├── web/middleware/            # Authentication, CSRF
+│   ├── web/test_templates/        # Шаблоны против маршрутов
 │   ├── cli/                       # CLI команды
 │   └── docker/                    # Реальный PostgreSQL + Redis (Docker)
 │
 ├── e2e/                           # Полные пользовательские сценарии
 └── live/                          # Smoke test всех эндпоинтов
 ```
+
+> **Docker-тесты не пропускаются молча.** Недоступный демон Docker — это
+> законный пропуск: машина не может их выполнить. Всё остальное — отказ.
+> Различие появилось не сразу: однажды тестовый стек не поднялся из-за
+> занятого порта, все ветки отчитались `skipped`, и прогон вернулся зелёным
+> — `492 passed, 16 skipped` вместо прежних `508 passed`. Заметил это
+> только подсчёт.
+
+> **Миграции проверяются отдельно.** `integration/infrastructure/database/
+> test_migrations.py` прогоняет цепочку ревизий на настоящем файле БД.
+> Остальные тесты строят схему через `create_all` из моделей и ревизий не
+> исполняют — из-за чего сломанная миграция долго оставалась незамеченной.
 
 ## Ключевые файлы
 
@@ -111,33 +165,88 @@ tests/
 | `infrastructure/di/components/` | Компоненты DI (cache, database, auth, use_cases) |
 | `infrastructure/database/role_loader.py` | Загрузка RBAC из YAML в базу данных |
 | `infrastructure/configs/app/base.py` | Все константы конфигурации с переопределением через env |
+| `infrastructure/configs/app/env.py` | Дескрипторы ленивого чтения env (`env_str`, `env_int`, ...) |
+| `infrastructure/configs/app/factory.py` | Выбор профиля и загрузка `.env`-файлов |
+| `migrations/versions/0001_initial_schema.py` | Baseline-миграция: вся схема с нуля |
 | `web/controllers/api_controller.py` | REST API эндпоинты |
 | `web/controllers/auth_controller.py` | Auth эндпоинты (login, register, refresh, logout) |
 | `web/controllers/admin_api_controller.py` | Admin API эндпоинты |
 | `web/controllers/dashboard_controller.py` | HTML-страницы панели управления |
 | `domain/entities/link.py` | Основная сущность Link с бизнес-правилами |
 | `web/middleware/rate_limit.py` | Rate limiting middleware |
+| `web/middleware/authentication.py` | Разбор токена (заголовок или cookie), загрузка `g.current_user` |
+| `web/middleware/csrf.py` | CSRF-защита cookie-сессий (double-submit) |
 
 ## Жизненный цикл гостевой ссылки
 
 1. Гость отправляет POST на `/api/v1/shorten` с URL
 2. `CreateShortLinkUseCase` проверяет лимит гостя (`GUEST_LINK_LIMIT` за `GUEST_LINK_WINDOW_DAYS`)
-3. Если в пределах лимита, создаёт ссылку с `expires_at = now + DEFAULT_GUEST_TTL_SECONDS`
+3. Если в пределах лимита, создаёт ссылку с `expires_at = now + DEFAULT_GUEST_TTL_SECONDS`.
+   Это потолок, а не только значение по умолчанию: гость, приславший
+   больший `ttl_seconds`, получит ровно `DEFAULT_GUEST_TTL_SECONDS`
 4. Идентификатор гостя (IP-адрес) сохраняется для rate limiting
 5. Ссылка кэшируется в Redis (L1 + L2)
 6. После `expires_at` ссылка возвращает ошибку при редиректе
 
 ## Конфигурация
 
-Все настройки в `.env` или переменных окружения. См. `infrastructure/configs/app/base.py` для значений по умолчанию. Ключевые настройки:
+### Профили и .env
+
+`FLASK_ENV` выбирает профиль — класс конфигурации из
+`infrastructure/configs/app/`: `development`, `staging`, `production`,
+`testing`. Профиль задаёт умолчания, `.env` их переопределяет.
+
+Приоритет, побеждает верхний:
+
+1. настоящая переменная окружения;
+2. `.env.<профиль>`;
+3. `.env`;
+4. умолчание профиля в коде.
+
+Профиль `testing` не читает `.env` — см. `ConfigFactory.NO_DOTENV_ENVS`.
+
+### Как объявляются значения
+
+Поля конфигурации объявляются через хелперы из
+`infrastructure/configs/app/env.py`, а не через `os.environ.get()` напрямую:
+
+```python
+class BaseConfig:
+    GUEST_LINK_LIMIT: int = env_int("GUEST_LINK_LIMIT", 10)
+    CORS_ORIGINS: list = env_list("CORS_ORIGINS", ["http://localhost:5000"])
+    REDIS_ENABLED: bool = env_bool("REDIS_ENABLED", False)
+```
+
+Хелперы возвращают дескриптор, который читает окружение **в момент обращения**
+к атрибуту. Прямой вызов `os.environ.get()` в теле класса выполняется при
+импорте модуля — то есть до того, как фабрика успевает загрузить `.env`,
+и значение из файла молча теряется.
+
+Внутри тел методов и `@property` можно использовать `os.environ.get()`
+как обычно: они и так вычисляются лениво.
+
+Доступные хелперы: `env_str`, `env_int`, `env_float`, `env_bool`, `env_list`
+(последний разбирает строку через запятую).
+
+Подклассы могут перекрывать поле обычным литералом — например
+`TestingConfig.SECRET_KEY = "test-secret-key"`. Обычный атрибут перекрывает
+дескриптор, и значение перестаёт зависеть от окружения; для тестов это нужное
+поведение.
+
+### Ключевые настройки
+
+Полный список — в `.env.example`.
 
 | Настройка | По умолчанию | Описание |
 |-----------|--------------|----------|
 | `GUEST_LINK_LIMIT` | 10 | Макс. гостевых ссылок за окно |
 | `GUEST_LINK_WINDOW_DAYS` | 1 | Окно rate limit |
-| `DEFAULT_GUEST_TTL_SECONDS` | 604800 | Время жизни гостевых ссылок (7 дней) |
-| `CACHE_LINK_TTL` | 20 | TTL кэша ссылок (секунды) |
-| `CACHE_STATS_TTL` | 20 | TTL кэша статистики (секунды) |
+| `DEFAULT_GUEST_TTL_SECONDS` | 604800 | Время жизни гостевых ссылок (7 дней) — и значение по умолчанию, и потолок |
+| `MAX_TTL_SECONDS` | 315360000 | Максимальный срок жизни ссылки для любого вызывающего (10 лет) |
+| `MAX_URL_LENGTH` | 2048 | Максимальная длина исходного URL; выше не поднять — ширина колонки |
+| `ALLOW_INTERNAL_TARGETS` | false | Разрешить ссылки внутрь собственной сети (петля, приватные диапазоны, метаданные облака) |
+| `CACHE_LINK_TTL` | 3600 (20 в development) | TTL кэша ссылок (секунды) |
+| `CACHE_STATS_TTL` | 300 (20 в development) | TTL кэша статистики (секунды) |
 | `COOKIE_SECURE` | false | Secure-флаг для cookie (true в production) |
 | `TRUSTED_PROXIES` | (пусто) | Список доверенных прокси через запятую |
 | `CORS_ORIGINS` | http://localhost:5000 | Разрешённые origins для CORS |
@@ -147,15 +256,61 @@ tests/
 
 - JWT токены содержат `type` claim ("access"/"refresh") для предотвращения abuse
 - Авторизация только через `Authorization: Bearer <token>` header
-- `X-Forwarded-For` проверяется через `TRUSTED_PROXIES` перед доверием
+- `X-Forwarded-For` читается, только если запрос пришёл с адреса из
+  `TRUSTED_PROXIES`, и берётся **крайний правый** элемент — тот, который
+  дописал сам прокси и который клиент подделать не может. Значение обязано
+  быть IP-адресом, иначе берётся адрес соединения
+- Сокращать ссылки внутрь собственной сети нельзя: блок-лист приватных,
+  loopback и link-local диапазонов применяется к **числовому значению
+  присланного написания**, а не к его буквальной форме, поэтому
+  `0177.0.0.1`, `127.1`, `2130706433` и `１２７．０．０．１` распознаются как
+  петля. Юзеринфо в URL запрещено: `http://good.example@evil.example/`
+  показывает жертве один домен, а ведёт на другой
+
+  > **Чего эта проверка не делает.** DNS не разрешается — ни здесь, ни
+  > позже. Имя, которое резолвится во внутренний адрес, проходит:
+  > `http://127.0.0.1.nip.io/` принимается (проверено, `201 Created`).
+  > Закрыть это разбором имени нельзя в принципе — запись DNS меняется
+  > после проверки, — и настоящая защита от этого лежит на сетевом уровне,
+  > а не в приложении. Формулировка «адрес, который получит резолвер»
+  > стояла здесь раньше и обещала больше, чем есть; докстринг
+  > `OriginalUrl` был точен всегда
 - CORS ограничен `CORS_ORIGINS` (по умолчанию только localhost)
-- `.env` файл не попадает в Docker image (секреты注入 через runtime env vars)
+- `.env` файл не попадает в Docker image (секреты передаются через runtime env vars)
+
+## Документация API
+
+- `GET /api/openapi.json` — документ OpenAPI 3.0. Тела запросов и ответов
+  генерируются из тех же pydantic-моделей, по которым валидируют эндпоинты.
+  Направьте на него Swagger UI, Redoc, Postman или генератор клиента.
+- `GET /api/docs` — тот же документ страницей. Просмотрщик не встраивается:
+  это полтора мегабайта чужих ассетов или тег `script` на чужой CDN.
+
+Тест `tests/integration/web/controllers/test_api_docs.py` сверяет документ с
+настоящей картой маршрутов, поэтому новый эндпоинт — это падающий тест, а не
+незадокументированный эндпоинт.
+
+## Удаление гостевой ссылки
+
+У ссылки, созданной без учётной записи, нет владельца, поэтому `link:delete_own`
+для неё не срабатывает никогда. Ответ на создание несёт `deletion_token` —
+подписанный идентификатор строки, выдаётся единожды. Удалить такую ссылку
+можно, передав его в заголовке:
+
+```bash
+curl -X DELETE http://localhost:5000/api/v1/links/<code> \
+  -H "X-Deletion-Token: <token>"
+```
+
+Токен называет конкретную строку, а не код: код освобождается при удалении и
+может быть выдан снова.
 
 ## CLI-команды
 
 ```bash
 # Ссылки
 flask link create --url <url>
+flask link create --url <url> --code <code>   # 6-10 of A-Z a-z 0-9 _ -
 flask link info <short_code>
 flask link delete <short_code>
 flask link list --limit 10
@@ -200,4 +355,4 @@ flask cache clear
 
 ## Справочник переменных окружения
 
-См. `.env` для полного списка с описаниями. Файл подробно прокомментирован.
+См. `.env.example` — шаблон со всеми переменными и описаниями. Он единственный env-файл в репозитории; `.env` и `.env.docker` создаются локально и в git не попадают.
