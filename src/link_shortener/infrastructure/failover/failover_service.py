@@ -19,12 +19,13 @@ class FailoverService(Generic[T]):
     """
 
     def __init__(
-        self, 
-        services: List[Tuple[T, str]], 
+        self,
+        services: List[Tuple[T, str]],
         check_interval: Optional[float] = 30.0,
         health_checker: Optional[Callable[[T], bool]] = None,
         upgrade_cooldown: float = 300.0,
-        logger: Optional[MinimalLogger] = None
+        logger: Optional[MinimalLogger] = None,
+        clock: Callable[[], float] = time.time
     ):
         """
         Initialize the failover service.
@@ -40,6 +41,10 @@ class FailoverService(Generic[T]):
             upgrade_cooldown: Minimum seconds between upgrade attempts.
             logger: Logger for failover events. Defaults to
                 ``MinimalLogger()`` which prints to stderr
+            clock: Source of the current time in seconds, used for the
+                upgrade cooldown. Injected so that a test can move time
+                by hand: the cooldown is five minutes, and the only other
+                way to observe it expiring is to wait five minutes.
 
         Raises:
             ValueError: If ``services`` is empty.
@@ -47,13 +52,17 @@ class FailoverService(Generic[T]):
 
         if not services:
             raise ValueError("At least one service required")
-        
+
         self._services = services
         self._check_interval = check_interval
         self._health_checker = health_checker
         self._upgrade_cooldown = upgrade_cooldown
+        self._clock = clock
         self._lock = threading.RLock()
         self._current_index = 0                 # index of currently active service
+        # Epoch, meaning "never attempted". Works because a real clock reads
+        # far past any cooldown; a clock starting near zero would read this
+        # as an attempt made moments ago and block the first upgrade.
         self._last_upgrade_attempt = 0.0
 
         self._stop_event = threading.Event()
@@ -87,7 +96,7 @@ class FailoverService(Generic[T]):
         Try to switch to a service with higher priority (lower index) if it is healthy.
         If a healthy higher-priority service is found, switch to it and log the event.
         """
-        now = time.time()
+        now = self._clock()
         if now - self._last_upgrade_attempt < self._upgrade_cooldown:
             return
         self._last_upgrade_attempt = now
