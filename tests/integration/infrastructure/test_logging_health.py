@@ -19,6 +19,12 @@ import logging
 import pytest
 
 from link_shortener.infrastructure.logging.bootstrap import setup_logging
+from link_shortener.infrastructure.logging.handlers.raising import (
+    OWN_LOGGER_NAMES,
+)
+from link_shortener.infrastructure.logging.managers.audit_manager import (
+    AuditManager,
+)
 from link_shortener.infrastructure.logging.handlers.audit.standard import (
     StandardAuditLogger,
 )
@@ -103,6 +109,67 @@ class TestHealthOnTheRealWiring:
 
         assert StandardAuditLogger(name="audit").is_healthy() is True
         assert StructlogAuditLogger().is_healthy() is True
+
+    def test_every_implementation_writes_under_a_name_of_this_application(
+        self, configured_logging
+    ):
+        """The name decides whether a failed write is heard at all.
+
+        ``_RaisesForOwnRecords`` lets an ``OSError`` out of a write only
+        for records whose logger belongs to this application
+        (``OWN_LOGGER_NAMES``); everything else keeps the standard
+        library's behaviour, which is to swallow the failure in
+        ``handleError``. So an implementation built under any other name --
+        ``StructLogger(name="structlog")``, ``StandardAuditLogger(
+        name="standard_audit")`` -- goes on being asked for records that
+        quietly go nowhere: no exception, no demotion, ``dropped_calls``
+        at zero, ``/api/v1/admin/health`` reporting the chain as active.
+        Measured: each of those two renamings left the whole suite green,
+        and the audit trail moved from ``audit.log`` into the application
+        log with it.
+
+        Read off the implementations the managers actually build, not off
+        constructors called here: the renaming that survives is one made
+        inside a manager.
+        """
+        configured_logging("auto")
+        written = []
+
+        class Catcher(logging.Handler):
+            """Remembers the logger name of every record that arrives."""
+
+            def emit(self, record):
+                written.append(record.name)
+
+        catcher = Catcher()
+        # Both, because the audit tree does not propagate to the root.
+        root = logging.getLogger()
+        audit_tree = logging.getLogger("audit")
+        root.addHandler(catcher)
+        audit_tree.addHandler(catcher)
+        try:
+            loggers = LoggerManager(
+                logger_type="auto", failover_check_interval=None
+            )
+            for implementation, _name in loggers._failover_service._services:
+                implementation.info("probe")
+
+            audits = AuditManager(
+                audit_type="auto", failover_check_interval=None
+            )
+            for implementation, _name in audits._failover_service._services:
+                implementation.log_url_created("abc123", "https://example.com")
+        finally:
+            root.removeHandler(catcher)
+            audit_tree.removeHandler(catcher)
+
+        assert len(written) == 4, (
+            f"four implementations, {len(written)} records: {written}"
+        )
+        assert [
+            name for name in written
+            if name.split(".")[0] not in OWN_LOGGER_NAMES
+        ] == []
 
     @pytest.mark.parametrize("logger_type", ["auto", "standard"])
     def test_a_check_leaves_the_work_where_the_operator_put_it(
