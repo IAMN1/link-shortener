@@ -155,6 +155,37 @@ class ConfigFactory:
                 os.environ[key] = value
 
     @classmethod
+    def named_env(cls, env: Optional[str] = None) -> Optional[str]:
+        """
+        Return the profile somebody actually named, if anybody did.
+
+        Separated from ``resolve_env`` because the fallback and a named
+        ``development`` are not the same thing to every caller, and the
+        resolved name cannot tell them apart. A migration is the caller
+        that cares: ``DEFAULT_ENV`` is ``development``, which is also the
+        one profile allowed to migrate a database nobody configured, so a
+        host where nothing is set would otherwise have the guard disabled
+        by the very omission it exists to catch.
+
+        Args:
+            env: Explicit profile name, or ``None`` to resolve automatically.
+
+        Returns:
+            Normalised (lower-case) profile name, or ``None`` when neither
+            the argument, nor the environment, nor ``.env`` names one.
+        """
+        if env is None or is_unset(env):
+            env = os.environ.get("FLASK_ENV")
+
+        if is_unset(env):
+            env = cls._read_env_file(".env").get("FLASK_ENV")
+
+        if is_unset(env):
+            return None
+
+        return env.strip().lower()
+
+    @classmethod
     def resolve_env(cls, env: Optional[str] = None) -> str:
         """
         Determine which configuration profile to use.
@@ -170,28 +201,30 @@ class ConfigFactory:
         Returns:
             Normalised (lower-case) profile name.
         """
-        if env is None or is_unset(env):
-            env = os.environ.get("FLASK_ENV")
+        named = cls.named_env(env)
 
-        if is_unset(env):
-            env = cls._read_env_file(".env").get("FLASK_ENV")
-
-        if is_unset(env):
-            env = cls.DEFAULT_ENV
-
-        return env.strip().lower()
+        return cls.DEFAULT_ENV if named is None else named
 
     @classmethod
-    def create_config(cls, env: str = None) -> BaseConfig:
+    def create_config_unvalidated(cls, env: str = None) -> BaseConfig:
         """
-        Create a configuration object for the given environment.
+        Assemble the configuration object without validating it.
+
+        Split out for ``migration_url.resolve_database_url``, which needs a
+        single setting rather than a working application: a migration asks
+        for the database URL, and demanding a valid mail server or domain
+        of it stopped migrations that would otherwise have run. The profile is
+        selected and the ``.env`` files are applied exactly as they are for
+        everyone else -- only the final ``validate()`` is left to the
+        caller, which is why this is not a way to run the application on a
+        configuration that could not pass it.
 
         Args:
             env: Environment name (development, staging, production, testing).
                  If None, resolved from FLASK_ENV or `.env` (default: development).
 
         Returns:
-            Configuration instance.
+            Configuration instance, not yet validated.
 
         Raises:
             ValueError: If environment is unknown.
@@ -207,7 +240,26 @@ class ConfigFactory:
         if env not in cls.NO_DOTENV_ENVS:
             cls._apply_env_files(env, cls._read_env_file(".env"))
 
-        config = config_class()
+        return config_class()
+
+    @classmethod
+    def create_config(cls, env: str = None) -> BaseConfig:
+        """
+        Create a configuration object for the given environment.
+
+        Args:
+            env: Environment name (development, staging, production, testing).
+                 If None, resolved from FLASK_ENV or `.env` (default: development).
+
+        Returns:
+            Configuration instance.
+
+        Raises:
+            ValueError: If environment is unknown, or the configuration does
+                not validate.
+        """
+
+        config = cls.create_config_unvalidated(env)
         config.validate()
         return config
 

@@ -52,6 +52,30 @@ is what every release before this one did everywhere.
 """
 
 
+def display_url(url: str) -> str:
+    """
+    Render a database URL with its password masked.
+
+    Masked by SQLAlchemy's own renderer rather than by a pattern. The
+    pattern this replaced matched only up to the last colon, so a password
+    containing one -- ``pa:ss:word`` -- was printed all but its final
+    segment, into the startup line and the log files.
+
+    Args:
+        url: URL to render.
+
+    Returns:
+        URL safe to write to a log or a terminal.
+    """
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except Exception:
+        # Never let a log line be the thing that stops a command. An
+        # unparsable URL has no password to reveal in any recognisable
+        # place, so nothing is echoed.
+        return "<unparsable database url>"
+
+
 MAX_BATCH_ITEMS = 100
 """Hard ceiling on how many URLs one request may carry.
 
@@ -740,7 +764,7 @@ class BaseConfig:
         """
         if self.DATABASE_URL:
             return self.DATABASE_URL
-        
+
         if self.DATABASE_TYPE == "sqlite":
             # SQLite: DATABASE_NAME is the file path
             return URL.create(
@@ -776,22 +800,15 @@ class BaseConfig:
         """
         Return the database URL with the password masked, for logging.
 
-        Masked by SQLAlchemy's own renderer rather than by a pattern. The
-        pattern this replaced matched only up to the last colon, so a
-        password containing one -- ``pa:ss:word`` -- was printed all but its
-        final segment, into the startup line and the log files.
-
         Returns:
             URL safe to write to a log.
         """
         try:
-            return make_url(self.get_database_url()).render_as_string(
-                hide_password=True
-            )
+            return display_url(self.get_database_url())
         except Exception:
-            # Never let a log line be the thing that stops startup. An
-            # unparsable URL has no password to reveal in any recognisable
-            # place, so nothing is echoed.
+            # A URL that cannot even be assembled is reported the same way
+            # as one that cannot be parsed: a log line must never be the
+            # thing that stops startup.
             return "<unparsable database url>"
 
     def get_pool_params(self) -> dict:
@@ -1062,6 +1079,100 @@ class BaseConfig:
                     "SHORT_CODE_PEPPER is using default value – override in .env"
                 )
 
+        errors.extend(self._database_errors())
+
+        for scheme in self.ALLOWED_SCHEMES:
+            if scheme not in ["http", "https"]:
+                errors.append(f"Invalid URL scheme: {scheme}")
+
+        if self.MAX_URL_LENGTH > 2048:
+            errors.append("MAX_URL_LENGTH should not exceed 2048")
+
+        if self.MAX_URL_LENGTH < 1:
+            errors.append("MAX_URL_LENGTH must be positive")
+
+        # The generator's bounds have to stay inside what ``ShortCode``
+        # accepts and the column stores. Outside them, nothing complains at
+        # startup: the generator produces a code, the value object refuses
+        # it, and every single creation answers 500.
+        if self.SHORT_CODE_MIN_LENGTH < CODE_MIN_LENGTH:
+            errors.append(
+                f"SHORT_CODE_MIN_LENGTH must be at least {CODE_MIN_LENGTH}"
+            )
+
+        if self.SHORT_CODE_MAX_LENGTH > CODE_MAX_LENGTH:
+            errors.append(
+                f"SHORT_CODE_MAX_LENGTH must not exceed {CODE_MAX_LENGTH}"
+            )
+
+        if self.BATCH_CREATE_LIMIT > MAX_BATCH_ITEMS:
+            errors.append(
+                f"BATCH_CREATE_LIMIT must not exceed {MAX_BATCH_ITEMS} -- "
+                "the request schema refuses a longer list first"
+            )
+
+        if not (
+            self.SHORT_CODE_MIN_LENGTH
+            <= self.SHORT_CODE_LENGTH
+            <= self.SHORT_CODE_MAX_LENGTH
+        ):
+            errors.append(
+                "SHORT_CODE_LENGTH must lie between SHORT_CODE_MIN_LENGTH "
+                "and SHORT_CODE_MAX_LENGTH"
+            )
+
+        if self.CACHE_ENABLED and self.REDIS_ENABLED and not self.REDIS_URL:
+            errors.append("REDIS_URL must be set when REDIS_ENABLED=True")
+
+        errors.extend(self._numeric_errors())
+        errors.extend(self._mail_errors())
+        errors.extend(self._confirmation_errors())
+
+        allowed_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+        if self.LOG_LEVEL.upper() not in allowed_levels:
+            errors.append(
+                f"Invalid LOG_LEVEL: {self.LOG_LEVEL} "
+                f"(allowed: {', '.join(allowed_levels)})"
+            )
+
+        if errors:
+            raise ValueError("Configuration errors:\n - " + "\n - ".join(errors))
+
+
+    def validate_database(self) -> None:
+        """
+        Validate only the settings that decide which database is opened.
+
+        A migration needs the connection string and nothing else. Asking it
+        to pass ``validate()`` in full meant that mail, secrets, the domain
+        and even ``MAX_URL_LENGTH`` could each stop ``alembic upgrade
+        head``: with ``DATABASE_URL`` already set, four further variables
+        were measured standing between the command and the first table --
+        ``SECRET_KEY``, ``SHORT_CODE_PEPPER``, ``REDIS_ENABLED`` and
+        ``DOMAIN`` -- and a migration reads none of them.
+
+        The checks themselves are not skipped: they live in
+        ``_database_errors`` and ``validate()`` runs them too, so there is
+        one list and not a second one drifting behind it.
+
+        Raises:
+            ValueError: If any of the database settings is unusable.
+        """
+        errors = self._database_errors()
+        if errors:
+            raise ValueError("Configuration errors:\n - " + "\n - ".join(errors))
+
+
+    def _database_errors(self) -> List[str]:
+        """
+        Check the settings that name the database to connect to.
+
+        Returns:
+            List of human-readable error messages (empty when the database
+            settings are sane).
+        """
+        errors = []
+
         # A database name is a name, not a place to smuggle connection
         # options. "shortener?sslmode=disable" parses back out as a query
         # string, and the connection comes up without TLS while the setting
@@ -1112,66 +1223,10 @@ class BaseConfig:
                         "lands outside it"
                     )
 
-        for scheme in self.ALLOWED_SCHEMES:
-            if scheme not in ["http", "https"]:
-                errors.append(f"Invalid URL scheme: {scheme}")
-
-        if self.MAX_URL_LENGTH > 2048:
-            errors.append("MAX_URL_LENGTH should not exceed 2048")
-
-        if self.MAX_URL_LENGTH < 1:
-            errors.append("MAX_URL_LENGTH must be positive")
-
-        # The generator's bounds have to stay inside what ``ShortCode``
-        # accepts and the column stores. Outside them, nothing complains at
-        # startup: the generator produces a code, the value object refuses
-        # it, and every single creation answers 500.
-        if self.SHORT_CODE_MIN_LENGTH < CODE_MIN_LENGTH:
-            errors.append(
-                f"SHORT_CODE_MIN_LENGTH must be at least {CODE_MIN_LENGTH}"
-            )
-
-        if self.SHORT_CODE_MAX_LENGTH > CODE_MAX_LENGTH:
-            errors.append(
-                f"SHORT_CODE_MAX_LENGTH must not exceed {CODE_MAX_LENGTH}"
-            )
-
-        if self.BATCH_CREATE_LIMIT > MAX_BATCH_ITEMS:
-            errors.append(
-                f"BATCH_CREATE_LIMIT must not exceed {MAX_BATCH_ITEMS} -- "
-                "the request schema refuses a longer list first"
-            )
-
-        if not (
-            self.SHORT_CODE_MIN_LENGTH
-            <= self.SHORT_CODE_LENGTH
-            <= self.SHORT_CODE_MAX_LENGTH
-        ):
-            errors.append(
-                "SHORT_CODE_LENGTH must lie between SHORT_CODE_MIN_LENGTH "
-                "and SHORT_CODE_MAX_LENGTH"
-            )
-
-        if self.CACHE_ENABLED and self.REDIS_ENABLED and not self.REDIS_URL:
-            errors.append("REDIS_URL must be set when REDIS_ENABLED=True")
-
         if self.DATABASE_TYPE not in ("sqlite", "postgresql"):
             errors.append(f"Unsupported DATABASE_TYPE: {self.DATABASE_TYPE}")
 
-        errors.extend(self._numeric_errors())
-        errors.extend(self._mail_errors())
-        errors.extend(self._confirmation_errors())
-
-        allowed_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
-        if self.LOG_LEVEL.upper() not in allowed_levels:
-            errors.append(
-                f"Invalid LOG_LEVEL: {self.LOG_LEVEL} "
-                f"(allowed: {', '.join(allowed_levels)})"
-            )
-
-        if errors:
-            raise ValueError("Configuration errors:\n - " + "\n - ".join(errors))
-
+        return errors
 
     def default_secrets_in_use(self) -> list:
         """

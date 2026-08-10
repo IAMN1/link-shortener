@@ -1,4 +1,4 @@
-import os
+import sys
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -8,52 +8,37 @@ from alembic import context
 
 
 from link_shortener.infrastructure.database.models.base import Base
-from link_shortener.infrastructure.configs.app.env import is_unset
-from link_shortener.infrastructure.configs.app.factory import get_config
+from link_shortener.infrastructure.configs.app.base import display_url
+from link_shortener.infrastructure.configs.app.migration_url import (
+    HANDOFF_ENV_VAR, handed_over_url, resolve_database_url
+)
 
 
 # ==========================================================================
 # Database URL
 # ==========================================================================
-HANDOFF_ENV_VAR = "ALEMBIC_DATABASE_URL"
-"""Variable through which a caller hands over the URL it already resolved.
+try:
+    database_url = resolve_database_url()
+except ValueError as error:
+    # Reported rather than raised. A migration is one of the ways out of a
+    # misconfigured deployment, so the operator standing in front of a
+    # refusal needs the way past it -- and a traceback ending inside the
+    # configuration factory reads as a bug in the tool rather than as an
+    # answer about their settings.
+    raise SystemExit(
+        f"alembic: {error}\n\n"
+        "To migrate a named database without building the application "
+        f"configuration at all, set {HANDOFF_ENV_VAR} to its URL."
+    )
 
-The Flask CLI holds a live configuration when it shells out to alembic.
-Without a handoff this file called ``get_config()`` again, and the
-subprocess rebuilt the configuration from whatever the ambient environment
-happened to say -- not necessarily the profile the application runs under.
-The ``testing`` profile is the sharp case: it sets ``IGNORE_ENV`` and pins
-an in-memory SQLite database precisely so that a test run cannot reach a
-real one, and a re-derived configuration walked straight past that.
-
-The value travels in the environment rather than in ``-x``, alembic's usual
-channel for caller-supplied values, because it carries the database
-password and argv is visible in the process list.
-"""
-
-
-def _resolve_database_url() -> str:
-    """
-    Return the URL handed over by the caller, or derive one.
-
-    Returns:
-        SQLAlchemy-compatible database URL.
-    """
-    handed_over = os.environ.get(HANDOFF_ENV_VAR)
-    # Same blank-is-unset rule the configuration uses everywhere else: a
-    # `${VAR}` that docker compose left empty must fall through rather than
-    # be taken as a deliberate setting. Stripped as well, because a value
-    # with a trailing newline is a *different* database -- one run created
-    # a SQLite file whose name ended in "\n".
-    if not is_unset(handed_over):
-        return handed_over.strip()
-
-    # Standalone use -- `alembic upgrade head` straight from a shell has no
-    # caller to inherit from, so the configuration is built the usual way.
-    return get_config().get_database_url()
-
-
-database_url = _resolve_database_url()
+# Say which database this is about to change, the way `flask alembic` does
+# -- and only when nobody else already has, so the two do not both print
+# it. Without this the bare command was silent about its target, and a
+# forgotten ALEMBIC_DATABASE_URL left over from an earlier command sent the
+# migration to that database instead, reporting the same success either
+# way. On stderr, where alembic's own account of what it did already goes.
+if handed_over_url() is None:
+    print(f"Database: {display_url(database_url)}", file=sys.stderr)
 
 
 # this is the Alembic Config object, which provides
