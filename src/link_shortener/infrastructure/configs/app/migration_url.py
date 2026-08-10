@@ -25,6 +25,9 @@ from sqlalchemy.engine import make_url
 from link_shortener.infrastructure.configs.app.base import BaseConfig, display_url
 from link_shortener.infrastructure.configs.app.env import is_unset, read_env_for
 from link_shortener.infrastructure.configs.app.factory import ConfigFactory
+from link_shortener.infrastructure.database.manager import (
+    postgresql_connect_args
+)
 
 
 # ==========================================================================
@@ -137,6 +140,39 @@ def resolve_database_url(env: Optional[str] = None) -> str:
     _refuse_a_database_a_migration_should_not_touch(profile, named, config, url)
 
     return url
+
+
+def migration_connect_args(url: str) -> dict:
+    """
+    Return the driver arguments a migration should connect with.
+
+    The migration builds its own engine from the ``[alembic]`` section,
+    which holds nothing but the URL, so none of the bounds the application
+    connects under reached it: measured against an unreachable server with
+    ``DATABASE_CONNECT_TIMEOUT=3``, the application gave up after 3.6
+    seconds and the migration had not given up after 60 -- with ``app``
+    waiting on it, because the stack starts the two in that order.
+
+    Read from ``BaseConfig`` rather than from the selected profile, since
+    a handed-over URL comes with no profile at all and the answer must not
+    depend on which of the two paths asked. No profile overrides either
+    setting, so the values are the same ones the application connects
+    under.
+
+    Args:
+        url: URL the migration is about to open.
+
+    Returns:
+        Mapping for ``create_engine(connect_args=...)``; empty for SQLite,
+        which has neither a server nor a socket to bound.
+    """
+    if make_url(url).get_backend_name() != "postgresql":
+        return {}
+
+    return postgresql_connect_args(
+        BaseConfig.DATABASE_CONNECT_TIMEOUT,
+        BaseConfig.DATABASE_STATEMENT_TIMEOUT,
+    )
 
 
 def _refuse_a_database_a_migration_should_not_touch(

@@ -10,7 +10,8 @@ from alembic import context
 from link_shortener.infrastructure.database.models.base import Base
 from link_shortener.infrastructure.configs.app.base import display_url
 from link_shortener.infrastructure.configs.app.migration_url import (
-    HANDOFF_ENV_VAR, handed_over_url, resolve_database_url
+    HANDOFF_ENV_VAR, handed_over_url, migration_connect_args,
+    resolve_database_url
 )
 
 
@@ -103,10 +104,16 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # `connect_args` are supplied here because the section this engine is
+    # built from holds nothing but the URL: the bounds the application
+    # connects under live in its configuration and never reached a
+    # migration. Unbounded, an unreachable server held this command for
+    # over a minute -- and `app` waits for it to finish before it starts.
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=migration_connect_args(database_url),
     )
 
     with connectable.connect() as connection:
