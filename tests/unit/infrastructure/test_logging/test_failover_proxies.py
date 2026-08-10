@@ -1,10 +1,14 @@
 """
 The two proxies that stand between the application and the failover service.
 
-Nothing reached them. Every logging and audit call the application makes
-goes through one of these, and the whole suite passed with their bodies
-emptied: a proxy that never calls ``execute`` at all leaves the application
-silent -- no logs, no audit trail -- and every other test green.
+Nothing reached them when this file was written. Every logging and audit
+call the application makes goes through one of these, and the whole suite
+passed with their bodies emptied: a proxy that never calls ``execute`` at
+all leaves the application silent -- no logs, no audit trail -- and every
+other test green. (Two tests in
+``test_managers_wire_the_failover_service`` now fail on that same
+emptying, because they follow a manager's own logger down into the chain;
+what is below is still the only thing holding the proxies themselves.)
 
 They are thin on purpose, which is exactly why nobody wrote a test for
 them, and exactly why the ways they can go wrong are quiet ones: forwarding
@@ -129,6 +133,23 @@ class TestTheLoggerProxyForwards:
 
         _, _, kwargs = service.calls[0]
         assert kwargs["request_id"] == "r-2"
+
+    def test_a_call_field_wins_over_a_bound_field_of_the_same_name(self):
+        """
+        The same merge order as the audit proxy keeps, on this one.
+
+        A field bound for the request is context; one passed at the call
+        is what this line is about. Merging the bound fields last would
+        make every line report the context's value under a name the caller
+        had just set.
+        """
+        service = RecordingService()
+        proxy = FailoverLoggerProxy(service, "web.api").bind(status="bound")
+
+        proxy.info("hello", status="from the call")
+
+        _, _, kwargs = service.calls[0]
+        assert kwargs["status"] == "from the call"
 
     def test_the_answer_of_the_failover_service_is_passed_back_up(self):
         """
@@ -276,6 +297,31 @@ class TestTheAuditProxyForwards:
         _, _, kwargs = service.calls[0]
         assert kwargs["user_id"] == "u-1"
         assert kwargs["remote_addr"] == "10.0.0.1"
+
+    def test_the_event_wins_over_a_bound_field_of_the_same_name(self):
+        """
+        The merge order, on the half where it changes who did what.
+
+        Bound fields are the request context -- who is signed in, from
+        where -- and the event's own arguments are what happened. Merging
+        the bound fields last lets the context overwrite the event, so a
+        record about one account is written down against another: an
+        administrator deleting somebody else's link produces a trail
+        naming the administrator as the owner. Measured on the mutation
+        run of 2026-08-10: the swap survived the whole suite.
+        """
+        service = RecordingService()
+        proxy = FailoverAuditLoggerProxy(service).bind(
+            user_id="whoever-asked", request_id="req-1"
+        )
+
+        proxy.log_url_deleted(
+            "abc123", "https://example.com", user_id="whose-link-it-was"
+        )
+
+        _, _, kwargs = service.calls[0]
+        assert kwargs["user_id"] == "whose-link-it-was"
+        assert kwargs["request_id"] == "req-1"
 
     def test_binding_does_not_change_the_proxy_it_came_from(self):
         """
