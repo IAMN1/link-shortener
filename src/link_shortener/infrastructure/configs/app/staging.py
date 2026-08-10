@@ -1,6 +1,6 @@
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 from link_shortener.infrastructure.configs.app.env import (
-    env_bool, env_int, env_str, read_env
+    env_bool, env_int, env_str, read_env_for
 )
 
 
@@ -21,7 +21,11 @@ class StagingConfig(BaseConfig):
     LOG_LEVEL: str = env_str("LOG_LEVEL", "INFO")
     LOG_TO_CONSOLE: bool = env_bool("LOG_TO_CONSOLE", False)
     LOG_TO_FILE: bool = env_bool("LOG_TO_FILE", True)
-    LOG_DIR: str = env_str("LOG_DIR", "/var/log/link_shortener/staging")
+    _default_log_dir: str = "/var/log/link_shortener/staging"
+    """Overrides the base default only; ``LOG_DIR`` itself stays the
+    property that anchors a relative value, so an operator who sets a
+    relative one here gets the same directory the rest of the deployment
+    uses rather than one per working directory."""
 
 
     # --------------------------------------------------------------------------
@@ -29,14 +33,14 @@ class StagingConfig(BaseConfig):
     # --------------------------------------------------------------------------
     @property
     def SECRET_KEY(self) -> str:
-        key = read_env("SECRET_KEY")
+        key = read_env_for(self, "SECRET_KEY")
         if not key:
             raise ValueError("SECRET_KEY must be set in environment")
         return key
 
     @property
     def SHORT_CODE_SECRET_PEPPER(self) -> str:
-        pepper = read_env("SHORT_CODE_PEPPER")
+        pepper = read_env_for(self, "SHORT_CODE_PEPPER")
         if not pepper:
             raise ValueError("SHORT_CODE_PEPPER must be set in environment")
         return pepper
@@ -50,7 +54,7 @@ class StagingConfig(BaseConfig):
     @property
     def REDIS_URL(self) -> str:
         """Redis URL must be set in environment if Redis is enabled."""
-        url = read_env("REDIS_URL")
+        url = read_env_for(self, "REDIS_URL")
         if self.REDIS_ENABLED and not url:
             raise ValueError("REDIS_URL must be set in environment when REDIS_ENABLED=True")
         return url or "redis://localhost:6379/0"

@@ -1,5 +1,6 @@
 import os
 import secrets
+from pathlib import Path
 from typing import List, Optional
 
 from sqlalchemy.engine import URL, make_url
@@ -9,8 +10,45 @@ from link_shortener.domain.value_objects.short_code import (
     MIN_LENGTH as CODE_MIN_LENGTH,
 )
 from link_shortener.infrastructure.configs.app.env import (
-    env_bool, env_float, env_int, env_list, env_str, read_env
+    env_bool, env_float, env_int, env_list, env_str, read_env, read_env_for
 )
+
+
+def _find_project_root() -> Optional[Path]:
+    """
+    Locate the source tree this module was loaded from, if it is one.
+
+    Searched for by marker rather than counted in levels up from this
+    file. Counting looks tidier and is wrong where it matters: the image
+    installs the package into ``site-packages`` and copies that directory
+    into the runtime stage, so the module that runs in production is
+    nowhere near the project -- five levels up from it is
+    ``/usr/local/lib/python3.12``. Measured on a built image: the count
+    put the database at ``/usr/local/lib/python3.12/db_shortener.db`` and
+    the connection failed with "unable to open database file".
+
+    Both markers are required. ``pyproject.toml`` alone appears inside
+    installed third-party packages, and a stray one above an installed
+    copy would silently become the anchor.
+
+    Returns:
+        The directory holding ``pyproject.toml`` and ``src``, or None when
+        this module runs from an installed copy rather than a source tree.
+    """
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pyproject.toml").is_file() and (parent / "src").is_dir():
+            return parent
+
+    return None
+
+
+PROJECT_ROOT = _find_project_root()
+"""Directory the project is laid out from, or None outside a source tree.
+
+None is not a failure: it means nothing here knows better than the caller
+where a relative path should point, so the path is left as it was -- which
+is what every release before this one did everywhere.
+"""
 
 
 MAX_BATCH_ITEMS = 100
@@ -119,7 +157,9 @@ class BaseConfig:
     LOGGER_TYPE: str = env_str("LOGGER_TYPE", "auto")
     """
     Type of logger implementation to use.
-    - "auto": try structlog, fallback to standard, then null.
+    - "auto": structlog first, standard behind it. Not null behind
+        those two: the chain is exactly the two, so a call both refuse
+        is refused outright rather than quietly swallowed.
     - "structlog": use structured logging (JSON) with structlog.
     - "standard": use Python's standard logging module with custom formatters.
     - "null": discard all logs.
@@ -131,11 +171,30 @@ class BaseConfig:
     Same values as LOGGER_TYPE.
     """
 
-    LOG_DIR: str = env_str("LOG_DIR", "logs")
-    """
-    Directory where log files will be written (if LOG_TO_FILE is true).
-    Can be absolute or relative path. Created automatically if missing.
-    """
+    _default_log_dir: str = "logs"
+    """Where logs go when nothing says otherwise, before anchoring."""
+
+    @property
+    def LOG_DIR(self) -> str:
+        """
+        Directory where log files will be written (if LOG_TO_FILE is true).
+
+        A relative value is anchored to the project root, for the reason
+        given in ``_sqlite_path``: read against the working directory
+        instead, the same setting names a different directory for every
+        process, and a worker started elsewhere writes its logs where
+        nobody looks for them. An absolute value is handed back as it
+        stands, and so is any value outside a source tree, where there is
+        no root to anchor to. Created automatically if missing.
+
+        Returns:
+            The directory to write logs into.
+        """
+        configured = read_env_for(self, "LOG_DIR", self._default_log_dir)
+        if PROJECT_ROOT is None:
+            return configured
+
+        return str(PROJECT_ROOT / configured)
 
     LOG_FILENAME: str = env_str("LOG_FILENAME", "application")
     """
@@ -452,7 +511,6 @@ class BaseConfig:
         "api.batch_create": (5, 60),
         "api.get_stats": (10, 60),
         "redirect_to_original": (200, 60),
-        "health": (10, 5),
         # Auth endpoints: brute-force protection
         "auth.login": (5, 60),          # 5 attempts per minute per IP
         "auth.register": (3, 3600),     # 3 registrations per hour per IP
@@ -463,6 +521,16 @@ class BaseConfig:
     Per-endpoint rate limit configurations.
     Key is the Flask endpoint name (as used in url_for).
     Value is a tuple (limit, period_seconds).
+
+    Every key must name a route the throttle can actually reach, and every
+    value must be a pair of positive integers. A name nothing answers to,
+    an exempt endpoint, a route served from the static prefix and a
+    malformed value are all refused at startup rather than ignored: such
+    an entry reads like a live limit and throttles nothing.
+
+    ``RATE_LIMIT_AUTH_DISABLED`` is the one exception, and a deliberate
+    one: it switches every ``auth.*`` limit off at run time and is not
+    refused here.
     """
 
     RATE_LIMIT_AUTH_DISABLED: bool = env_bool("RATE_LIMIT_AUTH_DISABLED", False)
@@ -613,6 +681,40 @@ class BaseConfig:
         """Recycle connections after this many seconds (PostgreSQL only)."""
         return self._pool_setting("DATABASE_POOL_RECYCLE", 3600)
 
+    def _sqlite_path(self) -> str:
+        """
+        Anchor a relative SQLite file to the project root.
+
+        SQLAlchemy leaves a relative path to Python, which reads it against
+        the working directory of the process -- "the actual filename to be
+        used starts with the characters to the right of the third slash"
+        and nothing more is said about where that filename is looked for.
+        The result was a database whose identity depended on where the
+        process was started: running from ``src/`` created a second, empty
+        ``src/db_shortener.db`` and reported no error at all, because an
+        absent SQLite file is created rather than refused.
+
+        ``:memory:`` is handed back untouched -- it is not a file. An
+        absolute path needs no guard: joining one onto a directory yields
+        the absolute path itself, which is pathlib's rule and not an
+        accident to be defended against. An explicit ``DATABASE_URL``
+        never reaches here -- ``get_database_url`` returns it first -- so a
+        caller who writes the URL by hand keeps whatever they wrote.
+
+        Outside a source tree there is no root to anchor to, and the name
+        is returned as given: an installed copy has no project directory,
+        and inventing one would put the database somewhere no deployment
+        asked for.
+
+        Returns:
+            The path to hand to SQLAlchemy.
+        """
+        name = self.DATABASE_NAME
+        if name == ":memory:" or PROJECT_ROOT is None:
+            return name
+
+        return str(PROJECT_ROOT / name)
+
     def get_database_url(self) -> str:
         """
         Construct database URL from individual parameters or return explicitly set URL.
@@ -629,7 +731,7 @@ class BaseConfig:
         if self.DATABASE_TYPE == "sqlite":
             # SQLite: DATABASE_NAME is the file path
             return URL.create(
-                "sqlite", database=self.DATABASE_NAME
+                "sqlite", database=self._sqlite_path()
             ).render_as_string(hide_password=False)
         elif self.DATABASE_TYPE == "postgresql":
             # Use psycopg3 driver
@@ -826,6 +928,40 @@ class BaseConfig:
                     f"{', '.join(repr(c) for c in illegal)} -- connection "
                     "options belong in their own settings, not in the name"
                 )
+
+        # For SQLite the name is a path, so "/" is legitimate and only two
+        # shapes are refused. A "?" is lost when the name is rendered into
+        # a URL and read back: `make_url("sqlite:///a?b.db").database` is
+        # "a", because everything past the "?" is taken for a query
+        # string. SQLite itself would have opened the file it was named --
+        # `sqlite3.connect("a?b.db")` creates exactly that -- so the loss
+        # happens in the URL round trip, and it is silent, because a
+        # missing SQLite file is created rather than refused. Nothing else
+        # needs refusing here -- "#", "@", a space and "%" were each
+        # measured to open the file they name.
+        # A ".." climbs out of the root the path is anchored to; anchoring
+        # is not a sandbox and was never meant to be one, but a setting
+        # that quietly lands outside the project is the same class of
+        # surprise as the one above. The shared-cache in-memory form
+        # belongs in DATABASE_URL, which bypasses anchoring entirely:
+        # SQLAlchemy needs "sqlite:///file::memory:?cache=shared&uri=true",
+        # and without that "uri=true" it is a file by definition.
+        if self.DATABASE_TYPE == "sqlite":
+            name = self.DATABASE_NAME or ""
+            if name != ":memory:":
+                if "?" in name:
+                    errors.append(
+                        "DATABASE_NAME must not contain '?' -- everything "
+                        "past it is read as a query string when the name "
+                        "becomes a URL, and a different file is opened; "
+                        "put a URI form in DATABASE_URL instead"
+                    )
+                if ".." in Path(name).parts:
+                    errors.append(
+                        "DATABASE_NAME must not contain '..' -- a relative "
+                        "name is anchored to the project root, and this one "
+                        "lands outside it"
+                    )
 
         for scheme in self.ALLOWED_SCHEMES:
             if scheme not in ["http", "https"]:

@@ -2,7 +2,9 @@ import os
 from typing import Dict, Optional
 
 from dotenv import dotenv_values, find_dotenv
-from link_shortener.infrastructure.configs.app.base import BaseConfig
+from link_shortener.infrastructure.configs.app.base import (
+    PROJECT_ROOT, BaseConfig
+)
 from link_shortener.infrastructure.configs.app.env import is_unset
 from link_shortener.infrastructure.configs.app.development import DevelopmentConfig
 from link_shortener.infrastructure.configs.app.production import ProductionConfig
@@ -54,10 +56,19 @@ class ConfigFactory:
         """
         Read a ``.env``-style file without touching ``os.environ``.
 
-        The file is looked up from the current working directory upwards, so
-        commands started from a subdirectory (``src/``, ``migrations/``) still
-        find the project-level file instead of silently falling back to the
-        profile defaults.
+        The project root is tried first, and the walk up from the working
+        directory only after it. Searching from the caller alone made the
+        configuration depend on where the process happened to be started:
+        a celery worker or a bare ``alembic upgrade head`` launched from
+        elsewhere found no file and fell back to the profile defaults, so
+        ``DATABASE_NAME`` became ``db_shortener`` -- no extension -- while
+        the anchoring in ``_sqlite_path`` still put it under the root. A
+        second, empty database appeared beside the real one and the service
+        came up on it without a word, answering 401 to anonymous shortening
+        because the ``guest`` role was only in the other file.
+
+        Outside a source tree there is no root to read from and the walk is
+        all there is, which is what an installed copy and the image get.
 
         Args:
             filename: File name to look for, e.g. ``".env"``.
@@ -65,7 +76,14 @@ class ConfigFactory:
         Returns:
             Mapping of variable names to values; empty if the file is absent.
         """
-        path = find_dotenv(filename, usecwd=True)
+        path = ""
+        if PROJECT_ROOT is not None:
+            candidate = PROJECT_ROOT / filename
+            if candidate.is_file():
+                path = str(candidate)
+
+        if not path:
+            path = find_dotenv(filename, usecwd=True)
         if not path:
             return {}
 
