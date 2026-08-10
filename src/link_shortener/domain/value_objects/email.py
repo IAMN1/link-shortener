@@ -13,8 +13,8 @@ which is what the expression this replaces let through. ``[^@]`` admits a
 newline, so ``"user@ex\\nample.com"`` and ``"user@example.com\\n"`` were
 both accepted, by this object and by the admin schema built from the same
 expression. An address is written into every log line and audit record
-about the account and will be written into a mail header once that channel
-exists, where a newline is how a header injection is spelled.
+about the account, and into the ``To`` header of the mail this service now
+sends, where a newline is how a header injection is spelled.
 
 ``\\x1c-\\x1f`` is spelled out because the two engines disagree about
 ``\\s``. Python counts the four information separators (FS, GS, RS, US) as
@@ -48,16 +48,49 @@ class Email:
     Value object representing an email address.
 
     Immutable; validates that the string conforms to a basic email format
-    (``local-part@domain.tld``) upon creation.
+    (``local-part@domain.tld``) upon creation, and holds it in lower case.
+
+    The lowering is what makes an address name one account. Without it
+    ``find_by_email`` compared strings, the unique index on ``users.email``
+    saw two different ones, and registering ``Case@Example.com`` over an
+    existing ``case@example.com`` created a second account for the same
+    mailbox: two confirmation links, either of which could be opened, and
+    a sign-in that depended on which capitalisation was typed.
+
+    RFC 5321 section 2.4 puts the price plainly. Domains "follow normal
+    DNS rules and are hence not case sensitive", so lowering that half
+    costs nothing. The other half it reserves: "The local-part of a
+    mailbox MUST BE treated as case sensitive. Therefore, SMTP
+    implementations MUST take care to preserve the case of mailbox
+    local-parts." A host that distinguishes ``Smith`` from ``smith`` would
+    therefore receive mail addressed to somebody else. The same paragraph
+    goes on: "However, exploiting the case sensitivity of mailbox
+    local-parts impedes interoperability and is discouraged", and no mail
+    provider in ordinary use does so -- which is the trade being made
+    here, deliberately and in one direction: one account per mailbox,
+    bought with a rule the standard leaves to the receiving host.
+
+    Django lowers only the domain for this reason (``normalize_email``:
+    "Normalize the email address by lowercasing the domain part of it"),
+    and keeps the ambiguity this object exists to remove.
+
+    Whitespace is not stripped, only case is changed. Trimming would
+    quietly accept the trailing newline the pattern above refuses on
+    purpose -- an address goes into a mail header, and a newline in a
+    header is an injection.
 
     Attributes:
-        value: The email string.
+        value: The email string, lower case.
     """
     value: str
 
     def __post_init__(self):
         """
-        Validate the email format immediately after initialisation.
+        Validate the email format, then lower it.
+
+        Validated before it is lowered so that what is judged is what the
+        caller sent; the pattern is indifferent to case, so the order
+        changes no verdict.
 
         Raises:
             ValidationError: If the email does not match the expected pattern.
@@ -68,6 +101,13 @@ class Email:
             # rows, so echoing it would reflect user input and leak stored
             # data on the read path.
             raise ValidationError("Invalid email format", field="email")
+
+        # object.__setattr__ because the dataclass is frozen. That call
+        # would bypass frozen anywhere; what makes here the right place is
+        # that the instance is not finished yet, so nothing has read the
+        # old value. Normalising in the callers instead would leave each
+        # of them responsible for remembering to.
+        object.__setattr__(self, "value", self.value.lower())
     
     def __str__(self) -> str:
         """Return the email string."""

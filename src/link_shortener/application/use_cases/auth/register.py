@@ -173,22 +173,30 @@ class RegisterUseCase(BaseUseCase):
             # is what the owner of the address gets instead of the caller
             # getting an answer.
             log.info("Registration attempt on a registered address")
-            if not self.task_queue.enqueue_account_exists_email(email, context):
+            # Sent to the normalised address, which is the one the
+            # account is stored under. Mailing the string as typed would
+            # send to an address the service does not recognise as its own.
+            if not self.task_queue.enqueue_account_exists_email(
+                email_vo.value, context
+            ):
                 log.error(
-                    "Account-exists notice was not handed off", email=email
+                    "Account-exists notice was not handed off",
+                    email=email_vo.value,
                 )
             return None
 
-        log.info("User registered", user_id=saved_user.id, email=email)
+        log.info("User registered", user_id=saved_user.id, email=email_vo.value)
 
-        if not self.task_queue.enqueue_verification_email(email, token, context):
+        if not self.task_queue.enqueue_verification_email(
+            email_vo.value, token, context
+        ):
             # Said out loud rather than swallowed: the account exists and
             # cannot be used, and nobody will find out from the response,
             # which is the same either way.
             log.error(
                 "Registered account has no confirmation message",
                 user_id=saved_user.id,
-                email=email,
+                email=email_vo.value,
             )
 
         return None

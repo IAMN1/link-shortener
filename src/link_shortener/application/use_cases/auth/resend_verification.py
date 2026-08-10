@@ -99,7 +99,10 @@ class ResendVerificationUseCase(BaseUseCase):
             log.info("Verification resend had nothing to send")
             return
 
-        if not self.task_queue.enqueue_verification_email(email, token, context):
+        # The normalised address, matching the row the token belongs to.
+        if not self.task_queue.enqueue_verification_email(
+            email_vo.value, token, context
+        ):
             log.error("Verification resend was not handed off")
             return
 
