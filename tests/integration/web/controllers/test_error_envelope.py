@@ -19,7 +19,9 @@ import re
 
 import pytest
 
-from tests.integration.conftest import auth_headers, register_and_login
+from tests.integration.conftest import (
+    auth_headers, confirm_email, register_and_login
+)
 
 
 API_PREFIX = "/api/v1"
@@ -187,6 +189,7 @@ class TestAdminRefusalsPastTheDoor:
         client.post("/api/v1/auth/register", json={
             "email": "envelope-admin@test.com", "password": "AdminPass1!"
         })
+        confirm_email(app, "envelope-admin@test.com")
 
         with app.app_context():
             from sqlalchemy import text

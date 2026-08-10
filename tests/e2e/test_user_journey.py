@@ -7,7 +7,7 @@ These tests verify that all layers work together correctly.
 
 import pytest
 
-from tests.integration.conftest import csrf_headers
+from tests.integration.conftest import confirm_email, csrf_headers
 
 
 class TestGuestUserJourney:
@@ -72,6 +72,11 @@ class TestRegisteredUserJourney:
             "email": "journey@example.com", "password": "JourneyPass1!"
         })
         assert r.status_code == 201
+
+        # 1a. Confirm the address. A real user opens the link that was
+        # mailed to them; the suite sends no mail and keeps only the
+        # token's digest, so the journey picks up where that link lands.
+        confirm_email(client.application, "journey@example.com")
 
         # 2. Login
         r = client.post("/api/v1/auth/login", json={

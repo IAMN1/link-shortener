@@ -1,7 +1,9 @@
 """Integration tests for auth endpoints with real DB."""
 
 import pytest
-from tests.integration.conftest import register_and_login, auth_headers, csrf_headers
+from tests.integration.conftest import (
+    auth_headers, confirm_email, csrf_headers, register_and_login
+)
 
 
 
@@ -68,6 +70,7 @@ class TestLogin:
         client.post("/api/v1/auth/register", json={
             "email": "login@example.com", "password": "StrongPass1!"
         })
+        confirm_email(client.application, "login@example.com")
         r = client.post("/api/v1/auth/login", json={
             "email": "login@example.com", "password": "StrongPass1!"
         })
@@ -277,6 +280,10 @@ class TestAuthFlow:
             "email": "flow@example.com", "password": "StrongPass1!"
         })
         assert r.status_code == 201
+
+        # Confirm the address: registration leaves it unproven, and login
+        # refuses an account whose address nobody has confirmed.
+        confirm_email(client.application, "flow@example.com")
 
         # Login
         r = client.post("/api/v1/auth/login", json={

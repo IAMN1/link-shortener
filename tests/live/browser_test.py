@@ -172,6 +172,31 @@ def is_a_code(text: str) -> bool:
     return first.isupper() and " " not in text.strip()
 
 
+def confirm_email(app, email: str) -> None:
+    """
+    Mark an address as confirmed, as following the mailed link would.
+
+    Registration leaves the account unconfirmed and the login form refuses
+    it until the address is proven. A browser cannot do that step here:
+    nothing is mailed -- the profile below cannot send at all -- and the
+    table keeps only the token's digest.
+
+    Args:
+        app: The application serving this run.
+        email: Address of the account to confirm.
+    """
+    from sqlalchemy import text
+
+    with app.app_context():
+        with app.container.get_db_manager().session() as session:
+            updated = session.execute(
+                text("UPDATE users SET email_verified = 1 WHERE email = :email"),
+                {"email": email},
+            ).rowcount
+            assert updated == 1, f"no account for {email}"
+            session.commit()
+
+
 def sign_in(page, base: str) -> None:
     """
     Sign the browser in through the login form.
@@ -206,7 +231,7 @@ def main() -> int:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
                 try:
-                    run_checks(browser, base)
+                    run_checks(browser, base, app)
                 finally:
                     browser.close()
         finally:
@@ -220,7 +245,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 8
+    expected = 9
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -229,13 +254,16 @@ def main() -> int:
     return 0 if result.failed == 0 else 1
 
 
-def run_checks(browser, base: str) -> None:
+def run_checks(browser, base: str, app) -> None:
     """
     Drive every page whose script turns an answer into a sentence.
 
     Args:
         browser: A launched Playwright browser.
         base: Base URL the server answers on.
+        app: The application being served, for the one step a browser
+            cannot take: confirming an address, which normally happens by
+            opening a link that this run never mails.
     """
     console_errors = []
 
@@ -310,6 +338,27 @@ def run_checks(browser, base: str) -> None:
         page.fill("#password", PASSWORD)
         page.click("#register-form button[type=submit]")
         page.wait_for_url(f"{base}/login", timeout=5000)
+
+    @check("a fresh registration cannot sign in until the address is confirmed")
+    def _():
+        page = page_for("/login")
+        page.fill("#email", "browser-user@example.test")
+        page.fill("#password", PASSWORD)
+        page.click("#login-form button[type=submit]")
+        page.wait_for_function(
+            "document.getElementById('login-error').textContent.trim() !== ''",
+            timeout=5000,
+        )
+        message = page.inner_text("#login-error").strip()
+
+        assert message, "the error area stayed empty"
+        assert not is_a_code(message), (
+            f"the page shows a machine-readable code: {message!r}"
+        )
+
+        # From here on the account is usable: the checks below are about
+        # signing in and the dashboard, not about confirmation.
+        confirm_email(app, "browser-user@example.test")
 
     @check("signing in with the wrong password says so in words")
     def _():

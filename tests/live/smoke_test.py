@@ -263,6 +263,86 @@ def promote_to_admin(email: str) -> None:
             )
             session.commit()
 
+def confirm_email(email: str) -> None:
+    """
+    Mark an address as confirmed, as following the mailed link would.
+
+    Registration leaves an account unconfirmed and login refuses it until
+    the address is proven, so every account this run signs in with has to
+    get past that first. It cannot be done through the route: only the
+    digest of the token is stored, and the token exists for the length of
+    one call to the mailer -- which is a ``NullMailer`` here, because this
+    run uses the testing profile and that profile cannot send mail at all.
+
+    Args:
+        email: Address of the account to confirm.
+    """
+    from sqlalchemy import text
+
+    with app.app_context():
+        db = app.container.get_db_manager()
+        with db.session() as session:
+            updated = session.execute(
+                text("UPDATE users SET email_verified = 1 WHERE email = :email"),
+                {"email": email},
+            ).rowcount
+            assert updated == 1, f"no account for {email}"
+            session.commit()
+
+
+def issue_confirmation(email: str) -> str:
+    """
+    Store a confirmation for an account and hand back its raw token.
+
+    The token a real user gets arrives by mail; this run sends none, and
+    the table keeps only a digest. So the token is minted here and its
+    digest written the way registration would have written it -- which is
+    what makes the link below a real link and not a mock of one.
+
+    Args:
+        email: Address of the account.
+
+    Returns:
+        The token that opens the confirmation.
+    """
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import text
+
+    from link_shortener.domain.value_objects.verification_token import (
+        issue_token,
+        token_digest,
+    )
+
+    token = issue_token()
+    now = datetime.now(timezone.utc)
+    with app.app_context():
+        db = app.container.get_db_manager()
+        with db.session() as session:
+            user = session.execute(
+                text("SELECT id FROM users WHERE email = :email"),
+                {"email": email},
+            ).fetchone()
+            assert user is not None, f"no account for {email}"
+            session.execute(
+                text(
+                    "INSERT INTO email_verifications "
+                    "(id, user_id, token_hash, expires_at, created_at, used_at) "
+                    "VALUES (:id, :uid, :hash, :expires, :created, NULL)"
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "uid": user[0],
+                    "hash": token_digest(token),
+                    "expires": now + timedelta(hours=24),
+                    "created": now,
+                },
+            )
+            session.commit()
+    return token
+
+
 GUEST_URL = "https://example.com"
 OWNED_URL = "https://auth-user-example.com"
 BROWSER_URL = "https://browser-session-example.com"
@@ -318,6 +398,52 @@ def _():
     })
     assert r.status_code == 201
     assert r.get_json()["user"]["roles"] == ["user"]
+
+@test("A fresh registration cannot sign in yet")
+def _():
+    # The account exists and the password is right; what it lacks is a
+    # confirmed address. Named apart from a wrong password on purpose --
+    # this is the one refusal the holder can act on, and only somebody who
+    # already knows the password ever sees it.
+    r = new_client("10.0.0.30").post("/api/v1/auth/login", json={
+        "email": "test@example.com", "password": "Test1234!"
+    })
+    assert r.status_code == 401, r.get_json()
+    assert r.get_json()["error"] == "EMAIL_NOT_VERIFIED", r.get_json()
+
+@test("GET /api/v1/auth/verify (a link that was never issued)")
+def _():
+    r = new_client("10.0.0.31").get("/api/v1/auth/verify?token=never-issued")
+    assert r.status_code == 400, r.get_json()
+
+@test("GET /api/v1/auth/verify (the real link)")
+def _():
+    token = issue_confirmation("test@example.com")
+    r = new_client("10.0.0.32").get(f"/api/v1/auth/verify?token={token}")
+    assert r.status_code == 200, r.get_json()
+
+    # And once only: the same link again is refused, in the same words as
+    # a link that never existed.
+    again = new_client("10.0.0.33").get(f"/api/v1/auth/verify?token={token}")
+    unknown = new_client("10.0.0.36").get("/api/v1/auth/verify?token=no-such")
+    assert again.status_code == unknown.status_code == 400
+    assert again.get_json()["message"] == unknown.get_json()["message"]
+
+@test("POST /api/v1/auth/resend-verification (an address nobody holds)")
+def _():
+    # Answers the same as for a registered one. A route that mails on
+    # request and answers honestly is a route that says who is registered.
+    unknown = new_client("10.0.0.34").post(
+        "/api/v1/auth/resend-verification",
+        json={"email": "nobody-here@example.com"},
+    )
+    known = new_client("10.0.0.35").post(
+        "/api/v1/auth/resend-verification",
+        json={"email": "test@example.com"},
+    )
+    assert unknown.status_code == 202, unknown.get_json()
+    assert known.status_code == unknown.status_code
+    assert known.get_json()["message"] == unknown.get_json()["message"]
 
 @test("POST /api/v1/auth/register (duplicate)")
 def _():
@@ -440,6 +566,7 @@ def _():
         "email": "stranger@example.com", "password": "Test1234!"
     })
     assert r.status_code == 201
+    confirm_email("stranger@example.com")
     r = stranger.post("/api/v1/auth/login", json={
         "email": "stranger@example.com", "password": "Test1234!"
     })
@@ -964,6 +1091,7 @@ def _():
     })
     assert r.status_code == 201, r.get_json()
     promote_to_admin("admin@example.com")
+    confirm_email("admin@example.com")
 
     # A fresh login, because the token issued at registration was issued to
     # an account that was not an administrator yet.
@@ -1474,7 +1602,7 @@ success = result.summary()
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 110
+EXPECTED_CHECKS = 114
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")

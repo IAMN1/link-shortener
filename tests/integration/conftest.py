@@ -71,11 +71,40 @@ def app_context(app):
         yield app
 
 
+def confirm_email(app, email):
+    """
+    Mark a registered address as confirmed, as following the link would.
+
+    Registration leaves the account unconfirmed and login refuses it until
+    the address is proven, so a test that wants a working account has to
+    do here what a person does by opening their mail. It cannot be done
+    through the real route: only the digest of the token is stored, and
+    the token itself exists for the length of one call to the mailer,
+    which is a ``NullMailer`` in the suite.
+
+    Args:
+        app: The application under test.
+        email: Address of the account to confirm.
+    """
+    from sqlalchemy import text
+
+    with app.app_context():
+        with app.container.get_db_manager().session() as session:
+            session.execute(
+                text(
+                    "UPDATE users SET email_verified = 1 WHERE email = :email"
+                ),
+                {"email": email},
+            )
+            session.commit()
+
+
 def register_and_login(client, email="test@example.com", password="Test1234!"):
-    """Helper: register a user and return access token."""
+    """Helper: register a user, confirm the address, return access token."""
     client.post("/api/v1/auth/register", json={
         "email": email, "password": password
     })
+    confirm_email(client.application, email)
     r = client.post("/api/v1/auth/login", json={
         "email": email, "password": password
     })
@@ -136,6 +165,7 @@ def account_with_permissions(app, email, password, role_name, permissions):
     client.post(
         "/api/v1/auth/register", json={"email": email, "password": password}
     )
+    confirm_email(app, email)
 
     role_id = str(uuid.uuid4())
     with app.app_context():

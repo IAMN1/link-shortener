@@ -2,7 +2,7 @@
 
 import pytest
 from tests.integration.conftest import (
-    auth_headers, csrf_headers, register_and_login
+    auth_headers, confirm_email, csrf_headers, register_and_login
 )
 
 
@@ -47,6 +47,7 @@ class TestAdminWithAdminUser:
         client.post("/api/v1/auth/register", json={
             "email": "admin@test.com", "password": "AdminPass1!"
         })
+        confirm_email(client.application, "admin@test.com")
 
         # Promote to admin via DB
         with app.app_context():

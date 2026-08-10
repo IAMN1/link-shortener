@@ -3,7 +3,7 @@
 import pytest
 
 from link_shortener.web.middleware.csrf import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
-from tests.integration.conftest import auth_headers, csrf_headers
+from tests.integration.conftest import confirm_email, auth_headers, csrf_headers
 
 
 def _login(client, email, password="StrongPass1!"):
@@ -21,6 +21,7 @@ def _login(client, email, password="StrongPass1!"):
     client.post("/api/v1/auth/register", json={
         "email": email, "password": password
     })
+    confirm_email(client.application, email)
     r = client.post("/api/v1/auth/login", json={
         "email": email, "password": password
     })
@@ -36,6 +37,7 @@ class TestCsrfCookieIssuing:
         r = client.post("/api/v1/auth/register", json={
             "email": "csrfissue@example.com", "password": "StrongPass1!"
         })
+        confirm_email(client.application, "csrfissue@example.com")
         r = client.post("/api/v1/auth/login", json={
             "email": "csrfissue@example.com", "password": "StrongPass1!"
         })
@@ -194,6 +196,7 @@ class TestTokenSignature:
         other.post("/api/v1/auth/register", json={
             "email": "csrfother@example.com", "password": "StrongPass1!"
         })
+        confirm_email(other.application, "csrfother@example.com")
         r = other.post("/api/v1/auth/login", json={
             "email": "csrfother@example.com", "password": "StrongPass1!"
         })

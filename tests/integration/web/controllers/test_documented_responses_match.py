@@ -14,6 +14,8 @@ a real application.
 
 import pytest
 
+from tests.integration.conftest import confirm_email
+
 from link_shortener.web.schemas.auth import (
     MessageResponse, RefreshResponse, RegisterResponse, TokenPairResponse,
 )
@@ -78,6 +80,7 @@ class TestTheAnswersMatchWhatIsDocumented:
             "/api/v1/auth/register",
             json={"email": "signin@example.test", "password": PASSWORD},
         )
+        confirm_email(client.application, "signin@example.test")
 
         response = client.post(
             "/api/v1/auth/login",
@@ -92,6 +95,7 @@ class TestTheAnswersMatchWhatIsDocumented:
             "/api/v1/auth/register",
             json={"email": "links@example.test", "password": PASSWORD},
         )
+        confirm_email(client.application, "links@example.test")
         token = client.post(
             "/api/v1/auth/login",
             json={"email": "links@example.test", "password": PASSWORD},
@@ -116,6 +120,7 @@ class TestTheAnswersMatchWhatIsDocumented:
             "/api/v1/auth/register",
             json={"email": "totals@example.test", "password": PASSWORD},
         )
+        confirm_email(client.application, "totals@example.test")
         token = client.post(
             "/api/v1/auth/login",
             json={"email": "totals@example.test", "password": PASSWORD},
@@ -137,6 +142,7 @@ class TestTheAnswersMatchWhatIsDocumented:
             "/api/v1/auth/register",
             json={"email": "refresh@example.test", "password": PASSWORD},
         )
+        confirm_email(client.application, "refresh@example.test")
         client.post(
             "/api/v1/auth/login",
             json={"email": "refresh@example.test", "password": PASSWORD},
@@ -154,6 +160,7 @@ class TestTheAnswersMatchWhatIsDocumented:
             "/api/v1/auth/register",
             json={"email": "logout@example.test", "password": PASSWORD},
         )
+        confirm_email(client.application, "logout@example.test")
         client.post(
             "/api/v1/auth/login",
             json={"email": "logout@example.test", "password": PASSWORD},

@@ -3,7 +3,7 @@
 import pytest
 
 from link_shortener.infrastructure.database.models.user_model import UserModel
-from tests.integration.conftest import register_and_login, auth_headers, csrf_headers
+from tests.integration.conftest import confirm_email, register_and_login, auth_headers, csrf_headers
 
 
 def _register_and_get_tokens(client, email, password="StrongPass1!"):
@@ -21,6 +21,7 @@ def _register_and_get_tokens(client, email, password="StrongPass1!"):
     client.post("/api/v1/auth/register", json={
         "email": email, "password": password
     })
+    confirm_email(client.application, email)
     r = client.post("/api/v1/auth/login", json={
         "email": email, "password": password
     })
@@ -66,6 +67,7 @@ class TestAuthenticationMiddleware:
         client.post("/api/v1/auth/register", json={
             "email": "auth@example.com", "password": "StrongPass1!"
         })
+        confirm_email(client.application, "auth@example.com")
         r = client.post("/api/v1/auth/login", json={
             "email": "auth@example.com", "password": "StrongPass1!"
         })
@@ -95,6 +97,7 @@ class TestAuthenticationMiddleware:
         client.post("/api/v1/auth/register", json={
             "email": "exp@example.com", "password": "StrongPass1!"
         })
+        confirm_email(client.application, "exp@example.com")
         r = client.post("/api/v1/auth/login", json={
             "email": "exp@example.com", "password": "StrongPass1!"
         })

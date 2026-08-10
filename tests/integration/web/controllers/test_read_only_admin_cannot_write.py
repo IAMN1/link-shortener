@@ -14,7 +14,7 @@ alike, so the swap is a plausible slip rather than an invented one.
 
 import pytest
 
-from tests.integration.conftest import auth_headers
+from tests.integration.conftest import confirm_email, auth_headers
 
 
 READ_PERMISSIONS = ["admin:view_users", "admin:view_roles"]
@@ -64,6 +64,7 @@ def reader_token(app, client):
     client.post("/api/v1/auth/register", json={
         "email": email, "password": "ReaderPass1!"
     })
+    confirm_email(client.application, email)
 
     with app.app_context():
         db = app.container.get_db_manager()
