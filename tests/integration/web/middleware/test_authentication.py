@@ -43,6 +43,22 @@ def _deactivate_user(db, email):
         model.is_active = False
 
 
+
+def _without_timestamp(response) -> dict:
+    """
+    The body of an error answer, minus the moment it was made.
+
+    Args:
+        response: The Flask test-client response to read.
+
+    Returns:
+        The JSON body without its ``timestamp`` field, so that two answers
+        can be compared for what they say rather than for when.
+    """
+    body = dict(response.get_json())
+    body.pop("timestamp", None)
+    return body
+
 class TestAuthenticationMiddleware:
     """Verify middleware loads user from JWT token correctly."""
 
@@ -190,7 +206,8 @@ class TestDeactivatedUser:
         })
 
         # Answering differently would tell an attacker that the guessed
-        # password is the right one, blocked account or not.
+        # password is the right one, blocked account or not. The envelope's
+        # timestamp is stamped per answer and left out of the comparison.
         assert right.status_code == 401
         assert right.status_code == wrong.status_code
-        assert right.get_json() == wrong.get_json()
+        assert _without_timestamp(right) == _without_timestamp(wrong)

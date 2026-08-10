@@ -6,7 +6,7 @@ Provides decorators that enforce authentication and permission checks.
 
 import functools
 
-from flask import g, jsonify, redirect, request, url_for
+from flask import g, redirect, request, url_for
 
 from link_shortener.domain import DomainError
 from link_shortener.web.security.context import get_current_domain_user
@@ -67,7 +67,14 @@ def login_required(view_func):
     def wrapper(*args, **kwargs):
         if not g.get('current_user'):
             if request.path.startswith('/api/'):
-                return jsonify({"error": "Authentication required"}), 401
+                # Raised rather than answered here, as `require_permission`
+                # beside it does: the error handler is the one place that
+                # turns a code into a status and an ErrorResponse, and an
+                # answer built by hand here was the API's only 401 outside
+                # that envelope.
+                raise DomainError(
+                    "Authentication required", code="UNAUTHENTICATED"
+                )
             return redirect(url_for('frontend.login_page'))
         return view_func(*args, **kwargs)
     return wrapper

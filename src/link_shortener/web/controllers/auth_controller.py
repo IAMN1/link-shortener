@@ -11,6 +11,7 @@ from link_shortener.domain import DomainError, ValidationError
 from link_shortener.web.middleware.csrf import (
     CSRF_COOKIE_NAME, build_csrf_token, set_csrf_cookie
 )
+from link_shortener.web.responses import error_response
 from link_shortener.web.security.context import create_request_context
 
 
@@ -146,7 +147,7 @@ class AuthController:
         """
         email, password = _read_credentials()
         if not email or not password:
-            return jsonify({"error": "Email and password are required"}), 400
+            raise ValidationError("Email and password are required")
 
         context = create_request_context()
         try:
@@ -164,7 +165,13 @@ class AuthController:
             # Anything else propagates to the global error handler, which
             # logs it and answers with a generic 500 instead of leaking
             # internal exception text.
-            return jsonify({"error": e.message}), 401
+            #
+            # Answered here rather than re-raised because the status is the
+            # endpoint's, not the code's: the handler maps ACCOUNT_INACTIVE
+            # to 403, and 403 against 401 tells an unauthenticated caller
+            # that the account exists. The envelope is the handler's all
+            # the same.
+            return error_response(e.code, e.message, 401)
 
         # Build the response with access token in body and refresh token in HttpOnly cookie.
         resp = make_response(jsonify({
@@ -222,7 +229,7 @@ class AuthController:
         """
         email, password = _read_credentials()
         if not email or not password:
-            return jsonify({"error": "Email and password are required"}), 400
+            raise ValidationError("Email and password are required")
 
         context = create_request_context()
         try:
@@ -237,8 +244,10 @@ class AuthController:
                 }
             }), 201
         except DomainError as e:
-            # Same rule as login: internal failures must not reach the client.
-            return jsonify({"error": e.message}), 400
+            # Same rule as login: internal failures must not reach the
+            # client, and the status is the endpoint's rather than the
+            # code's.
+            return error_response(e.code, e.message, 400)
 
     # ------------------------------------------------------------------
     # POST /api/v1/auth/logout
@@ -288,15 +297,19 @@ class AuthController:
         """
         refresh_token = _read_refresh_token()
         if not refresh_token:
-            return jsonify({"error": "No refresh token"}), 401
+            return error_response(
+                "UNAUTHENTICATED", "No refresh token", 401
+            )
 
         tokens = self.authentication_service.refresh_access_token(refresh_token)
         if not tokens:
-            resp = jsonify({"error": "Invalid or expired refresh token"})
+            resp, status = error_response(
+                "UNAUTHENTICATED", "Invalid or expired refresh token", 401
+            )
             resp.delete_cookie("refresh_token", path="/")
             resp.delete_cookie("access_token", path="/")
             resp.delete_cookie(CSRF_COOKIE_NAME, path="/")
-            return resp, 401
+            return resp, status
 
         cookie_secure = current_app.config.get("COOKIE_SECURE", False)
         resp = make_response(jsonify({
