@@ -72,7 +72,7 @@ class TestTheAnswersMatchWhatIsDocumented:
             "/api/v1/auth/register", json={"email": EMAIL, "password": PASSWORD}
         )
 
-        assert response.status_code == 201
+        assert response.status_code == 202
         RegisterResponse.model_validate(response.get_json())
 
     def test_sign_in(self, client):

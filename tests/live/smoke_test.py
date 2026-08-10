@@ -396,8 +396,11 @@ def _():
     r = new_client("10.0.0.1").post("/api/v1/auth/register", json={
         "email": "test@example.com", "password": "Test1234!"
     })
-    assert r.status_code == 201
-    assert r.get_json()["user"]["roles"] == ["user"]
+    assert r.status_code == 202
+    # No account comes back. The same answer is given for an address that
+    # is already registered, and one that named the account would only be
+    # answerable for one of the two.
+    assert set(r.get_json()) == {"message"}
 
 @test("A fresh registration cannot sign in yet")
 def _():
@@ -447,13 +450,18 @@ def _():
 
 @test("POST /api/v1/auth/register (duplicate)")
 def _():
-    r = new_client("10.0.0.2").post("/api/v1/auth/register", json={
+    # Compared against a fresh registration rather than against a literal:
+    # what matters is that the two are indistinguishable, and a pair of
+    # hard-coded 202s would still pass if only one of them changed.
+    duplicate = new_client("10.0.0.2").post("/api/v1/auth/register", json={
         "email": "test@example.com", "password": "Test1234!"
     })
-    assert r.status_code == 400
-    body = r.get_json()
-    assert body["error"] == "VALIDATION_ERROR"
-    assert body["message"] == "Email already registered"
+    fresh = new_client("10.0.0.42").post("/api/v1/auth/register", json={
+        "email": "never-used@example.com", "password": "Test1234!"
+    })
+    assert duplicate.status_code == 202, duplicate.get_json()
+    assert duplicate.status_code == fresh.status_code
+    assert duplicate.get_json() == fresh.get_json()
 
 @test("POST /api/v1/auth/register (missing fields)")
 def _():
@@ -480,7 +488,7 @@ def _():
         r = throttled.post("/api/v1/auth/register", json={
             "email": f"burst{i}@example.com", "password": "Test1234!"
         })
-        assert r.status_code == 201, f"attempt {i} was refused"
+        assert r.status_code == 202, f"attempt {i} was refused"
     r = throttled.post("/api/v1/auth/register", json={
         "email": "burst3@example.com", "password": "Test1234!"
     })
@@ -565,7 +573,7 @@ def _():
     r = stranger.post("/api/v1/auth/register", json={
         "email": "stranger@example.com", "password": "Test1234!"
     })
-    assert r.status_code == 201
+    assert r.status_code == 202
     confirm_email("stranger@example.com")
     r = stranger.post("/api/v1/auth/login", json={
         "email": "stranger@example.com", "password": "Test1234!"
@@ -1089,12 +1097,12 @@ def _():
     r = admin.post("/api/v1/auth/register", json={
         "email": "admin@example.com", "password": "Test1234!"
     })
-    assert r.status_code == 201, r.get_json()
+    assert r.status_code == 202, r.get_json()
     promote_to_admin("admin@example.com")
     confirm_email("admin@example.com")
 
-    # A fresh login, because the token issued at registration was issued to
-    # an account that was not an administrator yet.
+    # Signed in here rather than at registration: registration issues no
+    # tokens at all, and the role this account needs is granted above.
     r = admin.post("/api/v1/auth/login", json={
         "email": "admin@example.com", "password": "Test1234!"
     })

@@ -29,12 +29,12 @@ class TestRegister:
         r = client.post("/api/v1/auth/register", json={
             "email": "new@example.com", "password": "StrongPass1!"
         })
-        assert r.status_code == 201
+        assert r.status_code == 202
         data = r.get_json()
-        # Registration answers with the user and nothing else: no tokens,
-        # so signing up does not sign you in. The `or "access_token"` half
-        # said otherwise and was never reached.
-        assert "user" in data
+        # No tokens, so signing up does not sign you in -- and no account
+        # either, because an identifier here would be the answer to
+        # "is this address registered" that the status no longer gives.
+        assert "user" not in data
         assert "access_token" not in data
 
     def test_register_duplicate_email(self, client):
@@ -44,7 +44,7 @@ class TestRegister:
         r = client.post("/api/v1/auth/register", json={
             "email": "dup@example.com", "password": "StrongPass1!"
         })
-        assert r.status_code == 400
+        assert r.status_code == 202
 
     def test_register_weak_password(self, client):
         r = client.post("/api/v1/auth/register", json={
@@ -279,7 +279,7 @@ class TestAuthFlow:
         r = client.post("/api/v1/auth/register", json={
             "email": "flow@example.com", "password": "StrongPass1!"
         })
-        assert r.status_code == 201
+        assert r.status_code == 202
 
         # Confirm the address: registration leaves it unproven, and login
         # refuses an account whose address nobody has confirmed.
@@ -335,7 +335,7 @@ class TestPasswordStrength:
             json={"email": "strong@example.com", "password": "StrongPass1!"},
         )
 
-        assert r.status_code == 201, r.get_json()
+        assert r.status_code == 202, r.get_json()
 
     def test_the_rule_holds_on_the_admin_path_too(self, client, app):
         """

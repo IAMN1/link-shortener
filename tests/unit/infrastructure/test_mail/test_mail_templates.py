@@ -92,6 +92,51 @@ class TestTheConfirmationMessage:
             templates.environment.get_template("verification_body.txt").render()
 
 
+class TestTheAccountExistsMessage:
+    """Sent to an address somebody tried to register a second time."""
+
+    SIGN_IN = "https://links.example.com/login"
+
+    def test_it_points_at_the_sign_in_page(self, templates):
+        _, body = templates.account_exists_email(sign_in_url=self.SIGN_IN)
+
+        assert self.SIGN_IN in body
+
+    def test_it_carries_nothing_that_grants_anything(self, templates):
+        """Sent to an address the caller may not own, and triggered by
+        anyone who can type it. A confirmation link in here would be a
+        credential handed out on request."""
+        _, body = templates.account_exists_email(sign_in_url=self.SIGN_IN)
+
+        assert "token" not in body.lower()
+        assert "/auth/verify" not in body
+
+    def test_the_subject_carries_no_line_break(self, templates):
+        subject, _ = templates.account_exists_email(sign_in_url=self.SIGN_IN)
+
+        assert "\n" not in subject
+        assert "\r" not in subject
+        assert subject
+
+    def test_the_message_is_sendable(self, templates):
+        from email.message import EmailMessage
+
+        subject, body = templates.account_exists_email(
+            sign_in_url=self.SIGN_IN
+        )
+        message = EmailMessage()
+        message["Subject"] = subject
+        message.set_content(body)
+
+        assert message["Subject"] == subject
+
+    def test_a_missing_variable_is_an_error_and_not_a_blank(self, templates):
+        from jinja2 import UndefinedError
+
+        with pytest.raises(UndefinedError):
+            templates.environment.get_template("account_exists_body.txt").render()
+
+
 class TestTheTemplatesReachTheImage:
     """Files that stay in the repository are files production does not have."""
 
@@ -123,6 +168,8 @@ class TestTheTemplatesReachTheImage:
     def test_the_message_templates_are_where_the_renderer_looks(self):
         assert (TEMPLATE_DIR / "verification_subject.txt").is_file()
         assert (TEMPLATE_DIR / "verification_body.txt").is_file()
+        assert (TEMPLATE_DIR / "account_exists_subject.txt").is_file()
+        assert (TEMPLATE_DIR / "account_exists_body.txt").is_file()
 
     def test_the_renderer_finds_them_inside_the_package(self):
         """Counted inside the package, not up to a project root: the image

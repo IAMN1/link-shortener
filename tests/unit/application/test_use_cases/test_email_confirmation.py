@@ -275,9 +275,8 @@ class TestRegistration:
             verification_ttl_hours=24,
         )
 
-        result = use_case.execute("new@example.com", PASSWORD, context())
+        use_case.execute("new@example.com", PASSWORD, context())
 
-        assert result.email == "new@example.com"
         assert len(uow.users.users) == 1
         assert len(uow.email_verifications.rows) == 1
 
