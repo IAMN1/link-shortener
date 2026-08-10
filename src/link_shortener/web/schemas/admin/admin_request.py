@@ -6,15 +6,25 @@ from link_shortener.domain.policies.role_policy import (
     ROLE_DESCRIPTION_MAX_LENGTH, ROLE_NAME_MAX_LENGTH, ROLE_NAME_MIN_LENGTH,
     ROLE_NAME_PATTERN,
 )
+from link_shortener.domain.value_objects.email import EMAIL_PATTERN
 
 
 class CreateUserRequest(BaseModel):
     """Request schema for creating a new user."""
     email: str = Field(
-        ..., 
-        pattern=r"^[^@]+@[^@]+\.[^@]+$", 
+        ...,
+        pattern=EMAIL_PATTERN,
         description="User Email"
     )
+    """The shape comes from the value object every path builds afterwards.
+
+    It was the same expression written out a second time, which is the
+    arrangement ``password`` and ``name`` were both taken out of: a copy
+    disagrees silently, and here it would disagree by refusing at the
+    schema what the domain accepts, or -- the direction that costs
+    something -- accepting at the schema what the domain then refuses with
+    a 400 naming no field the caller sent.
+    """
     password: str = Field(
         ...,
         min_length=MIN_PASSWORD_LENGTH,
