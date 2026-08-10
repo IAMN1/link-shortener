@@ -256,9 +256,60 @@ class TestAdminApiController:
         mock_health.logging = None
         ctrl.admin_service.get_service_health.return_value = mock_health
 
-        data = client.get("/api/v1/admin/health").get_json()
+        response = client.get("/api/v1/admin/health")
 
-        assert "logging" not in data
+        # The status first: publishing the section unconditionally raises
+        # on the None and the caller gets a 500 whose body has no
+        # "logging" key either -- so the assertion below passed on the
+        # error envelope. Measured: `if health.logging is not None:`
+        # widened to `if True:` left this file green.
+        assert response.status_code == 200
+        assert "logging" not in response.get_json()
+
+    def test_list_users_passes_the_window_it_was_asked_for(self, app, client):
+        """``limit`` and ``offset`` can be swapped and nothing notices.
+
+        Measured on the mutation run of 2026-08-10: passing ``limit=offset``
+        and ``offset=limit`` answered 200 with an empty list, because every
+        test that reached this endpoint set the service to answer ``[]``
+        and none looked at what it had been asked for.
+        """
+        ctrl = _get_admin_controller(app)
+        ctrl.admin_service.list_users.return_value = []
+
+        client.get("/api/v1/admin/users?limit=7&offset=3")
+
+        _args, kwargs = ctrl.admin_service.list_users.call_args
+        assert kwargs["limit"] == 7
+        assert kwargs["offset"] == 3
+
+    def test_list_users_has_a_window_when_none_was_asked_for(self, app, client):
+        """A caller naming neither must not get the whole table."""
+        ctrl = _get_admin_controller(app)
+        ctrl.admin_service.list_users.return_value = []
+
+        client.get("/api/v1/admin/users")
+
+        _args, kwargs = ctrl.admin_service.list_users.call_args
+        assert kwargs["limit"] == 100
+        assert kwargs["offset"] == 0
+
+    def test_list_users_answers_with_the_users_it_was_given(self, app, client):
+        """The body was never read, so a list built from nothing passed."""
+        ctrl = _get_admin_controller(app)
+        first, second = MagicMock(), MagicMock()
+        first.id, first.email = "u1", "first@test.com"
+        first.roles, first.is_active = ["user"], True
+        second.id, second.email = "u2", "second@test.com"
+        second.roles, second.is_active = ["admin"], False
+        ctrl.admin_service.list_users.return_value = [first, second]
+
+        data = client.get("/api/v1/admin/users").get_json()
+
+        assert [user["email"] for user in data] == [
+            "first@test.com", "second@test.com"
+        ]
+        assert [user["is_active"] for user in data] == [True, False]
 
     def test_get_user_stats(self, app, client):
         """GET /api/v1/admin/users/<id>/stats returns user stats."""
