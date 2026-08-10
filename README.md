@@ -4,7 +4,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/badge/coverage-90.81%25-blue.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-91.09%25-blue.svg)]()
 
 ## Возможности
 
@@ -281,7 +281,7 @@ uv run pytest tests/unit/ -v                               # только уро
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 1684 (unit + integration + e2e), покрытие: 90.81% при
+Тесты: 1869 (unit + integration + e2e), покрытие: 91.09% при
 пороге 88% (`--cov-fail-under` в `pyproject.toml`).
 
 Разбор уровней, структура каталогов и то, что закрывает каждый флаг, — в
