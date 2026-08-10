@@ -36,8 +36,9 @@ class DeleteRoleUseCase(BaseUseCase):
             ``True`` if the role was successfully deleted.
 
         Raises:
-            DomainError: If the user is not authorized, the role is a system role,
-                or the role does not exist.
+            DomainError: ``ROLE_NOT_FOUND`` when there is no such role, which
+                the status table answers 404; ``ROLE_DELETION_FAILED`` when
+                the role exists but is a system role, answered 400.
         """
 
         log = self._get_logger(self.logger, context)
@@ -49,6 +50,13 @@ class DeleteRoleUseCase(BaseUseCase):
 
                 log.info("Role deleted", role_name=role_name)
                 return True
+            except LookupError as e:
+                # 404, like the neighbouring `delete_user`: a name that is
+                # not there is not a bad request.
+                log.info("Role deletion: no such role", role_name=role_name)
+                raise DomainError(str(e), code="ROLE_NOT_FOUND")
             except ValueError as e:
+                # The role exists and is protected -- that *is* a bad
+                # request, and stays 400.
                 log.error("Role deletion failed", error=str(e))
                 raise DomainError(str(e), code="ROLE_DELETION_FAILED")
