@@ -199,3 +199,21 @@ class TestHealthCheckJourney:
         client.get("/health")
         r = client.get("/health")
         assert r.status_code == 200
+
+    def test_the_probe_is_not_throttled(self, client):
+        # Against the real app, so the endpoint name is the one the route
+        # actually has. Renaming the view function renames the endpoint,
+        # and the exemption is by endpoint name -- a rename that keeps the
+        # path unchanged silently puts the probe back under the throttle.
+        # The absence of the header is the tell: it is stamped only when a
+        # limit was looked up, so one request settles it.
+        r = client.get("/health")
+        assert r.status_code == 200
+        assert "X-RateLimit-Limit" not in r.headers
+        assert "X-RateLimit-Remaining" not in r.headers
+
+        # A missing header says "exempt" and "no throttle installed at all"
+        # in exactly the same words. A throttled endpoint answering in the
+        # same breath is what tells the two apart.
+        throttled = client.get("/api/v1/stats")
+        assert "X-RateLimit-Limit" in throttled.headers

@@ -146,16 +146,6 @@ class LinkRepository(ABC):
         ...
 
     @abstractmethod
-    def increment_clicks_batch(self, short_codes: List[ShortCode]) -> None:
-        """
-        Bulk increment click counts for multiple short codes.
-
-        Args:
-            short_codes: List of short codes.
-        """
-        ...
-
-    @abstractmethod
     def get_stats(self) -> dict:
         """
         Retrieve service statistics.
