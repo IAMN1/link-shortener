@@ -2,16 +2,18 @@
 Live smoke test over the public surface of the running application.
 Run with: uv run python tests/live/smoke_test.py
 
-It covers what an anonymous caller, a programmatic client and a browser
-session can reach: 35 of the 46 routes the application registers, counting
-neither of the two /static rules. It does **not** cover the admin API past
-its refusals -- no account with 'admin:all' is ever created here, so the
-fourteen /api/v1/admin rules are exercised only through the door being
-shut, as is the 'stats:view_full' path that fills popular_links. Those
-belong to whoever adds an admin fixture; until then this file does not
-claim them.
+It covers what an anonymous caller, a programmatic client, a browser
+session and an administrator can reach: every route rule the application
+registers except `/static`, which is Flask's own. The number is not
+maintained by hand -- the run records which rule answered each request and
+fails if one was never reached.
 
-Four clients, because one cannot stand for four callers. A Flask test
+The administrator is made the way an operator makes the first one, by
+writing the role onto an account (`promote_to_admin`): there is no endpoint
+for it and should not be, since the first administrator cannot be appointed
+by an administrator.
+
+Five clients, because one cannot stand for five callers. A Flask test
 client keeps a cookie jar, so the moment any request on it logs in, every
 later request on that client is a cookie-authenticated one -- and the CSRF
 layer refuses unsafe cookie-authenticated requests that carry no token,
@@ -25,6 +27,8 @@ turned every later POST and DELETE into 403 and, worse, turned each
                  not apply to it, by design.
   - ``session``  logs in and keeps the cookies, which is what a browser is.
                  Every unsafe request on it goes through ``csrf()``.
+  - ``admin``    an account with the admin role, written straight into
+                 the database the way an operator makes the first one.
   - ``stranger`` a second account, logged in and entitled to nothing here.
                  Without it the file has only an owner and an anonymous
                  caller, and every per-object authorization check could be
@@ -50,6 +54,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+
+from flask import request
 
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.web.app_factory import create_app
@@ -87,6 +93,28 @@ class LiveTestResult:
 
 result = LiveTestResult()
 app = create_app(config=TestingConfig())
+
+touched_rules = set()
+
+
+@app.after_request
+def _record_the_rule_that_answered(response):
+    """
+    Note which route rule answered, so coverage is counted not claimed.
+
+    The file used to say in its own docstring how many routes it reached.
+    That number was maintained by hand and had no way of noticing a check
+    being deleted, renamed, or quietly pointed somewhere else.
+
+    Args:
+        response: The response about to be returned.
+
+    Returns:
+        The response, untouched.
+    """
+    if request.url_rule is not None:
+        touched_rules.add(str(request.url_rule))
+    return response
 
 with app.app_context():
     from link_shortener.infrastructure.database.seed import seed_base_roles
@@ -197,6 +225,43 @@ guest = new_client("127.0.0.1")
 session_client = new_client("127.0.0.2")
 api = new_client("127.0.0.3")
 stranger = new_client("127.0.0.4")
+admin = new_client("127.0.0.5")
+
+
+def promote_to_admin(email: str) -> None:
+    """
+    Give an account the admin role, the way an operator would.
+
+    There is no endpoint for this and there should not be: the first
+    administrator cannot be made by an administrator. The row is written
+    directly, which is what `flask db` does and what the deployment notes
+    tell an operator to do.
+
+    Args:
+        email: Address of the account to promote.
+    """
+    from sqlalchemy import text
+
+    with app.app_context():
+        db = app.container.get_db_manager()
+        with db.session() as session:
+            user = session.execute(
+                text("SELECT id FROM users WHERE email = :email"),
+                {"email": email},
+            ).fetchone()
+            role = session.execute(
+                text("SELECT id FROM roles WHERE name = 'admin'")
+            ).fetchone()
+            assert user is not None, f"no account for {email}"
+            assert role is not None, "the admin role was never seeded"
+            session.execute(
+                text(
+                    "INSERT OR IGNORE INTO user_roles (user_id, role_id) "
+                    "VALUES (:uid, :rid)"
+                ),
+                {"uid": user[0], "rid": role[0]},
+            )
+            session.commit()
 
 GUEST_URL = "https://example.com"
 OWNED_URL = "https://auth-user-example.com"
@@ -231,9 +296,12 @@ def _():
 def _():
     # The probe is how the orchestrator learns whether this instance is
     # alive, and a 429 is indistinguishable from a real failure to it.
-    # Twelve in a row, past the ten-per-five-seconds that RATE_LIMITS still
-    # declares for this endpoint -- the entry has been dead since the probe
-    # joined EXEMPT_ENDPOINTS, and it is the exemption that is the contract.
+    #
+    # The missing header is what settles this, not the twelve requests.
+    # The exemption returns before any limit is looked up, so not even the
+    # default of a hundred per minute applies here and twelve outrun
+    # nothing. The header is stamped only where a limit was looked up, so
+    # its absence is the whole answer.
     for _ in range(12):
         r = guest.get("/health")
         assert r.status_code == 200
@@ -257,7 +325,9 @@ def _():
         "email": "test@example.com", "password": "Test1234!"
     })
     assert r.status_code == 400
-    assert r.get_json()["error"] == "Email already registered"
+    body = r.get_json()
+    assert body["error"] == "VALIDATION_ERROR"
+    assert body["message"] == "Email already registered"
 
 @test("POST /api/v1/auth/register (missing fields)")
 def _():
@@ -270,7 +340,9 @@ def _():
         "email": "not-an-email", "password": "Test1234!"
     })
     assert r.status_code == 400
-    assert r.get_json()["error"] == "Invalid email format"
+    body = r.get_json()
+    assert body["error"] == "VALIDATION_ERROR"
+    assert body["message"] == "Invalid email format"
 
 @test("POST /api/v1/auth/register (fourth attempt from one address)")
 def _():
@@ -351,10 +423,15 @@ def _():
         "email": "nobody@example.com", "password": "Test1234!"
     })
     assert r.status_code == 401
-    # Byte for byte what a wrong password gets. The two are kept
+    # Word for word what a wrong password gets. The two are kept
     # indistinguishable on purpose, so that this endpoint cannot be asked
-    # whether an address has an account.
-    assert r.get_json() == {"error": "Invalid email or password"}
+    # whether an address has an account. Everything but the envelope's
+    # timestamp, which is stamped per answer and says nothing about the
+    # account.
+    body = r.get_json()
+    assert body["error"] == "INVALID_CREDENTIALS"
+    assert body["message"] == "Invalid email or password"
+    assert body["details"] is None
 
 @test("A second account, entitled to nothing of the first's")
 def _():
@@ -767,9 +844,9 @@ print("\n=== STATS ===")
 def _():
     # Asked first, and by nobody: the seeded 'guest' role carries
     # stats:view_basic, so this endpoint has no authenticated path to speak
-    # of and the 401 its OpenAPI entry declares cannot happen. Asserted as
-    # it is, not as documented -- whether the totals of the whole service
-    # belong to anonymous callers is the owner's call.
+    # of. Its OpenAPI entry used to declare a 401 that could not happen;
+    # the owner decided on 2026-08-09 that the totals stay public, and the
+    # entry was brought to the code rather than the other way round.
     #
     # The totals live here rather than on the authenticated check below
     # because this is the read that computes them. The next one is served
@@ -871,6 +948,206 @@ def _():
     # two statuses are how a client tells "log in" from "that will not help".
     r = api.get("/api/v1/admin/users", headers=auth_headers)
     assert r.status_code == 403
+
+
+# ─── 14b. Admin endpoints, from behind the door ────────────────────────
+print("\n=== ADMIN ENDPOINTS (AS AN ADMIN) ===")
+
+admin_headers = None
+subject_id = None
+
+@test("An administrator, made the way an operator makes the first one")
+def _():
+    global admin_headers
+    r = admin.post("/api/v1/auth/register", json={
+        "email": "admin@example.com", "password": "Test1234!"
+    })
+    assert r.status_code == 201, r.get_json()
+    promote_to_admin("admin@example.com")
+
+    # A fresh login, because the token issued at registration was issued to
+    # an account that was not an administrator yet.
+    r = admin.post("/api/v1/auth/login", json={
+        "email": "admin@example.com", "password": "Test1234!"
+    })
+    assert r.status_code == 200
+    admin_headers = {"Authorization": f"Bearer {r.get_json()['access_token']}"}
+
+@test("GET /api/v1/admin/health (as an admin)")
+def _():
+    r = admin.get("/api/v1/admin/health", headers=admin_headers)
+    assert r.status_code == 200
+    assert r.get_json()["database"] is True
+
+@test("GET /api/v1/admin/users (as an admin)")
+def _():
+    r = admin.get("/api/v1/admin/users", headers=admin_headers)
+    assert r.status_code == 200
+    emails = [u["email"] for u in r.get_json()]
+    assert "admin@example.com" in emails
+    assert "test@example.com" in emails
+
+@test("POST /api/v1/admin/users (as an admin)")
+def _():
+    global subject_id
+    r = admin.post("/api/v1/admin/users", headers=admin_headers, json={
+        "email": "made-by-admin@example.com",
+        "password": "Test1234!",
+        "roles": ["user"],
+    })
+    assert r.status_code == 201, r.get_json()
+    subject_id = r.get_json()["id"]
+    assert r.get_json()["roles"] == ["user"]
+
+@test("GET /api/v1/admin/users/<id> (as an admin)")
+def _():
+    r = admin.get(f"/api/v1/admin/users/{subject_id}", headers=admin_headers)
+    assert r.status_code == 200
+    assert r.get_json()["email"] == "made-by-admin@example.com"
+
+@test("GET /api/v1/admin/users/<id> (no such account)")
+def _():
+    missing = "00000000-0000-0000-0000-000000000000"
+    r = admin.get(f"/api/v1/admin/users/{missing}", headers=admin_headers)
+    assert r.status_code == 404
+    body = r.get_json()
+    # The envelope, as every other refusal in this API answers in.
+    assert body["error"] == "USER_NOT_FOUND"
+    assert body["message"]
+
+@test("PUT /api/v1/admin/users/<id>/roles (as an admin)")
+def _():
+    r = admin.put(
+        f"/api/v1/admin/users/{subject_id}/roles",
+        headers=admin_headers,
+        json={"roles": ["user", "analyst"]},
+    )
+    assert r.status_code == 200
+    assert sorted(r.get_json()["roles"]) == ["analyst", "user"]
+
+@test("POST /api/v1/admin/users/<id>/deactivate (as an admin)")
+def _():
+    r = admin.post(
+        f"/api/v1/admin/users/{subject_id}/deactivate", headers=admin_headers
+    )
+    assert r.status_code == 200
+    assert r.get_json()["is_active"] is False
+
+@test("A deactivated account cannot log in")
+def _():
+    # What the deactivation is for, rather than the field it wrote.
+    r = new_client("127.0.0.6").post("/api/v1/auth/login", json={
+        "email": "made-by-admin@example.com", "password": "Test1234!"
+    })
+    assert r.status_code == 401
+
+@test("POST /api/v1/admin/users/<id>/activate (as an admin)")
+def _():
+    r = admin.post(
+        f"/api/v1/admin/users/{subject_id}/activate", headers=admin_headers
+    )
+    assert r.status_code == 200
+    assert r.get_json()["is_active"] is True
+
+@test("GET /api/v1/admin/users/<id>/stats (as an admin)")
+def _():
+    r = admin.get(
+        f"/api/v1/admin/users/{subject_id}/stats", headers=admin_headers
+    )
+    assert r.status_code == 200
+    assert r.get_json()["total_links"] == 0
+
+@test("GET /api/v1/admin/roles (as an admin)")
+def _():
+    r = admin.get("/api/v1/admin/roles", headers=admin_headers)
+    assert r.status_code == 200
+    names = [role["name"] for role in r.get_json()]
+    assert {"admin", "user", "guest"} <= set(names)
+
+@test("POST /api/v1/admin/roles (as an admin)")
+def _():
+    r = admin.post("/api/v1/admin/roles", headers=admin_headers, json={
+        "name": "smoke-editor",
+        "description": "Made by the live run",
+        "permissions": ["link:create", "link:view_own"],
+    })
+    assert r.status_code == 201, r.get_json()
+    assert r.get_json()["name"] == "smoke-editor"
+
+@test("GET /api/v1/admin/roles/<name> (as an admin)")
+def _():
+    r = admin.get("/api/v1/admin/roles/smoke-editor", headers=admin_headers)
+    assert r.status_code == 200
+    granted = sorted(p["name"] for p in r.get_json()["permissions"])
+    assert granted == ["link:create", "link:view_own"]
+
+@test("PUT /api/v1/admin/roles/<name>/permissions (as an admin)")
+def _():
+    r = admin.put(
+        "/api/v1/admin/roles/smoke-editor/permissions",
+        headers=admin_headers,
+        json={"permissions": ["link:create"]},
+    )
+    assert r.status_code == 200
+    assert [p["name"] for p in r.get_json()["permissions"]] == ["link:create"]
+
+@test("DELETE /api/v1/admin/roles/<name> (as an admin)")
+def _():
+    r = admin.delete(
+        "/api/v1/admin/roles/smoke-editor", headers=admin_headers
+    )
+    assert r.status_code == 200
+    assert admin.get(
+        "/api/v1/admin/roles/smoke-editor", headers=admin_headers
+    ).status_code == 404
+
+@test("DELETE /api/v1/admin/roles/<name> (a system role is refused)")
+def _():
+    r = admin.delete("/api/v1/admin/roles/admin", headers=admin_headers)
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "ROLE_DELETION_FAILED"
+    # And it is still there.
+    assert admin.get(
+        "/api/v1/admin/roles/admin", headers=admin_headers
+    ).status_code == 200
+
+@test("GET /api/v1/stats (an admin sees the breakdown)")
+def _():
+    # `stats:view_full` -- the permission that fills popular_links. Every
+    # other caller in this file gets it redacted, so a redaction applied to
+    # everyone would have looked the same as one applied correctly.
+    r = admin.get("/api/v1/stats", headers=admin_headers)
+    assert r.status_code == 200
+    popular = r.get_json()["popular_links"]
+    assert popular, "an admin saw no breakdown at all"
+    assert "original_url" in popular[0]
+
+@test("DELETE /api/v1/admin/users/<id> (as an admin)")
+def _():
+    r = admin.delete(
+        f"/api/v1/admin/users/{subject_id}", headers=admin_headers
+    )
+    assert r.status_code == 200
+    assert admin.get(
+        f"/api/v1/admin/users/{subject_id}", headers=admin_headers
+    ).status_code == 404
+
+@test("DELETE /api/v1/admin/users/<id> (the last administrator is refused)")
+def _():
+    # The check that keeps a service from being locked out of itself.
+    everyone = admin.get("/api/v1/admin/users", headers=admin_headers).get_json()
+    admin_id = next(
+        u["id"] for u in everyone if u["email"] == "admin@example.com"
+    )
+    r = admin.delete(f"/api/v1/admin/users/{admin_id}", headers=admin_headers)
+    # The exact refusal, not "some 4xx": a check that accepts several
+    # answers accepts a broken one, and 401 here would mean the token
+    # stopped working rather than the rule holding.
+    assert r.status_code == 403, r.get_json()
+    assert r.get_json()["error"] == "FORBIDDEN"
+    assert admin.get(
+        f"/api/v1/admin/users/{admin_id}", headers=admin_headers
+    ).status_code == 200
 
 
 # ─── 15. Web UI routes ─────────────────────────────────────────────────
@@ -1197,10 +1474,24 @@ success = result.summary()
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 90
+EXPECTED_CHECKS = 110
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")
+    success = False
+
+# And the same guard on the surface rather than on the count. `/static` is
+# Flask's own rule, and this run drives the API rather than the pages that
+# load assets -- `tests/live/browser_test.py` is what exercises those, in a
+# real browser. Nothing else may go unreached without being named here.
+NOT_REACHED_ON_PURPOSE = {"/static/<path:filename>"}
+all_rules = {str(rule) for rule in app.url_map.iter_rules()}
+unreached = sorted(all_rules - touched_rules - NOT_REACHED_ON_PURPOSE)
+print(f"\nRoute rules reached: {len(touched_rules)}/{len(all_rules)}")
+if unreached:
+    print("Never reached by this run:")
+    for rule in unreached:
+        print(f"  - {rule}")
     success = False
 
 sys.exit(0 if success else 1)

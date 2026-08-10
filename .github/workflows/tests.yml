@@ -108,13 +108,16 @@ jobs:
         # its `#   pkg` continuations -- so they stay in the comparison
         # on both sides.
         #
+        # --no-group browser: playwright is only for the hand-driven
+        # browser run, and this file is what the image pip-installs.
+        # Measured with it in: the image went from 532 MB to 731 MB.
         # Redirected rather than --output-file: uv export writes the list to
         # stdout either way, and the flag would repeat all 197 lines into
         # the job log. --frozen so the check reads the lockfile instead of
         # re-resolving and possibly rewriting it.
         run: |
           uv export --format requirements-txt --no-hashes --no-emit-project \
-            --frozen > "$RUNNER_TEMP/requirements.expected"
+            --frozen --no-group browser > "$RUNNER_TEMP/requirements.expected"
           if ! diff -u <(grep -v '^#' requirements.txt) \
                        <(grep -v '^#' "$RUNNER_TEMP/requirements.expected"); then
             echo "::error::requirements.txt is stale -- re-run the uv export"
@@ -202,7 +205,7 @@ jobs:
           # A floor, not an equality. Adding tests never needs a bump here;
           # removing them has to be deliberate. Raise it when the suite
           # genuinely grows.
-          MINIMUM_TESTS: 1284
+          MINIMUM_TESTS: 1684
         # --error-for-skips closes the door marked "skipped". This closes
         # the one beside it: a test that is never collected at all, so the
         # run prints "N passed" and exits 0 for a smaller N. The mechanisms
@@ -211,16 +214,16 @@ jobs:
         # in some conftest, or a directory renamed into something pytest
         # skips by default: norecursedirs covers build, dist, venv,
         # node_modules and anything starting with a dot, so tests/unit ->
-        # tests/build silently collects 477 instead of 1284. The tree
-        # already holds one uncollected file deliberately:
-        # tests/live/smoke_test.py.
+        # tests/build silently collects 556 instead of 1684. The tree
+        # already holds two uncollected files deliberately:
+        # tests/live/smoke_test.py and tests/live/browser_test.py.
         #
         # Renames to other names, and deletions of a conftest.py that
         # something imports by path, are loud instead of quiet -- but they
         # are loud through the exit status, not through the count, which is
         # the other reason that status is checked below. A conftest.py that
         # only supplies fixtures is the awkward case: deleting
-        # tests/unit/conftest.py leaves collection at 1284 and exit 0, and
+        # tests/unit/conftest.py leaves collection at 1684 and exit 0, and
         # only the run itself goes red.
         #
         # The exit status is checked before the count is believed. An
@@ -258,7 +261,7 @@ jobs:
         # has exactly one skip branch: an unreachable Docker daemon. That is
         # honest on a laptop, which may not have Docker, and a hole on a
         # runner that is supposed to -- without the flag, a runner that lost
-        # it would drop 35 PostgreSQL and Redis tests and still report
+        # it would drop 38 PostgreSQL and Redis tests and still report
         # green.
         #
         # What the flag leaves open, since the enumeration matters more than

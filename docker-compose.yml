@@ -66,7 +66,18 @@ services:
         # DATABASE_HOST_PORT — его можно двигать, когда 5432 на хосте занят,
         # и это больше не ломает healthcheck и адрес, по которому ходит
         # приложение.
-        - "${DATABASE_HOST_PORT:-5432}:5432"
+        #
+        # Адрес привязки — третья величина, и раньше её тут не было.
+        # Публикация без адреса означает все интерфейсы: «If you do not
+        # specify a host IP (such as 127.0.0.1), Docker binds to all
+        # interfaces (0.0.0.0), bypassing host firewall rules» (Compose
+        # file reference). Умолчание поэтому петля, как у обоих Redis; база хранит
+        # больше, чем кэш, и меньше всего заслуживает более широкой
+        # привязки, чем они. DATABASE_BIND_ADDRESS её расширяет, когда
+        # оператору нужно ходить в базу с другой машины: значение 0.0.0.0
+        # возвращает прежнее поведение, но уже как решение, а не как
+        # умолчание.
+        - "${DATABASE_BIND_ADDRESS:-127.0.0.1}:${DATABASE_HOST_PORT:-5432}:5432"
       volumes:
         - postgres_data:/var/lib/postgresql/data
       healthcheck:

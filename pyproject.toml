@@ -34,6 +34,16 @@ dependencies = [
 ]
 
 [dependency-groups]
+# Not in `dev`: `requirements.txt` is exported from the lock without
+# filtering groups, and Dockerfile pip-installs that file -- so anything in
+# `dev` travels into the runtime image. Measured: adding playwright there
+# took the image from 540 MB to 731 MB, for a browser the service never
+# starts. The browser run is driven by hand from a developer's machine
+# (`tests/live/browser_test.py`), which is exactly where this group is
+# installed: `uv sync --group browser`.
+browser = [
+    "playwright>=1.49",
+]
 dev = [
     "autopep8>=2.3.2",
     "bandit>=1.9.2",
@@ -41,6 +51,7 @@ dev = [
     "flake8>=7.3.0",
     "isort>=7.0.0",
     "mypy>=1.19.1",
+    "openapi-spec-validator>=0.7.1",
     "pylint>=4.0.4",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
@@ -109,6 +120,13 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
+    # A floor, two points under where the suite stands. Coverage was
+    # measured and reported and bounded by nothing, so a private method
+    # nobody calls -- or a test quietly deleted -- cost a fraction of a
+    # percent and went unnoticed. Two points of slack so that ordinary
+    # work does not trip it and a real loss does; lowering it is a
+    # decision someone has to write down, which is the point.
+    "--cov-fail-under=88",
     "--junitxml=test-results/junit.xml"
 ]
 
