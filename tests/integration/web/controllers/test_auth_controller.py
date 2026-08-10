@@ -1,8 +1,26 @@
 """Integration tests for auth endpoints with real DB."""
 
 import pytest
-from tests.integration.conftest import register_and_login, auth_headers, csrf_headers
+from tests.integration.conftest import (
+    auth_headers, confirm_email, csrf_headers, register_and_login
+)
 
+
+
+def _without_timestamp(response) -> dict:
+    """
+    The body of an error answer, minus the moment it was made.
+
+    Args:
+        response: The Flask test-client response to read.
+
+    Returns:
+        The JSON body without its ``timestamp`` field, so that two answers
+        can be compared for what they say rather than for when.
+    """
+    body = dict(response.get_json())
+    body.pop("timestamp", None)
+    return body
 
 class TestRegister:
     """POST /api/v1/auth/register"""
@@ -52,6 +70,7 @@ class TestLogin:
         client.post("/api/v1/auth/register", json={
             "email": "login@example.com", "password": "StrongPass1!"
         })
+        confirm_email(client.application, "login@example.com")
         r = client.post("/api/v1/auth/login", json={
             "email": "login@example.com", "password": "StrongPass1!"
         })
@@ -90,13 +109,23 @@ class TestErrorDisclosure:
         })
         assert r.status_code == 400
 
-        body = r.get_data(as_text=True).lower()
+        # Read from the fields the endpoint writes, not from the whole
+        # body: the envelope carries an ISO timestamp, and "72" appears in
+        # one whenever the clock says so -- measured at 1.5-5.5% of
+        # requests, which made this test fail for reasons having nothing
+        # to do with what it checks.
+        payload = r.get_json()
+        body = " ".join(
+            str(payload.get(field, "")) for field in ("error", "message", "details")
+        ).lower()
+
         # Neither bcrypt's own message nor its 72-byte limit, which would
         # point straight at the hashing library.
         assert "bcrypt" not in body
         assert "truncate" not in body
         assert "72" not in body
         assert "byte" not in body
+        assert "timestamp" in payload
 
     def test_invalid_email_is_not_echoed_back(self, client):
         probe = "' OR 1=1--"
@@ -120,8 +149,11 @@ class TestErrorDisclosure:
         })
 
         # Differing answers would let anyone probe which accounts exist.
+        # Everything but the timestamp, which the envelope stamps at the
+        # moment of the answer and so differs between any two calls; it
+        # carries nothing about the account either way.
         assert known.status_code == unknown.status_code == 401
-        assert known.get_json() == unknown.get_json()
+        assert _without_timestamp(known) == _without_timestamp(unknown)
 
 
 class TestMalformedBody:
@@ -248,6 +280,10 @@ class TestAuthFlow:
             "email": "flow@example.com", "password": "StrongPass1!"
         })
         assert r.status_code == 201
+
+        # Confirm the address: registration leaves it unproven, and login
+        # refuses an account whose address nobody has confirmed.
+        confirm_email(client.application, "flow@example.com")
 
         # Login
         r = client.post("/api/v1/auth/login", json={

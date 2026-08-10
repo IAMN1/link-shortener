@@ -16,16 +16,34 @@ def _project_root() -> Path:
     happens to contain another ``alembic.ini`` executed *that* project's
     ``env.py``, with this process's environment handed to it.
 
+    Two places are searched: upwards from this module, and upwards from the
+    working directory. The first is what a source checkout answers with.
+    The second is what an installed copy needs -- in the image the package
+    is imported from ``site-packages``, so no parent of this file holds an
+    ``alembic.ini``, and the fallback used to count levels up from here and
+    land in ``/usr/local/lib/python3.12``. Alembic was then handed a
+    directory with no configuration in it and died with "No 'script_location'
+    key found", naming neither the directory nor the reason.
+
     Returns:
-        Directory containing ``alembic.ini``; the repository root when the
-        search finds nothing, so the caller still gets a defined location.
+        Directory containing ``alembic.ini``.
+
+    Raises:
+        FileNotFoundError: When neither search finds one, naming both places
+            that were tried -- the counted path silently produced a wrong
+            answer instead.
     """
-    here = Path(__file__).resolve()
-    for candidate in here.parents:
-        if (candidate / "alembic.ini").is_file():
-            return candidate
-    # src/link_shortener/infrastructure/cli/commands/alembic.py -> repo root
-    return here.parents[5]
+    starts = [Path(__file__).resolve(), Path.cwd().resolve()]
+    for start in starts:
+        for candidate in [start, *start.parents]:
+            if (candidate / "alembic.ini").is_file():
+                return candidate
+
+    raise FileNotFoundError(
+        "alembic.ini not found above "
+        f"{starts[0]} or {starts[1]} -- run the command from the directory "
+        "holding it, or install the project so that it ships alongside"
+    )
 
 
 class AlembicCommands:

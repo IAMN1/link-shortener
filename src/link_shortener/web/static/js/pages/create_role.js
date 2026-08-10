@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             if (!resp) return;
             var data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || data.message || 'Failed');
+            if (!resp.ok) throw new Error(data.message || data.error || 'Failed');
             window.location.href = '/dashboard/roles';
         } catch(err) {
             errEl.textContent = err.message;

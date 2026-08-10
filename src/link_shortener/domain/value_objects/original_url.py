@@ -128,13 +128,30 @@ class OriginalUrl:
         """
         Split the URL into components.
 
-        ``urlparse`` raises plain ``ValueError`` for a handful of inputs --
-        an unbalanced bracket, an empty one, a malformed IPvFuture literal,
-        and twenty-one code points its NFKC check refuses in the authority,
-        of which ``http://good.example℀evil.example/`` is one. A
-        ``ValueError`` out of a value object is an error outside the domain's
-        own hierarchy: whoever catches ``ValidationError`` does not catch it,
-        and on the redirect path it reached the catch-all as a 500.
+        ``urlparse`` raises plain ``ValueError`` for a handful of inputs, all
+        of them in the authority: an unbalanced bracket ("Invalid IPv6 URL"),
+        a malformed IPvFuture literal, brackets around something that is
+        neither an IPv6 nor an IPvFuture address -- ``[example.com]``, and
+        an empty ``[]`` by the same branch -- brackets around an IPv4
+        address, and nineteen code points its NFKC check refuses, of which
+        ``http://good.example℀evil.example/`` is one. Counted by walking
+        every code point on 3.12: two more, ``[`` and ``]``, also raise, but
+        by the bracket branch rather than the NFKC one. A ``ValueError`` out
+        of a value object is an error outside the domain's own hierarchy:
+        whoever catches ``ValidationError`` does not catch it, and on the
+        redirect path it reached the catch-all as a 500.
+
+        The text of that ``ValueError`` is not passed on. Two of those
+        branches quote what they choked on, and the NFKC one quotes the
+        whole netloc -- the one place a URL keeps a password:
+        ``https://alice:s3cr3t@exa℀mple.com/`` came back as ``netloc
+        'alice:s3cr3t@exa℀mple.com' contains invalid characters under NFKC
+        normalization``, which went into ``error.log`` and into the 400
+        body. CWE-209 asks for the opposite: "Handle exceptions internally
+        and do not display errors containing potentially sensitive
+        information to a user." Since every one of these inputs fails on
+        the authority, naming that costs no diagnosis the caller could have
+        acted on.
 
         Returns:
             The parsed URL.
@@ -144,8 +161,15 @@ class OriginalUrl:
         """
         try:
             return urlparse(self.value)
-        except ValueError as exc:
-            raise ValidationError(f"Malformed URL: {exc}", field="url")
+        except ValueError:
+            # ``from None`` and not a bare ``raise``: the implicit chain
+            # keeps the original exception on the new one, and anything
+            # that prints a traceback -- a 500 handler, ``log.exception``
+            # -- would put the quoted authority back in the log the line
+            # above just kept out of it.
+            raise ValidationError(
+                "Malformed URL: its authority cannot be parsed", field="url"
+            ) from None
 
     @classmethod
     def from_storage(cls, value: str) -> "OriginalUrl":

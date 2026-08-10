@@ -3,6 +3,7 @@ from .entities.user import User
 from .entities.role import Role
 from .entities.permission import Permission
 from .entities.refresh_session import RefreshSession
+from .entities.email_verification import EmailVerification
 
 from .policies.hash_calculator import HashCalculator
 from .policies.code_generator import CodeGenerator
@@ -12,6 +13,7 @@ from .repositories.role_repository import RoleRepository
 from .repositories.permission_repository import PermissionRepository
 from .repositories.link_repository import LinkRepository
 from .repositories.refresh_session_repository import RefreshSessionRepository
+from .repositories.email_verification_repository import EmailVerificationRepository
 
 from .value_objects.original_url import OriginalUrl
 from .value_objects.short_code import ShortCode
@@ -37,6 +39,7 @@ __all__ = [
     "Role",
     "Permission",
     "RefreshSession",
+    "EmailVerification",
 
     # Policies
     "HashCalculator",
@@ -45,6 +48,7 @@ __all__ = [
     # Repositories
     "LinkRepository",
     "RefreshSessionRepository",
+    "EmailVerificationRepository",
     "UserRepository",
     "RoleRepository",
     "PermissionRepository",

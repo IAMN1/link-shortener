@@ -6,6 +6,7 @@ import jwt
 import pytest
 
 from link_shortener.infrastructure.database.models.user_model import UserModel
+from tests.integration.conftest import confirm_email
 from tests.integration.conftest import (
     IntegrationTestConfig, arm_csrf, auth_headers, csrf_headers
 )
@@ -26,6 +27,7 @@ def _login(client, email, password="StrongPass1!"):
     client.post("/api/v1/auth/register", json={
         "email": email, "password": password
     })
+    confirm_email(client.application, email)
     r = client.post("/api/v1/auth/login", json={
         "email": email, "password": password
     })
@@ -289,6 +291,7 @@ class TestApiClientSession:
         client.post("/api/v1/auth/register", json={
             "email": email, "password": "StrongPass1!"
         })
+        confirm_email(client.application, email)
         r = client.post("/api/v1/auth/login", json={
             "email": email, "password": "StrongPass1!"
         })

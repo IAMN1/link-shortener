@@ -25,9 +25,11 @@ Subclasses may still override a field with a plain literal (e.g.
 the descriptor, which is what deterministic test configuration needs.
 
 A configuration class can also opt out of the environment completely by
-setting ``IGNORE_ENV = True``; every inherited field then returns its default.
-``TestingConfig`` uses this so a stray ``DATABASE_URL`` in the developer's
-shell cannot redirect the test suite at a real database.
+setting ``IGNORE_ENV = True``; every inherited field then returns its
+default, and a setting with no default -- the mandatory secrets, read
+through ``read_env_for`` -- refuses as it would for a deployment that
+configured nothing. ``TestingConfig`` uses this so a stray ``DATABASE_URL``
+in the developer's shell cannot redirect the test suite at a real database.
 """
 
 import os
@@ -130,6 +132,36 @@ def read_env(name: str, default: Any = None) -> Any:
     raw = os.environ.get(name)
 
     return default if is_unset(raw) else raw
+
+
+def read_env_for(config: Any, name: str, default: Any = None) -> Any:
+    """
+    Read a variable the way ``EnvField`` does, ``IGNORE_ENV`` included.
+
+    ``read_env`` on its own reads the machine whatever the configuration
+    says, so the six mandatory-secret properties in ``production.py`` and
+    ``staging.py`` went on reading it while every ``EnvField`` beside them
+    was detached. A profile built to be read away from its machine -- which
+    is what ``IGNORE_ENV`` is for, and what ``test_secure_defaults`` builds
+    -- would have answered with this machine's ``SECRET_KEY``.
+
+    Detached, the variable reads as unset. The properties have no default to
+    fall back to and refuse instead, which is the same answer they give a
+    deployment that did not configure them: there is no secret here.
+
+    Args:
+        config: The configuration object or class the value is read for.
+        name: Name of the environment variable.
+        default: Value returned when the variable is unset, blank, or the
+            configuration is detached from the environment.
+
+    Returns:
+        The raw string value, or ``default``.
+    """
+    if getattr(config, "IGNORE_ENV", False):
+        return default
+
+    return read_env(name, default)
 
 
 # ==========================================================================
@@ -252,8 +284,9 @@ def env_bool(name: str, default: bool) -> bool:
     """
     Declare a boolean configuration field backed by an environment variable.
 
-    Accepted true values are listed in ``TRUE_VALUES``; anything else is
-    treated as ``False``.
+    Accepted values are listed in ``TRUE_VALUES`` and ``FALSE_VALUES``;
+    anything else raises, so a typo stops the application instead of
+    quietly reading as ``False``.
 
     Args:
         name: Name of the environment variable.

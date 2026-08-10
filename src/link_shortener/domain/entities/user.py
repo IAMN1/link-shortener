@@ -24,6 +24,10 @@ class User:
         password_hash: Hashed password value object.
         roles: List of Role entities assigned to the user.
         is_active: Flag indicating whether the user account is active.
+        email_verified: Whether the address has been proven to be readable
+            by whoever registered it. Separate from ``is_active``, which is
+            an administrator's decision about an account that already
+            exists; this one is the account's own unfinished business.
         created_at: Account creation timestamp.
         last_login: Timestamp of the last successful login (if any).
     """
@@ -32,12 +36,17 @@ class User:
     password_hash: PasswordHash
     roles: List[Role] = field(default_factory=list)
     is_active: bool = True
+    email_verified: bool = False
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_login: Optional[datetime] = None
 
     @classmethod
     def create(
-        cls, email: Email, password_hash: PasswordHash, roles: Optional[List[Role]] = None
+        cls,
+        email: Email,
+        password_hash: PasswordHash,
+        roles: Optional[List[Role]] = None,
+        email_verified: bool = False,
     ) -> "User":
         """
         Factory method to create a new User.
@@ -48,6 +57,12 @@ class User:
             email: Validated email value object.
             password_hash: Hashed password value object.
             roles: Optional list of Role entities to assign; defaults to an empty list.
+            email_verified: Whether the address counts as already proven.
+                False for self-registration, which is the whole point of
+                the confirmation. True where an administrator created the
+                account and vouches for the address: nobody is going to
+                mail that person a link, and an account created by an
+                administrator that then cannot sign in is a broken tool.
 
         Returns:
             A new User instance with ``is_active=True`` and ``created_at`` set to now.
@@ -57,6 +72,7 @@ class User:
             email=email,
             password_hash=password_hash,
             roles=roles or [],
+            email_verified=email_verified,
         )
     
     def has_permission(self, permission_name: str) -> bool:
@@ -99,3 +115,7 @@ class User:
     def deactivate(self) -> None:
         """Deactivate the user account (soft delete)."""
         self.is_active = False
+
+    def confirm_email(self) -> None:
+        """Record that the address was proven readable by its owner."""
+        self.email_verified = True

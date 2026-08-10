@@ -50,14 +50,21 @@ class Logger(ABC):
 
     @abstractmethod
     def exception(
-        self, message: str, exc_info: Optional[Exception] = None, **kwargs: Any
+        self, message: str, exc_info: Any = True, **kwargs: Any
     ) -> None:
         """
         Log an exception with traceback.
 
         Args:
             message: Log message.
-            exc_info: Exception to log (if None, current exception is captured). Optional.
+            exc_info: What to render a traceback from. ``True`` -- the
+                default -- takes the exception being handled, which is what
+                ``logging.Logger.exception`` and ``structlog.exception``
+                both do. An exception instance is rendered instead.
+                ``None`` means no traceback at all: the renderer skips a
+                falsy value, so the line comes out without one. The default
+                used to be ``None``, which made a bare ``log.exception(...)``
+                print a line that looked like a traceback and had none.
             **kwargs: Additional structured data.
         """
         ...

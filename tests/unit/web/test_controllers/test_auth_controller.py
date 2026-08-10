@@ -62,7 +62,11 @@ class TestAuthController:
             json={"email": "test@example.com", "password": "wrong"},
         )
         assert response.status_code == 401
-        assert response.get_json()["error"] == "Invalid email or password"
+        # The envelope every other refusal in the API answers in: `error`
+        # is the machine-readable code, the sentence is in `message`.
+        body = response.get_json()
+        assert body["error"] == "INVALID_CREDENTIALS"
+        assert body["message"] == "Invalid email or password"
 
     def test_login_does_not_leak_internal_error(self, app, client):
         """An unexpected failure must not send exception text to the client."""
@@ -112,7 +116,9 @@ class TestAuthController:
             json={"email": "dup@example.com", "password": "secret123"},
         )
         assert response.status_code == 400
-        assert response.get_json()["error"] == "Email already registered"
+        body = response.get_json()
+        assert body["error"] == "VALIDATION_ERROR"
+        assert body["message"] == "Email already registered"
 
     def test_register_does_not_leak_internal_error(self, app, client):
         """An unexpected failure must not send exception text to the client."""

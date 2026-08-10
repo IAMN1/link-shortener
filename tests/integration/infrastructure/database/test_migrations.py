@@ -74,7 +74,14 @@ class TestMigrationChain:
     """From nothing to head, and back."""
 
     def test_a_fresh_database_reaches_head(self, database):
-        """The whole point: an empty file becomes a usable schema."""
+        """The whole point: an empty file becomes a usable schema.
+
+        Asserted on the marker rather than on a revision number. The number
+        was ``0001`` while there was one revision, and a test naming it had
+        to be edited by whoever added the second -- an edit that reads like
+        housekeeping and is the only thing standing between "we reached the
+        latest revision" and "we reached the revision this test remembers".
+        """
         path, url = database
 
         ok, output = AlembicCommands.upgrade("head", database_url=url)
@@ -82,7 +89,7 @@ class TestMigrationChain:
 
         ok, current = AlembicCommands.status(database_url=url)
         assert ok, current
-        assert "0001" in current
+        assert "(head)" in current, current
 
     def test_the_expected_tables_exist_afterwards(self, database):
         """A migration that runs but builds nothing would still "pass"."""
@@ -93,6 +100,7 @@ class TestMigrationChain:
         assert {
             "urls", "users", "roles", "permissions",
             "role_permissions", "user_roles", "refresh_sessions",
+            "email_verifications",
         } <= tables(path)
 
     def test_links_are_left_pointing_at_their_owner_s_deletion(self, database):

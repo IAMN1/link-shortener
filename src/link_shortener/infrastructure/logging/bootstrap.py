@@ -3,6 +3,9 @@ import logging.handlers
 import os
 import structlog
 
+from link_shortener.infrastructure.logging.handlers.raising import (
+    RaisingStreamHandler, RaisingWatchedFileHandler
+)
 from link_shortener.infrastructure.logging.structlog_config import configure_structlog
 from link_shortener.infrastructure.logging.logging_settings import LoggingSettings
 from link_shortener.infrastructure.logging.formatters.console_formatter import ConsoleFormatter
@@ -25,7 +28,7 @@ def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logge
         return
     
     if settings.logger_type == "standard":
-        handler = logging.StreamHandler()
+        handler = RaisingStreamHandler()
         handler.setLevel(settings.get_log_level_int())
         formatter = ConsoleFormatter()
         handler.setFormatter(formatter)
@@ -33,7 +36,7 @@ def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logge
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
         formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
-        handler = logging.StreamHandler()
+        handler = RaisingStreamHandler()
         handler.setLevel(settings.get_log_level_int())
         handler.setFormatter(formatter)
         root_logger.addHandler(handler)
@@ -62,7 +65,7 @@ def _setup_file_handler(settings: LoggingSettings, root_logger: logging.Logger):
         renderer = structlog.processors.JSONRenderer()
         formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
 
-    handler = logging.handlers.WatchedFileHandler(
+    handler = RaisingWatchedFileHandler(
         filename=settings.log_file_path,
         encoding="utf-8",
     )
@@ -92,7 +95,7 @@ def _setup_audit_handler(settings: LoggingSettings):
     # Console handler
     if settings.log_to_console:
         if settings.logger_type == "standard":
-            handler = logging.StreamHandler()
+            handler = RaisingStreamHandler()
             handler.setLevel(logging.INFO)
             formatter = ConsoleFormatter()
             handler.setFormatter(formatter)
@@ -100,7 +103,7 @@ def _setup_audit_handler(settings: LoggingSettings):
         else:
             renderer = structlog.dev.ConsoleRenderer(colors=True)
             formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
-            handler = logging.StreamHandler()
+            handler = RaisingStreamHandler()
             handler.setLevel(logging.INFO)
             handler.setFormatter(formatter)
             audit_logger.addHandler(handler)
@@ -117,7 +120,7 @@ def _setup_audit_handler(settings: LoggingSettings):
 
         audit_file = os.path.join(settings.log_dir, f"{settings.audit_log_filename}.log")
         
-        handler = logging.handlers.WatchedFileHandler(audit_file, encoding="utf-8")
+        handler = RaisingWatchedFileHandler(audit_file, encoding="utf-8")
         handler.setLevel(logging.INFO)
         handler.setFormatter(formatter)
         audit_logger.addHandler(handler)
@@ -146,7 +149,7 @@ def _setup_error_handler(settings: LoggingSettings, root_logger: logging.Logger)
     
     error_file = os.path.join(settings.log_dir, f"{settings.error_log_filename}.log")
     
-    handler = logging.handlers.WatchedFileHandler(error_file, encoding="utf-8")
+    handler = RaisingWatchedFileHandler(error_file, encoding="utf-8")
     handler.setLevel(logging.ERROR)
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)

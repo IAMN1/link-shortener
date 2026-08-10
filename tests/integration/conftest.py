@@ -71,11 +71,40 @@ def app_context(app):
         yield app
 
 
+def confirm_email(app, email):
+    """
+    Mark a registered address as confirmed, as following the link would.
+
+    Registration leaves the account unconfirmed and login refuses it until
+    the address is proven, so a test that wants a working account has to
+    do here what a person does by opening their mail. It cannot be done
+    through the real route: only the digest of the token is stored, and
+    the token itself exists for the length of one call to the mailer,
+    which is a ``NullMailer`` in the suite.
+
+    Args:
+        app: The application under test.
+        email: Address of the account to confirm.
+    """
+    from sqlalchemy import text
+
+    with app.app_context():
+        with app.container.get_db_manager().session() as session:
+            session.execute(
+                text(
+                    "UPDATE users SET email_verified = 1 WHERE email = :email"
+                ),
+                {"email": email},
+            )
+            session.commit()
+
+
 def register_and_login(client, email="test@example.com", password="Test1234!"):
-    """Helper: register a user and return access token."""
+    """Helper: register a user, confirm the address, return access token."""
     client.post("/api/v1/auth/register", json={
         "email": email, "password": password
     })
+    confirm_email(client.application, email)
     r = client.post("/api/v1/auth/login", json={
         "email": email, "password": password
     })
@@ -88,6 +117,99 @@ def auth_headers(token):
     if token:
         return {"Authorization": f"Bearer {token}"}
     return {}
+
+
+def account_with_permissions(app, email, password, role_name, permissions):
+    """
+    Register an account and add a role holding these permissions.
+
+    Written for the tests that ask what one permission opens and what it
+    does not. The account is given its own client, because a client that
+    has logged in carries a session cookie and stops being the caller the
+    test meant.
+
+    *Added*, not "given only": registration grants the default role as
+    well, so the account ends up with two roles. Measured on an account
+    built with ``["admin:view_system_health"]`` alone: roles ``only-probe``
+    and ``user``, permissions ``admin:view_system_health``,
+    ``link:create``, ``link:delete_own``, ``link:view_own`` and
+    ``stats:view_basic``. None of the default four is administrative --
+    ``test_every_admin_route_is_guarded`` is what holds that -- so a
+    refusal here is still about the permission under test, but a caller
+    reading "exactly these" would have been misled.
+
+    Args:
+        app: The application under test.
+        email: Address to register.
+        password: Password to register and log in with.
+        role_name: Name for the role created for this account.
+        permissions: Permission names the new role is to hold.
+
+    Returns:
+        Tuple of (fresh client, access token, the account's own user id).
+        The id is handed back because a route that takes one has to be
+        asked about something that exists: a 404 from a made-up id reads
+        like a refusal and would let a positive check pass on it.
+    """
+    import uuid
+
+    from sqlalchemy import text
+
+    from link_shortener.infrastructure.database.seed import seed_base_roles
+
+    with app.app_context():
+        with app.container.get_db_manager().session() as session:
+            seed_base_roles(session)
+
+    client = app.test_client()
+    client.post(
+        "/api/v1/auth/register", json={"email": email, "password": password}
+    )
+    confirm_email(app, email)
+
+    role_id = str(uuid.uuid4())
+    with app.app_context():
+        with app.container.get_db_manager().session() as session:
+            session.execute(
+                text(
+                    "INSERT INTO roles (id, name, description, is_system) "
+                    "VALUES (:id, :name, 'built for a test', 0)"
+                ),
+                {"id": role_id, "name": role_name},
+            )
+            for permission in permissions:
+                row = session.execute(
+                    text("SELECT id FROM permissions WHERE name = :name"),
+                    {"name": permission},
+                ).fetchone()
+                assert row is not None, f"{permission} was never seeded"
+                session.execute(
+                    text(
+                        "INSERT INTO role_permissions (role_id, permission_id) "
+                        "VALUES (:role_id, :permission_id)"
+                    ),
+                    {"role_id": role_id, "permission_id": row[0]},
+                )
+            user = session.execute(
+                text("SELECT id FROM users WHERE email = :email"),
+                {"email": email},
+            ).fetchone()
+            assert user is not None, f"{email} was not registered"
+            session.execute(
+                text(
+                    "INSERT INTO user_roles (user_id, role_id) "
+                    "VALUES (:user_id, :role_id)"
+                ),
+                {"user_id": user[0], "role_id": role_id},
+            )
+            session.commit()
+
+    response = client.post(
+        "/api/v1/auth/login", json={"email": email, "password": password}
+    )
+    token = response.get_json().get("access_token")
+    assert token, f"{email} could not log in: {response.get_json()}"
+    return client, token, user[0]
 
 
 def arm_csrf(client, user_id):

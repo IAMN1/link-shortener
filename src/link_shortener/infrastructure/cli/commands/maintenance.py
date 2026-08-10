@@ -1,7 +1,8 @@
 from typing import Callable
 
 from link_shortener.application import (
-    RequestContext, CleanExpiredLinksUseCase, UnitOfWork
+    RequestContext, CleanExpiredLinksUseCase, CleanUnverifiedAccountsUseCase,
+    UnitOfWork
 )
 
 
@@ -38,3 +39,25 @@ def clean_expired_sessions(uow_factory: Callable[[], UnitOfWork]) -> int:
         deleted = uow.refresh_sessions.delete_expired()
         uow.commit()
         return deleted
+
+
+def clean_unverified_accounts(
+    use_case: CleanUnverifiedAccountsUseCase, context: RequestContext
+) -> int:
+    """
+    Delete registrations nobody confirmed within the configured window.
+
+    Not optional housekeeping. An unconfirmed account holds its address:
+    registering it again is refused because the account exists, and nobody
+    can sign in to it because signing in needs a confirmed address. Left
+    unrun, this is a way for anyone to reserve addresses they do not own,
+    permanently, and the owners are simply told the address is taken.
+
+    Args:
+        use_case: CleanUnverifiedAccountsUseCase instance.
+        context: Request context.
+
+    Returns:
+        Number of deleted accounts.
+    """
+    return use_case.execute(context)

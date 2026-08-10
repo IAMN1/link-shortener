@@ -132,12 +132,22 @@ class TestStandardAuditLogger:
         assert record.request_id == "req-1"
         assert record.remote_addr == "10.0.0.1"
 
-    def test_unhealthy_without_handlers(self):
-        """Read by the failover service to decide whether to switch."""
+    def test_unhealthy_when_no_handler_can_be_reached(self):
+        """Read by the failover service to decide whether to switch.
+
+        Cut off from the root as well, because the question is whether a
+        record reaches a handler rather than whether this logger owns one:
+        `configure_logging` gives the audit logger handlers of its own and
+        stops propagation, but a configuration that let audit records travel
+        to the root would still be one that writes them.
+        """
         logger = StandardAuditLogger("audit.unittest.health.none")
         logger._logger.handlers = []
-
-        assert logger.is_healthy() is False
+        logger._logger.propagate = False
+        try:
+            assert logger.is_healthy() is False
+        finally:
+            logger._logger.propagate = True
 
     def test_healthy_with_a_handler(self):
         logger = StandardAuditLogger("audit.unittest.health.some")
@@ -214,20 +224,65 @@ class TestStructlogAuditLogger:
         assert logger.is_healthy() is True
 
 
-class TestBoundFieldPrecedenceDiffersBetweenImplementations:
-    """The two audit adapters disagree about which value wins.
+class TestBoundFieldPrecedenceIsTheSameInBothImplementations:
+    """One rule for a field named at both the binding and the call.
 
-    ``StandardAuditLogger`` merges as ``{**bound, **call}`` -- the call
-    wins, matching ``StandardLogger`` and ordinary expectation.
-    ``StructlogAuditLogger`` applies the bound fields last, so binding
-    overrides the call site instead.
+    The call wins. The failover service swaps the audit implementation on
+    its own, without anyone asking, so a field name used in both places had
+    a value that depended on which adapter happened to be active --
+    ``StandardAuditLogger`` merged as ``{**bound, **call}`` while
+    ``StructlogAuditLogger`` applied the binding last.
 
-    That means swapping the audit implementation -- which the failover
-    service does on its own, without anyone asking -- changes what ends up
-    in the audit log for any field name used in both places. Both rules are
-    pinned here so the divergence is visible and cannot drift further
-    unnoticed; which of the two should win is a decision for the owner.
+    The call is also what structlog itself lets win: ``_process_event``
+    copies the context and then updates it with the call's keywords.
     """
+
+    def test_the_binding_cannot_reach_around_the_masking(self):
+        # The three fields the event is made of used to be overwritten by
+        # the binding as well, so a logger bound with `original_url` filed
+        # the address it was bound with instead of `mask_url(...)` of the
+        # one the event was about.
+        backend = MagicMock()
+        backend.bind.return_value = backend
+        logger = StructlogAuditLogger(bound_logger=backend)
+
+        logger.bind(
+            event_type="BOUND_TYPE",
+            short_code="BOUND",
+            original_url="https://user:secret@bound/",
+        ).log_url_created("abc123", LONG_URL)
+
+        _, kwargs = backend.info.call_args
+        assert kwargs["event_type"] == "URL_CREATED"
+        assert kwargs["short_code"] == "abc123"
+        assert kwargs["original_url"] != "https://user:secret@bound/"
+        assert kwargs["original_url"] != LONG_URL
+
+    def test_the_same_holds_against_a_real_structlog_backend(self):
+        # The tests around this one use a MagicMock, whose `bind` does
+        # nothing -- so they hold the adapter's own merge and not what a
+        # record ends up saying. Here the real library resolves the
+        # collision, over a logger that keeps what it was given.
+        import structlog
+
+        captured = []
+
+        def capture(logger, method_name, event_dict):
+            captured.append(dict(event_dict))
+            raise structlog.DropEvent
+
+        structlog.configure(processors=[capture])
+        try:
+            logger = StructlogAuditLogger()
+            logger.bind(source="bound", short_code="BOUND").log_url_created(
+                "abc123", "https://example.com/", source="call"
+            )
+        finally:
+            structlog.reset_defaults()
+
+        assert captured, "the backend recorded nothing"
+        assert captured[-1]["source"] == "call"
+        assert captured[-1]["short_code"] == "abc123"
 
     def test_standard_lets_the_call_site_win(self, audit_logger):
         logger, handler = audit_logger("precedence")
@@ -238,7 +293,7 @@ class TestBoundFieldPrecedenceDiffersBetweenImplementations:
 
         assert handler.records[-1].source == "call"
 
-    def test_structlog_lets_the_binding_win(self):
+    def test_structlog_lets_the_call_site_win_too(self):
         backend = MagicMock()
         backend.bind.return_value = backend
         logger = StructlogAuditLogger(bound_logger=backend)
@@ -248,7 +303,21 @@ class TestBoundFieldPrecedenceDiffersBetweenImplementations:
         )
 
         _, kwargs = backend.info.call_args
-        assert kwargs["source"] == "bound"
+        assert kwargs["source"] == "call"
+
+    def test_a_bound_field_the_call_says_nothing_about_still_arrives(self):
+        # The change is about collisions only: what the call does not name
+        # comes from the binding as before.
+        backend = MagicMock()
+        backend.bind.return_value = backend
+        logger = StructlogAuditLogger(bound_logger=backend)
+
+        logger.bind(request_id="req-1").log_url_created(
+            "abc123", "https://example.com/"
+        )
+
+        _, kwargs = backend.info.call_args
+        assert kwargs["request_id"] == "req-1"
 
 
 class TestNullAuditLogger:

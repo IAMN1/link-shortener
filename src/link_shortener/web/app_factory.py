@@ -22,7 +22,10 @@ from link_shortener.web.controllers.frontend_controller import FrontendControlle
 from link_shortener.web.middleware.authentication import AuthenticationMiddleware
 from link_shortener.web.middleware.csrf import CsrfProtectionMiddleware
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
-from link_shortener.web.middleware.rate_limit import RateLimitMiddleware
+from link_shortener.web.middleware.rate_limit import (
+    RateLimitMiddleware,
+    check_rate_limit_targets,
+)
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
 from link_shortener.web.security.context import create_request_context
 
@@ -92,6 +95,13 @@ def create_app(config=None) -> Flask:
         config = get_config(env)
     else:
         env = getattr(config, "ENV", 'custom')
+        # Validated here as well, and not only inside `ConfigFactory`.
+        # A configuration built as an object -- which is every test
+        # configuration, and anything that constructs one in code -- used
+        # to skip the checks entirely: an app given
+        # `DEFAULT_RATE_LIMIT_PERIOD=-60` this way came up and throttled
+        # nothing at all, measured at 150 requests out of 150 let through.
+        config.validate()
 
     # ------------------------------------------------------------------
     # Create Flask app
@@ -166,20 +176,34 @@ def create_app(config=None) -> Flask:
         container.get_uow_factory(),
         container.get_logger(AuthenticationMiddleware.__module__)
     )
-    ## 3. CSRF protection (guards cookie-authenticated writes)
-    CsrfProtectionMiddleware(
-        app,
-        container.get_logger(CsrfProtectionMiddleware.__module__),
-        container.get_authentication_service()
-    )
-    ## 4. Error handling
-    ErrorHandlerMiddleware(app, container.get_logger(ErrorHandlerMiddleware.__module__))
-    ## 5. Rate limiting
+    ## 3. Rate limiting
+    #
+    # Before CSRF, and that is the whole point of where it sits. Flask runs
+    # `before_request` hooks in the order they were registered, so with CSRF
+    # first every request it refused was a request the limiter never saw. A
+    # caller only had to look cookie-authenticated to be exempt from the
+    # limits: `_is_cookie_authenticated` asks whether an auth cookie is
+    # present, not whether it is valid, so any anonymous client that sent
+    # `access_token=anything` got 403 without ever being counted. Measured
+    # on `POST /api/v1/shorten`: 60 such requests, 60 refusals, not one 429,
+    # while the same client without the cookie was throttled at the 31st.
+    #
+    # After authentication, which has to stay: the limiter counts against
+    # the account once one is signed in and against the address until then,
+    # and that identity is what `AuthenticationMiddleware` puts in `g`.
     RateLimitMiddleware(
         app,
         container.get_rate_limiter(),
         container.get_logger(RateLimitMiddleware.__module__),
     )
+    ## 4. CSRF protection (guards cookie-authenticated writes)
+    CsrfProtectionMiddleware(
+        app,
+        container.get_logger(CsrfProtectionMiddleware.__module__),
+        container.get_authentication_service()
+    )
+    ## 5. Error handling
+    ErrorHandlerMiddleware(app, container.get_logger(ErrorHandlerMiddleware.__module__))
 
     # ------------------------------------------------------------------
     # Register Controllers (Blueprints)
@@ -195,7 +219,13 @@ def create_app(config=None) -> Flask:
     frontend_controller = FrontendController()
     admin_api_controller = AdminApiController(admin_service)
     dashboard_controller = DashboardController(link_service, admin_service)
-    auth_controller = AuthController(authentication_service, login_uc, register_uc)
+    auth_controller = AuthController(
+        authentication_service,
+        login_uc,
+        register_uc,
+        container.get_verify_email_use_case(),
+        container.get_resend_verification_use_case(),
+    )
 
     app.register_blueprint(api_controller.bp)
     app.register_blueprint(frontend_controller.bp)
@@ -297,8 +327,18 @@ def create_app(config=None) -> Flask:
         """Close all managed resources (database connections, cache connections, etc.)"""
         if hasattr(app, 'container'):
             app.container.close()
-    
+
     atexit.register(close_resources)
+
+    # ------------------------------------------------------------------
+    # Rate limit targets
+    # ------------------------------------------------------------------
+    # Held here and not where the middleware is installed: that happens
+    # before the first blueprint, so at that point there is no URL map to
+    # hold the configured endpoint names against. After the cleanup hook is
+    # registered, so a refusal here leaves the container on the interpreter's
+    # exit path rather than with no path at all -- atexit, not immediately.
+    check_rate_limit_targets(app)
 
     # ------------------------------------------------------------------
     # Startup log

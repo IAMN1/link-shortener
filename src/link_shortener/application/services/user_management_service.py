@@ -75,6 +75,14 @@ class UserManagementService:
             email=email_vo,
             password_hash=password_hash_vo,
             roles=assigned_roles,
+            # Confirmed on creation, unlike self-registration. Nobody is
+            # going to mail this person a link -- an administrator typed
+            # the address and vouches for it -- and an account created
+            # through the admin API that then cannot sign in is a broken
+            # tool with no visible cause. The confirmation exists to stop
+            # a stranger claiming an address they do not read; that is not
+            # what is happening here.
+            email_verified=True,
         )
         user.is_active = is_active
 

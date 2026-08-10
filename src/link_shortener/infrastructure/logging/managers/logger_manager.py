@@ -1,8 +1,12 @@
 """
 Logger manager: creates and manages application loggers with failover.
 
-The ``LoggerManager`` builds an ordered list of logger implementations
-(structlog, standard, null) and optionally wraps them in a ``FailoverService``.
+The ``LoggerManager`` builds an ordered list of logger implementations and
+optionally wraps them in a ``FailoverService``. The order follows
+``LOGGER_TYPE``: "auto" and "structlog" give structlog then standard,
+"standard" gives standard then structlog, and "null" gives one null logger
+and no failover at all. Null is never put *behind* the two real ones -- a
+call both refuse is refused outright rather than quietly swallowed.
 Module-specific loggers are created via proxies that add ``module`` context.
 """
 
@@ -56,6 +60,16 @@ class LoggerManager:
         Args:
             logger_type: The configured logger type.
         """
+        # Case and surrounding blanks are taken off first. The comparison
+        # below is against exact strings, so ``NULL``, ``Null`` and
+        # ``"null "`` used to miss the ``null`` branch and fall through to
+        # the default -- which is the full chain. An operator who wrote
+        # ``AUDIT_TYPE=NULL`` to turn auditing off got a complete audit
+        # trail instead, with original_url, remote_addr and user_id in it.
+        # Anything still unrecognised keeps falling through to the
+        # default, which is what it always did.
+        logger_type = (logger_type or "").strip().lower()
+
         # Determine priority order
         if logger_type == "auto":
             order = ["structlog", "standard"]
@@ -154,10 +168,42 @@ class LoggerManager:
                 return "null"
         return "unknown"
 
-    def shutdown(self):
-        """Stop the background failover checker if it exists."""
+    def counters(self) -> Tuple[int, int, int]:
+        """
+        Report how much this chain has lost and how often it checked badly.
+
+        All three numbers existed and nothing read them, so "the log
+        stopped being written" looked exactly like "everything is fine"
+        from every surface an operator has. Without failover there is
+        nothing to count: one implementation cannot fail over, and a call
+        it refuses raises at the caller rather than being dropped here.
+
+        Returns:
+            Dropped calls, failed health-check rounds and lost failover
+            log lines, in that order.
+        """
+        if self._failover_service is None:
+            return 0, 0, 0
+
+        return (
+            self._failover_service.dropped_calls,
+            self._failover_service.failed_checks,
+            self._failover_service.lost_log_lines,
+        )
+
+    def shutdown(self) -> bool:
+        """
+        Stop the background failover checker if it exists.
+
+        Returns:
+            True if there was nothing to stop or it stopped, False if the
+            checker was still running when the wait ran out. The DI
+            lifecycle that calls this discards the answer today; the
+            failover service says so in its own log either way.
+        """
         if self._failover_service:
-            self._failover_service.shutdown()
+            return self._failover_service.shutdown()
+        return True
 
 
 class FailoverLoggerProxy(Logger):
@@ -208,6 +254,12 @@ class FailoverLoggerProxy(Logger):
             method_name: Name of the log method (e.g. ``"info"``).
             message: The log message.
             **kwargs: Additional structured data.
+
+        Returns:
+            Whatever the active logger answered -- ``None`` for the log
+            methods, which return nothing -- or ``ALL_SERVICES_FAILED``
+            when no logger accepted the line. The level methods below
+            discard it; nothing else calls this.
         """
         all_kwargs = {**self._bound_fields, **kwargs}
         all_kwargs["module"] = self._module_name
@@ -229,7 +281,7 @@ class FailoverLoggerProxy(Logger):
         """Log an error message."""
         self._call("error", message, **kwargs)
 
-    def exception(self, message: str, exc_info=None, **kwargs):
+    def exception(self, message: str, exc_info=True, **kwargs):
         """Log an exception with traceback."""
         kwargs["exc_info"] = exc_info
         self._call("exception", message, **kwargs)
@@ -306,7 +358,7 @@ class _ModuleLogger(Logger):
     def error(self, message: str, **kwargs):
         self._log("error", message, **kwargs)
 
-    def exception(self, message: str, exc_info=None, **kwargs):
+    def exception(self, message: str, exc_info=True, **kwargs):
         kwargs["exc_info"] = exc_info
         self._log("exception", message, **kwargs)
 

@@ -1,6 +1,6 @@
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 from link_shortener.infrastructure.configs.app.env import (
-    env_bool, env_int, env_str, read_env
+    env_bool, env_int, env_str, read_env_for
 )
 
 
@@ -34,7 +34,7 @@ class ProductionConfig(BaseConfig):
         # read_env() rather than os.environ.get(): a blank value has to count
         # as "not configured", otherwise production would happily sign tokens
         # with a key made of spaces.
-        key = read_env("SECRET_KEY")
+        key = read_env_for(self, "SECRET_KEY")
         if not key:
             raise ValueError("SECRET_KEY must be set in environment")
 
@@ -44,7 +44,7 @@ class ProductionConfig(BaseConfig):
     def SHORT_CODE_SECRET_PEPPER(self) -> str:
         """Pepper must be set in environment."""
 
-        pepper = read_env("SHORT_CODE_PEPPER")
+        pepper = read_env_for(self, "SHORT_CODE_PEPPER")
         if not pepper:
             raise ValueError(
                 "SHORT_CODE_PEPPER must be set in environment"
@@ -106,7 +106,7 @@ class ProductionConfig(BaseConfig):
         Raises:
             ValueError: If Redis is enabled and no URL is configured.
         """
-        url = read_env("REDIS_URL")
+        url = read_env_for(self, "REDIS_URL")
         if self.REDIS_ENABLED and not url:
             raise ValueError(
                 "REDIS_URL must be set in environment when REDIS_ENABLED=True"
@@ -124,6 +124,12 @@ class ProductionConfig(BaseConfig):
     # --------------------------------------------------------------------------
     COOKIE_SECURE: bool = env_bool("COOKIE_SECURE", True)
     SESSION_COOKIE_SECURE: bool = env_bool("SESSION_COOKIE_SECURE", True)
+
+
+    # --------------------------------------------------------------------------
+    # Mail: submission must be encrypted
+    # --------------------------------------------------------------------------
+    REQUIRE_MAIL_TLS: bool = True
 
 
     # --------------------------------------------------------------------------

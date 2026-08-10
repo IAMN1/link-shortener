@@ -106,7 +106,7 @@ class StandardLogger(Logger):
         self._log("error", message, **kwargs)
 
     def exception(
-        self, message: str, exc_info: Optional[Exception] = None, **kwargs: Any
+        self, message: str, exc_info: Any = True, **kwargs: Any
     ) -> None:
         """Log an exception message with traceback.
 
@@ -122,16 +122,28 @@ class StandardLogger(Logger):
     def is_healthy(self) -> bool:
         """Check whether the logger is operational.
 
+        Asked of the hierarchy rather than of this logger alone. This
+        application configures the root logger and lets records propagate to
+        it (``bootstrap.configure_logging``), so ``logger.handlers`` is empty
+        for every named logger it builds and always was -- the check read
+        that as "no handlers, unhealthy" while the records were arriving on
+        the root's handlers all along. ``hasHandlers`` is the question that
+        was meant: "Checks to see if this logger has any handlers configured.
+        This is done by looking for handlers in this logger and its parents
+        in the logger hierarchy" (``logging.Logger.hasHandlers``), stopping
+        where ``propagate`` is false -- which is exactly as far as a record
+        would travel.
+
         Returns:
-            ``True`` if the logger has handlers and can write a health-check
-            message, ``False`` otherwise.
+            ``True`` if a handler is reachable from this logger and a
+            health-check message can be written, ``False`` otherwise.
         """
-        if not self._logger.handlers:
+        if not self._logger.hasHandlers():
             return False
         try:
             test_logger = logging.getLogger(self._logger.name + "._health_test")
             test_logger.handlers = self._logger.handlers
-            test_logger.propagate = False
+            test_logger.propagate = True
             test_logger.setLevel(logging.DEBUG)
             test_logger.debug("health_check")
             return True

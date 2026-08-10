@@ -8,12 +8,14 @@ from link_shortener.web.schemas.openapi import build_openapi
 class FrontendController:
 
     def __init__(self):
-        self.bp = Blueprint(
-            'frontend',
-            __name__,
-            static_folder='../static',
-            static_url_path='/static'
-        )
+        # No static folder of its own. Flask registers `static` on every
+        # app over `/static/<path:filename>`, and this blueprint asked for
+        # the same rule over the same directory -- measured, both resolve
+        # to web/static. Two rules on one path means the second is never
+        # matched: `frontend.static` built URLs that Flask's own endpoint
+        # then served, which is a dead route wearing a live one's clothes.
+        # Templates address `static` directly instead.
+        self.bp = Blueprint('frontend', __name__)
         self._register_routes()
 
     def _register_routes(self):

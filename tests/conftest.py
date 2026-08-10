@@ -35,6 +35,8 @@ from typing import Iterator
 
 import pytest
 
+from link_shortener.infrastructure.configs.app import factory as config_factory
+
 
 # ==============================================================================
 # What survives a detached test
@@ -144,9 +146,17 @@ def detached_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     Needed wherever a profile other than ``testing`` gets built -- directly,
     or as a side effect of importing something that builds one. Those
-    profiles read ``.env``, and ``find_dotenv(usecwd=True)`` walks upwards
-    from the working directory until it finds a file, which from the
-    repository root means the developer's own.
+    profiles read ``.env``, and the walk upwards from the working directory
+    finds a file, which from the repository root means the developer's own.
+
+    Changing the directory is no longer enough on its own.
+    ``_read_env_file`` reads the project root before it walks anywhere, and
+    that root comes from the location of the configuration module rather
+    than from the process -- so it stays the developer's checkout however
+    the test is run. Measured when only the ``chdir`` was here:
+    ``test_base_url_property`` began reading ``HOST=127.0.0.1`` out of the
+    real ``.env`` and expected ``localhost``. The root is therefore pointed
+    at the same empty directory.
 
     Everything outside the allowlist above is removed, so a setting is
     covered regardless of how the configuration happens to declare it.
@@ -155,6 +165,7 @@ def detached_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         The empty directory the test now runs in.
     """
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config_factory, "PROJECT_ROOT", tmp_path)
     for name in list(os.environ):
         if not _is_kept(name):
             monkeypatch.delenv(name, raising=False)

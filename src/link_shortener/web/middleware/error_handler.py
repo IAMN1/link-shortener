@@ -2,6 +2,7 @@ from flask import Flask, jsonify, render_template, request
 from pydantic import ValidationError as PydanticValidationError
 from werkzeug.exceptions import BadRequest, HTTPException
 
+from link_shortener.web.responses import wants_html
 from link_shortener.web.schemas.error import ErrorDetail, ErrorResponse
 from link_shortener.application import Logger
 from link_shortener.domain.exceptions import (
@@ -34,18 +35,16 @@ class ErrorHandlerMiddleware:
         """
         Determine whether the client expects an HTML response.
 
-        Returns ``True`` if the request path does not start with ``/api/``
-        or the ``Accept`` header includes ``text/html``.
-        """
+        One rule, in one place: ``wants_html`` in ``web.responses``. It
+        used to be spelled out here as well, and the throttle -- which
+        answers 429 on the same routes -- had neither, so it returned an
+        envelope wherever the request came from. A copy is how the two
+        came apart in the first place.
 
-        if request.path.startswith("/api/"):
-            return False
-        
-        if 'text/html' in request.headers.get('Accept', ''):
-            return True
-        
-        # Default to HTML for frontend routes
-        return True
+        Returns:
+            ``True`` when this request should be answered with a page.
+        """
+        return wants_html()
 
     def _respond_http_exception(self, error: HTTPException):
         """
@@ -126,8 +125,17 @@ class ErrorHandlerMiddleware:
                 details=details
             )
 
+            # ``include_input=False``: pydantic puts the rejected value
+            # itself in every error dict, and the values this application
+            # rejects include passwords. Measured on ``CreateUserRequest``
+            # with a password shorter than the policy: the plaintext went
+            # into application.log as ``'input': 'sh0rt!'`` while the 400
+            # body stayed clean. What the operator needs is which field
+            # failed and why, and that is what is left.
             self.logger.warning(
-                "Validation error", errors=error.errors(), path=request.path
+                "Validation error",
+                errors=error.errors(include_input=False),
+                path=request.path,
             )
             return jsonify(response.model_dump()), 400
 

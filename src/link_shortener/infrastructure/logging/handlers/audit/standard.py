@@ -17,8 +17,11 @@ class StandardAuditLogger(AuditLogger):
     """Audit logger using the standard ``logging`` module.
 
     Bound fields are stored internally and passed via the ``extra`` keyword
-    argument on every log call. URL values are automatically masked for
-    privacy when written to the log.
+    argument on every log call. The ``original_url`` of an event is masked
+    on its way in -- and only that one: an address passed under any other
+    name, whether in ``**kwargs`` or bound with ``bind()``, is recorded as
+    given. ``mask_url`` also leaves query strings alone, so a token in one
+    survives even the field that is masked.
 
     Attributes:
         _logger: The underlying ``logging.Logger`` instance.
@@ -137,11 +140,17 @@ class StandardAuditLogger(AuditLogger):
     def is_healthy(self) -> bool:
         """Check whether the audit logger is operational.
 
+        Asked of the hierarchy, as ``StandardLogger.is_healthy`` is: the
+        audit logger is given its own handlers here and stops propagation,
+        so the two questions have the same answer today -- but a
+        configuration that let audit records travel to the root would have
+        this one call itself unwell while they arrived.
+
         Returns:
-            ``True`` if the logger has handlers and can write a health-check
-            message without error, ``False`` otherwise.
+            ``True`` if a handler is reachable from this logger and a
+            health-check message can be written, ``False`` otherwise.
         """
-        if not self._logger.handlers:
+        if not self._logger.hasHandlers():
             return False
         try:
             # Create a temporary logger sharing the same handlers

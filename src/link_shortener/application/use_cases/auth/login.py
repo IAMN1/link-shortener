@@ -18,8 +18,9 @@ class LoginUseCase(BaseUseCase):
     Authenticates a user by email and password.
 
     On success, generates an access token and a refresh token, and returns
-    the user's profile. Raises a ``DomainError`` if credentials are invalid
-    or the account is inactive.
+    the user's profile. Raises a ``DomainError`` if the credentials are
+    invalid, the account is inactive, or its address has not been
+    confirmed. Only the last of the three says which it was.
     """
     authentication_service: AuthenticationService
     logger: Logger
@@ -58,6 +59,22 @@ class LoginUseCase(BaseUseCase):
             # exists and that the password guess landed.
             log.warning("Login attempt on inactive user", user_id=user.id)
             raise DomainError("Invalid email or password", code="INVALID_CREDENTIALS")
+
+        if not user.email_verified:
+            # Named, unlike the case above, and the difference is who the
+            # answer is for. Deactivation is an administrator's decision
+            # that the account holder has no part in and cannot undo, so
+            # naming it only tells a guesser their guess landed. An
+            # unconfirmed address is the holder's own unfinished business:
+            # they are told what to do about it, and the only person who
+            # gets that answer is one who already knows the password --
+            # who has therefore learned nothing new about whether the
+            # account exists.
+            log.warning("Login attempt on unverified user", user_id=user.id)
+            raise DomainError(
+                "Confirm your email address before signing in",
+                code="EMAIL_NOT_VERIFIED",
+            )
 
         # Update last_login timestamp.
         user.last_login = datetime.now(timezone.utc)

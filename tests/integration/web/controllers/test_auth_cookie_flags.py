@@ -11,7 +11,7 @@ only the response is what a browser acts on.
 
 import pytest
 
-from tests.integration.conftest import csrf_headers, register_and_login
+from tests.integration.conftest import confirm_email, csrf_headers, register_and_login
 
 
 COOKIES = ("access_token", "refresh_token")
@@ -42,6 +42,7 @@ def login_response(app):
     email = "cookie-flags@example.test"
     password = "CookieFlags1!"
     client.post("/api/v1/auth/register", json={"email": email, "password": password})
+    confirm_email(client.application, email)
     response = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
@@ -113,6 +114,7 @@ class TestLogoutClearsThem:
         client.post(
             "/api/v1/auth/register", json={"email": email, "password": password}
         )
+        confirm_email(client.application, email)
         client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
         # Logout is a cookie-authenticated write, so it is CSRF-protected --

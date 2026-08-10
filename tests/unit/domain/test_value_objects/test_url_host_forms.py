@@ -137,12 +137,24 @@ class TestBracketsMeanAnAddress:
             "http://[v1.good.example]/",
             "http://[v2.api.example.com]/x",
             "http://[vFF.good.example]:8080/a?b",
-            "http://[example.com]/",
         ],
     )
     def test_a_bracketed_name_is_refused(self, url):
         with pytest.raises(ValidationError, match="IPv6"):
             OriginalUrl(url)
+
+    def test_a_bracketed_name_with_no_version_never_reaches_that_check(self):
+        """Refused one step earlier, and so with the other message.
+
+        ``[example.com]`` is not even IPvFuture -- no ``v<hex>.`` prefix --
+        so ``urlparse`` raises on it instead of handing back a host for
+        ``_validate_bracketed_host_is_an_address`` to judge. The message
+        is the one ``_parse`` produces, which names the authority rather
+        than quoting it: the quoted form is what used to carry a password
+        into the log when the authority held one.
+        """
+        with pytest.raises(ValidationError, match="authority cannot be parsed"):
+            OriginalUrl("http://[example.com]/")
 
     def test_a_bracketed_ipv6_address_is_still_admitted(self):
         assert OriginalUrl("http://[2606:4700::1]/x")

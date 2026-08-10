@@ -20,6 +20,7 @@ from link_shortener.infrastructure.configs.app.development import DevelopmentCon
 from link_shortener.infrastructure.configs.app.env import (
     EnvField, env_bool, env_float, env_int, env_list, env_str
 )
+from link_shortener.infrastructure.configs.app import factory as factory_module
 from link_shortener.infrastructure.configs.app.factory import ConfigFactory
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.infrastructure.configs.app.base import MAX_BATCH_ITEMS
@@ -46,8 +47,17 @@ SCRUBBED_NAMES = (
 
 @pytest.fixture()
 def env_dir(tmp_path, monkeypatch):
-    """Run inside an empty directory with a clean, predictable environment."""
+    """Run inside an empty directory with a clean, predictable environment.
+
+    The project root is pointed at that directory too. ``chdir`` alone
+    stopped being isolation once ``_read_env_file`` began reading the root
+    first: the root is derived from the module's own location, so it is
+    the developer's checkout no matter where the test runs, and these
+    tests would have read the developer's real ``.env`` -- the one thing
+    the docstring above promises they never do.
+    """
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(factory_module, "PROJECT_ROOT", tmp_path)
     for name in SCRUBBED_NAMES:
         monkeypatch.delenv(name, raising=False)
     for name in list(os.environ):
@@ -228,7 +238,8 @@ class TestTestingIsolation:
         the descriptor is where ``IGNORE_ENV`` is obeyed -- so these three
         went on reading the machine. ``production`` and ``staging``
         declare their secrets the same way and are still blind to the
-        flag; see the open decisions in docs/DEVELOPER_GUIDE.md. The subclass below is what
+        flag; see the open decisions in docs/DEVELOPER_GUIDE.md. The
+        subclass below is what
         ``tests/integration/docker/conftest.py`` builds: a detached profile
         that does run on PostgreSQL, which is the only shape in which the
         values are consulted at all.
@@ -393,6 +404,17 @@ class TestTheSuiteCannotReachARealDatabase:
         # Enter the fixture only after the variable is set, so it has
         # something to scrub.
         monkeypatch.chdir(tmp_path)
+        # And point the root at it as well: `_read_env_file` reads the
+        # project root before it walks up from here, and that root is
+        # derived from the configuration module's own location -- so
+        # without this line the scrubbing above is undone by the
+        # developer's real `.env`, which is exactly what this class exists
+        # to prevent. Measured before it was added: a `.env` naming a
+        # PostgreSQL host built a URL against that host, with its user and
+        # password in it, right here -- and five of the six
+        # parametrisations still passed, because each only checks that
+        # *its own* value is absent from the URL.
+        monkeypatch.setattr(factory_module, "PROJECT_ROOT", tmp_path)
         for scrubbed in SCRUBBED_NAMES:
             monkeypatch.delenv(scrubbed, raising=False)
         for present in list(os.environ):
@@ -403,6 +425,29 @@ class TestTheSuiteCannotReachARealDatabase:
 
         url = ConfigFactory.create_config("development").get_database_url()
         assert value not in url
+
+    def test_no_file_on_this_machine_can_point_the_suite_anywhere(
+        self, monkeypatch, tmp_path
+    ):
+        """The gap the six parametrisations above cannot see.
+
+        Each of them asserts only that its own value is missing from the
+        URL, so a `.env` naming a completely different database passes all
+        six. This one asserts the whole URL against a literal instead.
+        """
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(factory_module, "PROJECT_ROOT", tmp_path)
+        for scrubbed in SCRUBBED_NAMES:
+            monkeypatch.delenv(scrubbed, raising=False)
+        for present in list(os.environ):
+            if present.startswith(SCRUBBED_PREFIXES):
+                monkeypatch.delenv(present, raising=False)
+
+        url = ConfigFactory.create_config("development").get_database_url()
+
+        assert url.startswith("sqlite:///")
+        assert "postgresql" not in url
+        assert "@" not in url
 
 
 class TestFlaskConfigIntegration:

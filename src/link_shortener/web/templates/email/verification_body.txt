@@ -1,0 +1,10 @@
+Someone -- we hope you -- registered this address with the link shortener.
+
+Open this link to confirm the address and finish signing up:
+
+{{ confirm_url }}
+
+The link stops working in {{ ttl_hours }} hour{{ 's' if ttl_hours != 1 else '' }}.
+
+If it was not you, ignore this message. The account cannot be used until
+the address is confirmed, and it is removed on its own if nobody confirms it.

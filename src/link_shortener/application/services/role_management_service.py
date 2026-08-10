@@ -114,11 +114,17 @@ class RoleManagementService:
             role_name: Name of the role to delete.
 
         Raises:
-            ValueError: If role not found or is a system role.
+            LookupError: If the role does not exist.
+            ValueError: If the role exists but may not be deleted.
         """
+        # Two different answers, and they were one exception: "no such
+        # role" and "that role is protected" both came back as ValueError,
+        # so the endpoint answered 400 to a name that simply is not there
+        # -- while the user endpoint next to it answered 404 for exactly
+        # the same question.
         role = uow.roles.get_by_name(role_name)
         if not role:
-            raise ValueError(f"Role '{role_name}' not found")
+            raise LookupError(f"Role '{role_name}' not found")
         if role.is_system:
             raise ValueError("Cannot delete system roles")
         uow.roles.delete(role.id)

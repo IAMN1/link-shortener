@@ -1,5 +1,8 @@
 from dataclasses import dataclass
+from typing import Optional
+
 from link_shortener.application import HealthCheck, Logger, GetServiceHealthUseCase
+from link_shortener.application.ports.logging_status import LoggingStatusPort
 
 @dataclass
 class HealthUseCasesComponent:
@@ -13,9 +16,11 @@ class HealthUseCasesComponent:
     Attributes:
         health_check: The infrastructure health check implementation.
         logger: Application logger injected into the use case.
+        logging_status: Reader for the logging and audit chains.
     """
     health_check: HealthCheck
     logger: Logger
+    logging_status: Optional[LoggingStatusPort] = None
 
     def get_service_health_use_case(self) -> GetServiceHealthUseCase:
         """
@@ -28,4 +33,5 @@ class HealthUseCasesComponent:
         return GetServiceHealthUseCase(
             health_check_port=self.health_check,
             logger=self.logger,
+            logging_status=self.logging_status,
         )

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session, selectinload
 
@@ -140,6 +141,38 @@ class SQLAlchemyUserRepository(UserRepository):
             return True
         return False
 
+    def delete_unverified_before(self, cutoff: datetime) -> int:
+        """Delete accounts that were never confirmed and have run out of time.
+
+        A bulk statement, which normally would not do for users: rows that
+        vanish behind the application leave their links' cache entries
+        behind, answering for links that no longer exist until the entries
+        expire. It does here because these accounts never signed in --
+        confirmation is what login requires -- so they own nothing that
+        could be cached. Should that ever stop being true, this has to go
+        back through ``DeleteUserUseCase``.
+
+        The rows hanging off the account -- roles, sessions, confirmations
+        -- go with it through ``ON DELETE CASCADE``, which SQLite honours
+        only because the manager turns the pragma on for every connection.
+
+        Args:
+            cutoff: Registrations older than this are removed.
+
+        Returns:
+            Number of accounts deleted.
+        """
+        deleted = (
+            self.session.query(UserModel)
+            .filter(
+                UserModel.email_verified.is_(False),
+                UserModel.created_at < cutoff,
+            )
+            .delete(synchronize_session=False)
+        )
+        self.session.flush()
+        return deleted
+
     # ------------------------------------------------------------------
     # Private conversion helpers
     # ------------------------------------------------------------------
@@ -180,6 +213,7 @@ class SQLAlchemyUserRepository(UserRepository):
             password_hash=PasswordHash(model.password_hash),
             roles=roles,
             is_active=model.is_active,
+            email_verified=model.email_verified,
             created_at=model.created_at,
             last_login=model.last_login,
         )
@@ -199,6 +233,7 @@ class SQLAlchemyUserRepository(UserRepository):
         model.email = user.email.value
         model.password_hash = user.password_hash.value
         model.is_active = user.is_active
+        model.email_verified = user.email_verified
         model.created_at = user.created_at
         model.last_login = user.last_login
         return model

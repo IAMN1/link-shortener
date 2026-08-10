@@ -112,3 +112,50 @@ class CeleryTaskQueue(TaskQueue):
                     short_code=short_code_str,
                     suspended_for=self.retry_interval,
                 )
+
+    def enqueue_verification_email(
+        self, email: str, token: str, context: RequestContext
+    ) -> bool:
+        """
+        Publish the confirmation message as a task for a worker.
+
+        The back-off above is deliberately not consulted here. It exists
+        so that a burst of redirects does not each pay the broker timeout
+        during an outage, and it is right for a counter -- but it decides
+        by the clock, not by the request, and a registration skipped
+        because some redirect failed a moment ago would leave a person
+        with no way to confirm and no way to know why. Registration is
+        rare enough to be worth one attempt each time.
+
+        Args:
+            email: Address to send to.
+            token: The confirmation token as it goes into the link.
+            context: ``RequestContext`` containing request metadata.
+
+        Returns:
+            True if the task was published.
+        """
+        from link_shortener.infrastructure.task_queue.tasks import (
+            send_verification_email,
+        )
+
+        context_dict = {
+            'request_id': context.request_id,
+            'remote_addr': context.remote_addr,
+            'user_agent': context.user_agent,
+            'request_path': context.request_path,
+            'request_method': context.request_method,
+        }
+        try:
+            send_verification_email.delay(email, token, context_dict)
+            return True
+        except Exception as e:
+            if self.logger:
+                # The token is not logged. It is a working credential for
+                # as long as it lives, and a log outlives a mailbox.
+                self.logger.error(
+                    "Failed to enqueue verification email",
+                    error=str(e),
+                    email=email,
+                )
+            return False
