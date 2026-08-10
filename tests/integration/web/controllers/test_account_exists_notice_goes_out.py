@@ -108,6 +108,24 @@ class TestBothPathsSendExactlyOneMessage:
 
         assert outbox.messages[0]["to"] == taken
 
+    def test_both_paths_mail_the_stored_address_and_not_the_typed_one(
+        self, client, outbox, request
+    ):
+        """The account is stored under the normalised address, so that is
+        the address the service knows. Mailing the string as typed sends
+        to one the service does not recognise as its own -- the same
+        mailbox at every provider in ordinary use, and not the same one
+        for a host that honours the case sensitivity RFC 5321 reserves
+        for local-parts.
+        """
+        address = f"shout-{request.node.name}@example.test".lower()
+
+        _register(client, address.upper())
+        assert outbox.messages[-1]["to"] == address
+
+        _register(client, address.upper())
+        assert outbox.messages[-1]["to"] == address
+
 
 class TestTheNoticeSaysOnlyWhatItMay:
     """Sent to somebody who did not ask, on a stranger's say-so."""
