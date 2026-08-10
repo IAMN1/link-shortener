@@ -17,6 +17,10 @@ from ..commands.maintenance import clean_expired_sessions as clean_sessions_logi
 from ..commands.maintenance import (
     clean_unverified_accounts as clean_unverified_logic,
 )
+from ..commands.maintenance import (
+    find_addresses_needing_normalising as find_mixed_case_logic,
+)
+from ..commands.maintenance import normalise_addresses as normalise_logic
 from ..commands.link import delete_link as delete_link_logic
 from ..commands.link import get_link_info as link_info_logic
 from ..commands.link import list_links as list_links_logic
@@ -217,6 +221,72 @@ def clean_sessions():
     container = current_app.container
     deleted = clean_sessions_logic(container.get_uow_factory())
     click.echo(f"Deleted {deleted} expired refresh sessions.")
+
+@maintenance_group.command("normalize-emails")
+@click.option(
+    "--apply",
+    "apply_changes",
+    is_flag=True,
+    help="Write the change. Without it, nothing is modified.",
+)
+@with_appcontext
+def normalize_emails(apply_changes):
+    """Lower stored addresses that predate address normalisation.
+
+    An address is now held in lower case, so an account written earlier as
+    ``Case@Example.com`` is no longer found by a lookup for it: its owner
+    cannot sign in, and registering the address again would create a
+    second account for the same mailbox.
+
+    Reports by default and changes nothing. Addresses that would collide
+    with another account once lowered are never touched -- merging two
+    accounts means deciding whose links, roles and sessions survive, which
+    is not a decision for a maintenance command. Both members of such a
+    pair are reported, including the case where neither is stored in lower
+    case yet.
+
+    Each address is written in its own transaction, so one refusal leaves
+    the rest migrated rather than rolling the whole run back.
+    """
+    db_manager = current_app.container.get_db_manager()
+    rows = find_mixed_case_logic(db_manager)
+
+    if not rows:
+        click.echo("Every stored address is already lower case.")
+        return
+
+    clashing = [r for r in rows if r["clashes"]]
+    fixable = [r for r in rows if not r["clashes"]]
+
+    for row in fixable:
+        click.echo(f"  {row['email']} -> {row['email'].lower()}")
+    for row in clashing:
+        click.echo(
+            f"  {row['email']}: another account also lowers to "
+            f"{row['email'].lower()}; left alone",
+            err=True,
+        )
+
+    if not apply_changes:
+        click.echo(
+            f"{len(fixable)} to change, {len(clashing)} in conflict. "
+            f"Nothing written; pass --apply to write."
+        )
+        return
+
+    result = normalise_logic(db_manager)
+    click.echo(f"Lowered {result['changed']} addresses.")
+    if result["skipped"]:
+        click.echo(
+            f"{result['skipped']} left in conflict and untouched.", err=True
+        )
+    if result["refused"]:
+        # Not a conflict this command could see when it looked: the row
+        # was taken between the report and the write.
+        click.echo(
+            f"{result['refused']} refused by the unique index; run again.",
+            err=True,
+        )
 
 @maintenance_group.command("clean-unverified")
 @with_appcontext
