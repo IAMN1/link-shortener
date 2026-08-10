@@ -3,8 +3,10 @@ Which implementations each configured mode actually builds.
 
 Nothing held the audit half before. Every test configuration switches
 logging and auditing off, so the branch that turns a mode into a list of
-implementations was reached by almost nothing. Measured against the whole
-suite with this file removed (1665 tests):
+implementations was reached by almost nothing. Measured against the suite
+as it stood when this file was written -- with it removed, 1665 tests, and
+before ``test_managers_wire_the_failover_service`` existed, which now
+catches the first of these as well:
 
 * ``AuditManager``'s ``auto`` branch building nothing -- no auditing at
   all, in the default production mode -- leaves the suite green;
@@ -33,12 +35,63 @@ make loud.
 
 import pytest
 
+from link_shortener.infrastructure.logging.handlers.audit.null_audit import (
+    NullAuditLogger,
+)
+from link_shortener.infrastructure.logging.handlers.audit.standard import (
+    StandardAuditLogger,
+)
+from link_shortener.infrastructure.logging.handlers.audit.structlog import (
+    StructlogAuditLogger,
+)
+from link_shortener.infrastructure.logging.handlers.logger.null_logger import (
+    NullLogger,
+)
+from link_shortener.infrastructure.logging.handlers.logger.standard import (
+    StandardLogger,
+)
+from link_shortener.infrastructure.logging.handlers.logger.structlog import (
+    StructLogger,
+)
 from link_shortener.infrastructure.logging.managers.audit_manager import (
     AuditManager,
 )
 from link_shortener.infrastructure.logging.managers.logger_manager import (
     LoggerManager,
 )
+
+
+def build_logger(mode: str) -> LoggerManager:
+    """
+    Build a ``LoggerManager`` without its background checker.
+
+    The interval is switched off because nothing in this file asks about
+    timing, and a manager left with the default starts a daemon thread in
+    its constructor that nobody stops: measured, this directory alone left
+    twelve ``_periodic_check`` threads alive at the end of the session.
+    What the thread does when it is wanted is held by
+    ``test_managers_wire_the_failover_service``.
+
+    Args:
+        mode: The configured ``LOGGER_TYPE``.
+
+    Returns:
+        The manager.
+    """
+    return LoggerManager(logger_type=mode, failover_check_interval=None)
+
+
+def build_audit(mode: str) -> AuditManager:
+    """
+    Build an ``AuditManager`` without its background checker.
+
+    Args:
+        mode: The configured ``AUDIT_TYPE``.
+
+    Returns:
+        The manager.
+    """
+    return AuditManager(audit_type=mode, failover_check_interval=None)
 
 
 def chain_of(manager) -> list:
@@ -70,11 +123,11 @@ class TestTheLoggerChain:
         ],
     )
     def test_a_mode_builds_the_pair_it_promises(self, mode, expected):
-        assert chain_of(LoggerManager(logger_type=mode)) == expected
+        assert chain_of(build_logger(mode)) == expected
 
     def test_null_builds_one_implementation_and_no_failover(self):
         """One implementation is not a chain, and must not become one."""
-        manager = LoggerManager(logger_type="null")
+        manager = build_logger("null")
 
         assert manager._failover_service is None
         assert type(manager._active_logger).__name__ == "NullLogger"
@@ -85,7 +138,7 @@ class TestTheLoggerChain:
         A typo must not silently disable logging; it gets what ``auto``
         gets, which is what this branch always did.
         """
-        assert chain_of(LoggerManager(logger_type="nonsense")) == [
+        assert chain_of(build_logger("nonsense")) == [
             "structlog", "standard"
         ]
 
@@ -101,13 +154,38 @@ class TestTheAuditChain:
         ],
     )
     def test_a_mode_builds_the_pair_it_promises(self, mode, expected):
-        assert chain_of(AuditManager(audit_type=mode)) == expected
+        assert chain_of(build_audit(mode)) == expected
 
     def test_null_writes_nothing_and_builds_no_failover(self):
-        manager = AuditManager(audit_type="null")
+        manager = build_audit("null")
 
         assert manager._failover_service is None
         assert type(manager._active_audit_logger).__name__ == "NullAuditLogger"
+
+    def test_an_unknown_mode_falls_back_to_the_default_pair(self):
+        """The logger chain had this test and the audit chain did not.
+
+        Measured: the audit ``else`` branch returning ``["null"]`` left the
+        whole suite green, and a typo in ``AUDIT_TYPE`` -- ``structlogg``,
+        ``syslog``, an empty value -- then wrote no audit record at all,
+        for any link created, followed or deleted. Nothing says so either:
+        the counters read 0/0/0, because a chain that was never built
+        cannot drop a call, and the only word on the health body is
+        ``audit.active``.
+        """
+        assert chain_of(build_audit("nonsense")) == [
+            "structlog_audit", "standard_audit"
+        ]
+
+    @pytest.mark.parametrize("spelling", ["structlogg", "syslog", ""])
+    def test_a_typo_does_not_switch_auditing_off(self, spelling):
+        """
+        Args:
+            spelling: A value no branch recognises.
+        """
+        assert chain_of(build_audit(spelling)) == [
+            "structlog_audit", "standard_audit"
+        ]
 
 
 class TestOffMeansOffWhateverTheSpelling:
@@ -121,7 +199,7 @@ class TestOffMeansOffWhateverTheSpelling:
         ``AUDIT_TYPE=NULL`` to switch auditing off got original_url,
         remote_addr and user_id written down instead.
         """
-        manager = AuditManager(audit_type=spelling)
+        manager = build_audit(spelling)
 
         assert manager._failover_service is None
         assert type(manager._active_audit_logger).__name__ == "NullAuditLogger"
@@ -129,9 +207,91 @@ class TestOffMeansOffWhateverTheSpelling:
     @pytest.mark.parametrize("spelling", ["STANDARD", " standard"])
     def test_the_order_modes_are_recognised_too(self, spelling):
         """``STANDARD`` used to leave the order it was asking to reverse."""
-        assert chain_of(LoggerManager(logger_type=spelling)) == [
+        assert chain_of(build_logger(spelling)) == [
             "standard", "structlog"
         ]
+
+
+class TestASlotHoldsTheImplementationItNames:
+    """The names are labels; nothing checked what was behind them.
+
+    Measured: building the ``standard`` slot with a ``StructLogger`` -- and
+    the ``standard_audit`` slot with a ``StructlogAuditLogger`` -- left the
+    whole suite green. What that costs is the standby: the failure that
+    takes the primary down takes its twin down with it, ``execute`` walks
+    the whole list and answers ``ALL_SERVICES_FAILED``, every line is lost
+    and ``/api/v1/admin/health`` reports ``active: "standard"`` -- so the
+    operator reads that the standby took over from a chain that has
+    nothing left to take over.
+    """
+
+    IMPLEMENTATION_OF = {
+        "structlog": StructLogger,
+        "standard": StandardLogger,
+        "null": NullLogger,
+        "structlog_audit": StructlogAuditLogger,
+        "standard_audit": StandardAuditLogger,
+        "null_audit": NullAuditLogger,
+    }
+
+    @pytest.mark.parametrize("mode", ["auto", "structlog", "standard"])
+    def test_the_logger_chain_holds_what_it_names(self, mode):
+        """
+        Args:
+            mode: The configured ``LOGGER_TYPE``.
+        """
+        for service, name in build_logger(mode)._failover_service._services:
+            assert isinstance(service, self.IMPLEMENTATION_OF[name])
+
+    @pytest.mark.parametrize("mode", ["auto", "structlog", "standard"])
+    def test_the_audit_chain_holds_what_it_names(self, mode):
+        """
+        Args:
+            mode: The configured ``AUDIT_TYPE``.
+        """
+        for service, name in build_audit(mode)._failover_service._services:
+            assert isinstance(service, self.IMPLEMENTATION_OF[name])
+
+    @pytest.mark.parametrize("mode", ["auto", "structlog", "standard"])
+    def test_the_two_slots_are_not_the_same_implementation(self, mode):
+        """A chain of one thing twice is a chain with no standby at all.
+
+        Held apart from the check above because a mapping that named both
+        slots after one class would satisfy it.
+
+        Args:
+            mode: The configured type, for either manager.
+        """
+        for manager in (build_logger(mode), build_audit(mode)):
+            kinds = {
+                type(service)
+                for service, _name in manager._failover_service._services
+            }
+            assert len(kinds) == 2
+
+
+class TestTheNameTheOperatorIsGivenIsTheOneDoingTheWork:
+    """``active`` on the health body, and the only word about the move.
+
+    ``AuditManager.active_name`` had this test; ``LoggerManager`` did not.
+    Measured: reading ``_services[0][1]`` instead of the current one left
+    the suite green, and with it every surface an operator has --
+    ``/api/v1/admin/health`` and the line at start-up both report the
+    primary forever, so a chain that handed its work down looks exactly
+    like one that never did.
+    """
+
+    def test_the_logger_name_follows_the_work(self):
+        manager = build_logger("auto")
+        manager._failover_service._current_index = 1
+
+        assert manager.get_active_logger_name() == "standard"
+
+    def test_the_audit_name_follows_the_work(self):
+        manager = build_audit("auto")
+        manager._failover_service._current_index = 1
+
+        assert manager.active_name() == "standard_audit"
 
 
 class TestTheCountersComeFromTheChain:
@@ -145,7 +305,7 @@ class TestTheCountersComeFromTheChain:
     """
 
     def test_a_manager_reports_what_its_failover_service_holds(self):
-        manager = LoggerManager(logger_type="auto")
+        manager = build_logger("auto")
         service = manager._failover_service
         assert service is not None
 
@@ -156,7 +316,7 @@ class TestTheCountersComeFromTheChain:
         assert manager.counters() == (7, 3, 5)
 
     def test_an_audit_manager_does_the_same(self):
-        manager = AuditManager(audit_type="auto")
+        manager = build_audit("auto")
         service = manager._failover_service
         assert service is not None
 
@@ -170,11 +330,11 @@ class TestTheCountersComeFromTheChain:
     def test_without_failover_there_is_nothing_to_count(self, mode):
         """One implementation cannot fail over, and a call it refuses
         raises at the caller rather than being dropped here."""
-        assert LoggerManager(logger_type=mode).counters() == (0, 0, 0)
-        assert AuditManager(audit_type=mode).counters() == (0, 0, 0)
+        assert build_logger(mode).counters() == (0, 0, 0)
+        assert build_audit(mode).counters() == (0, 0, 0)
 
     def test_the_active_name_comes_from_the_chain_too(self):
-        manager = AuditManager(audit_type="auto")
+        manager = build_audit("auto")
         manager._failover_service._current_index = 1
 
         assert manager.active_name() == "standard_audit"
