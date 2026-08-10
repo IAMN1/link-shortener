@@ -274,6 +274,26 @@ class TestFallingToAStandby:
             "Switched to standby",
         ]
 
+    def test_the_handover_names_the_service_it_moved_to(self):
+        # On two services a message built from either end of the list reads
+        # the same, which is why the climb and the demotion are both named
+        # on three (`test_the_climb_names_the_service_it_left`,
+        # `test_the_demotion_names_both_ends_of_the_move`). This third
+        # message had no such check: measured, building it from
+        # `self._services[-1][1]` -- the bottom of the list rather than the
+        # next step down -- left the whole file green, and an operator
+        # reading the log was told the work had gone to the last standby
+        # while it had gone to the first.
+        failover, _, logger = build([
+            Service("primary", broken=True),
+            Service("middle"),
+            Service("worst"),
+        ])
+
+        assert failover.execute("speak") == "middle spoke"
+
+        assert logger.warnings[-1] == "Switched to middle"
+
     def test_the_handover_sticks_for_later_calls(self):
         primary = Service("primary", broken=True)
         standby = Service("standby")
@@ -1193,7 +1213,10 @@ class TestHandingTheWorkDown:
             [Service("primary"), Service("standby")], health_checker=explode
         )
 
-        failover._attempt_demotion()
+        # The answer matters as much as the index: `_run_check` reads it to
+        # decide whether to climb, so a raise reported as "the work moved"
+        # costs the climb -- see the round-level test below.
+        assert failover._attempt_demotion() is False
 
         assert failover.get_current_service_name() == "primary"
         assert logger.warnings == ["Health check for primary failed: probe exploded"]
@@ -1392,6 +1415,29 @@ class TestARoundOfChecking:
         failover._run_check()
 
         assert failover.get_current_service_name() == "primary"
+
+    def test_a_round_climbs_when_the_probe_on_the_active_service_raises(self):
+        # A probe that raises answers nothing, and nothing is not a
+        # demotion. Reported as one, it takes the climb with it -- the
+        # round skips the climb whenever the work moved -- so a chain whose
+        # active service cannot be probed at all never comes back up, and
+        # the standby keeps work the primary is well enough to do.
+        # Measured on the mutation run of 2026-08-10: the survivor was the
+        # `except` branch of `_attempt_demotion` answering True.
+        def explode(service):
+            if service.name == "worst":
+                raise RuntimeError("probe exploded")
+            return service.healthy
+
+        failover, clock, _ = build(
+            [Service("best"), Service("worst")], health_checker=explode
+        )
+        failover._switch_to_next()
+        clock.advance(301)
+
+        failover._run_check()
+
+        assert failover.get_current_service_name() == "best"
 
     def test_a_round_climbs_past_a_service_that_cannot_be_handed_down(self):
         # Unwell, and nothing below it to take the work: the demotion fails,
