@@ -274,6 +274,38 @@ class TestTestingIsolation:
 
         assert OnPostgres().DATABASE_POOL_SIZE == 20
 
+    def test_it_does_not_publish_dotenv_into_the_process(
+        self, env_dir, monkeypatch
+    ):
+        """``NO_DOTENV_ENVS`` is what this class is named after, and only
+        ``IGNORE_ENV`` was holding it up.
+
+        Every other test here reads values back off the configuration,
+        where the detachment answers first -- so removing ``testing`` from
+        ``NO_DOTENV_ENVS`` leaves them all green. What the list actually
+        prevents is the *side effect*: ``_apply_env_files`` writes into
+        ``os.environ``, and those values outlive the call. A test run that
+        published them would hand them to everything that reads the
+        environment afterwards, subprocesses included -- alembic among
+        them, which resolves its own database that way.
+
+        The second half is the control: without it, a broken
+        ``_apply_env_files`` that published nothing at all would pass.
+        """
+        write(env_dir / ".env", MARKER_FROM_DOTENV="published")
+        # Registered through monkeypatch so the control below is undone
+        # when the test ends; blank counts as unset, so it does not mask
+        # the file.
+        monkeypatch.setenv("MARKER_FROM_DOTENV", "")
+
+        ConfigFactory.create_config("testing")
+
+        assert os.environ["MARKER_FROM_DOTENV"] == ""
+
+        ConfigFactory.create_config("development")
+
+        assert os.environ["MARKER_FROM_DOTENV"] == "published"
+
     def test_survives_another_profile_loading_dotenv(self, env_dir):
         """
         Should stay isolated after a different profile pulled `.env` into
