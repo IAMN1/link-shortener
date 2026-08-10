@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     body: JSON.stringify({ url: url })
                 });
                 var data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || data.message || 'Failed');
+                if (!resp.ok) throw new Error(data.message || data.error || 'Failed');
                 showResult(data);
             } catch(err) { showError(err.message); }
             btn.disabled = false; btn.textContent = 'Shorten';
@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     body: JSON.stringify({ urls: urls })
                 });
                 var data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || 'Failed');
+                if (!resp.ok) throw new Error(data.message || data.error || 'Failed');
                 var html = '<div class="result-card"><h3 style="margin-bottom:1rem;">Results</h3>';
                 if (data.results) {
                     data.results.forEach(function(r) {
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 var resp = await fetch('/api/v1/links/' + encodeURIComponent(code));
                 var data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || 'Not found');
+                if (!resp.ok) throw new Error(data.message || data.error || 'Not found');
                 // clicks is null unless the viewer is entitled to the
                 // link's traffic, so the stats a signed-out visitor gets
                 // are the ones that say nothing about its owner.
@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 var resp = await fetch('/api/v1/links/' + encodeURIComponent(code) + '/extended');
                 var data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || 'Not found');
+                if (!resp.ok) throw new Error(data.message || data.error || 'Not found');
                 var html = '<div class="result-card"><h3 style="margin-bottom:1rem;">Extended Info</h3>'
                     + '<div class="result-field"><span class="result-url">' + escapeHtml(data.short_url) + '</span></div>'
                     + '<div style="font-size:0.875rem;color:#374151;margin:0.5rem 0;">' + escapeHtml(data.original_url) + '</div>'

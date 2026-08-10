@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             if (!resp) return;
             var data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || data.message || 'Failed');
+            if (!resp.ok) throw new Error(data.message || data.error || 'Failed');
             resultEl.innerHTML = '<div class="alert alert--success">'
                 + '<strong>' + escapeHtml(data.short_url) + '</strong>'
                 + '<br><span class="text-sm text-muted">' + escapeHtml(data.original_url) + '</span>'

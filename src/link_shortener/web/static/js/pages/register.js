@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({ email: email, password: password })
             });
             var data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Registration failed');
+            if (!resp.ok) throw new Error(data.message || data.error || 'Registration failed');
             window.location.href = '/login';
         } catch(err) {
             errEl.textContent = err.message;

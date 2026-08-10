@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({ email: email, password: password })
             });
             var data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Login failed');
+            if (!resp.ok) throw new Error(data.message || data.error || 'Login failed');
             // The session arrives as HttpOnly cookies; nothing to store here.
             window.location.href = '/dashboard/';
         } catch(err) {
