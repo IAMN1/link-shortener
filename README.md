@@ -4,7 +4,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/badge/coverage-89%25-blue.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-90.81%25-blue.svg)]()
 
 ## Возможности
 
@@ -20,7 +20,7 @@
 - **Кэширование** — двухуровневый кэш (L1: редиректы, L2: объекты ссылок) с инвалидацией при удалении
 - **Асинхронная статистика** — подсчёт кликов через Celery
 - **Rate limiting** — защита от brute-force на auth-эндпоинтах
-- **Health check кэширование** — результаты проверки здоровья кэшируются 15 сек
+- **Health check кэширование** — снимок зависимостей кэшируется 2 сек
 - **CLI** — команды обслуживания для администраторов
 - **Безопасность** — JWT с разделением типов токенов, trusted proxy validation, restricted CORS
 
@@ -226,6 +226,10 @@ curl -X POST http://localhost:5000/api/v1/auth/logout \
 клиент, который умеет выставить заголовок, к CSRF не уязвим. Для curl и
 скриптов ничего не меняется.
 
+Исключение — `POST /api/v1/auth/refresh` и `POST /api/v1/auth/logout`: они
+читают сессионную cookie сами, поэтому их authority — cookie, и Bearer
+освобождения не даёт. Токен там нужен всегда.
+
 ### Rate Limiting
 
 | Эндпоинт | Лимит | Описание |
@@ -234,7 +238,17 @@ curl -X POST http://localhost:5000/api/v1/auth/logout \
 | `POST /api/v1/auth/register` | 3 / час | Защита от спама |
 | `POST /api/v1/auth/refresh` | 10 / мин | Защита от replay |
 | `POST /api/v1/auth/logout` | 20 / мин | |
-| `POST /api/v1/shorten` | 30 / мин | По умолчанию |
+| `POST /api/v1/shorten` | 30 / мин | Создание ссылки |
+| `POST /api/v1/batch/shorten` | 5 / мин | Пакетное создание |
+| `GET /api/v1/links/{code}` | 100 / мин | Чтение ссылки |
+| `GET /api/v1/links/{code}/extended` | 50 / мин | Чтение с метриками |
+| `GET /api/v1/stats` | 10 / мин | Счётчики сервиса |
+| `GET /{code}` | 200 / мин | Редиректы |
+
+Всё остальное — 100 запросов в минуту. `/health` и всё, что отдаётся
+из-под `/static/`, не троттлятся вовсе; лимит, заданный такому маршруту,
+не игнорируется, а не даёт приложению стартовать. Подробности — в
+[docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md).
 
 ### Пагинация
 
@@ -258,46 +272,34 @@ src/link_shortener/
 
 Менеджер пакетов: **uv**
 
-Проект использует три уровня тестирования:
-
-### Уровень 1: Unit-тесты (моки, изолированно)
-
-```bash
-uv run pytest tests/unit/ -v
-```
-
-### Уровень 2: Интеграционные тесты (реальная in-memory SQLite)
+Три уровня: unit (моки), интеграционные (in-memory SQLite и отдельно —
+настоящие PostgreSQL с Redis в Docker) и e2e.
 
 ```bash
-uv run pytest tests/integration/ --ignore=tests/integration/docker/ -v
-```
-
-Без `--ignore` соберётся и уровень 2b, которому нужен Docker.
-
-### Уровень 2b: Интеграционные тесты (реальный PostgreSQL + Redis)
-
-Docker-сервисы поднимаются автоматически:
-
-```bash
-uv run pytest tests/integration/docker/ -v
-```
-
-### Уровень 3: E2E тесты (полные пользовательские сценарии)
-
-```bash
-uv run pytest tests/e2e/ -v
-```
-
-### Все тесты вместе
-
-```bash
-uv run pytest tests/ -v
-
-# С покрытием
+uv run pytest tests/ -v                                    # всё вместе
+uv run pytest tests/unit/ -v                               # только уровень 1
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 1284 (unit + integration + e2e), покрытие: 89%
+Тесты: 1684 (unit + integration + e2e), покрытие: 90.81% при
+пороге 88% (`--cov-fail-under` в `pyproject.toml`).
+
+Разбор уровней, структура каталогов и то, что закрывает каждый флаг, — в
+[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#запуск-тестов).
+
+### Прогоны руками
+
+Два прогона pytest не собирает — их запускают отдельно:
+
+```bash
+# 110 проверок по HTTP против настоящего приложения
+uv run python tests/live/smoke_test.py
+
+# 8 проверок настоящим браузером: исполняет web/static/js/pages/*.js
+uv sync --group browser              # один раз
+uv run playwright install chromium   # один раз
+uv run python tests/live/browser_test.py
+```
 
 ### CI
 
@@ -338,45 +340,18 @@ workflow окажется в ветке по умолчанию, а репози
 
 ## CLI-команды
 
+Нужные в первый день:
+
 ```bash
-# Управление ссылками
-flask link create --url <url>           # Создать короткую ссылку
-flask link info <code>                  # Информация о ссылке
-flask link list --limit N               # Последние N ссылок
-flask link delete <code>                # Удалить ссылку
-
-# Управление пользователями
-flask create-admin --email <e> --password <p>  # Создать администратора
-flask create-user --email <e> --password <p> --role <role>  # Создать пользователя
-
-# Безопасность
-flask security check-secrets            # Проверить настройку секретов
-flask security generate-secrets         # Сгенерировать новые секреты
-flask security list-users               # Список пользователей
-flask security list-roles               # Список ролей
-flask security validate-token <token>   # Проверить JWT токен
-flask security reset-password           # Сбросить пароль
-
-# База данных
-flask db check / flask db status        # Проверить соединение с БД
-flask db migrate                        # Применить миграции Alembic
-flask db load-base-roles                # Загрузить системные роли
-flask db seed --count N                 # Заполнить тестовыми данными
-
-# Alembic миграции
-flask alembic status                    # Текущая ревизия
-flask alembic history                   # История миграций
-flask alembic upgrade [revision]        # Применить миграции
-flask alembic downgrade [revision]      # Откатить миграции
-flask alembic migrate <message>         # Создать новую миграцию
-
-# Статистика и обслуживание
-flask stats show                        # Показать статистику
-flask maintenance health                # Проверка здоровья (БД + Redis)
-flask cache clear                       # Очистить кэш
+flask db migrate                               # применить миграции
+flask db load-base-roles                       # системные роли из roles.yaml
+flask create-admin --email <e> --password <p>  # первый администратор
+flask security check-secrets                   # ключи не остались дефолтными?
+flask maintenance health                       # БД и Redis отвечают?
 ```
 
-Подробнее: [docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md)
+Полный справочник — восемь групп команд с флагами и примерами вывода:
+[docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md#cli-команды).
 
 ## Конфигурация
 
@@ -391,23 +366,21 @@ flask cache clear                       # Очистить кэш
 3. `.env`;
 4. умолчание профиля в коде.
 
-Профиль `testing` намеренно игнорирует `.env`-файлы — автотесты должны давать
+Профиль `testing` намеренно игнорирует окружение целиком — и `.env`-файлы, и экспортированные переменные — автотесты должны давать
 одинаковый результат на любой машине.
 
-Полный список переменных с описаниями — в `.env.example`. Ключевые:
+Четыре переменные, без которых развёртывание ведёт себя не так, как ожидают:
 
-| Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `FLASK_ENV` | development | Профиль конфигурации |
-| `SECRET_KEY` | случайный | Подпись JWT. Без явного значения токены умирают при рестарте |
-| `SHORT_CODE_PEPPER` | случайный | Соль для генерации кодов. Должна совпадать на всех инстансах |
-| `GUEST_LINK_LIMIT` | 10 | Макс. ссылок для гостя за окно. Применяется под блокировкой по адресу гостя, поэтому одновременные запросы не тратят одну и ту же квоту дважды — на PostgreSQL; на SQLite лимит совещательный |
-| `GUEST_LINK_WINDOW_DAYS` | 1 | Окно подсчёта (дни) |
-| `DEFAULT_GUEST_TTL_SECONDS` | 604800 | Время жизни гостевых ссылок (7 дней) |
-| `CACHE_LINK_TTL` | 3600 | TTL кэша ссылок, сек (в development — 20) |
-| `COOKIE_SECURE` | false | Secure-флаг для cookie (true в production) |
-| `TRUSTED_PROXIES` | (пусто) | Доверенные прокси для X-Forwarded-For |
-| `DOMAIN` | (пусто) | Публичный домен. Обязателен при `HOST=0.0.0.0` |
+| Переменная | По умолчанию | Что будет иначе |
+|------------|--------------|-----------------|
+| `FLASK_ENV` | development | Выбирает профиль, а с ним — умолчания всего остального |
+| `SECRET_KEY` | случайный | Подписывает JWT: без явного значения все токены умирают при каждом рестарте |
+| `SHORT_CODE_PEPPER` | случайный | Соль генерации кодов: разойдётся между инстансами — разойдутся и коды |
+| `DOMAIN` | (пусто) | Обязателен в профиле `production` — `validate()` без него отказывает. Иначе `BASE_URL` собирается как `http://{HOST}:{PORT}/`, то есть при `HOST=0.0.0.0` ссылки получают адрес, по которому к сервису не обратиться |
+
+Остальные — в `.env.example`, разобраны по группам в
+[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#конфигурация) и
+[docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md#справочник-конфигурации).
 
 ## Документация
 
