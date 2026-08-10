@@ -15,6 +15,9 @@ from link_shortener.application import (
 
 from link_shortener.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 from link_shortener.infrastructure.di.components.logger import LoggerComponent
+from link_shortener.infrastructure.logging.status_reader import (
+    ComponentLoggingStatus,
+)
 from link_shortener.infrastructure.di.components.audit import AuditComponent
 from link_shortener.infrastructure.di.components.database import DatabaseComponent
 from link_shortener.infrastructure.di.components.cache import CacheComponent
@@ -339,6 +342,9 @@ class Container:
             self._health_use_cases = HealthUseCasesComponent(
                 health_check=self.health_check,
                 logger=self.logger_component.get_logger(__name__),
+                logging_status=ComponentLoggingStatus(
+                    self.logger_component, self.audit_component
+                ),
             )
         return self._health_use_cases
 

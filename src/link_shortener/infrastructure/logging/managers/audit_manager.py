@@ -2,7 +2,9 @@
 Audit manager: creates and manages audit loggers with failover support.
 
 The ``AuditManager`` builds an ordered list of audit logger implementations
-(structlog, standard, null) and optionally wraps them in a ``FailoverService``.
+and optionally wraps them in a ``FailoverService``. The order follows
+``AUDIT_TYPE`` exactly as ``LOGGER_TYPE`` drives the logger chain, and null
+is never placed behind the real implementations.
 When failover is active, a proxy is returned that automatically switches
 to a healthy fallback logger if the primary one fails.
 """
@@ -23,7 +25,7 @@ class AuditManager:
     Manages audit logger instances with optional failover support.
 
     Based on the configured ``audit_type``, this class creates a list of
-    available audit logger implementations (structlog, standard, null)
+    available audit logger implementations, in the order AUDIT_TYPE asks for
     in priority order. If multiple implementations are available, a
     ``FailoverService`` is used to automatically switch to a fallback
     when the primary fails.
@@ -61,6 +63,12 @@ class AuditManager:
         Args:
             audit_type: The configured audit type.
         """
+        # Case and surrounding blanks are taken off first, for the reason
+        # given in ``LoggerManager``: ``AUDIT_TYPE=NULL`` missed the
+        # ``null`` branch and fell through to the default, so auditing
+        # stayed fully on where an operator had switched it off.
+        audit_type = (audit_type or "").strip().lower()
+
         # Determine priority order
         if audit_type == "auto":
             order = ["structlog", "standard"]
@@ -118,11 +126,14 @@ class AuditManager:
 
     def get_audit_logger(self) -> AuditLogger:
         """
-        Return the audit logger instance.
+        Return an audit logger.
 
-        If failover is configured, returns a ``FailoverAuditLoggerProxy``
-        that wraps the ``FailoverService``. Otherwise returns the single
-        active logger.
+        If failover is configured, a fresh ``FailoverAuditLoggerProxy`` over
+        the one ``FailoverService``; otherwise the single active logger. The
+        proxy is built per call rather than cached, as
+        ``LoggerManager.get_logger`` caches its own: this one holds nothing
+        but bound fields and the service, and callers bind on it anyway,
+        which produces a new proxy every time regardless.
 
         Returns:
             An ``AuditLogger`` instance.
@@ -131,10 +142,52 @@ class AuditManager:
             return self._active_audit_logger
         return FailoverAuditLoggerProxy(self._failover_service)
 
-    def shutdown(self):
-        """Stop the background failover checker if it exists."""
+    def active_name(self) -> str:
+        """
+        Name the audit implementation currently doing the work.
+
+        Returns:
+            The failover service's current pick, or the single
+            implementation's own name when no failover was built.
+        """
+        if self._failover_service is not None:
+            return self._failover_service.get_current_service_name()
+
+        return type(self._active_audit_logger).__name__
+
+    def counters(self) -> Tuple[int, int, int]:
+        """
+        Report how much this chain has lost and how often it checked badly.
+
+        See ``LoggerManager.counters``: the same three numbers, for the
+        audit chain, and unread by anything until now.
+
+        Returns:
+            Dropped calls, failed health-check rounds and lost failover
+            log lines, in that order.
+        """
+        if self._failover_service is None:
+            return 0, 0, 0
+
+        return (
+            self._failover_service.dropped_calls,
+            self._failover_service.failed_checks,
+            self._failover_service.lost_log_lines,
+        )
+
+    def shutdown(self) -> bool:
+        """
+        Stop the background failover checker if it exists.
+
+        Returns:
+            True if there was nothing to stop or it stopped, False if the
+            checker was still running when the wait ran out. The DI
+            lifecycle that calls this discards the answer today; the
+            failover service says so in its own log either way.
+        """
         if self._failover_service:
-            self._failover_service.shutdown()
+            return self._failover_service.shutdown()
+        return True
 
 
 class FailoverAuditLoggerProxy(AuditLogger):
@@ -146,7 +199,9 @@ class FailoverAuditLoggerProxy(AuditLogger):
     and delegates to the service.
     """
 
-    def __init__(self, service: FailoverService, bound_fields: dict = None):
+    def __init__(
+        self, service: FailoverService, bound_fields: Optional[dict] = None
+    ):
         """
         Initialize the proxy.
 
@@ -171,6 +226,47 @@ class FailoverAuditLoggerProxy(AuditLogger):
             self._service, {**self._bound_fields, **kwargs}
         )
 
+    POSITIONAL_FIELDS = ("short_code", "original_url")
+    """Names this proxy passes positionally to the implementations.
+
+    A bound field with one of these names would otherwise reach the same
+    call as a keyword. Reproduced by binding one by hand:
+    ``bind(short_code=...)`` gives ``TypeError: got multiple values for
+    argument 'short_code'``, both implementations refuse the call,
+    ``dropped_calls`` grows and the chain moves to the standby -- over a
+    mistake in this proxy rather than anything wrong with the logger.
+
+    No call site does it today: the five callers of ``_get_audit_logger``
+    pass only ``context``, and ``RequestContext.for_logging`` returns
+    ``request_id``, ``remote_addr``, ``user_agent``, ``request_path``,
+    ``request_method`` and ``user_id``. The guard is for the sixth caller,
+    which will pass ``**extra`` because the signature invites it.
+    """
+
+    def _context(self, **kwargs) -> dict:
+        """
+        Merge bound fields with call fields, dropping the collisions.
+
+        The call already wins over a bound field of the same name, which is
+        this proxy's rule everywhere; the event's own arguments are part of
+        the call, so the same rule decides here. A bound ``short_code`` is
+        therefore dropped rather than sent, because sending it cannot mean
+        anything but "override the event with context", and that would put
+        a different code in the audit trail than the one that was created.
+
+        Args:
+            **kwargs: Fields supplied by the caller of the event method.
+
+        Returns:
+            The context to forward, with no name the event passes
+            positionally.
+        """
+        merged = {**self._bound_fields, **kwargs}
+        for name in self.POSITIONAL_FIELDS:
+            merged.pop(name, None)
+
+        return merged
+
     def log_url_created(self, short_code: str, original_url: str, **kwargs) -> None:
         """
         Forward the URL creation event to the active audit logger via failover.
@@ -180,7 +276,7 @@ class FailoverAuditLoggerProxy(AuditLogger):
             original_url: The original long URL.
             **kwargs: Additional context.
         """
-        all_kwargs = {**self._bound_fields, **kwargs}
+        all_kwargs = self._context(**kwargs)
         self._service.execute(
             "log_url_created", short_code, original_url, **all_kwargs
         )
@@ -194,7 +290,7 @@ class FailoverAuditLoggerProxy(AuditLogger):
             original_url: The original URL to which the user was redirected.
             **kwargs: Additional context.
         """
-        all_kwargs = {**self._bound_fields, **kwargs}
+        all_kwargs = self._context(**kwargs)
         self._service.execute(
             "log_url_accessed", short_code, original_url, **all_kwargs
         )
@@ -208,7 +304,7 @@ class FailoverAuditLoggerProxy(AuditLogger):
             original_url: The original long URL that was shortened.
             **kwargs: Additional context.
         """
-        all_kwargs = {**self._bound_fields, **kwargs}
+        all_kwargs = self._context(**kwargs)
         self._service.execute(
             "log_url_deleted", short_code, original_url, **all_kwargs
         )

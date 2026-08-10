@@ -228,9 +228,33 @@ class AdminApiController:
         """Check the health of the service infrastructure."""
         context = create_request_context()
         health = self.admin_service.get_service_health(context)
-        return jsonify({
+        body = {
             "database": health.database,
             "cache": health.redis,
             "task_queue": health.task_queue,
             "rate_limiter": health.rate_limiter,
-        })
+        }
+
+        # Reported here because nothing else reports it. The counters are
+        # kept by the failover service and were read by no caller, and the
+        # only runtime word about which implementation holds the work is
+        # one line at startup -- so an audit trail that had stopped being
+        # written looked, from every surface an operator has, exactly like
+        # one that was fine.
+        if health.logging is not None:
+            body["logging"] = {
+                "logger": {
+                    "active": health.logging.logger_active,
+                    "dropped_calls": health.logging.logger_dropped_calls,
+                    "failed_checks": health.logging.logger_failed_checks,
+                    "lost_log_lines": health.logging.logger_lost_log_lines,
+                },
+                "audit": {
+                    "active": health.logging.audit_active,
+                    "dropped_calls": health.logging.audit_dropped_calls,
+                    "failed_checks": health.logging.audit_failed_checks,
+                    "lost_log_lines": health.logging.audit_lost_log_lines,
+                },
+            }
+
+        return jsonify(body)

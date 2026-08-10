@@ -127,17 +127,45 @@ class TestStandardLogger:
 
         assert captured.records[-1].exc_info is not None
 
-    def test_unhealthy_without_handlers(self):
-        """No handlers means nothing is written -- and that is not healthy.
+    def test_unhealthy_when_no_handler_can_be_reached(self):
+        """Nothing to write to means nothing is written -- not healthy.
 
-        The failover service reads this to decide whether to switch, so a
-        logger that reports health while discarding everything would keep
-        the fallback from ever engaging.
+        The failover service reads this to decide whether to hand the work
+        down, so a logger that reports health while discarding everything
+        would keep the fallback from ever engaging.
         """
         logger = StandardLogger("test.health.none")
         logger._logger.handlers = []
+        # Cut off from the root's handlers too: the question is whether a
+        # record reaches anything, not whether this logger owns the thing
+        # it reaches.
+        logger._logger.propagate = False
+        try:
+            assert logger.is_healthy() is False
+        finally:
+            logger._logger.propagate = True
 
-        assert logger.is_healthy() is False
+    def test_healthy_when_only_the_root_carries_the_handlers(self):
+        """How this application is actually wired.
+
+        ``bootstrap.configure_logging`` puts the handlers on the root logger
+        and lets every named logger propagate to it, so `handlers` on a
+        logger built by ``LoggerManager`` is empty and always was. Read that
+        way the standard logger called itself unwell for its entire life
+        while its records arrived -- and the background check now hands the
+        work down on that answer, which took the work off a logger that was
+        working and could never give it back.
+        """
+        root = logging.getLogger()
+        saved = root.handlers[:]
+        root.handlers = [logging.NullHandler()]
+        logger = StandardLogger("test.health.rootonly")
+        logger._logger.handlers = []
+        try:
+            assert logger._logger.handlers == []
+            assert logger.is_healthy() is True
+        finally:
+            root.handlers = saved
 
     def test_healthy_with_a_handler(self):
         logger = StandardLogger("test.health.some")

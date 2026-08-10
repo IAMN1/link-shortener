@@ -84,14 +84,15 @@ class StructLogger(Logger):
         self._logger.error(message, **kwargs)
 
     def exception(
-        self, message: str, exc_info: Optional[Exception] = None, **kwargs: Any
+        self, message: str, exc_info: Any = True, **kwargs: Any
     ) -> None:
         """Log an exception message with traceback.
 
         Args:
             message: The log message.
-            exc_info: The exception instance; if ``None`` the current exception
-                is captured.
+            exc_info: ``True`` takes the exception being handled; an
+                exception instance is rendered instead; ``None`` asks for
+                no traceback, because the renderer skips a falsy value.
             **kwargs: Additional structured data.
         """
         kwargs["exc_info"] = exc_info

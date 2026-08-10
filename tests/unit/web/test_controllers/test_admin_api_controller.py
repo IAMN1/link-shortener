@@ -1,6 +1,8 @@
 """Tests for the admin API controller."""
 from unittest.mock import MagicMock, Mock
 
+from link_shortener.application.ports.logging_status import LoggingStatus
+
 
 def _get_admin_controller(app):
     """Extract the AdminApiController instance from the registered blueprints."""
@@ -33,8 +35,8 @@ class TestAdminApiController:
 
         response = client.post(
             "/api/v1/admin/users",
-            # Eight characters: the schema's floor now comes from the domain
-            # policy, which is what actually refuses a weaker one.
+            # Past the floor of eight: the schema takes that floor from the
+            # domain policy, which is what actually refuses a weaker one.
             json={
                 "email": "admin@test.com",
                 "password": "a-password-of-their-own",
@@ -208,6 +210,16 @@ class TestAdminApiController:
         mock_health.redis = True
         mock_health.task_queue = True
         mock_health.rate_limiter = True
+        mock_health.logging = LoggingStatus(
+            logger_active="structlog",
+            logger_dropped_calls=0,
+            logger_failed_checks=0,
+            logger_lost_log_lines=4,
+            audit_active="structlog_audit",
+            audit_dropped_calls=2,
+            audit_failed_checks=1,
+            audit_lost_log_lines=0,
+        )
         ctrl.admin_service.get_service_health.return_value = mock_health
 
         response = client.get("/api/v1/admin/health")
@@ -215,8 +227,38 @@ class TestAdminApiController:
         data = response.get_json()
         assert data["database"] is True
         # The admin panel reports the same components the container probe
-        # does, from the same snapshot.
-        assert set(data) == {"database", "cache", "task_queue", "rate_limiter"}
+        # does, from the same snapshot -- plus the logging chains, which
+        # nothing else reports at all.
+        assert set(data) == {
+            "database", "cache", "task_queue", "rate_limiter", "logging"
+        }
+        assert data["logging"]["audit"]["dropped_calls"] == 2
+        assert data["logging"]["audit"]["failed_checks"] == 1
+        assert data["logging"]["audit"]["lost_log_lines"] == 0
+        assert data["logging"]["logger"]["active"] == "structlog"
+        # Distinct from the audit chain's, so that a body reporting one
+        # chain's count under both names does not read as correct.
+        assert data["logging"]["logger"]["lost_log_lines"] == 4
+
+    def test_get_health_without_a_logging_reader(self, app, client):
+        """The section is omitted rather than reported as zeroes.
+
+        A use case built without the reader -- which is every caller that
+        predates it -- would otherwise publish counters of zero, and zero
+        reads as "nothing was lost" rather than as "nobody looked".
+        """
+        ctrl = _get_admin_controller(app)
+        mock_health = MagicMock()
+        mock_health.database = True
+        mock_health.redis = True
+        mock_health.task_queue = True
+        mock_health.rate_limiter = True
+        mock_health.logging = None
+        ctrl.admin_service.get_service_health.return_value = mock_health
+
+        data = client.get("/api/v1/admin/health").get_json()
+
+        assert "logging" not in data
 
     def test_get_user_stats(self, app, client):
         """GET /api/v1/admin/users/<id>/stats returns user stats."""
