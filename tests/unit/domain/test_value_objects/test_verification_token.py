@@ -36,6 +36,28 @@ class TestTheTokenItself:
         bits = len(token) * 6  # base64: six bits per character
         assert bits >= 256, f"only {bits} bits of token"
 
+    def test_it_comes_from_the_cryptographic_source(self):
+        """The rule the other two tests here cannot see.
+
+        Length and uniqueness are properties of the alphabet, not of the
+        generator: ``random.choices`` over the same 64 characters produces
+        43-character strings that never repeat in a sample of 200 and pass
+        both. It is Mersenne Twister underneath -- observe a handful of
+        outputs, recover the state, predict the next token, and confirm
+        somebody else's address with it. What has to be pinned is where
+        the bytes come from.
+        """
+        from unittest.mock import patch
+
+        from link_shortener.domain.value_objects import verification_token
+
+        with patch.object(
+            verification_token.secrets, "token_urlsafe", return_value="fixed"
+        ) as source:
+            assert verification_token.issue_token() == "fixed"
+
+        source.assert_called_once_with(TOKEN_BYTES)
+
     def test_it_survives_a_url_unchanged(self):
         """It travels in a query string; anything needing escaping there
         would arrive re-encoded and stop matching its own digest."""
