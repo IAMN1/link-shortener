@@ -763,7 +763,14 @@ class BaseConfig:
             ValueError: If DATABASE_TYPE is unsupported or required parameters are missing.
         """
         if self.DATABASE_URL:
-            return self.DATABASE_URL
+            # Stripped, and the migration path strips its own handoff the
+            # same way. Left alone, a value with a trailing newline -- what
+            # a URL read out of a file or a k8s Secret arrives as -- named a
+            # *different* database on each side: measured, the application
+            # opened "app.db\n" while `flask alembic upgrade` migrated
+            # "app.db", so the service came up on an empty file beside the
+            # one that had just been migrated.
+            return self.DATABASE_URL.strip()
 
         if self.DATABASE_TYPE == "sqlite":
             # SQLite: DATABASE_NAME is the file path
@@ -1187,6 +1194,21 @@ class BaseConfig:
                     "DATABASE_NAME must not contain "
                     f"{', '.join(repr(c) for c in illegal)} -- connection "
                     "options belong in their own settings, not in the name"
+                )
+
+            # The host is the same hole and was not closed: `URL.create`
+            # percent-encodes the user and the password but not the host,
+            # so "db.internal/shortener?sslmode=disable" is measured
+            # arriving as host "db.internal", database "shortener" and an
+            # sslmode the operator never set -- while DATABASE_NAME and
+            # DATABASE_PORT, which say otherwise, are silently dropped.
+            illegal = [c for c in "?#@/" if c in (self.DATABASE_HOST or "")]
+            if illegal:
+                errors.append(
+                    "DATABASE_HOST must not contain "
+                    f"{', '.join(repr(c) for c in illegal)} -- a host is a "
+                    "host; a name or an option written into it replaces the "
+                    "settings that carry them and is not reported"
                 )
 
         # For SQLite the name is a path, so "/" is legitimate and only two
