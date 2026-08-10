@@ -249,8 +249,22 @@ class AuthController:
         """
         Create a new user account with default role.
 
-        Expects JSON with ``email`` and ``password``.
-        Returns 201 on success, 400 if validation fails.
+        Expects JSON with ``email`` and ``password``. Answers 202 whether
+        the address was free or already registered, with one sentence
+        that fits both -- OWASP's Authentication Cheat Sheet gives the
+        shape under *Account creation*, where "This user ID is already in
+        use." and "Welcome! You have signed up successfully." are both
+        listed as incorrect responses.
+
+        202 rather than 201 because 201 promises something was created,
+        and on the taken-address path nothing was. Nothing identifying
+        comes back either: an ``id`` here would name an account the caller
+        may not own, which is the disclosure the rest of this was for. A
+        client that needs the account signs in for it.
+
+        Returns:
+            202 for either outcome, 400 if the address or the password is
+            refused on its own merits.
         """
         email, password = _read_credentials()
         if not email or not password:
@@ -258,16 +272,13 @@ class AuthController:
 
         context = create_request_context()
         try:
-            result = self.register_use_case.execute(email, password, context)
+            self.register_use_case.execute(email, password, context)
             return jsonify({
-                "message": "User registered successfully",
-                "user": {
-                    "id": result.id,
-                    "email": result.email,
-                    "roles": result.roles,
-                    "is_active": result.is_active
-                }
-            }), 201
+                "message": (
+                    "If that address can be registered, a link has been "
+                    "sent to it."
+                )
+            }), 202
         except DomainError as e:
             # Same rule as login: internal failures must not reach the
             # client, and the status is the endpoint's rather than the
