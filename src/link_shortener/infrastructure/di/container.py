@@ -364,6 +364,16 @@ class Container:
             if not self.config.CELERY_ENABLED:
                 send_uc = self._auth_use_cases.get_send_verification_email_use_case()
                 self.task_queue_component.set_send_verification_fn(send_uc.execute)
+                # Wired for the same reason and in the same breath: if the
+                # notice were only sent when a broker happens to be
+                # configured, registration would take one length with
+                # Celery on and two lengths with it off.
+                exists_uc = (
+                    self._auth_use_cases.get_send_account_exists_email_use_case()
+                )
+                self.task_queue_component.set_send_account_exists_fn(
+                    exists_uc.execute
+                )
         return self._auth_use_cases
 
     def _init_health_use_cases(self):
@@ -496,6 +506,10 @@ class Container:
     def get_send_verification_email_use_case(self):
         """Return fully configured ``SendVerificationEmailUseCase``."""
         return self._init_auth_use_cases().get_send_verification_email_use_case()
+
+    def get_send_account_exists_email_use_case(self):
+        """Return fully configured ``SendAccountExistsEmailUseCase``."""
+        return self._init_auth_use_cases().get_send_account_exists_email_use_case()
 
     def get_clean_unverified_accounts_use_case(self):
         """Return fully configured ``CleanUnverifiedAccountsUseCase``."""

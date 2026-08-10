@@ -52,3 +52,29 @@ class TaskQueue(ABC):
             in which case nothing was sent and nothing will be.
         """
         ...
+
+    @abstractmethod
+    def enqueue_account_exists_email(
+        self, email: str, context: RequestContext
+    ) -> bool:
+        """
+        Hand off the notice that an address is already registered.
+
+        No token travels with this one, and that is the difference from
+        the method above: nothing in this task is a credential. The
+        address still travels, and so does the fact that a task of this
+        kind was published at all -- which says the address is registered.
+        A broker holds less than it does for the other message, not
+        nothing.
+
+        Args:
+            email: Address to send to.
+            context: Request context with audit metadata.
+
+        Returns:
+            True if the message was handed over. False if it was not --
+            which the caller records but does not report, because a
+            registration attempt on a taken address must look the same
+            from outside whatever the mail server is doing.
+        """
+        ...

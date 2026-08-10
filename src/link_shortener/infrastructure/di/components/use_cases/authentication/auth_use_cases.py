@@ -6,6 +6,7 @@ from link_shortener.application import (
     LoginUseCase,
     RegisterUseCase,
     ResendVerificationUseCase,
+    SendAccountExistsEmailUseCase,
     SendVerificationEmailUseCase,
     VerifyEmailUseCase,
     AuthenticationService,
@@ -105,6 +106,21 @@ class AuthUseCasesComponent:
             logger=self.logger,
             base_url=self.base_url,
             ttl_hours=self.verification_ttl_hours,
+        )
+
+    def get_send_account_exists_email_use_case(self) -> SendAccountExistsEmailUseCase:
+        """
+        Return a configured ``SendAccountExistsEmailUseCase``.
+
+        Builds and sends the notice that an address is already taken.
+        Used by the Celery task and by the synchronous fallback, so both
+        send the same thing.
+        """
+        return SendAccountExistsEmailUseCase(
+            mailer=self.mailer,
+            templates=self.templates,
+            logger=self.logger,
+            base_url=self.base_url,
         )
 
     def get_clean_unverified_accounts_use_case(self) -> CleanUnverifiedAccountsUseCase:

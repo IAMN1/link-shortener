@@ -68,3 +68,20 @@ class JinjaMailTemplates(MailTemplates):
             confirm_url=confirm_url, ttl_hours=ttl_hours
         )
         return subject.strip(), body
+
+    def account_exists_email(self, sign_in_url: str) -> Tuple[str, str]:
+        """
+        Render the message sent when the address is already registered.
+
+        Args:
+            sign_in_url: Absolute URL of the sign-in page.
+
+        Returns:
+            Tuple of (subject, body), both plain text. The subject is
+            stripped for the same reason as above.
+        """
+        subject = self.environment.get_template("account_exists_subject.txt").render()
+        body = self.environment.get_template("account_exists_body.txt").render(
+            sign_in_url=sign_in_url
+        )
+        return subject.strip(), body

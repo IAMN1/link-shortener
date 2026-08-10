@@ -79,6 +79,7 @@ from .use_cases.admin.users.delete_user import DeleteUserUseCase
 from .use_cases.auth.login import LoginUseCase
 from .use_cases.auth.register import RegisterUseCase
 from .use_cases.auth.resend_verification import ResendVerificationUseCase
+from .use_cases.auth.send_account_exists_email import SendAccountExistsEmailUseCase
 from .use_cases.auth.send_verification_email import SendVerificationEmailUseCase
 from .use_cases.auth.verify_email import VerifyEmailUseCase
 
@@ -175,6 +176,7 @@ __all__ = [
     "LoginUseCase",
     "RegisterUseCase",
     "ResendVerificationUseCase",
+    "SendAccountExistsEmailUseCase",
     "SendVerificationEmailUseCase",
     "VerifyEmailUseCase",
     "CleanUnverifiedAccountsUseCase",
