@@ -49,7 +49,7 @@ literal in ``migrations/versions/0001_initial_schema.py`` -- that is the
 file PostgreSQL is built from, while the ORM model only serves
 ``create_all`` on SQLite in tests. Widening this constant alone would
 leave the column where it was, so the migration is read back in
-``test_the_bound_is_the_width_the_migration_creates``.
+``test_the_name_bound_is_the_width_the_migration_creates``.
 """
 
 ROLE_NAME_PATTERN = r"^[A-Za-z0-9_-]+$"
