@@ -187,6 +187,7 @@ Database: postgresql+psycopg://shortener:***@db:5432/db_shortener
 |---------|----------|
 | `flask maintenance health` | Проверка здоровья (БД + Redis). Выключенный кэш даёт `Redis: SKIPPED`, а не ошибку |
 | `flask maintenance clean-expired` | Удалить ссылки с истёкшим `expires_at`. Порога нет: истёкшая ссылка и так отдаёт `410` |
+| `flask maintenance clean-unverified` | Удалить учётки, которые никто не подтвердил за `UNVERIFIED_ACCOUNT_TTL_HOURS`, и мёртвые токены подтверждения. Без неё неподтверждённая регистрация держит адрес навсегда |
 | `flask maintenance clean-sessions` | Удалить строки `refresh_sessions` с истёкшими токенами. Безопасно, чистит только то, что уже не даёт доступа |
 | `flask maintenance check-redis` | Проверить соединение с Redis |
 
@@ -241,6 +242,8 @@ Database: postgresql+psycopg://shortener:***@db:5432/db_shortener
 | `auth.register` | 3 | 3600 сек | Защита от спама |
 | `auth.refresh_token` | 10 | 60 сек | Защита от replay |
 | `auth.logout` | 20 | 60 сек | |
+| `auth.verify_email` | 10 | 60 сек | Подбор токена подтверждения |
+| `auth.resend_verification` | 3 | 3600 сек | Рассылка писем по запросу |
 | `api.create_short_link` | 30 | 60 сек | Создание ссылки |
 | `api.batch_create` | 5 | 60 сек | Пакетное создание |
 | `api.get_link_info` | 100 | 60 сек | Чтение ссылки |
@@ -251,7 +254,7 @@ Database: postgresql+psycopg://shortener:***@db:5432/db_shortener
 Всё, чего в таблице нет, идёт по `DEFAULT_RATE_LIMIT` — 100 запросов за
 `DEFAULT_RATE_LIMIT_PERIOD` (60 секунд).
 
-`RATE_LIMIT_AUTH_DISABLED=true` выключает все четыре `auth.*` строки
+`RATE_LIMIT_AUTH_DISABLED=true` выключает все шесть `auth.*` строк
 разом. Это переключатель для разработки — в production он обязан
 оставаться выключенным, иначе защиты от перебора пароля нет.
 
@@ -433,6 +436,14 @@ Database: postgresql+psycopg://shortener:***@db:5432/db_shortener
   постоянные ссылки не затрагиваются. Полезна не только освобождением места:
   пока истёкшая строка лежит в базе, она занимает место в статистике и в
   выдаче `/links/mine` своего владельца
+- **Ежедневно**: `flask maintenance clean-unverified` — удаление учёток,
+  которые никто не подтвердил за `UNVERIFIED_ACCOUNT_TTL_HOURS`, и мёртвых
+  токенов подтверждения вместе с ними. **Не косметика.** Неподтверждённая
+  учётка держит адрес: зарегистрировать его заново нельзя (адрес занят),
+  войти в него нельзя (нужен подтверждённый адрес). Без этой задачи любой
+  может занять чужие адреса пачкой, навсегда, а их владельцам сервис будет
+  отвечать «адрес уже зарегистрирован». Подтверждённые учётки задача не
+  трогает независимо от возраста
 - **Еженедельно**: `flask stats refresh` — обновление кэша статистики
 
 > **Изменение поведения.** До этой правки `clean-expired` удаляла всё, к чему
