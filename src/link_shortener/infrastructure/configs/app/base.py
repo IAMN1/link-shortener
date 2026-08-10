@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from sqlalchemy.engine import URL, make_url
 
+from link_shortener.domain.value_objects.email import EMAIL_PATTERN_RE
 from link_shortener.domain.value_objects.short_code import (
     MAX_LENGTH as CODE_MAX_LENGTH,
     MIN_LENGTH as CODE_MIN_LENGTH,
@@ -516,6 +517,18 @@ class BaseConfig:
         "auth.register": (3, 3600),     # 3 registrations per hour per IP
         "auth.refresh_token": (10, 60), # 10 refresh attempts per minute
         "auth.logout": (20, 60),        # 20 logout attempts per minute
+        # Confirmation links. The first is the only thing standing between
+        # a stranger and unlimited guesses at a token, which OWASP asks for
+        # by name -- "Implement appropriate protection to prevent users
+        # from brute-forcing tokens in the URL, such as rate limiting".
+        # A 256-bit token is not going to be guessed either way; the limit
+        # is what stops the attempt from costing the service anything.
+        "auth.verify_email": (10, 60),
+        # The second sends mail to whatever address is named, so without a
+        # limit it is a way to have this service deliver mail to strangers
+        # -- and a way to bury a real user's inbox under confirmations
+        # they did not ask for.
+        "auth.resend_verification": (3, 3600),
     }
     """
     Per-endpoint rate limit configurations.
@@ -869,6 +882,142 @@ class BaseConfig:
 
 
     # ==========================================================================
+    # Mail Settings
+    # ==========================================================================
+    MAIL_ENABLED: bool = env_bool("MAIL_ENABLED", False)
+    """
+    Enable the outgoing mail channel.
+
+    Off by default, and that default is a decision rather than caution: a
+    deployment that has not been told where to submit mail must not try,
+    because the attempt is a socket timeout on the request path. With this
+    off the service still registers accounts -- what it cannot do is send
+    them anything, which ``NullMailer`` records once per message.
+    """
+
+    MAIL_HOST: str = env_str("MAIL_HOST", "")
+    """
+    Hostname of the submission server.
+
+    No default, and the empty one is load-bearing. With ``"localhost"``
+    here the validation below could never fire: a blank environment
+    variable reads as unset, so the check would see the default and pass,
+    and a deployment that enabled mail without saying where would submit
+    to whatever answers on its own loopback -- or, far more often, to
+    nothing, one socket timeout per registration. ``DevelopmentConfig``
+    sets its own default, because there the local catcher is the point.
+    """
+
+    MAIL_PORT: int = env_int("MAIL_PORT", 587)
+    """
+    Submission port.
+
+    587 is the STARTTLS submission port and pairs with ``MAIL_USE_TLS``;
+    465 is Implicit TLS and pairs with ``MAIL_USE_SSL``. RFC 8314 asks for
+    both to be supported and considers them equivalent when TLS is
+    actually required at both ends, so this is a deployment's choice and
+    not a security one -- the security is in the flag beside it.
+    """
+
+    MAIL_USERNAME: str = env_str("MAIL_USERNAME", "")
+    """
+    Account to authenticate to the submission server as.
+
+    Empty means no authentication, which is what a relay listening on the
+    loopback interface expects. Set, it obliges the connection to be
+    encrypted: the mailer refuses to send the password otherwise.
+    """
+
+    MAIL_PASSWORD: str = env_str("MAIL_PASSWORD", "")
+    """
+    Password for ``MAIL_USERNAME``.
+    """
+
+    MAIL_USE_TLS: bool = env_bool("MAIL_USE_TLS", True)
+    """
+    Negotiate STARTTLS after connecting.
+
+    On by default: a submission that begins in the clear carries the
+    password and the confirmation link where anyone on the path can read
+    them, and a default that has to be switched on is a default nobody
+    switches on.
+    """
+
+    MAIL_USE_SSL: bool = env_bool("MAIL_USE_SSL", False)
+    """
+    Connect with TLS already established, without a STARTTLS step.
+
+    Mutually exclusive with ``MAIL_USE_TLS``: STARTTLS inside a connection
+    that is already encrypted is not a stronger arrangement, it is a
+    protocol error, and the server answers it as one.
+    """
+
+    MAIL_FROM: str = env_str("MAIL_FROM", "")
+    """
+    Address the service sends from.
+
+    Has to be an address the submission server will accept as a sender;
+    receiving domains check that against SPF and DMARC, and a mismatch is
+    delivered to nobody rather than refused loudly.
+    """
+
+    REQUIRE_MAIL_TLS: bool = False
+    """
+    Whether this profile refuses to submit mail without TLS.
+
+    A class attribute rather than a setting, and read from no environment
+    variable, because it is the profile's own standard: development aims
+    at a catcher on the loopback interface that speaks no TLS, and the
+    deployed profiles have no such excuse. RFC 8314 section 3.3 treats
+    STARTTLS on 587 and Implicit TLS on 465 as equivalent, but only "if
+    both the client and the server are configured to require successful
+    negotiation of TLS prior to Message Submission" -- this is the client
+    half of that requirement.
+    """
+
+    MAIL_TIMEOUT: float = env_float("MAIL_TIMEOUT", 10.0)
+    """
+    Seconds any single blocking socket operation with the server may take.
+
+    Not optional and not merely tuning. Left unset, ``smtplib`` falls back
+    to the global default socket timeout, which is ``None``: a server that
+    accepts the connection and then says nothing holds the caller for as
+    long as it likes.
+    """
+
+
+    # ==========================================================================
+    # Email Confirmation Settings
+    # ==========================================================================
+    EMAIL_VERIFICATION_TTL_HOURS: int = env_int("EMAIL_VERIFICATION_TTL_HOURS", 24)
+    """
+    Hours a confirmation link stays usable.
+
+    OWASP asks that such a token "expire after an appropriate period", and
+    appropriate is a trade rather than a number: shorter is less time for
+    a link sitting in a mailbox to be worth stealing, longer is fewer
+    people who open their mail the next morning and find a dead link.
+    """
+
+    UNVERIFIED_ACCOUNT_TTL_HOURS: int = env_int("UNVERIFIED_ACCOUNT_TTL_HOURS", 72)
+    """
+    Hours an account may stay unconfirmed before ``flask maintenance
+    clean-unverified`` deletes it. Nothing deletes it on its own -- that
+    command has to be scheduled, exactly like ``clean-expired``.
+
+    Without the sweep an unconfirmed registration holds its address forever:
+    registering it again is refused because the account exists, and nobody
+    can sign in to it. Anyone could reserve addresses they do not own, in
+    bulk, and the real owners would find themselves locked out of
+    registering at all.
+
+    Must not be shorter than ``EMAIL_VERIFICATION_TTL_HOURS`` -- an account
+    swept away while its own link is still valid turns a working
+    confirmation into a dead one.
+    """
+
+
+    # ==========================================================================
     # Health Check Settings
     # ==========================================================================
     HEALTH_CHECK_TIMEOUT: float = env_float("HEALTH_CHECK_TIMEOUT", 5.0)
@@ -1010,6 +1159,8 @@ class BaseConfig:
             errors.append(f"Unsupported DATABASE_TYPE: {self.DATABASE_TYPE}")
 
         errors.extend(self._numeric_errors())
+        errors.extend(self._mail_errors())
+        errors.extend(self._confirmation_errors())
 
         allowed_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
         if self.LOG_LEVEL.upper() not in allowed_levels:
@@ -1118,6 +1269,135 @@ class BaseConfig:
             errors.append(
                 f"FAILOVER_CHECK_INTERVAL must be a positive finite number, "
                 f"got {interval}"
+            )
+
+        return errors
+
+    def _mail_errors(self) -> List[str]:
+        """
+        Check the mail settings for combinations that cannot work.
+
+        The failures worth catching here are the quiet ones -- a channel
+        that looks configured and delivers nothing -- but not all of them
+        are: several of these combinations fail loudly at the first
+        message instead, and are refused at startup because that is the
+        cheaper place to find out either way.
+
+        The transport-level flags are checked whether or not the channel is
+        enabled, because they are typos either way and cost nothing to
+        catch. Everything after the early return -- where to submit, and
+        what to authenticate with -- is only demanded once something
+        intends to submit.
+
+        Returns:
+            List of human-readable error messages (empty when the mail
+            settings are coherent).
+        """
+        import math
+        import re
+
+        errors = []
+
+        if self.MAIL_USE_TLS and self.MAIL_USE_SSL:
+            errors.append(
+                "MAIL_USE_TLS and MAIL_USE_SSL are mutually exclusive -- "
+                "STARTTLS inside an already encrypted connection is a "
+                "protocol error, not extra protection"
+            )
+
+        if not 1 <= self.MAIL_PORT <= 65535:
+            errors.append(
+                f"MAIL_PORT must be between 1 and 65535, got {self.MAIL_PORT}"
+            )
+
+        timeout = self.MAIL_TIMEOUT
+        if not math.isfinite(timeout) or timeout <= 0:
+            errors.append(
+                f"MAIL_TIMEOUT must be a positive finite number of seconds, "
+                f"got {timeout}"
+            )
+
+        if not self.MAIL_ENABLED:
+            return errors
+
+        if not self.MAIL_HOST:
+            errors.append("MAIL_HOST must be set when MAIL_ENABLED=True")
+
+        if not self.MAIL_FROM:
+            errors.append("MAIL_FROM must be set when MAIL_ENABLED=True")
+        elif not re.match(EMAIL_PATTERN_RE, self.MAIL_FROM):
+            # Checked against the same expression the domain uses, so the
+            # sender cannot be a shape the service would refuse from a
+            # user. Whitespace is the part that matters: this value becomes
+            # a From header, and a newline in a header is an injection.
+            errors.append(
+                f"MAIL_FROM is not a valid address: {self.MAIL_FROM!r}"
+            )
+
+        if self.REQUIRE_MAIL_TLS and not (self.MAIL_USE_TLS or self.MAIL_USE_SSL):
+            errors.append(
+                "this profile requires MAIL_USE_TLS or MAIL_USE_SSL when "
+                "MAIL_ENABLED=True -- a submission in the clear carries the "
+                "confirmation link to anyone on the path"
+            )
+
+        if self.MAIL_USERNAME and not (self.MAIL_USE_TLS or self.MAIL_USE_SSL):
+            errors.append(
+                "MAIL_USERNAME is set with neither MAIL_USE_TLS nor "
+                "MAIL_USE_SSL -- the password would cross the network in "
+                "the clear, so the mailer refuses to send it"
+            )
+
+        if self.MAIL_PASSWORD and not self.MAIL_USERNAME:
+            errors.append(
+                "MAIL_PASSWORD is set without MAIL_USERNAME -- nothing "
+                "authenticates, so the password is never used"
+            )
+
+        if self.MAIL_USERNAME and not self.MAIL_PASSWORD:
+            # The mirror of the check above, and the one that actually
+            # happens: a blank environment variable reads as unset, and
+            # ``docker compose`` substitutes a blank for every ${VAR}
+            # missing from the env file. A mislaid MAIL_PASSWORD therefore
+            # starts cleanly and fails at authentication on every single
+            # registration, which is the last place anyone looks.
+            errors.append(
+                "MAIL_USERNAME is set without MAIL_PASSWORD -- the "
+                "submission server will refuse the login on every message"
+            )
+
+        return errors
+
+    def _confirmation_errors(self) -> List[str]:
+        """
+        Check the two confirmation lifetimes against each other.
+
+        Checked whether or not mail is enabled: the sweep that deletes
+        unconfirmed accounts is run from the command line
+        (``flask maintenance clean-unverified``) and does not ask whether
+        anything was ever mailed.
+
+        Returns:
+            List of human-readable error messages (empty when the two
+            lifetimes are coherent).
+        """
+        errors = []
+
+        for name, value in (
+            ("EMAIL_VERIFICATION_TTL_HOURS", self.EMAIL_VERIFICATION_TTL_HOURS),
+            ("UNVERIFIED_ACCOUNT_TTL_HOURS", self.UNVERIFIED_ACCOUNT_TTL_HOURS),
+        ):
+            if value < 1:
+                errors.append(
+                    f"{name} must be a positive number of hours, got {value}"
+                )
+
+        if self.UNVERIFIED_ACCOUNT_TTL_HOURS < self.EMAIL_VERIFICATION_TTL_HOURS:
+            errors.append(
+                "UNVERIFIED_ACCOUNT_TTL_HOURS must not be shorter than "
+                "EMAIL_VERIFICATION_TTL_HOURS -- the account would be swept "
+                "away while the link mailed to it is still valid, and the "
+                "person following that link would be told it is invalid"
             )
 
         return errors

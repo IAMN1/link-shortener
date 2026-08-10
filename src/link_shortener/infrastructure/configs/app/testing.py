@@ -69,3 +69,18 @@ class TestingConfig(BaseConfig):
     # Auto-seed roles: enabled for convenience in tests
     # --------------------------------------------------------------------------
     AUTO_SEED_ROLES: bool = True
+
+
+    # --------------------------------------------------------------------------
+    # Mail: never sent from a test run
+    # --------------------------------------------------------------------------
+    MAIL_ENABLED: bool = False
+    """Stated here rather than inherited, and the difference is the point.
+
+    ``IGNORE_ENV`` already detaches the field from the machine, so the base
+    default would reach the suite unchanged today. What it would not
+    survive is that default changing: the day mail is switched on for
+    everyone, a test run would start opening sockets to whatever
+    ``MAIL_HOST`` resolves to. A plain attribute shadows the descriptor and
+    cannot be turned on by any environment.
+    """

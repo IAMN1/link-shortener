@@ -127,6 +127,12 @@ class ProductionConfig(BaseConfig):
 
 
     # --------------------------------------------------------------------------
+    # Mail: submission must be encrypted
+    # --------------------------------------------------------------------------
+    REQUIRE_MAIL_TLS: bool = True
+
+
+    # --------------------------------------------------------------------------
     # Database: no SQL echo in production
     # --------------------------------------------------------------------------
     SQLALCHEMY_ECHO: bool = env_bool("SQLALCHEMY_ECHO", False)

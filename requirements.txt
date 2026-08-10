@@ -70,7 +70,9 @@ itsdangerous==2.2.0
     #   flask
     #   link-shortener
 jinja2==3.1.6
-    # via flask
+    # via
+    #   flask
+    #   link-shortener
 jsonschema==4.26.0
     # via
     #   openapi-schema-validator

@@ -75,6 +75,12 @@ class StagingConfig(BaseConfig):
     COOKIE_SECURE: bool = env_bool("COOKIE_SECURE", True)
     SESSION_COOKIE_SECURE: bool = env_bool("SESSION_COOKIE_SECURE", True)
 
+    # Not overridable by environment, unlike the three above: those describe
+    # how this host is reached, which a staging box may genuinely differ on.
+    # This one describes how the service submits mail to somebody else's
+    # server, and nothing about staging makes that safe in the clear.
+    REQUIRE_MAIL_TLS: bool = True
+
 
     # --------------------------------------------------------------------------
     # Limits: same as production
