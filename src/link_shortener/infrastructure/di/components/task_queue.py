@@ -23,6 +23,7 @@ class TaskQueueComponent:
         self.retry_interval = retry_interval
         self._queue = None
         self._update_stats_fn = None
+        self._send_verification_fn = None
 
     def set_update_stats_fn(self, fn) -> None:
         """Set the synchronous stats update function for NullTaskQueue."""
@@ -30,6 +31,16 @@ class TaskQueueComponent:
         # If NullTaskQueue is already created, wire the function now
         if self._queue is not None and isinstance(self._queue, NullTaskQueue):
             self._queue.set_update_fn(fn)
+
+    def set_send_verification_fn(self, fn) -> None:
+        """Set the synchronous mail function for NullTaskQueue.
+
+        Args:
+            fn: Callable with signature ``(email, token, context)``.
+        """
+        self._send_verification_fn = fn
+        if self._queue is not None and isinstance(self._queue, NullTaskQueue):
+            self._queue.set_send_verification_fn(fn)
 
     def get_task_queue(self) -> TaskQueue:
         """
@@ -45,7 +56,9 @@ class TaskQueueComponent:
                 )
             else:
                 self.logger.info("Celery disabled, using NullTaskQueue (synchronous fallback)")
-                self._queue = NullTaskQueue()
+                self._queue = NullTaskQueue(logger=self.logger)
                 if self._update_stats_fn:
                     self._queue.set_update_fn(self._update_stats_fn)
+                if self._send_verification_fn:
+                    self._queue.set_send_verification_fn(self._send_verification_fn)
         return self._queue

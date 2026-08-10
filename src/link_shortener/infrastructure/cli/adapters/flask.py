@@ -14,6 +14,9 @@ from ..commands.stats import refresh_stats as refresh_stats_logic
 from ..commands.stats import get_stats as get_stats_logic
 from ..commands.maintenance import clean_expired_links as clean_expired_logic
 from ..commands.maintenance import clean_expired_sessions as clean_sessions_logic
+from ..commands.maintenance import (
+    clean_unverified_accounts as clean_unverified_logic,
+)
 from ..commands.link import delete_link as delete_link_logic
 from ..commands.link import get_link_info as link_info_logic
 from ..commands.link import list_links as list_links_logic
@@ -214,6 +217,22 @@ def clean_sessions():
     container = current_app.container
     deleted = clean_sessions_logic(container.get_uow_factory())
     click.echo(f"Deleted {deleted} expired refresh sessions.")
+
+@maintenance_group.command("clean-unverified")
+@with_appcontext
+def clean_unverified():
+    """Delete registrations nobody confirmed, and dead tokens with them.
+
+    Meant to be run on a schedule, beside ``clean-expired`` and
+    ``clean-sessions``. Nothing calls it on its own: without a cron line
+    an unconfirmed registration holds its address for good, which is the
+    thing ``UNVERIFIED_ACCOUNT_TTL_HOURS`` exists to prevent.
+    """
+    container = current_app.container
+    context = RequestContext(request_id="cli-clean-unverified")
+    use_case = container.get_clean_unverified_accounts_use_case()
+    deleted = clean_unverified_logic(use_case, context)
+    click.echo(f"Deleted {deleted} unconfirmed accounts.")
 
 @maintenance_group.command("check-redis")
 @with_appcontext

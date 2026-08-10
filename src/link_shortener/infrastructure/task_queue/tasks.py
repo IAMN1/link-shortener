@@ -22,6 +22,41 @@ def get_container():
     return Container(config)
 
 @celery_app.task(bind=True, max_retries=3)
+def send_verification_email(self, email: str, token: str, context_dict: dict):
+    """
+    Celery task to send one address confirmation message.
+
+    This task is triggered by ``CeleryTaskQueue.enqueue_verification_email``.
+
+    Retried like the statistics task, and for a better reason: a
+    submission server that is briefly unreachable is the ordinary case,
+    and the person waiting has no other way to get the message. Retries
+    are bounded, so a permanently rejected address stops rather than
+    hammering the server.
+
+    Args:
+        email: Address to send to.
+        token: The confirmation token as it goes into the link.
+        context_dict: Serialized ``RequestContext`` fields.
+
+    Raises:
+        Exception: On failure, the task is retried up to 3 times with a
+            60s delay. Neither the token nor the message body is logged.
+    """
+    try:
+        context = RequestContext(**context_dict)
+        container = get_container()
+        use_case = container.get_send_verification_email_use_case()
+        use_case.execute(email, token, context)
+        logger.info("Verification email sent", email=email)
+    except Exception as exc:
+        logger.error(
+            "Error sending verification email", email=email, error=str(exc)
+        )
+        self.retry(exc=exc, countdown=60)
+
+
+@celery_app.task(bind=True, max_retries=3)
 def process_link_accessed(self, short_code: str, context_dict: dict):
     """
     Celery task to asynchronously update link statistics (click count).

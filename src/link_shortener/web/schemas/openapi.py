@@ -449,8 +449,58 @@ PATHS: Dict[str, Any] = {
             "responses": {
                 "200": {"description": "Tokens", **_json("TokenPairResponse")},
                 "400": _error("Malformed body or malformed email"),
-                "401": _error("Wrong credentials, or the account is inactive"),
+                "401": _error(
+                    "Wrong credentials, an inactive account, or an address "
+                    "nobody has confirmed (EMAIL_NOT_VERIFIED)"
+                ),
                 "429": _error("Too many attempts from this address"),
+            },
+        }
+    },
+    "/api/v1/auth/verify": {
+        "get": {
+            "summary": "Confirm an email address",
+            "description": (
+                "Opened from the link in the confirmation message. Answers "
+                "the same whether the token is unknown, already spent, "
+                "expired, or names an account that no longer exists -- "
+                "telling them apart would say who is registered."
+            ),
+            "tags": ["auth"],
+            "parameters": [
+                {
+                    "name": "token",
+                    "in": "query",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "The token from the confirmation link.",
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "The address is confirmed",
+                    **_json("MessageResponse"),
+                },
+                "400": _error("The link is not usable"),
+            },
+        }
+    },
+    "/api/v1/auth/resend-verification": {
+        "post": {
+            "summary": "Ask for another confirmation message",
+            "description": (
+                "Answers 202 whether or not the address is registered and "
+                "whether or not it is already confirmed. Issuing a new "
+                "token retires the ones outstanding."
+            ),
+            "tags": ["auth"],
+            "responses": {
+                "202": {
+                    "description": "Accepted, whatever was found",
+                    **_json("MessageResponse"),
+                },
+                "400": _error("Malformed body or malformed email"),
+                "429": _error("Too many requests from this address"),
             },
         }
     },

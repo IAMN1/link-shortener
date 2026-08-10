@@ -219,7 +219,13 @@ def create_app(config=None) -> Flask:
     frontend_controller = FrontendController()
     admin_api_controller = AdminApiController(admin_service)
     dashboard_controller = DashboardController(link_service, admin_service)
-    auth_controller = AuthController(authentication_service, login_uc, register_uc)
+    auth_controller = AuthController(
+        authentication_service,
+        login_uc,
+        register_uc,
+        container.get_verify_email_use_case(),
+        container.get_resend_verification_use_case(),
+    )
 
     app.register_blueprint(api_controller.bp)
     app.register_blueprint(frontend_controller.bp)
