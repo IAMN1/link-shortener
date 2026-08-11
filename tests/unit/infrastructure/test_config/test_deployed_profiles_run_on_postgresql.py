@@ -171,16 +171,100 @@ class TestADeployedProfileRefusesEverythingButPostgresql:
          "sqlite:///file::memory:?cache=shared&uri=true"],
     )
     def test_a_database_that_lives_inside_the_process_is_refused(self, url):
-        """Measured: each thread gets its own, and all of them vanish.
+        """All four vanish with the process, and a migration refuses all
+        four already.
 
-        The pool SQLAlchemy chooses for an in-memory URL is
-        ``SingletonThreadPool``, so one worker thread created a table the
-        next could not see. A migration refuses these four already.
+        Three of them are worse than that: SQLAlchemy pools them with
+        ``SingletonThreadPool``, so a table one worker thread created was
+        measured invisible to the next. The shared-cache form is the
+        exception -- ``QueuePool``, and the table is visible -- which
+        leaves it merely empty at every restart.
         """
         errors = validation_errors(ProductionConfig, DATABASE_URL=url)
 
         assert "this profile runs on PostgreSQL" in errors, (
             f"production accepted {url!r}: {errors!r}"
+        )
+
+    @pytest.mark.parametrize("name, profile_cls", DEPLOYED_PROFILES.items())
+    def test_a_sqlite_url_beats_a_postgresql_type(self, name, profile_cls):
+        """The likeliest half-migrated configuration there is.
+
+        ``DATABASE_URL`` is returned before any part is read, so a
+        deployment that set the type and the parts but left an old
+        SQLite URL in place runs on SQLite. Checking the type instead of
+        the assembled URL would accept exactly this.
+        """
+        errors = validation_errors(
+            profile_cls,
+            **POSTGRESQL_PARTS,
+            DATABASE_URL="sqlite:////srv/shortener/live.db",
+        )
+
+        assert "this profile runs on PostgreSQL" in errors, (
+            f"profile {name} read the type instead of the URL: {errors!r}"
+        )
+
+    @pytest.mark.parametrize("name, profile_cls", DEPLOYED_PROFILES.items())
+    def test_every_part_but_the_type_is_still_refused(
+        self, name, profile_cls
+    ):
+        """One forgotten line, and the server settings are decoration.
+
+        Everything points at a real server except ``DATABASE_TYPE``,
+        which still says SQLite -- so the parts are never used and the
+        profile opens a file. A check excused by "the operator clearly
+        configured a server" would let this through.
+        """
+        errors = validation_errors(
+            profile_cls,
+            DATABASE_USER="shortener",
+            DATABASE_PASSWORD="s3cret",
+            DATABASE_HOST="db.internal",
+            DATABASE_NAME="shortener",
+        )
+
+        assert "this profile runs on PostgreSQL" in errors, (
+            f"profile {name} took the parts for a decision: {errors!r}"
+        )
+
+    def test_a_database_file_that_already_holds_data_is_refused(
+        self, tmp_path
+    ):
+        """An existing file is not evidence that anybody chose it.
+
+        It is the likeliest thing to find on a host that has been
+        running on SQLite by accident, and the one the documented
+        migration path is for.
+        """
+        existing = tmp_path / "live.db"
+        existing.write_bytes(b"SQLite format 3\x00" + b"\x00" * 200)
+
+        errors = validation_errors(
+            ProductionConfig, DATABASE_URL=f"sqlite:///{existing}"
+        )
+
+        assert "this profile runs on PostgreSQL" in errors, (
+            f"production accepted a populated file: {errors!r}"
+        )
+
+    def test_the_rule_does_not_depend_on_the_working_directory(
+        self, tmp_path, monkeypatch
+    ):
+        """A deployment starts wherever its unit file says.
+
+        Nothing about the backend follows from where the process was
+        started, and a check that read the layout around it -- a
+        ``pyproject.toml`` or an ``.env`` beside the process -- would be
+        off in production and on in a checkout, which no test run from
+        the repository would notice.
+        """
+        monkeypatch.chdir(tmp_path)
+
+        errors = validation_errors(ProductionConfig)
+
+        assert "this profile runs on PostgreSQL" in errors, (
+            f"the rule followed the working directory: {errors!r}"
         )
 
     @pytest.mark.parametrize("name, profile_cls", DEPLOYED_PROFILES.items())
@@ -217,6 +301,35 @@ class TestADeployedProfileRefusesEverythingButPostgresql:
         assert "DATABASE_TYPE=postgresql" in errors, (
             f"profile {name} refused without saying what to set: {errors!r}"
         )
+
+    def test_the_remedy_fits_a_database_named_in_the_url(self):
+        """Advice that cannot work is worse than none.
+
+        Measured before the message was split in two: told to set
+        ``DATABASE_TYPE`` and the parts while a SQLite ``DATABASE_URL``
+        was in place, an operator following it exactly got the same
+        refusal, because the URL is returned before a part is read.
+        """
+        errors = validation_errors(
+            ProductionConfig, DATABASE_URL="sqlite:////srv/live.db"
+        )
+
+        assert "DATABASE_URL decides on its own" in errors, errors
+        assert "Set DATABASE_TYPE=postgresql with" not in errors, errors
+
+    def test_another_backend_is_not_explained_by_sqlite(self):
+        """The refusal covers every backend; the reasoning does not.
+
+        MySQL is refused for being the wrong server, not for starting
+        empty, and telling the operator about SQLite would describe a
+        database they never configured.
+        """
+        errors = validation_errors(
+            ProductionConfig, DATABASE_URL="mysql+pymysql://u:p@h/db"
+        )
+
+        assert "this profile runs on PostgreSQL" in errors, errors
+        assert "SQLite" not in errors, errors
 
 
 class TestPostgresqlIsAccepted:
@@ -347,6 +460,25 @@ class TestTheRuleHoldsThroughTheEnvironment:
         with pytest.raises(ValueError, match="runs on PostgreSQL"):
             ConfigFactory.create_config()
 
+    def test_exported_server_settings_do_not_excuse_the_type(
+        self, deployed_environment, monkeypatch
+    ):
+        """A server in the environment is not a backend decision.
+
+        Every part points at a real PostgreSQL host and only
+        ``DATABASE_TYPE`` was forgotten, so the parts are never read and
+        the profile opens a file. Measured: a check excused by "an
+        operator who exported DATABASE_HOST clearly configured a server"
+        left the whole suite green while production started on SQLite.
+        """
+        monkeypatch.setenv("DATABASE_HOST", "db.internal")
+        monkeypatch.setenv("DATABASE_USER", "shortener")
+        monkeypatch.setenv("DATABASE_PASSWORD", "s3cret")
+        monkeypatch.setenv("DATABASE_NAME", "shortener")
+
+        with pytest.raises(ValueError, match="runs on PostgreSQL"):
+            ConfigFactory.create_config()
+
     def test_an_installed_copy_is_held_to_the_rule(
         self, deployed_environment, monkeypatch
     ):
@@ -363,8 +495,14 @@ class TestTheRuleHoldsThroughTheEnvironment:
         here and not among the detached profiles: a rewrite can excuse
         itself by the missing tree *or* by reading the environment, and
         a test that covers one leg only lets the other through.
+
+        The finder is stubbed as well as the global it filled. Asking
+        ``_find_project_root()`` again instead of reading ``PROJECT_ROOT``
+        is the same excuse spelled differently, and it was measured
+        slipping past a version of this test that pinned only the global.
         """
         monkeypatch.setattr(base, "PROJECT_ROOT", None)
+        monkeypatch.setattr(base, "_find_project_root", lambda: None)
         monkeypatch.setenv("DATABASE_TYPE", "sqlite")
 
         with pytest.raises(ValueError, match="runs on PostgreSQL"):
