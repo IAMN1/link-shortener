@@ -1087,6 +1087,7 @@ class BaseConfig:
                 )
 
         errors.extend(self._database_errors())
+        errors.extend(self._deployed_backend_errors())
 
         for scheme in self.ALLOWED_SCHEMES:
             if scheme not in ["http", "https"]:
@@ -1249,6 +1250,72 @@ class BaseConfig:
             errors.append(f"Unsupported DATABASE_TYPE: {self.DATABASE_TYPE}")
 
         return errors
+
+
+    def _deployed_backend_errors(self) -> List[str]:
+        """
+        Hold a deployed profile to PostgreSQL, whatever named the database.
+
+        ``DATABASE_TYPE`` defaults to ``sqlite`` and ``DATABASE_NAME`` to
+        ``db_shortener``, so a deployment that configured neither came up
+        on a brand-new empty file in the project root and answered as if
+        the data had never existed. Measured before this check existed:
+        the ``production`` profile with ``SECRET_KEY``,
+        ``SHORT_CODE_PEPPER`` and ``DOMAIN`` set and ``REDIS_ENABLED``
+        off -- everything it demands apart from the database -- validated
+        clean and opened ``sqlite:////<root>/db_shortener``.
+
+        What is checked is the backend the profile would connect to, not
+        whether some setting was written, because every road to SQLite
+        here ends in a database that is empty and silent about it. A file
+        nobody named is created rather than refused. A relative path in
+        ``DATABASE_URL`` is read against the working directory, which
+        gunicorn, celery and the CLI do not share -- measured, a
+        migration wrote 147456 bytes into one file while the application
+        opened an empty one beside it. An in-memory URL gives each thread
+        a private database under the pool SQLAlchemy picks for it, and
+        drops all of them when the process ends.
+
+        SQLite remains the local backend: ``development`` may still take
+        either, which is the whole point of it being the default there.
+        A profile nobody named resolves to ``development`` and is left
+        alone on purpose -- that default serves the developer who
+        configured nothing, and a refusal there would land on them rather
+        than on a deployment.
+
+        Deliberately not part of ``_database_errors``: that list is what a
+        migration checks through ``validate_database``, and a migration
+        has its own, narrower rule in ``migration_url`` with a message
+        that fits the command it stops.
+
+        Returns:
+            List of human-readable error messages (empty when a deployed
+            profile is on PostgreSQL, and for the local profiles).
+        """
+        if self.DEBUG or self.TESTING:
+            return []
+
+        try:
+            backend = make_url(self.get_database_url()).get_backend_name()
+        except Exception:
+            # Not this check's to report. An unusable combination raises
+            # out of get_database_url naming the setting, an unsupported
+            # DATABASE_TYPE is already in _database_errors, and a string
+            # that will not parse stops the engine loudly on first use.
+            return []
+
+        if backend == "postgresql":
+            return []
+
+        return [
+            "this profile runs on PostgreSQL, and the configuration names "
+            f"{self.display_database_url}. Set DATABASE_TYPE=postgresql "
+            "with the DATABASE_* parts, or give the whole connection URL "
+            "in DATABASE_URL. SQLite is the backend for development: "
+            "outside it, every form of one is a database that starts "
+            "empty and never says so"
+        ]
+
 
     def default_secrets_in_use(self) -> list:
         """
