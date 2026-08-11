@@ -38,13 +38,18 @@ SATISFIED_ELSEWHERE = {
     "SHORT_CODE_SECRET_PEPPER": "not-the-generated-default",
     "DOMAIN": "links.example.com",
     "REDIS_ENABLED": False,
+    "DATABASE_URL": "postgresql+psycopg://u:p@db.internal:5432/short",
 }
-"""Settings the deployed profiles demand before they look at mail.
+"""Settings the deployed profiles want before they look at mail.
 
 Pinned so these tests measure the mail rules and nothing else. Left out,
 ``ProductionConfig.validate()`` raises about ``SECRET_KEY`` from a property
 before any list of errors is assembled, and every assertion below would be
-reading that message instead.
+reading that message instead. ``DATABASE_URL`` is here for the same
+reason and not because these tests connect to anything: a deployed
+profile runs on PostgreSQL and refuses every other backend, which is
+``test_deployed_profiles_run_on_postgresql``'s subject, not this
+module's.
 """
 
 

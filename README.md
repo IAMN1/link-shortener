@@ -4,7 +4,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/badge/coverage-91.74%25-blue.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-91.76%25-blue.svg)]()
 
 ## Возможности
 
@@ -327,7 +327,7 @@ uv run pytest tests/unit/ -v                               # только уро
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 2235 (unit + integration + e2e), покрытие: 91.74% при
+Тесты: 2277 (unit + integration + e2e), покрытие: 91.76% при
 пороге 88% (`--cov-fail-under` в `pyproject.toml`).
 
 Разбор уровней, структура каталогов и то, что закрывает каждый флаг, — в
@@ -415,7 +415,7 @@ flask maintenance health                       # БД и Redis отвечают?
 Профиль `testing` намеренно игнорирует окружение целиком — и `.env`-файлы, и экспортированные переменные — автотесты должны давать
 одинаковый результат на любой машине.
 
-Четыре переменные, без которых развёртывание ведёт себя не так, как ожидают:
+Пять переменных, без которых развёртывание ведёт себя не так, как ожидают:
 
 | Переменная | По умолчанию | Что будет иначе |
 |------------|--------------|-----------------|
@@ -423,6 +423,7 @@ flask maintenance health                       # БД и Redis отвечают?
 | `SECRET_KEY` | случайный | Подписывает JWT: без явного значения все токены умирают при каждом рестарте |
 | `SHORT_CODE_PEPPER` | случайный | Соль генерации кодов: разойдётся между инстансами — разойдутся и коды |
 | `DOMAIN` | (пусто) | Обязателен в профиле `production` — `validate()` без него отказывает. Иначе `BASE_URL` собирается как `http://{HOST}:{PORT}/`, то есть при `HOST=0.0.0.0` ссылки получают адрес, по которому к сервису не обратиться |
+| `DATABASE_TYPE` | sqlite | В `production` и `staging` допустим только `postgresql`: на SQLite такой профиль не стартует вовсе, потому что умолчание молча заводило пустой файл. В `development` доступны оба |
 
 Остальные — в `.env.example`, разобраны по группам в
 [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#конфигурация) и
