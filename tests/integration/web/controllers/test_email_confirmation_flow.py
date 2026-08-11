@@ -104,7 +104,7 @@ class TestRegistrationLeavesAnAccountWaiting:
     """What a fresh registration can and cannot do."""
 
     def test_registration_still_succeeds(self, client, email):
-        assert _register(client, email).status_code == 201
+        assert _register(client, email).status_code == 202
 
     def test_the_account_is_not_confirmed(self, client, app, email):
         _register(client, email)

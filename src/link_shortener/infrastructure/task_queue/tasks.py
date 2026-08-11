@@ -57,6 +57,38 @@ def send_verification_email(self, email: str, token: str, context_dict: dict):
 
 
 @celery_app.task(bind=True, max_retries=3)
+def send_account_exists_email(self, email: str, context_dict: dict):
+    """
+    Celery task to tell an address that somebody tried to register it.
+
+    This task is triggered by ``CeleryTaskQueue.enqueue_account_exists_email``.
+
+    Retried like the confirmation message: the address belongs to someone
+    who ought to hear that an attempt was made, and a submission server
+    that is briefly unreachable should not be the end of it.
+
+    Args:
+        email: Address to send to.
+        context_dict: Serialized ``RequestContext`` fields.
+
+    Raises:
+        Exception: On failure, the task is retried up to 3 times with a
+            60s delay.
+    """
+    try:
+        context = RequestContext(**context_dict)
+        container = get_container()
+        use_case = container.get_send_account_exists_email_use_case()
+        use_case.execute(email, context)
+        logger.info("Account-exists notice sent", email=email)
+    except Exception as exc:
+        logger.error(
+            "Error sending account-exists notice", email=email, error=str(exc)
+        )
+        self.retry(exc=exc, countdown=60)
+
+
+@celery_app.task(bind=True, max_retries=3)
 def process_link_accessed(self, short_code: str, context_dict: dict):
     """
     Celery task to asynchronously update link statistics (click count).

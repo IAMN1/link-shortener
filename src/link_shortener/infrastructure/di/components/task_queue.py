@@ -24,6 +24,7 @@ class TaskQueueComponent:
         self._queue = None
         self._update_stats_fn = None
         self._send_verification_fn = None
+        self._send_account_exists_fn = None
 
     def set_update_stats_fn(self, fn) -> None:
         """Set the synchronous stats update function for NullTaskQueue."""
@@ -41,6 +42,16 @@ class TaskQueueComponent:
         self._send_verification_fn = fn
         if self._queue is not None and isinstance(self._queue, NullTaskQueue):
             self._queue.set_send_verification_fn(fn)
+
+    def set_send_account_exists_fn(self, fn) -> None:
+        """Set the synchronous notice function for NullTaskQueue.
+
+        Args:
+            fn: Callable with signature ``(email, context)``.
+        """
+        self._send_account_exists_fn = fn
+        if self._queue is not None and isinstance(self._queue, NullTaskQueue):
+            self._queue.set_send_account_exists_fn(fn)
 
     def get_task_queue(self) -> TaskQueue:
         """
@@ -61,4 +72,8 @@ class TaskQueueComponent:
                     self._queue.set_update_fn(self._update_stats_fn)
                 if self._send_verification_fn:
                     self._queue.set_send_verification_fn(self._send_verification_fn)
+                if self._send_account_exists_fn:
+                    self._queue.set_send_account_exists_fn(
+                        self._send_account_exists_fn
+                    )
         return self._queue

@@ -22,16 +22,20 @@ class NullTaskQueue(TaskQueue):
         self,
         update_fn: Optional[Callable] = None,
         send_verification_fn: Optional[Callable] = None,
+        send_account_exists_fn: Optional[Callable] = None,
         logger: Optional[object] = None,
     ):
         """
         Args:
             update_fn: Synchronous stand-in for the click statistics task.
             send_verification_fn: Synchronous stand-in for the mail task.
+            send_account_exists_fn: Synchronous stand-in for the notice
+                that an address is already registered.
             logger: Application logger for diagnostics.
         """
         self._update_fn = update_fn
         self._send_verification_fn = send_verification_fn
+        self._send_account_exists_fn = send_account_exists_fn
         self.logger = logger
 
     def set_update_fn(self, update_fn: Callable) -> None:
@@ -41,6 +45,10 @@ class NullTaskQueue(TaskQueue):
     def set_send_verification_fn(self, send_fn: Callable) -> None:
         """Set the synchronous mail function (called when Celery is off)."""
         self._send_verification_fn = send_fn
+
+    def set_send_account_exists_fn(self, send_fn: Callable) -> None:
+        """Set the synchronous notice function (called when Celery is off)."""
+        self._send_account_exists_fn = send_fn
 
     def enqueue_link_accessed(self, short_code_str: str, context: RequestContext) -> None:
         if self._update_fn:
@@ -76,5 +84,31 @@ class NullTaskQueue(TaskQueue):
             if self.logger:
                 self.logger.error(
                     "Verification email not sent", error=str(e), email=email
+                )
+            return False
+
+    def enqueue_account_exists_email(
+        self, email: str, context: RequestContext
+    ) -> bool:
+        """
+        Send the "already registered" notice on the caller's thread.
+
+        Args:
+            email: Address to send to.
+            context: Request context.
+
+        Returns:
+            True if the message was sent.
+        """
+        if not self._send_account_exists_fn:
+            return False
+
+        try:
+            self._send_account_exists_fn(email, context)
+            return True
+        except Exception as e:
+            if self.logger:
+                self.logger.error(
+                    "Account-exists notice not sent", error=str(e), email=email
                 )
             return False

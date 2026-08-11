@@ -71,7 +71,7 @@ class TestRegisteredUserJourney:
         r = client.post("/api/v1/auth/register", json={
             "email": "journey@example.com", "password": "JourneyPass1!"
         })
-        assert r.status_code == 201
+        assert r.status_code == 202
 
         # 1a. Confirm the address. A real user opens the link that was
         # mailed to them; the suite sends no mail and keeps only the

@@ -4,7 +4,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/badge/coverage-91.09%25-blue.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-91.74%25-blue.svg)]()
 
 ## Возможности
 
@@ -108,7 +108,7 @@ docker compose --env-file .env.docker exec app \
 | DELETE | `/api/v1/links/<code>` | `link:delete_own` для своей, `link:delete_any` для чужой | Удалить ссылку |
 | GET | `/api/v1/stats/mine` | `link:view_own` | Личная статистика |
 | POST | `/api/v1/batch/shorten` | `link:create` (есть у `guest`) | Пакетное создание ссылок. Правила те же, что у одиночного: гостевой лимит, TTL по умолчанию, дедупликация в пределах владельца. Всё, что не прошло — невалидный URL, остаток квоты, — возвращается поэлементной ошибкой в `results`; сам запрос отвечает `200`, весь пакет не отклоняется |
-| POST | `/api/v1/auth/register` | Нет | Регистрация. Учётка создаётся неподтверждённой, на адрес уходит ссылка подтверждения |
+| POST | `/api/v1/auth/register` | Нет | Регистрация. Отвечает `202` и ничем не выдаёт, был адрес занят или свободен. Свободный: учётка создаётся неподтверждённой, на адрес уходит ссылка подтверждения. Занятый: не меняется ничего, а на адрес уходит письмо, что кто-то пытался его зарегистрировать |
 | GET | `/api/v1/auth/verify?token=…` | Нет | Подтвердить адрес по ссылке из письма. Ссылка одноразовая; все виды отказа отвечают одинаково |
 | POST | `/api/v1/auth/resend-verification` | Нет | Прислать ссылку заново. Отвечает `202` независимо от того, зарегистрирован адрес или нет |
 | POST | `/api/v1/auth/login` | Нет | Получить JWT токены. Неподтверждённый адрес отвергается кодом `EMAIL_NOT_VERIFIED` |
@@ -131,6 +131,24 @@ docker compose --env-file .env.docker exec app \
 
 Истёкшая ссылка отвечает `410` на всех путях — и на редиректе, и на обоих
 информационных эндпоинтах.
+
+### Регистрация не говорит, занят ли адрес
+
+`POST /api/v1/auth/register` отвечает `202` и одной и той же фразой, был
+адрес свободен или занят, и не возвращает учётку. Свободному адресу уходит
+ссылка подтверждения; занятому — письмо о том, что кто-то пытался его
+зарегистрировать, и ничего в существующей учётке не меняется.
+
+Одинакового ответа мало: раньше занятый адрес отвечал за 0.56 мс, а
+свободный — за 162.52 мс, потому что проверка существования замыкалась до
+хеширования пароля. Пароль теперь хешируется до обращения к базе, а письмо
+уходит в обоих случаях — при `CELERY_ENABLED=false` оно отправляется прямо
+на потоке запроса, и ветка без письма была бы короче на длину SMTP-обмена.
+После правки обе ветки дают 1.0 при перекрывающихся диапазонах. Подробности
+и цена — в [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#регистрация-не-говорит-занят-ли-адрес).
+
+Админский путь (`POST /api/v1/admin/users`) по-прежнему говорит «Email
+already registered»: там вызывающий аутентифицирован и имеет право знать.
 
 ### Подтверждение адреса
 
@@ -309,7 +327,7 @@ uv run pytest tests/unit/ -v                               # только уро
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 2106 (unit + integration + e2e), покрытие: 91.48% при
+Тесты: 2235 (unit + integration + e2e), покрытие: 91.74% при
 пороге 88% (`--cov-fail-under` в `pyproject.toml`).
 
 Разбор уровней, структура каталогов и то, что закрывает каждый флаг, — в
@@ -320,10 +338,10 @@ uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 Два прогона pytest не собирает — их запускают отдельно:
 
 ```bash
-# 110 проверок по HTTP против настоящего приложения
+# 114 проверок по HTTP против настоящего приложения
 uv run python tests/live/smoke_test.py
 
-# 8 проверок настоящим браузером: исполняет web/static/js/pages/*.js
+# 9 проверок настоящим браузером: исполняет web/static/js/pages/*.js
 uv sync --group browser              # один раз
 uv run playwright install chromium   # один раз
 uv run python tests/live/browser_test.py

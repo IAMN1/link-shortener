@@ -27,3 +27,25 @@ class MailTemplates(ABC):
             Tuple of (subject, body), both plain text.
         """
         ...
+
+    @abstractmethod
+    def account_exists_email(self, sign_in_url: str) -> Tuple[str, str]:
+        """
+        Render the message sent when the address is already registered.
+
+        Carries no token and grants nothing. It exists so that a
+        registration attempt on a taken address does the same work as one
+        on a free address -- the response is already identical, and
+        without this the time it takes would not be.
+
+        Args:
+            sign_in_url: Absolute URL of the sign-in page, which is all
+                this message can offer: the service has no password
+                recovery a person can use on their own. An operator can
+                reset one with ``flask security reset-password``, and
+                that is not something to put in a mail to a stranger.
+
+        Returns:
+            Tuple of (subject, body), both plain text.
+        """
+        ...

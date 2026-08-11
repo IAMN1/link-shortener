@@ -19,7 +19,13 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             var data = await resp.json();
             if (!resp.ok) throw new Error(data.message || data.error || 'Registration failed');
-            window.location.href = '/login';
+            // Not a redirect to /login any more. The account cannot sign in
+            // until the mailed link is opened, and the answer is the same
+            // whether or not the address was free -- so the page says what
+            // the API said and lets the person go read their mail.
+            document.getElementById('reg-sent').textContent = data.message;
+            document.getElementById('reg-sent').classList.remove('hidden');
+            form.classList.add('hidden');
         } catch(err) {
             errEl.textContent = err.message;
             errEl.classList.remove('hidden');

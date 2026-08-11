@@ -52,6 +52,30 @@ is what every release before this one did everywhere.
 """
 
 
+def display_url(url: str) -> str:
+    """
+    Render a database URL with its password masked.
+
+    Masked by SQLAlchemy's own renderer rather than by a pattern. The
+    pattern this replaced matched only up to the last colon, so a password
+    containing one -- ``pa:ss:word`` -- was printed all but its final
+    segment, into the startup line and the log files.
+
+    Args:
+        url: URL to render.
+
+    Returns:
+        URL safe to write to a log or a terminal.
+    """
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except Exception:
+        # Never let a log line be the thing that stops a command. An
+        # unparsable URL has no password to reveal in any recognisable
+        # place, so nothing is echoed.
+        return "<unparsable database url>"
+
+
 MAX_BATCH_ITEMS = 100
 """Hard ceiling on how many URLs one request may carry.
 
@@ -739,8 +763,15 @@ class BaseConfig:
             ValueError: If DATABASE_TYPE is unsupported or required parameters are missing.
         """
         if self.DATABASE_URL:
-            return self.DATABASE_URL
-        
+            # Stripped, and the migration path strips its own handoff the
+            # same way. Left alone, a value with a trailing newline -- what
+            # a URL read out of a file or a k8s Secret arrives as -- named a
+            # *different* database on each side: measured, the application
+            # opened "app.db\n" while `flask alembic upgrade` migrated
+            # "app.db", so the service came up on an empty file beside the
+            # one that had just been migrated.
+            return self.DATABASE_URL.strip()
+
         if self.DATABASE_TYPE == "sqlite":
             # SQLite: DATABASE_NAME is the file path
             return URL.create(
@@ -776,22 +807,15 @@ class BaseConfig:
         """
         Return the database URL with the password masked, for logging.
 
-        Masked by SQLAlchemy's own renderer rather than by a pattern. The
-        pattern this replaced matched only up to the last colon, so a
-        password containing one -- ``pa:ss:word`` -- was printed all but its
-        final segment, into the startup line and the log files.
-
         Returns:
             URL safe to write to a log.
         """
         try:
-            return make_url(self.get_database_url()).render_as_string(
-                hide_password=True
-            )
+            return display_url(self.get_database_url())
         except Exception:
-            # Never let a log line be the thing that stops startup. An
-            # unparsable URL has no password to reveal in any recognisable
-            # place, so nothing is echoed.
+            # A URL that cannot even be assembled is reported the same way
+            # as one that cannot be parsed: a log line must never be the
+            # thing that stops startup.
             return "<unparsable database url>"
 
     def get_pool_params(self) -> dict:
@@ -1062,55 +1086,7 @@ class BaseConfig:
                     "SHORT_CODE_PEPPER is using default value – override in .env"
                 )
 
-        # A database name is a name, not a place to smuggle connection
-        # options. "shortener?sslmode=disable" parses back out as a query
-        # string, and the connection comes up without TLS while the setting
-        # still reads like a plain name -- the one failure here that is
-        # silent and that weakens security rather than breaking something.
-        # Escaping cannot help: these characters are meaningful in the path
-        # of a URL by definition, so the value is refused instead.
-        if self.DATABASE_TYPE == "postgresql":
-            illegal = [c for c in "?#@/" if c in (self.DATABASE_NAME or "")]
-            if illegal:
-                errors.append(
-                    "DATABASE_NAME must not contain "
-                    f"{', '.join(repr(c) for c in illegal)} -- connection "
-                    "options belong in their own settings, not in the name"
-                )
-
-        # For SQLite the name is a path, so "/" is legitimate and only two
-        # shapes are refused. A "?" is lost when the name is rendered into
-        # a URL and read back: `make_url("sqlite:///a?b.db").database` is
-        # "a", because everything past the "?" is taken for a query
-        # string. SQLite itself would have opened the file it was named --
-        # `sqlite3.connect("a?b.db")` creates exactly that -- so the loss
-        # happens in the URL round trip, and it is silent, because a
-        # missing SQLite file is created rather than refused. Nothing else
-        # needs refusing here -- "#", "@", a space and "%" were each
-        # measured to open the file they name.
-        # A ".." climbs out of the root the path is anchored to; anchoring
-        # is not a sandbox and was never meant to be one, but a setting
-        # that quietly lands outside the project is the same class of
-        # surprise as the one above. The shared-cache in-memory form
-        # belongs in DATABASE_URL, which bypasses anchoring entirely:
-        # SQLAlchemy needs "sqlite:///file::memory:?cache=shared&uri=true",
-        # and without that "uri=true" it is a file by definition.
-        if self.DATABASE_TYPE == "sqlite":
-            name = self.DATABASE_NAME or ""
-            if name != ":memory:":
-                if "?" in name:
-                    errors.append(
-                        "DATABASE_NAME must not contain '?' -- everything "
-                        "past it is read as a query string when the name "
-                        "becomes a URL, and a different file is opened; "
-                        "put a URI form in DATABASE_URL instead"
-                    )
-                if ".." in Path(name).parts:
-                    errors.append(
-                        "DATABASE_NAME must not contain '..' -- a relative "
-                        "name is anchored to the project root, and this one "
-                        "lands outside it"
-                    )
+        errors.extend(self._database_errors())
 
         for scheme in self.ALLOWED_SCHEMES:
             if scheme not in ["http", "https"]:
@@ -1155,9 +1131,6 @@ class BaseConfig:
         if self.CACHE_ENABLED and self.REDIS_ENABLED and not self.REDIS_URL:
             errors.append("REDIS_URL must be set when REDIS_ENABLED=True")
 
-        if self.DATABASE_TYPE not in ("sqlite", "postgresql"):
-            errors.append(f"Unsupported DATABASE_TYPE: {self.DATABASE_TYPE}")
-
         errors.extend(self._numeric_errors())
         errors.extend(self._mail_errors())
         errors.extend(self._confirmation_errors())
@@ -1172,6 +1145,110 @@ class BaseConfig:
         if errors:
             raise ValueError("Configuration errors:\n - " + "\n - ".join(errors))
 
+
+    def validate_database(self) -> None:
+        """
+        Validate only the settings that decide which database is opened.
+
+        A migration needs the connection string and nothing else. Asking it
+        to pass ``validate()`` in full meant that mail, secrets, the domain
+        and even ``MAX_URL_LENGTH`` could each stop ``alembic upgrade
+        head``: with ``DATABASE_URL`` already set, four further variables
+        were measured standing between the command and the first table --
+        ``SECRET_KEY``, ``SHORT_CODE_PEPPER``, ``REDIS_ENABLED`` and
+        ``DOMAIN`` -- and a migration reads none of them.
+
+        The checks themselves are not skipped: they live in
+        ``_database_errors`` and ``validate()`` runs them too, so there is
+        one list and not a second one drifting behind it.
+
+        Raises:
+            ValueError: If any of the database settings is unusable.
+        """
+        errors = self._database_errors()
+        if errors:
+            raise ValueError("Configuration errors:\n - " + "\n - ".join(errors))
+
+
+    def _database_errors(self) -> List[str]:
+        """
+        Check the settings that name the database to connect to.
+
+        Returns:
+            List of human-readable error messages (empty when the database
+            settings are sane).
+        """
+        errors = []
+
+        # A database name is a name, not a place to smuggle connection
+        # options. "shortener?sslmode=disable" parses back out as a query
+        # string, and the connection comes up without TLS while the setting
+        # still reads like a plain name -- the one failure here that is
+        # silent and that weakens security rather than breaking something.
+        # Escaping cannot help: these characters are meaningful in the path
+        # of a URL by definition, so the value is refused instead.
+        if self.DATABASE_TYPE == "postgresql":
+            illegal = [c for c in "?#@/" if c in (self.DATABASE_NAME or "")]
+            if illegal:
+                errors.append(
+                    "DATABASE_NAME must not contain "
+                    f"{', '.join(repr(c) for c in illegal)} -- connection "
+                    "options belong in their own settings, not in the name"
+                )
+
+            # The host is the same hole and was not closed: `URL.create`
+            # percent-encodes the user and the password but not the host,
+            # so "db.internal/shortener?sslmode=disable" is measured
+            # arriving as host "db.internal", database "shortener" and an
+            # sslmode the operator never set -- while DATABASE_NAME and
+            # DATABASE_PORT, which say otherwise, are silently dropped.
+            illegal = [c for c in "?#@/" if c in (self.DATABASE_HOST or "")]
+            if illegal:
+                errors.append(
+                    "DATABASE_HOST must not contain "
+                    f"{', '.join(repr(c) for c in illegal)} -- a host is a "
+                    "host; a name or an option written into it replaces the "
+                    "settings that carry them and is not reported"
+                )
+
+        # For SQLite the name is a path, so "/" is legitimate and only two
+        # shapes are refused. A "?" is lost when the name is rendered into
+        # a URL and read back: `make_url("sqlite:///a?b.db").database` is
+        # "a", because everything past the "?" is taken for a query
+        # string. SQLite itself would have opened the file it was named --
+        # `sqlite3.connect("a?b.db")` creates exactly that -- so the loss
+        # happens in the URL round trip, and it is silent, because a
+        # missing SQLite file is created rather than refused. Nothing else
+        # needs refusing here -- "#", "@", a space and "%" were each
+        # measured to open the file they name.
+        # A ".." climbs out of the root the path is anchored to; anchoring
+        # is not a sandbox and was never meant to be one, but a setting
+        # that quietly lands outside the project is the same class of
+        # surprise as the one above. The shared-cache in-memory form
+        # belongs in DATABASE_URL, which bypasses anchoring entirely:
+        # SQLAlchemy needs "sqlite:///file::memory:?cache=shared&uri=true",
+        # and without that "uri=true" it is a file by definition.
+        if self.DATABASE_TYPE == "sqlite":
+            name = self.DATABASE_NAME or ""
+            if name != ":memory:":
+                if "?" in name:
+                    errors.append(
+                        "DATABASE_NAME must not contain '?' -- everything "
+                        "past it is read as a query string when the name "
+                        "becomes a URL, and a different file is opened; "
+                        "put a URI form in DATABASE_URL instead"
+                    )
+                if ".." in Path(name).parts:
+                    errors.append(
+                        "DATABASE_NAME must not contain '..' -- a relative "
+                        "name is anchored to the project root, and this one "
+                        "lands outside it"
+                    )
+
+        if self.DATABASE_TYPE not in ("sqlite", "postgresql"):
+            errors.append(f"Unsupported DATABASE_TYPE: {self.DATABASE_TYPE}")
+
+        return errors
 
     def default_secrets_in_use(self) -> list:
         """

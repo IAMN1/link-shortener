@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from link_shortener.infrastructure.configs.app import migration_url
+
 
 def _project_root() -> Path:
     """
@@ -49,15 +51,21 @@ def _project_root() -> Path:
 class AlembicCommands:
     """Alembic migration management commands."""
 
-    HANDOFF_ENV_VAR = "ALEMBIC_DATABASE_URL"
+    HANDOFF_ENV_VAR = migration_url.HANDOFF_ENV_VAR
     """Variable ``migrations/env.py`` reads the caller's database URL from.
+
+    Taken from the module that reads it rather than spelled out again: the
+    two ends of a handoff that disagree on the name do not fail, they
+    silently stop handing anything over.
 
     Alembic runs in a subprocess, and a subprocess inherits the ambient
     environment rather than the configuration of the application that
-    launched it. Left to itself ``env.py`` rebuilt that configuration from
-    scratch and could end up pointed at a different database than the caller
-    -- under the ``testing`` profile, at a real one instead of the in-memory
-    SQLite the profile pins on purpose.
+    launched it. Left to itself ``env.py`` resolves a profile from that
+    environment, which does not carry the caller's: nothing exports
+    ``FLASK_ENV``, so a suite running under ``testing`` -- the profile that
+    pins an in-memory database precisely so a test cannot reach a real one
+    -- would have its migrations resolve ``development`` from ``.env`` and
+    land on the developer's own file.
     """
 
     @staticmethod

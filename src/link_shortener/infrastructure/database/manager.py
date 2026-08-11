@@ -15,6 +15,63 @@ from sqlalchemy.pool import NullPool
 from link_shortener.infrastructure.database.models.base import Base
 
 
+def postgresql_connect_args(
+    connect_timeout: int = 0, statement_timeout: int = 0
+) -> dict:
+    """
+    Build the driver-level connection arguments for PostgreSQL.
+
+    Three different waits need bounding, and ``connect_timeout`` only
+    covers the first of them:
+
+    * establishing the connection -- ``connect_timeout``;
+    * a query the server is running but not finishing (a lock, a slow
+      plan) -- ``statement_timeout``, enforced server-side;
+    * a peer that has gone away mid-query -- TCP keepalives, so the
+      kernel gives up instead of waiting indefinitely on a socket that
+      will never answer.
+
+    Known gap, stated rather than papered over: none of these bound a
+    server that is frozen but still reachable, because its kernel keeps
+    acknowledging packets, so keepalives are answered and
+    ``statement_timeout`` is never evaluated. Only an application-level
+    deadline would cover that; it is recorded as an open item.
+
+    A module-level function rather than a method because the migration
+    environment needs the same arguments and has no manager to ask: it
+    builds its own engine, and without these it waited on an unreachable
+    server for over a minute where the application gave up in 3.6 seconds
+    -- with the whole docker stack behind it, since ``app`` starts only
+    once the migration has finished.
+
+    Args:
+        connect_timeout: Seconds to wait for a connection; ``0`` leaves it
+            to the operating system.
+        statement_timeout: Seconds a statement may run; ``0`` disables the
+            ceiling.
+
+    Returns:
+        Mapping for ``create_engine(connect_args=...)``, empty when
+        neither timeout is configured.
+    """
+    args = {}
+
+    if connect_timeout:
+        args["connect_timeout"] = connect_timeout
+
+    if statement_timeout:
+        # libpq passes this through to the server as a session setting.
+        args["options"] = f"-c statement_timeout={statement_timeout * 1000}"
+
+        # Give up on a silent peer rather than block a worker forever.
+        args["keepalives"] = 1
+        args["keepalives_idle"] = 5
+        args["keepalives_interval"] = 2
+        args["keepalives_count"] = 3
+
+    return args
+
+
 class DatabaseManager:
     """
     Manages the database engine, session factory, and table creation.
@@ -122,47 +179,17 @@ class DatabaseManager:
 
     def _connect_args(self) -> dict:
         """
-        Build the driver-level connection arguments.
-
-        Three different waits need bounding, and ``connect_timeout`` only
-        covers the first of them:
-
-        * establishing the connection -- ``connect_timeout``;
-        * a query the server is running but not finishing (a lock, a slow
-          plan) -- ``statement_timeout``, enforced server-side;
-        * a peer that has gone away mid-query -- TCP keepalives, so the
-          kernel gives up instead of waiting indefinitely on a socket that
-          will never answer.
-
-        Known gap, stated rather than papered over: none of these bound a
-        server that is frozen but still reachable, because its kernel keeps
-        acknowledging packets, so keepalives are answered and
-        ``statement_timeout`` is never evaluated. Only an application-level
-        deadline would cover that; it is recorded as an open item.
+        Build this manager's driver-level connection arguments.
 
         Returns:
             ``connect_args`` for ``create_engine``, empty when nothing is
             configured.
         """
-        args = {}
+        args = postgresql_connect_args(
+            self.connect_timeout, self.statement_timeout
+        )
 
-        if self.connect_timeout:
-            args["connect_timeout"] = self.connect_timeout
-
-        if self.statement_timeout:
-            # libpq passes this through to the server as a session setting.
-            args["options"] = f"-c statement_timeout={self.statement_timeout * 1000}"
-
-            # Give up on a silent peer rather than block a worker forever.
-            args["keepalives"] = 1
-            args["keepalives_idle"] = 5
-            args["keepalives_interval"] = 2
-            args["keepalives_count"] = 3
-
-        if not args:
-            return {}
-
-        return {"connect_args": args}
+        return {"connect_args": args} if args else {}
 
     def probe(self) -> None:
         """

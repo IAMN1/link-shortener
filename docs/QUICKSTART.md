@@ -237,9 +237,16 @@ curl -X POST http://localhost:5000/api/v1/shorten \
 
 ### Регистрация и вход
 
-1. Нажмите **Sign Up** в шапке или перейдите на `http://localhost:5000/register`
-2. Войдите на `http://localhost:5000/login`
-3. Вы попадёте на панель управления
+1. Нажмите **Sign Up** в шапке или перейдите на `http://localhost:5000/register`.
+   Страница отвечает одинаково, свободен адрес или занят, — и в обоих случаях
+   отправляет письмо
+2. Откройте письмо и перейдите по ссылке. Без этого вход отвечает `401` с
+   кодом `EMAIL_NOT_VERIFIED`. В разработке письма ловит Mailpit:
+   `http://127.0.0.1:8025` (см. [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md#почта-в-разработке)).
+   При `MAIL_ENABLED=false` письма не будет вовсе — подтвердить учётку тогда
+   нечем
+3. Войдите на `http://localhost:5000/login`
+4. Вы попадёте на панель управления
 
 ### Примеры API
 
@@ -331,6 +338,11 @@ uv run flask alembic upgrade head                   # применить
 | `403` на `POST /api/v1/shorten` у вошедшего пользователя | У его роли нет `link:create` — например, роль `analyst` его не имеет по замыслу. Проверить: `uv run flask security list-roles` |
 | Значения из `.env` не применяются | Профиль `testing` игнорирует `.env` намеренно. В остальных случаях проверьте, что переменная не задана в окружении — она имеет приоритет над файлом |
 | `No 'script_location' key found` | Голая команда `alembic` запущена не из каталога с `alembic.ini`. Через `flask alembic` этого не бывает: рабочий каталог подчинённого процесса прибит к найденному каталогу, а если файл не найден нигде — команда падает сразу, называя оба места, где искала |
+| `a SQLite database that no DATABASE_URL in the environment named` | Миграция вне профиля `development` отказалась идти в SQLite, не названный в `DATABASE_URL`: умолчание `DATABASE_TYPE` — `sqlite`, так что забытые настройки дали бы пустой новый файл. Задайте `DATABASE_TYPE` и части `DATABASE_*`, назовите файл в `DATABASE_URL` или передайте готовую строку в `ALEMBIC_DATABASE_URL` |
+| `nothing names a profile` | Ни `FLASK_ENV` в окружении, ни `FLASK_ENV` в `.env`. Умолчание — `development`, и это единственный профиль, которому дозволена база по умолчанию, поэтому неназванный профиль к ней не приравнивается. Назовите профиль или базу |
+| `a database that exists only inside this process` | `DATABASE_URL` указывает на SQLite в памяти (`sqlite://`, `sqlite:///`, `sqlite:///:memory:`). Схема исчезнет вместе с командой — назовите файл или сервер |
+| `DATABASE_HOST must not contain` | В хосте написано что-то помимо хоста: `db.internal/base?sslmode=disable` подменяет имя базы, теряет `DATABASE_PORT` и выключает TLS, не сообщая об этом. Параметры соединения — в своих настройках |
+| `required variable DATABASE_TYPE is missing a value` | `docker compose` отказался рендерить конфигурацию: без `DATABASE_TYPE` сервис миграций получил бы `sqlite` по умолчанию и создал пустую базу внутри одноразового контейнера. Задайте переменную в env-файле |
 | Короткие ссылки вида `http://0.0.0.0:5000/...` | Не задан `DOMAIN` при `HOST=0.0.0.0` |
 | `SECRET_KEY must be set in environment` | Профили `staging` и `production` требуют явные секреты |
 | JWT перестают работать после рестарта | `SECRET_KEY` не задан — в `development` он генерируется случайно при каждом запуске |

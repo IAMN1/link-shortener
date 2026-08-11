@@ -82,6 +82,56 @@ class TestWhatTheSubprocessIsGiven:
         assert captured["cwd"] == str(_project_root())
         assert (Path(captured["cwd"]) / "alembic.ini").is_file()
 
+    def test_a_handoff_left_over_in_the_shell_is_not_passed_on(
+        self, monkeypatch
+    ):
+        """A command with no target must resolve one, not inherit it.
+
+        The variable is what the operator is told to export when a
+        migration refuses, and nothing tells them to unset it afterwards.
+        Left in place, it silently decides where every later command
+        writes -- measured: the migration went to the stale database and
+        the intended one was never created, with the same success message
+        either way. Nothing held this line.
+        """
+        captured = {}
+
+        def fake_run(args, **kwargs):
+            captured.update(kwargs)
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        monkeypatch.setattr(alembic_mod.subprocess, "run", fake_run)
+        monkeypatch.setenv(
+            AlembicCommands.HANDOFF_ENV_VAR, "sqlite:///stale.db"
+        )
+
+        AlembicCommands._run_alembic("current")
+
+        assert AlembicCommands.HANDOFF_ENV_VAR not in captured["env"]
+
+    def test_a_target_that_was_given_does_reach_the_subprocess(
+        self, monkeypatch
+    ):
+        """The other half, so that "not passed on" cannot mean "never passed".
+
+        A ``pop`` that ran unconditionally would satisfy the test above and
+        leave every ``flask alembic`` command resolving its own database
+        again -- which is the defect the handoff exists to prevent.
+        """
+        captured = {}
+
+        def fake_run(args, **kwargs):
+            captured.update(kwargs)
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        monkeypatch.setattr(alembic_mod.subprocess, "run", fake_run)
+
+        AlembicCommands._run_alembic("current", database_url="sqlite:///a.db")
+
+        assert captured["env"][AlembicCommands.HANDOFF_ENV_VAR] == (
+            "sqlite:///a.db"
+        )
+
 
 class TestFoundFromTheWorkingDirectory:
 

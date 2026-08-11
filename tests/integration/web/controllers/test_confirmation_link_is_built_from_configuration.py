@@ -112,6 +112,25 @@ class TestTheMessageIsActuallySent:
 
         assert len(outbox.messages) == 2
 
+    def test_it_goes_to_the_stored_address_and_not_the_typed_one(
+        self, client, outbox
+    ):
+        """Asked for with different capitalisation, the link still goes to
+        the address the account is stored under -- which is the one the
+        token belongs to."""
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": "outbox-six@example.test", "password": "StrongPass1!"},
+        )
+        outbox.messages.clear()
+
+        client.post(
+            "/api/v1/auth/resend-verification",
+            json={"email": "OUTBOX-SIX@EXAMPLE.TEST"},
+        )
+
+        assert outbox.messages[0]["to"] == "outbox-six@example.test"
+
 
 class TestTheLinkIgnoresTheRequest:
     """The base of the URL is configuration, never a header."""

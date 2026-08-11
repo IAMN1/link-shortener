@@ -331,13 +331,28 @@ def run_checks(browser, base: str, app) -> None:
             f"the page shows a machine-readable code: {message!r}"
         )
 
-    @check("registration succeeds and sends the visitor to sign in")
+    @check("registration tells the visitor to go and read their mail")
     def _():
+        # No longer a redirect to /login: the account cannot sign in until
+        # the mailed link is opened, and the answer is the same whether or
+        # not the address was free -- so the page shows what the API said.
         page = page_for("/register")
         page.fill("#email", "browser-user@example.test")
         page.fill("#password", PASSWORD)
         page.click("#register-form button[type=submit]")
-        page.wait_for_url(f"{base}/login", timeout=5000)
+        page.wait_for_function(
+            "document.getElementById('reg-sent').textContent.trim() !== ''",
+            timeout=5000,
+        )
+        message = page.inner_text("#reg-sent").strip()
+
+        assert message, "the acknowledgement area stayed empty"
+        assert not is_a_code(message), (
+            f"the page shows a machine-readable code: {message!r}"
+        )
+        assert page.is_hidden("#register-form"), (
+            "the form is still offering to register the same address again"
+        )
 
     @check("a fresh registration cannot sign in until the address is confirmed")
     def _():

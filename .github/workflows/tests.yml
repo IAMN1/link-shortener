@@ -205,7 +205,7 @@ jobs:
           # A floor, not an equality. Adding tests never needs a bump here;
           # removing them has to be deliberate. Raise it when the suite
           # genuinely grows.
-          MINIMUM_TESTS: 2106
+          MINIMUM_TESTS: 2235
         # --error-for-skips closes the door marked "skipped". This closes
         # the one beside it: a test that is never collected at all, so the
         # run prints "N passed" and exits 0 for a smaller N. The mechanisms
@@ -214,7 +214,7 @@ jobs:
         # in some conftest, or a directory renamed into something pytest
         # skips by default: norecursedirs covers build, dist, venv,
         # node_modules and anything starting with a dot, so tests/unit ->
-        # tests/build silently collects 687 instead of 2106. The tree
+        # tests/build silently collects 737 instead of 2235. The tree
         # already holds two uncollected files deliberately:
         # tests/live/smoke_test.py and tests/live/browser_test.py.
         #
@@ -223,7 +223,7 @@ jobs:
         # are loud through the exit status, not through the count, which is
         # the other reason that status is checked below. A conftest.py that
         # only supplies fixtures is the awkward case: deleting
-        # tests/unit/conftest.py leaves collection at 2106 and exit 0, and
+        # tests/unit/conftest.py leaves collection at 2235 and exit 0, and
         # only the run itself goes red.
         #
         # The exit status is checked before the count is believed. An

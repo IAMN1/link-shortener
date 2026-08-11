@@ -11,7 +11,9 @@ class CeleryTaskQueue(TaskQueue):
     Sends tasks to a Celery worker.
 
     The ``RequestContext`` is serialised into a dictionary and passed as a
-    task argument. The actual task function is ``process_link_accessed``.
+    task argument. Three tasks are dispatched from here:
+    ``process_link_accessed``, ``send_verification_email`` and
+    ``send_account_exists_email``.
 
     Dispatching happens on the request path, so an unreachable broker is a
     latency problem before it is a correctness one. Two things bound it: the
@@ -155,6 +157,46 @@ class CeleryTaskQueue(TaskQueue):
                 # as long as it lives, and a log outlives a mailbox.
                 self.logger.error(
                     "Failed to enqueue verification email",
+                    error=str(e),
+                    email=email,
+                )
+            return False
+
+    def enqueue_account_exists_email(
+        self, email: str, context: RequestContext
+    ) -> bool:
+        """
+        Publish the "already registered" notice as a task for a worker.
+
+        The back-off is not consulted here either, and for the reason
+        above: this message belongs to one registration attempt, not to a
+        stream of them.
+
+        Args:
+            email: Address to send to.
+            context: ``RequestContext`` containing request metadata.
+
+        Returns:
+            True if the task was published.
+        """
+        from link_shortener.infrastructure.task_queue.tasks import (
+            send_account_exists_email,
+        )
+
+        context_dict = {
+            'request_id': context.request_id,
+            'remote_addr': context.remote_addr,
+            'user_agent': context.user_agent,
+            'request_path': context.request_path,
+            'request_method': context.request_method,
+        }
+        try:
+            send_account_exists_email.delay(email, context_dict)
+            return True
+        except Exception as e:
+            if self.logger:
+                self.logger.error(
+                    "Failed to enqueue account-exists notice",
                     error=str(e),
                     email=email,
                 )
