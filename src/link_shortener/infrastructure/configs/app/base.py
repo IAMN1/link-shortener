@@ -1307,13 +1307,38 @@ class BaseConfig:
         if backend == "postgresql":
             return []
 
+        # The remedy has to fit where the database was actually named, or
+        # it sends the operator round in a circle. Measured: told to "set
+        # DATABASE_TYPE=postgresql with the DATABASE_* parts" while a
+        # SQLite DATABASE_URL was set, following the advice to the letter
+        # changed nothing -- get_database_url returns that URL first and
+        # never reads a part.
+        if self.DATABASE_URL:
+            remedy = (
+                "DATABASE_URL decides on its own while it is set, and the "
+                "DATABASE_* parts are not read at all, so put a PostgreSQL "
+                "URL there or clear it and set the parts"
+            )
+        else:
+            remedy = (
+                "Set DATABASE_TYPE=postgresql with the DATABASE_* parts, "
+                "or give the whole connection URL in DATABASE_URL"
+            )
+
+        # Said only where it is true. Every other backend reaches this the
+        # same way and is refused for the same reason, but none of them is
+        # the empty file this check was written for.
+        why = ""
+        if backend == "sqlite":
+            why = (
+                " SQLite is the backend for development: outside it, every "
+                "form of one is a database that starts empty and never "
+                "says so."
+            )
+
         return [
             "this profile runs on PostgreSQL, and the configuration names "
-            f"{self.display_database_url}. Set DATABASE_TYPE=postgresql "
-            "with the DATABASE_* parts, or give the whole connection URL "
-            "in DATABASE_URL. SQLite is the backend for development: "
-            "outside it, every form of one is a database that starts "
-            "empty and never says so"
+            f"{self.display_database_url}. {remedy}.{why}"
         ]
 
 
