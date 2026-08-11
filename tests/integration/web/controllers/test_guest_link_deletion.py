@@ -97,7 +97,7 @@ class TestTheTokenDeletes:
 
         response = _delete(client, body["short_code"])
 
-        assert response.status_code in (401, 403)
+        assert response.status_code == 401
         assert client.get(f"/{body['short_code']}").status_code == 302
 
 
@@ -111,7 +111,7 @@ class TestATokenIsWorthExactlyOneLink:
             client, somebody_elses["short_code"], token=mine["deletion_token"]
         )
 
-        assert response.status_code in (401, 403)
+        assert response.status_code == 401
         assert client.get(f"/{somebody_elses['short_code']}").status_code == 302
 
     @pytest.mark.parametrize(
@@ -123,7 +123,7 @@ class TestATokenIsWorthExactlyOneLink:
 
         response = _delete(client, body["short_code"], token=token)
 
-        assert response.status_code in (401, 403)
+        assert response.status_code == 401
 
     def test_a_tampered_token_is_worth_nothing(self, client):
         body = _create_as_guest(client)
@@ -134,7 +134,7 @@ class TestATokenIsWorthExactlyOneLink:
 
         response = _delete(client, body["short_code"], token=forged)
 
-        assert response.status_code in (401, 403)
+        assert response.status_code == 401
 
     def test_the_token_dies_with_its_link(self, client):
         """
@@ -188,7 +188,7 @@ class TestATokenIsIssuedOnceToWhoeverCreatedTheLink:
 
         response = _delete(client, second["short_code"])
 
-        assert response.status_code in (401, 403)
+        assert response.status_code == 401
 
 
 class TestABatchGuestLinkCanBeTakenBackToo:

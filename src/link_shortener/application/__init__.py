@@ -20,6 +20,8 @@ from .ports.cache.link_service_stats_cache import StatsCache
 from .ports.cache.redirect_cache import CachedRedirect, RedirectCache
 from .ports.logger.audit import AuditLogger
 from .ports.logger.logger import Logger
+from .ports.mail_templates import MailTemplates
+from .ports.mailer import Mailer, MailDeliveryError
 from .ports.rate_limiter import RateLimiter
 from .ports.task_queue import TaskQueue
 from .ports.auth.auth_service import AuthenticationService
@@ -76,6 +78,14 @@ from .use_cases.admin.users.delete_user import DeleteUserUseCase
 
 from .use_cases.auth.login import LoginUseCase
 from .use_cases.auth.register import RegisterUseCase
+from .use_cases.auth.resend_verification import ResendVerificationUseCase
+from .use_cases.auth.send_account_exists_email import SendAccountExistsEmailUseCase
+from .use_cases.auth.send_verification_email import SendVerificationEmailUseCase
+from .use_cases.auth.verify_email import VerifyEmailUseCase
+
+from .use_cases.admin.users.clean_unverified_accounts import (
+    CleanUnverifiedAccountsUseCase,
+)
 
 # ------------------------------------------------------------------
 # Context
@@ -112,6 +122,9 @@ __all__ = [
     "RedirectCache",
     "AuditLogger",
     "Logger",
+    "Mailer",
+    "MailDeliveryError",
+    "MailTemplates",
     "RateLimiter",
     "TaskQueue",
     "AuthenticationService",
@@ -162,6 +175,11 @@ __all__ = [
 
     "LoginUseCase",
     "RegisterUseCase",
+    "ResendVerificationUseCase",
+    "SendAccountExistsEmailUseCase",
+    "SendVerificationEmailUseCase",
+    "VerifyEmailUseCase",
+    "CleanUnverifiedAccountsUseCase",
 
     # Context
     "RequestContext",

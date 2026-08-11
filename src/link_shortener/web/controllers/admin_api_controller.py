@@ -8,7 +8,7 @@ administrative permissions.
 
 from flask import Blueprint, jsonify, request
 from link_shortener.application import AdminService
-from link_shortener.domain import SystemPermissions
+from link_shortener.domain import DomainError, SystemPermissions
 from link_shortener.web.schemas.admin.admin_request import (
     CreateRoleRequest, CreateUserRequest,
     UpdateRolePermissionsRequest, UpdateUserRolesRequest
@@ -97,7 +97,9 @@ class AdminApiController:
         context = create_request_context()
         user = self.admin_service.get_user(user_id, context)
         if not user:
-            return jsonify({"error": "User not found"}), 404
+            raise DomainError(
+                f"User with id {user_id} not found", code="USER_NOT_FOUND"
+            )
         return jsonify(UserResponseSchema.from_dto(user).model_dump())
 
     @require_permission(SystemPermissions.ADMIN_MANAGE_USERS.value)
@@ -135,7 +137,9 @@ class AdminApiController:
         context = create_request_context()
         deleted = self.admin_service.delete_user(user_id, context)
         if not deleted:
-            return jsonify({"error": "User not found"}), 404
+            raise DomainError(
+                f"User with id {user_id} not found", code="USER_NOT_FOUND"
+            )
         return jsonify({"message": "User deleted"})
 
     @require_permission(SystemPermissions.ADMIN_VIEW_USERS.value)
@@ -189,7 +193,9 @@ class AdminApiController:
         context = create_request_context()
         role = self.admin_service.get_role(role_name, context)
         if not role:
-            return jsonify({"error": "Role not found"}), 404
+            raise DomainError(
+                f"Role {role_name} not found", code="ROLE_NOT_FOUND"
+            )
         return jsonify(RoleResponseSchema.from_dto(role).model_dump())
 
     @require_permission(SystemPermissions.ADMIN_MANAGE_ROLES.value)
@@ -212,12 +218,19 @@ class AdminApiController:
         """
         Handle ``DELETE /api/v1/admin/roles/<role_name>`` – delete a role.
 
-        Returns 404 if the role is system or does not exist.
+        Two answers, and they used to be one: a name that is not there is
+        404 ``ROLE_NOT_FOUND``, like the user endpoint beside it, while a
+        role that exists and is protected is 400 ``ROLE_DELETION_FAILED``.
+        Both are raised by the use case; the guard below is a backstop for
+        a future implementation that returns ``False`` instead of raising,
+        and is unreachable today.
         """
         context = create_request_context()
         deleted = self.admin_service.delete_role(role_name, context)
         if not deleted:
-            return jsonify({"error": "Role not found or is system"}), 404
+            raise DomainError(
+                f"Role {role_name} not found", code="ROLE_NOT_FOUND"
+            )
         return jsonify({"message": "Role deleted"})
 
     # ------------------------------------------------------------------
@@ -228,9 +241,33 @@ class AdminApiController:
         """Check the health of the service infrastructure."""
         context = create_request_context()
         health = self.admin_service.get_service_health(context)
-        return jsonify({
+        body = {
             "database": health.database,
             "cache": health.redis,
             "task_queue": health.task_queue,
             "rate_limiter": health.rate_limiter,
-        })
+        }
+
+        # Reported here because nothing else reports it. The counters are
+        # kept by the failover service and were read by no caller, and the
+        # only runtime word about which implementation holds the work is
+        # one line at startup -- so an audit trail that had stopped being
+        # written looked, from every surface an operator has, exactly like
+        # one that was fine.
+        if health.logging is not None:
+            body["logging"] = {
+                "logger": {
+                    "active": health.logging.logger_active,
+                    "dropped_calls": health.logging.logger_dropped_calls,
+                    "failed_checks": health.logging.logger_failed_checks,
+                    "lost_log_lines": health.logging.logger_lost_log_lines,
+                },
+                "audit": {
+                    "active": health.logging.audit_active,
+                    "dropped_calls": health.logging.audit_dropped_calls,
+                    "failed_checks": health.logging.audit_failed_checks,
+                    "lost_log_lines": health.logging.audit_lost_log_lines,
+                },
+            }
+
+        return jsonify(body)

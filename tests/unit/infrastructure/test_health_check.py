@@ -1,5 +1,6 @@
 """Unit tests for InfrastructureHealthCheck."""
 
+import threading
 import time
 from contextlib import contextmanager
 from unittest.mock import MagicMock, Mock, patch
@@ -272,3 +273,199 @@ class TestTaskQueue:
         queue.celery_app.control.ping.side_effect = OSError("broker unreachable")
         check = InfrastructureHealthCheck(_db_manager(), cache=None, task_queue=queue)
         assert check.check_task_queue() is False
+
+
+class FakeClock:
+    """A monotonic clock the test moves by hand."""
+
+    def __init__(self, now: float = 1000.0):
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        """
+        Move the clock forward.
+
+        Args:
+            seconds: How far forward to move.
+        """
+        self.now += seconds
+
+
+class TestTheSnapshotIsCachedBriefly:
+    """
+    ``/health`` is anonymous and exempt from throttling -- correctly, a
+    probe has to answer while everything else is refusing. That made it the
+    cheapest way to make the service work: every request meant a query, a
+    Redis ping, a broker ping and a fresh ``ThreadPoolExecutor``. Measured:
+    200 anonymous requests started 563 OS threads.
+
+    The clock is injected rather than slept through: sleeping past a
+    two-second TTL measures the scheduler, and the interesting boundary is
+    the TTL itself.
+    """
+
+    def _check(self, clock):
+        """
+        Build a checker whose dependencies count how often they are asked.
+
+        Args:
+            clock: Injected time source.
+
+        Returns:
+            Tuple of (checker, database manager mock).
+        """
+        db = _db_manager(True)
+        return (
+            InfrastructureHealthCheck(db, cache=None, clock=clock),
+            db,
+        )
+
+    def test_a_second_request_inside_the_window_costs_nothing(self):
+        clock = FakeClock()
+        check, db = self._check(clock)
+
+        first = check.snapshot()
+        second = check.snapshot()
+
+        assert first is second
+        assert db.probe.call_count == 1
+
+    def test_a_flood_costs_one_observation(self):
+        """The shape the measurement above had: many requests, one probe."""
+        clock = FakeClock()
+        check, db = self._check(clock)
+
+        for _ in range(50):
+            check.snapshot()
+
+        assert db.probe.call_count == 1
+
+    def test_the_window_ends(self):
+        """A cached probe that never expires is not a probe."""
+        clock = FakeClock()
+        check, db = self._check(clock)
+
+        check.snapshot()
+        clock.advance(InfrastructureHealthCheck.CACHE_TTL_SECONDS)
+        check.snapshot()
+
+        assert db.probe.call_count == 2
+
+    def test_just_inside_the_window_is_still_cached(self):
+        """The boundary is ``<``, and off-by-one here doubles the cost."""
+        clock = FakeClock()
+        check, db = self._check(clock)
+
+        check.snapshot()
+        clock.advance(InfrastructureHealthCheck.CACHE_TTL_SECONDS - 0.01)
+        check.snapshot()
+
+        assert db.probe.call_count == 1
+
+    def test_the_default_clock_is_monotonic(self):
+        """A wall clock stepping backwards would freeze the answer.
+
+        NTP and a resumed container both do that, and the freeze would
+        last exactly as long as the step.
+        """
+        check = InfrastructureHealthCheck(_db_manager(True), cache=None)
+
+        assert check._clock is time.monotonic
+
+
+class TestTheCacheDoesNotBecomeAQueue:
+    """
+    The lock is held across the observation, so a slow dependency must not
+    turn ``/health`` into a line of callers waiting their turn.
+
+    It did. The timestamp was taken *before* the observation, so an
+    observation slower than the TTL was already stale when it was stored:
+    every caller waiting on the lock observed again. Measured on the real
+    class with a 2.5 s probe against the 2 s TTL -- five parallel requests
+    took 12.52 s instead of 2.51 s, on an endpoint that is anonymous and
+    exempt from throttling, so the number of callers is chosen by whoever
+    is asking.
+    """
+
+    class SlowProbe:
+        """A database whose probe outlasts the cache window."""
+
+        def __init__(self, seconds):
+            self.seconds = seconds
+            self.probes = 0
+
+        def probe(self):
+            self.probes += 1
+            time.sleep(self.seconds)
+            return True
+
+    def test_a_probe_slower_than_the_window_is_still_shared(self):
+        probe_seconds = 0.05
+
+        class ShortWindow(InfrastructureHealthCheck):
+            # Shorter than the probe, which is the case that broke.
+            CACHE_TTL_SECONDS = 0.01
+
+        database = self.SlowProbe(probe_seconds)
+        check = ShortWindow(database, cache=None, timeout=5.0)
+        barrier = threading.Barrier(5)
+
+        def ask():
+            barrier.wait()
+            check.snapshot()
+
+        threads = [threading.Thread(target=ask) for _ in range(5)]
+        started = time.monotonic()
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        elapsed = time.monotonic() - started
+
+        assert database.probes == 1, f"{database.probes} probes, not one"
+        # Five serial probes would be five times this; the bound is
+        # generous so the assertion is about queueing, not about speed.
+        assert elapsed < probe_seconds * 3, f"took {elapsed:.3f}s"
+
+    def test_the_observation_is_taken_under_the_lock(self):
+        """Two callers arriving together must not both observe.
+
+        Asserted through the lock rather than through timing: without it
+        the window between "cache is empty" and "cache is filled" is open,
+        and every caller in it starts a pool of its own -- which is the
+        measurement that put this cache here (200 requests, 563 threads).
+        """
+        entered = []
+
+        class WatchedLock:
+            def __init__(self):
+                self._real = threading.Lock()
+
+            def __enter__(self):
+                self._real.acquire()
+                entered.append(True)
+                return self
+
+            def __exit__(self, *exc):
+                self._real.release()
+                return False
+
+        check = InfrastructureHealthCheck(_db_manager(True), cache=None)
+        check._lock = WatchedLock()
+
+        check.snapshot()
+
+        assert entered, "snapshot() observed without taking the lock"
+
+
+class TestTheWindowIsTheOneThatWasChosen:
+
+    def test_it_is_two_seconds(self):
+        """A literal, because the tests above move the clock by the
+        constant itself -- so they agree with whatever it says, including
+        two minutes. This is the assertion that fails when the window
+        changes without anyone deciding to change it."""
+        assert InfrastructureHealthCheck.CACHE_TTL_SECONDS == 2.0

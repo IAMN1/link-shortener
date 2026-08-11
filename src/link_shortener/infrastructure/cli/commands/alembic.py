@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from link_shortener.infrastructure.configs.app import migration_url
+
 
 def _project_root() -> Path:
     """
@@ -16,30 +18,54 @@ def _project_root() -> Path:
     happens to contain another ``alembic.ini`` executed *that* project's
     ``env.py``, with this process's environment handed to it.
 
+    Two places are searched: upwards from this module, and upwards from the
+    working directory. The first is what a source checkout answers with.
+    The second is what an installed copy needs -- in the image the package
+    is imported from ``site-packages``, so no parent of this file holds an
+    ``alembic.ini``, and the fallback used to count levels up from here and
+    land in ``/usr/local/lib/python3.12``. Alembic was then handed a
+    directory with no configuration in it and died with "No 'script_location'
+    key found", naming neither the directory nor the reason.
+
     Returns:
-        Directory containing ``alembic.ini``; the repository root when the
-        search finds nothing, so the caller still gets a defined location.
+        Directory containing ``alembic.ini``.
+
+    Raises:
+        FileNotFoundError: When neither search finds one, naming both places
+            that were tried -- the counted path silently produced a wrong
+            answer instead.
     """
-    here = Path(__file__).resolve()
-    for candidate in here.parents:
-        if (candidate / "alembic.ini").is_file():
-            return candidate
-    # src/link_shortener/infrastructure/cli/commands/alembic.py -> repo root
-    return here.parents[5]
+    starts = [Path(__file__).resolve(), Path.cwd().resolve()]
+    for start in starts:
+        for candidate in [start, *start.parents]:
+            if (candidate / "alembic.ini").is_file():
+                return candidate
+
+    raise FileNotFoundError(
+        "alembic.ini not found above "
+        f"{starts[0]} or {starts[1]} -- run the command from the directory "
+        "holding it, or install the project so that it ships alongside"
+    )
 
 
 class AlembicCommands:
     """Alembic migration management commands."""
 
-    HANDOFF_ENV_VAR = "ALEMBIC_DATABASE_URL"
+    HANDOFF_ENV_VAR = migration_url.HANDOFF_ENV_VAR
     """Variable ``migrations/env.py`` reads the caller's database URL from.
+
+    Taken from the module that reads it rather than spelled out again: the
+    two ends of a handoff that disagree on the name do not fail, they
+    silently stop handing anything over.
 
     Alembic runs in a subprocess, and a subprocess inherits the ambient
     environment rather than the configuration of the application that
-    launched it. Left to itself ``env.py`` rebuilt that configuration from
-    scratch and could end up pointed at a different database than the caller
-    -- under the ``testing`` profile, at a real one instead of the in-memory
-    SQLite the profile pins on purpose.
+    launched it. Left to itself ``env.py`` resolves a profile from that
+    environment, which does not carry the caller's: nothing exports
+    ``FLASK_ENV``, so a suite running under ``testing`` -- the profile that
+    pins an in-memory database precisely so a test cannot reach a real one
+    -- would have its migrations resolve ``development`` from ``.env`` and
+    land on the developer's own file.
     """
 
     @staticmethod

@@ -172,7 +172,9 @@ class TestLosingTheRaceIsNotAFailure:
         """
         repo.save.side_effect = LinkConflictError()
 
-        with pytest.raises(Exception) as caught:
+        # The exact type, not `raises(Exception)` plus an isinstance check.
+        # CodeGenerationError does not descend from LinkConflictError, so
+        # naming it here rules the conflict out on its own -- while the
+        # broad form was satisfied by an AttributeError on the way.
+        with pytest.raises(CodeGenerationError):
             use_case.execute(URL, _context())
-
-        assert not isinstance(caught.value, LinkConflictError)

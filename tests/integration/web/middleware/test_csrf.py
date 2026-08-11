@@ -3,7 +3,7 @@
 import pytest
 
 from link_shortener.web.middleware.csrf import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
-from tests.integration.conftest import auth_headers, csrf_headers
+from tests.integration.conftest import confirm_email, auth_headers, csrf_headers
 
 
 def _login(client, email, password="StrongPass1!"):
@@ -21,6 +21,7 @@ def _login(client, email, password="StrongPass1!"):
     client.post("/api/v1/auth/register", json={
         "email": email, "password": password
     })
+    confirm_email(client.application, email)
     r = client.post("/api/v1/auth/login", json={
         "email": email, "password": password
     })
@@ -36,6 +37,7 @@ class TestCsrfCookieIssuing:
         r = client.post("/api/v1/auth/register", json={
             "email": "csrfissue@example.com", "password": "StrongPass1!"
         })
+        confirm_email(client.application, "csrfissue@example.com")
         r = client.post("/api/v1/auth/login", json={
             "email": "csrfissue@example.com", "password": "StrongPass1!"
         })
@@ -57,7 +59,9 @@ class TestCsrfCookieIssuing:
 
         client.post("/api/v1/auth/logout", headers=csrf_headers(client))
         cookie = client.get_cookie(CSRF_COOKIE_NAME)
-        assert cookie is None or cookie.value == ""
+        # Deleted, not emptied. `or cookie.value == ""` accepted both, so
+        # the test could not say which of the two the logout actually does.
+        assert cookie is None
 
     def test_write_without_csrf_cookie_recovers_on_retry(self, app):
         client = app.test_client()
@@ -96,7 +100,7 @@ class TestCsrfCookieIssuing:
             json={"url": "https://example.com/csrf-stale-retry"},
             headers=csrf_headers(client),
         )
-        assert retried.status_code in (200, 201)
+        assert retried.status_code == 201
 
     def test_session_without_csrf_cookie_is_reissued_one(self, app):
         client = app.test_client()
@@ -132,7 +136,7 @@ class TestCsrfEnforcement:
             json={"url": "https://example.com/csrf-2"},
             headers=csrf_headers(client),
         )
-        assert r.status_code in (200, 201)
+        assert r.status_code == 201
 
     def test_cookie_auth_write_with_wrong_token_is_rejected(self, app):
         client = app.test_client()
@@ -192,6 +196,7 @@ class TestTokenSignature:
         other.post("/api/v1/auth/register", json={
             "email": "csrfother@example.com", "password": "StrongPass1!"
         })
+        confirm_email(other.application, "csrfother@example.com")
         r = other.post("/api/v1/auth/login", json={
             "email": "csrfother@example.com", "password": "StrongPass1!"
         })
@@ -233,7 +238,7 @@ class TestOriginCheck:
             json={"url": "https://example.com/csrf-own-origin"},
             headers=csrf_headers(client, {"Origin": "http://testserver"}),
         )
-        assert r.status_code in (200, 201)
+        assert r.status_code == 201
 
     def test_foreign_referer_is_refused(self, app):
         client = app.test_client()
@@ -259,7 +264,7 @@ class TestOriginCheck:
             json={"url": "https://example.com/csrf-no-origin"},
             headers=csrf_headers(client),
         )
-        assert r.status_code in (200, 201)
+        assert r.status_code == 201
 
 
 class TestCsrfExemptions:
@@ -277,7 +282,7 @@ class TestCsrfExemptions:
             json={"url": "https://example.com/csrf-5"},
             headers=auth_headers(token),
         )
-        assert r.status_code in (200, 201)
+        assert r.status_code == 201
 
     def test_empty_bearer_does_not_buy_an_exemption(self, app):
         client = app.test_client()
@@ -330,6 +335,13 @@ class TestCsrfExemptions:
         r = client.delete(
             f"/api/v1/links/{code}", headers={"Authorization": header_value}
         )
+        # Deliberately loose, unlike the rest of this file. The docstring
+        # above says either branch is acceptable, and it means it: a shape
+        # that falls back to the cookie owes a CSRF token and gets 403, one
+        # that leaves the request anonymous gets 401. The invariant under
+        # test is that neither ends up exempt *and* authenticated, and that
+        # is what `still_there` below checks. Pinning one code here would
+        # forbid a routing change the security property allows.
         assert r.status_code in (401, 403)
 
         # The link is still there, which is what actually matters.
@@ -457,7 +469,7 @@ class TestCsrfExemptions:
         r = client.post(
             "/api/v1/shorten", json={"url": "https://example.com/csrf-6"}
         )
-        assert r.status_code in (200, 201)
+        assert r.status_code == 201
 
     def test_login_is_not_blocked_for_a_returning_session(self, app):
         client = app.test_client()

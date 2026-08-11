@@ -142,7 +142,14 @@ class TestAFailureIsNotAnEmptyService:
             original = use_case.uow_factory
             use_case.uow_factory = exploding_uow
             try:
-                with pytest.raises(RuntimeError):
+                # `match` pins which RuntimeError. Without it the test also
+                # passes when the failure is caught and re-raised as some
+                # other RuntimeError, and when an unrelated one is raised
+                # earlier, before the injected factory is reached at all.
+                # Both measured. Note what it does not close: `match` is a
+                # search, so a wrapper that keeps the original text inside
+                # a longer message still passes.
+                with pytest.raises(RuntimeError, match="statement timeout"):
                     use_case.execute(context)
             finally:
                 use_case.uow_factory = original

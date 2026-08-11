@@ -3,6 +3,8 @@ from typing import List
 
 from pydantic import BaseModel, ConfigDict, field_serializer
 
+from link_shortener.web.schemas.link import ShortLinkResponse
+
 
 class StatsItemResponse(BaseModel):
     """
@@ -122,3 +124,25 @@ class ServiceStatsResponse(BaseModel):
                 for link in dto.popular_links
             ]
         )
+
+
+class MyStatsResponse(BaseModel):
+    """
+    What ``GET /api/v1/stats/mine`` answers.
+
+    Named apart from ``ServiceStatsResponse`` because the two are not the
+    same shape: this one counts links rather than URLs and carries the
+    caller's most recent links whole, so a generated client that reused
+    the service-wide schema would be reading fields that are not there.
+
+    Attributes:
+        total_links: Links this caller owns.
+        total_clicks: Sum of clicks across them.
+        avg_clicks_per_link: Average clicks per link, ``0.0`` with none.
+        recent_links: Up to ten most recently created, as links.
+    """
+
+    total_links: int
+    total_clicks: int
+    avg_clicks_per_link: float
+    recent_links: List[ShortLinkResponse]

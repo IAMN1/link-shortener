@@ -208,7 +208,7 @@ class TestAStatusThatMatchesWhatHappened:
             "/api/v1/links/nope", headers=csrf_headers(client)
         )
 
-        assert response.status_code in (401, 404)
+        assert response.status_code == 404
 
     def test_a_deeply_nested_body_is_refused_rather_than_survived(self, client):
         """

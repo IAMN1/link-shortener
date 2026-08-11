@@ -64,6 +64,19 @@ class StructlogAuditLogger(AuditLogger):
     ) -> dict:
         """Construct the dictionary of log fields for an audit event.
 
+        The binding goes in first and everything else wins over it, which is
+        how the sibling adapter ``StandardAuditLogger`` merges
+        (``{**bound, **call}``) and how the library underneath resolves the
+        same collision: ``event_dict = self._context.copy()`` and then
+        ``event_dict.update(**event_kw)`` (``structlog._base``).
+
+        Applied last, as it used to be, the binding overwrote not only a
+        field the call named but the event's own three: a logger bound with
+        ``original_url`` put that value into the record in place of
+        ``mask_url(original_url)``, so binding was a way round the masking.
+        ``event_type`` and ``short_code`` went the same way, which is a
+        record of one event filed under another.
+
         Args:
             event_type: Type of the audit event.
             short_code: Short code of the link.
@@ -72,15 +85,15 @@ class StructlogAuditLogger(AuditLogger):
 
         Returns:
             Dictionary containing the event type, short code, masked
-            original URL, any extra kwargs, and all bound fields.
+            original URL, all bound fields, and any extra kwargs.
         """
-        data = {
+        data = dict(self._bound_fields)
+        data.update({
             "event_type": event_type,
             "short_code": short_code,
             "original_url": mask_url(original_url),
-        }
+        })
         data.update(kwargs)
-        data.update(self._bound_fields)
         return data
 
     def log_url_created(self, short_code: str, original_url: str, **kwargs) -> None:

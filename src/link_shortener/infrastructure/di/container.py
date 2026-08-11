@@ -15,9 +15,13 @@ from link_shortener.application import (
 
 from link_shortener.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 from link_shortener.infrastructure.di.components.logger import LoggerComponent
+from link_shortener.infrastructure.logging.status_reader import (
+    ComponentLoggingStatus,
+)
 from link_shortener.infrastructure.di.components.audit import AuditComponent
 from link_shortener.infrastructure.di.components.database import DatabaseComponent
 from link_shortener.infrastructure.di.components.cache import CacheComponent
+from link_shortener.infrastructure.di.components.mail import MailComponent
 from link_shortener.infrastructure.di.components.policy import PolicyComponent
 from link_shortener.infrastructure.di.components.rate_limiter import RateLimiterComponent
 from link_shortener.infrastructure.di.components.task_queue import TaskQueueComponent
@@ -31,6 +35,7 @@ from link_shortener.infrastructure.di.components.use_cases.admin.admin_role_use_
 from link_shortener.infrastructure.di.components.use_cases.admin.admin_user_use_cases import AdminUserUseCasesComponent
 from link_shortener.infrastructure.di.components.use_cases.authentication.auth_use_cases import AuthUseCasesComponent
 from link_shortener.infrastructure.health.infrastructure_health_check import InfrastructureHealthCheck
+from link_shortener.infrastructure.mail.jinja_templates import JinjaMailTemplates
 
 
 
@@ -111,6 +116,22 @@ class Container:
             celery_enabled=self.config.CELERY_ENABLED,
             logger=self.logger_component.get_logger(__name__),
             retry_interval=self.config.REDIS_RETRY_INTERVAL,
+        )
+
+        # ------------------------------------------------------------------
+        # Mail
+        # ------------------------------------------------------------------
+        self.mail_component = MailComponent(
+            mail_enabled=self.config.MAIL_ENABLED,
+            host=self.config.MAIL_HOST,
+            port=self.config.MAIL_PORT,
+            username=self.config.MAIL_USERNAME,
+            password=self.config.MAIL_PASSWORD,
+            sender=self.config.MAIL_FROM,
+            use_tls=self.config.MAIL_USE_TLS,
+            use_ssl=self.config.MAIL_USE_SSL,
+            timeout=self.config.MAIL_TIMEOUT,
+            logger=self.logger_component.get_logger(__name__),
         )
 
         # ------------------------------------------------------------------
@@ -330,7 +351,29 @@ class Container:
                 authentication_service=self.auth_component.get_authentication_service(),
                 logger=self.logger_component.get_logger(__name__),
                 default_role_name=self.config.DEFAULT_ROLE_NAME,
+                task_queue=self.task_queue_component.get_task_queue(),
+                mailer=self.mail_component.get_mailer(),
+                templates=JinjaMailTemplates(),
+                base_url=self.config.BASE_URL,
+                verification_ttl_hours=self.config.EMAIL_VERIFICATION_TTL_HOURS,
+                unverified_ttl_hours=self.config.UNVERIFIED_ACCOUNT_TTL_HOURS,
             )
+            # Wire the synchronous fallback for NullTaskQueue, the same way
+            # the click counter is wired. Without a broker the message is
+            # sent on the request thread, which is slower and still sends.
+            if not self.config.CELERY_ENABLED:
+                send_uc = self._auth_use_cases.get_send_verification_email_use_case()
+                self.task_queue_component.set_send_verification_fn(send_uc.execute)
+                # Wired for the same reason and in the same breath: if the
+                # notice were only sent when a broker happens to be
+                # configured, registration would take one length with
+                # Celery on and two lengths with it off.
+                exists_uc = (
+                    self._auth_use_cases.get_send_account_exists_email_use_case()
+                )
+                self.task_queue_component.set_send_account_exists_fn(
+                    exists_uc.execute
+                )
         return self._auth_use_cases
 
     def _init_health_use_cases(self):
@@ -339,6 +382,9 @@ class Container:
             self._health_use_cases = HealthUseCasesComponent(
                 health_check=self.health_check,
                 logger=self.logger_component.get_logger(__name__),
+                logging_status=ComponentLoggingStatus(
+                    self.logger_component, self.audit_component
+                ),
             )
         return self._health_use_cases
 
@@ -449,6 +495,26 @@ class Container:
         """Return fully configured ``RegisterUseCase``."""
         return self._init_auth_use_cases().get_register_use_case()
 
+    def get_verify_email_use_case(self):
+        """Return fully configured ``VerifyEmailUseCase``."""
+        return self._init_auth_use_cases().get_verify_email_use_case()
+
+    def get_resend_verification_use_case(self):
+        """Return fully configured ``ResendVerificationUseCase``."""
+        return self._init_auth_use_cases().get_resend_verification_use_case()
+
+    def get_send_verification_email_use_case(self):
+        """Return fully configured ``SendVerificationEmailUseCase``."""
+        return self._init_auth_use_cases().get_send_verification_email_use_case()
+
+    def get_send_account_exists_email_use_case(self):
+        """Return fully configured ``SendAccountExistsEmailUseCase``."""
+        return self._init_auth_use_cases().get_send_account_exists_email_use_case()
+
+    def get_clean_unverified_accounts_use_case(self):
+        """Return fully configured ``CleanUnverifiedAccountsUseCase``."""
+        return self._init_auth_use_cases().get_clean_unverified_accounts_use_case()
+
     # Additional use cases
     def get_user_activity_stats_use_case(self):
         """Return fully configured ``GetUserActivityStatsUseCase``."""
@@ -531,6 +597,10 @@ class Container:
     def get_task_queue(self):
         """Return the task queue implementation (Celery or null)."""
         return self.task_queue_component.get_task_queue()
+
+    def get_mailer(self):
+        """Return the mailer implementation (SMTP or null)."""
+        return self.mail_component.get_mailer()
 
     def get_authentication_service(self):
         """Return the JWT authentication service."""

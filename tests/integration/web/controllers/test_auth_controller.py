@@ -1,8 +1,26 @@
 """Integration tests for auth endpoints with real DB."""
 
 import pytest
-from tests.integration.conftest import register_and_login, auth_headers, csrf_headers
+from tests.integration.conftest import (
+    auth_headers, confirm_email, csrf_headers, register_and_login
+)
 
+
+
+def _without_timestamp(response) -> dict:
+    """
+    The body of an error answer, minus the moment it was made.
+
+    Args:
+        response: The Flask test-client response to read.
+
+    Returns:
+        The JSON body without its ``timestamp`` field, so that two answers
+        can be compared for what they say rather than for when.
+    """
+    body = dict(response.get_json())
+    body.pop("timestamp", None)
+    return body
 
 class TestRegister:
     """POST /api/v1/auth/register"""
@@ -11,9 +29,13 @@ class TestRegister:
         r = client.post("/api/v1/auth/register", json={
             "email": "new@example.com", "password": "StrongPass1!"
         })
-        assert r.status_code == 201
+        assert r.status_code == 202
         data = r.get_json()
-        assert "user" in data or "access_token" in data
+        # No tokens, so signing up does not sign you in -- and no account
+        # either, because an identifier here would be the answer to
+        # "is this address registered" that the status no longer gives.
+        assert "user" not in data
+        assert "access_token" not in data
 
     def test_register_duplicate_email(self, client):
         client.post("/api/v1/auth/register", json={
@@ -22,14 +44,13 @@ class TestRegister:
         r = client.post("/api/v1/auth/register", json={
             "email": "dup@example.com", "password": "StrongPass1!"
         })
-        assert r.status_code in (400, 409)
+        assert r.status_code == 202
 
     def test_register_weak_password(self, client):
         r = client.post("/api/v1/auth/register", json={
             "email": "weak@example.com", "password": "123"
         })
-        # API may accept or reject weak passwords depending on validation config
-        assert r.status_code in (201, 400)
+        assert r.status_code == 400
 
     def test_register_missing_fields(self, client):
         r = client.post("/api/v1/auth/register", json={})
@@ -49,6 +70,7 @@ class TestLogin:
         client.post("/api/v1/auth/register", json={
             "email": "login@example.com", "password": "StrongPass1!"
         })
+        confirm_email(client.application, "login@example.com")
         r = client.post("/api/v1/auth/login", json={
             "email": "login@example.com", "password": "StrongPass1!"
         })
@@ -87,13 +109,23 @@ class TestErrorDisclosure:
         })
         assert r.status_code == 400
 
-        body = r.get_data(as_text=True).lower()
+        # Read from the fields the endpoint writes, not from the whole
+        # body: the envelope carries an ISO timestamp, and "72" appears in
+        # one whenever the clock says so -- measured at 1.5-5.5% of
+        # requests, which made this test fail for reasons having nothing
+        # to do with what it checks.
+        payload = r.get_json()
+        body = " ".join(
+            str(payload.get(field, "")) for field in ("error", "message", "details")
+        ).lower()
+
         # Neither bcrypt's own message nor its 72-byte limit, which would
         # point straight at the hashing library.
         assert "bcrypt" not in body
         assert "truncate" not in body
         assert "72" not in body
         assert "byte" not in body
+        assert "timestamp" in payload
 
     def test_invalid_email_is_not_echoed_back(self, client):
         probe = "' OR 1=1--"
@@ -101,7 +133,7 @@ class TestErrorDisclosure:
             "email": probe, "password": "StrongPass1!"
         })
 
-        assert r.status_code in (400, 401)
+        assert r.status_code == 400
         assert probe not in r.get_data(as_text=True)
 
     def test_login_gives_same_answer_for_known_and_unknown_email(self, client):
@@ -117,8 +149,11 @@ class TestErrorDisclosure:
         })
 
         # Differing answers would let anyone probe which accounts exist.
+        # Everything but the timestamp, which the envelope stamps at the
+        # moment of the answer and so differs between any two calls; it
+        # carries nothing about the account either way.
         assert known.status_code == unknown.status_code == 401
-        assert known.get_json() == unknown.get_json()
+        assert _without_timestamp(known) == _without_timestamp(unknown)
 
 
 class TestMalformedBody:
@@ -225,7 +260,7 @@ class TestLogout:
 
     def test_logout(self, client):
         r = client.post("/api/v1/auth/logout")
-        assert r.status_code in (200, 401)
+        assert r.status_code == 200
 
 
 class TestRefresh:
@@ -233,7 +268,7 @@ class TestRefresh:
 
     def test_refresh_no_token(self, client):
         r = client.post("/api/v1/auth/refresh", json={})
-        assert r.status_code in (200, 400, 401)
+        assert r.status_code == 401
 
 
 class TestAuthFlow:
@@ -244,7 +279,11 @@ class TestAuthFlow:
         r = client.post("/api/v1/auth/register", json={
             "email": "flow@example.com", "password": "StrongPass1!"
         })
-        assert r.status_code == 201
+        assert r.status_code == 202
+
+        # Confirm the address: registration leaves it unproven, and login
+        # refuses an account whose address nobody has confirmed.
+        confirm_email(client.application, "flow@example.com")
 
         # Login
         r = client.post("/api/v1/auth/login", json={
@@ -263,7 +302,7 @@ class TestAuthFlow:
         # The browser holds session cookies here, so logout acts on the
         # cookie and needs the CSRF token to go with it.
         r = client.post("/api/v1/auth/logout", headers=csrf_headers(client, headers))
-        assert r.status_code in (200, 401)
+        assert r.status_code == 200
 
 
 class TestPasswordStrength:
@@ -296,7 +335,7 @@ class TestPasswordStrength:
             json={"email": "strong@example.com", "password": "StrongPass1!"},
         )
 
-        assert r.status_code == 201, r.get_json()
+        assert r.status_code == 202, r.get_json()
 
     def test_the_rule_holds_on_the_admin_path_too(self, client, app):
         """

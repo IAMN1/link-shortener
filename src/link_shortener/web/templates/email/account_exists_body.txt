@@ -1,0 +1,11 @@
+Someone -- possibly you -- tried to register this address with the link
+shortener. An account with this address already exists, so nothing was
+created and nothing about the existing account was changed.
+
+If it was you, sign in instead:
+
+{{ sign_in_url }}
+
+If it was not you, there is nothing you need to do. Whoever tried learned
+nothing about this address: they were given the same answer an address
+nobody has registered would have got.

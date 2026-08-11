@@ -21,6 +21,20 @@ they are not quietly undone later:
   guest creation and every expiry sweep. Without them both are sequential
   scans over the whole table.
 
+* ``users.email_verified`` defaults to False in the database, not only in
+  the model. A row written by anything that does not know about
+  confirmation -- a repair script, a fixture, a later revision -- is then
+  unconfirmed rather than trusted, and an account nobody confirmed cannot
+  sign in.
+
+* ``email_verifications`` keeps the digest of a mailed token and never the
+  token. A row read out of a backup or a replica is worth nothing on its
+  own: it cannot be turned back into the link that was sent. The digest is
+  SHA-256 in hex, which is why the column is exactly 64 characters -- a
+  narrower one would keep a prefix, and a prefix never matches. The
+  uniqueness is not decoration either: two accounts sharing a digest would
+  be two accounts sharing a token.
+
 Revision ID: 0001
 Revises:
 Create Date: 2026-08-07 00:00:00.000000
@@ -63,11 +77,25 @@ def upgrade() -> None:
     sa.Column('email', sa.String(length=255), nullable=False),
     sa.Column('password_hash', sa.String(length=255), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
+    sa.Column('email_verified', sa.Boolean(), nullable=False,
+              server_default=sa.false()),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('last_login', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
+    op.create_table('email_verifications',
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('user_id', sa.String(length=36), nullable=False),
+    sa.Column('token_hash', sa.String(length=64), nullable=False),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('used_at', sa.DateTime(timezone=True), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_email_verifications_token_hash'), 'email_verifications', ['token_hash'], unique=True)
+    op.create_index(op.f('ix_email_verifications_user_id'), 'email_verifications', ['user_id'], unique=False)
     op.create_table('refresh_sessions',
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('user_id', sa.String(length=36), nullable=False),
@@ -136,6 +164,9 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_refresh_sessions_token_id'), table_name='refresh_sessions')
     op.drop_index(op.f('ix_refresh_sessions_chain_id'), table_name='refresh_sessions')
     op.drop_table('refresh_sessions')
+    op.drop_index(op.f('ix_email_verifications_user_id'), table_name='email_verifications')
+    op.drop_index(op.f('ix_email_verifications_token_hash'), table_name='email_verifications')
+    op.drop_table('email_verifications')
     op.drop_index(op.f('ix_users_email'), table_name='users')
     op.drop_table('users')
     op.drop_table('roles')

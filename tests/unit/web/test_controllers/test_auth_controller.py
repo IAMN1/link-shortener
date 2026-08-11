@@ -62,7 +62,11 @@ class TestAuthController:
             json={"email": "test@example.com", "password": "wrong"},
         )
         assert response.status_code == 401
-        assert response.get_json()["error"] == "Invalid email or password"
+        # The envelope every other refusal in the API answers in: `error`
+        # is the machine-readable code, the sentence is in `message`.
+        body = response.get_json()
+        assert body["error"] == "INVALID_CREDENTIALS"
+        assert body["message"] == "Invalid email or password"
 
     def test_login_does_not_leak_internal_error(self, app, client):
         """An unexpected failure must not send exception text to the client."""
@@ -78,22 +82,24 @@ class TestAuthController:
         assert secret not in response.get_data(as_text=True)
 
     def test_register_success(self, app, client):
-        """POST /api/v1/auth/register returns 201 on success."""
+        """POST /api/v1/auth/register returns 202 and names no account.
+
+        The use case is mocked, so it returns a ``MagicMock`` -- which has
+        an attribute for every name asked of it. That is the point here:
+        the controller must publish nothing from it, and a controller that
+        went back to reading ``result.id`` would put the mock's stand-in
+        for an identifier in the body and fail this.
+        """
         ctrl = _get_auth_controller(app)
-        mock_result = MagicMock()
-        mock_result.id = "user-1"
-        mock_result.email = "new@example.com"
-        mock_result.roles = ["user"]
-        mock_result.is_active = True
-        ctrl.register_use_case.execute.return_value = mock_result
 
         response = client.post(
             "/api/v1/auth/register",
             json={"email": "new@example.com", "password": "secret123"},
         )
-        assert response.status_code == 201
+        assert response.status_code == 202
         data = response.get_json()
-        assert data["user"]["email"] == "new@example.com"
+        assert set(data) == {"message"}
+        assert "new@example.com" not in response.get_data(as_text=True)
 
     def test_register_missing_fields(self, client):
         """POST /api/v1/auth/register returns 400 when fields are missing."""
@@ -101,18 +107,25 @@ class TestAuthController:
         assert response.status_code == 400
 
     def test_register_failure(self, app, client):
-        """POST /api/v1/auth/register returns 400 on domain error."""
+        """POST /api/v1/auth/register returns 400 on domain error.
+
+        The refused thing is a property of what was sent -- here a
+        password the policy will not take -- and not of who is registered,
+        which is why this one is still answered out loud.
+        """
         ctrl = _get_auth_controller(app)
         ctrl.register_use_case.execute.side_effect = ValidationError(
-            "Email already registered", field="email"
+            "Password is too common", field="password"
         )
 
         response = client.post(
             "/api/v1/auth/register",
-            json={"email": "dup@example.com", "password": "secret123"},
+            json={"email": "weak@example.com", "password": "secret123"},
         )
         assert response.status_code == 400
-        assert response.get_json()["error"] == "Email already registered"
+        body = response.get_json()
+        assert body["error"] == "VALIDATION_ERROR"
+        assert body["message"] == "Password is too common"
 
     def test_register_does_not_leak_internal_error(self, app, client):
         """An unexpected failure must not send exception text to the client."""

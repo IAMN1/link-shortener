@@ -33,6 +33,14 @@
 В репозитории лежит `.env.example` — шаблон со всеми переменными и описаниями.
 Файлы `.env` и `.env.docker` в git не попадают: в них секреты.
 
+**Где ищется `.env`.** Сначала в корне проекта — том каталоге, где лежат
+`pyproject.toml` и `src`, — и только если файла там нет, от текущего каталога
+вверх. Так celery-воркер, `alembic` и любая команда, запущенная не из корня,
+читают ту же конфигурацию, что и приложение: раньше они не находили `.env`
+вовсе и молча поднимались на умолчаниях профиля, то есть на другой базе.
+В установленной копии (образ, `site-packages`) корня нет — там остаётся
+только поиск от текущего каталога.
+
 ---
 
 # Сценарий A: локальный запуск
@@ -229,9 +237,16 @@ curl -X POST http://localhost:5000/api/v1/shorten \
 
 ### Регистрация и вход
 
-1. Нажмите **Sign Up** в шапке или перейдите на `http://localhost:5000/register`
-2. Войдите на `http://localhost:5000/login`
-3. Вы попадёте на панель управления
+1. Нажмите **Sign Up** в шапке или перейдите на `http://localhost:5000/register`.
+   Страница отвечает одинаково, свободен адрес или занят, — и в обоих случаях
+   отправляет письмо
+2. Откройте письмо и перейдите по ссылке. Без этого вход отвечает `401` с
+   кодом `EMAIL_NOT_VERIFIED`. В разработке письма ловит Mailpit:
+   `http://127.0.0.1:8025` (см. [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md#почта-в-разработке)).
+   При `MAIL_ENABLED=false` письма не будет вовсе — подтвердить учётку тогда
+   нечем
+3. Войдите на `http://localhost:5000/login`
+4. Вы попадёте на панель управления
 
 ### Примеры API
 
@@ -283,18 +298,12 @@ curl -X DELETE http://localhost:5000/api/v1/links/<short_code> \
 ## Тесты
 
 ```bash
-# Все тесты (Docker-сервисы для уровня 2b поднимаются автоматически)
+# Всё вместе; Docker-сервисы для уровня 2b поднимаются автоматически
 uv run pytest tests/ -v
-
-# Только unit-тесты
-uv run pytest tests/unit/ -v
-
-# Только интеграционные (in-memory SQLite)
-uv run pytest tests/integration/ --ignore=tests/integration/docker/ -v
-
-# E2E тесты
-uv run pytest tests/e2e/ -v
 ```
+
+Разбор уровней и остальные команды —
+[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md#запуск-тестов).
 
 ## Celery локально (опционально)
 
@@ -328,7 +337,12 @@ uv run flask alembic upgrade head                   # применить
 | `401` на `POST /api/v1/shorten` у неаутентифицированного клиента | Роль `guest` несёт `link:create`, и без неё анонимное сокращение закрыто. Две причины: роли нет вовсе (в логе `Guest role is missing`) или роль засеяна раньше, чем в неё добавили `link:create` — тогда лог молчит на уровне `info`, смотреть `uv run flask security list-roles`. Лечится одинаково: `uv run flask db load-base-roles` |
 | `403` на `POST /api/v1/shorten` у вошедшего пользователя | У его роли нет `link:create` — например, роль `analyst` его не имеет по замыслу. Проверить: `uv run flask security list-roles` |
 | Значения из `.env` не применяются | Профиль `testing` игнорирует `.env` намеренно. В остальных случаях проверьте, что переменная не задана в окружении — она имеет приоритет над файлом |
-| `No 'script_location' key found` | Команда `alembic` запущена не из корня проекта, где лежит `alembic.ini` |
+| `No 'script_location' key found` | Голая команда `alembic` запущена не из каталога с `alembic.ini`. Через `flask alembic` этого не бывает: рабочий каталог подчинённого процесса прибит к найденному каталогу, а если файл не найден нигде — команда падает сразу, называя оба места, где искала |
+| `a SQLite database that no DATABASE_URL in the environment named` | Миграция вне профиля `development` отказалась идти в SQLite, не названный в `DATABASE_URL`: умолчание `DATABASE_TYPE` — `sqlite`, так что забытые настройки дали бы пустой новый файл. Задайте `DATABASE_TYPE` и части `DATABASE_*`, назовите файл в `DATABASE_URL` или передайте готовую строку в `ALEMBIC_DATABASE_URL` |
+| `nothing names a profile` | Ни `FLASK_ENV` в окружении, ни `FLASK_ENV` в `.env`. Умолчание — `development`, и это единственный профиль, которому дозволена база по умолчанию, поэтому неназванный профиль к ней не приравнивается. Назовите профиль или базу |
+| `a database that exists only inside this process` | `DATABASE_URL` указывает на SQLite в памяти (`sqlite://`, `sqlite:///`, `sqlite:///:memory:`). Схема исчезнет вместе с командой — назовите файл или сервер |
+| `DATABASE_HOST must not contain` | В хосте написано что-то помимо хоста: `db.internal/base?sslmode=disable` подменяет имя базы, теряет `DATABASE_PORT` и выключает TLS, не сообщая об этом. Параметры соединения — в своих настройках |
+| `required variable DATABASE_TYPE is missing a value` | `docker compose` отказался рендерить конфигурацию: без `DATABASE_TYPE` сервис миграций получил бы `sqlite` по умолчанию и создал пустую базу внутри одноразового контейнера. Задайте переменную в env-файле |
 | Короткие ссылки вида `http://0.0.0.0:5000/...` | Не задан `DOMAIN` при `HOST=0.0.0.0` |
 | `SECRET_KEY must be set in environment` | Профили `staging` и `production` требуют явные секреты |
 | JWT перестают работать после рестарта | `SECRET_KEY` не задан — в `development` он генерируется случайно при каждом запуске |

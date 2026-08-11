@@ -20,8 +20,9 @@ class GetServiceStatsUseCase(BaseUseCase):
     Compute service-wide statistics (total URLs, clicks, top links).
 
     Attempts to serve from cache; if miss, queries repository, caches the
-    result, and returns it. In case of failure, returns an empty statistics
-    container to avoid crashing the caller.
+    result, and returns it. A failure propagates: "I could not count" and
+    "there is nothing to count" are different answers, and returning an
+    empty container for the first gave the caller a lie it could not detect.
     """
 
     uow_factory: Callable[[], UnitOfWork]

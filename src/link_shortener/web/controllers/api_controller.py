@@ -22,7 +22,9 @@ Access rules:
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from link_shortener.domain import SystemPermissions, ValidationError
+from link_shortener.domain import (
+    LinkNotFoundError, SystemPermissions, ValidationError
+)
 from link_shortener.application import LinkService, AdminService, AuthorizationService
 from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.link import ExtendedLinkInfoResponse, ShortLinkResponse
@@ -274,7 +276,7 @@ class ApiController:
             authorized_link_id=authorized_link_id,
         )
         if not deleted:
-            return jsonify({"error": "Link not found"}), 404
+            raise LinkNotFoundError(short_code)
         return jsonify({"message": "Link deleted"})
 
     # ------------------------------------------------------------------

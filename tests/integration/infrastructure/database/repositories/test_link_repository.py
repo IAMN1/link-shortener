@@ -2,7 +2,11 @@
 
 import pytest
 from datetime import datetime, timedelta, timezone
+from link_shortener.infrastructure.database.models.link_model import (
+    LinkModel,
+)
 from link_shortener.domain.entities.link import Link
+from link_shortener.domain.exceptions import LinkNotFoundError
 from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
@@ -109,8 +113,89 @@ class TestLinkRepositoryCRUD:
         updated2 = repo.increment_clicks(ShortCode("repo0004"))
         assert updated2.clicks == 2
 
+    def test_the_counter_read_back_is_the_one_just_written(self, repo):
+        """The read after the update has to see the update.
+
+        ``synchronize_session=False`` leaves the session alone -- "the
+        state of objects in the Session is unchanged and will not
+        automatically correspond to the UPDATE or DELETE statement that was
+        emitted" (SQLAlchemy ORM Queryguide, DML) -- so a row still held in
+        the identity map answers with the counter it had before the update.
+        ``populate_existing()`` is what stops that being handed back as the
+        new value.
+
+        A **strong reference** to the ORM model is kept on purpose. The
+        identity map holds objects weakly, so a test that merely reads the
+        row first has nothing left in the map by the time the UPDATE runs,
+        and passes with or without the fix -- measured: removing
+        ``populate_existing`` left such a test green while
+        ``increment_clicks`` returned 0 against a database holding 1.
+        """
+        repo.save(_make_link("repo0042"))
+        held = (
+            repo.session.query(LinkModel)
+            .filter_by(short_code="repo0042")
+            .first()
+        )
+        assert held.clicks == 0
+        assert len(repo.session.identity_map) >= 1
+
+        updated = repo.increment_clicks(ShortCode("repo0042"))
+
+        assert updated.clicks == 1, "the counter came out of the session"
+        assert repo.increment_clicks(ShortCode("repo0042")).clicks == 2
+
+    def test_the_atomic_update_applies_the_rule_the_entity_states(self, repo):
+        """
+        The counter the redirect moves and the rule the domain states agree.
+
+        `Link.increment_clicks` is the business rule, and production never
+        calls it -- counted during a whole live run: zero calls. The
+        redirect goes through this repository, which does the same
+        arithmetic in SQL so that two simultaneous clicks cannot read the
+        same number. That leaves one rule written twice, and a unit test on
+        the entity alone asserts a rule nothing runs. Here the two are held
+        against each other, so a change to either arithmetic alone is a
+        failing test rather than a silent divergence.
+
+        What this cannot see is the reason the two exist separately. One
+        session clicking twice is not two sessions clicking at once, and an
+        implementation that reads, applies the rule and writes back passes
+        every assertion below while losing clicks under load. That property
+        needs real transactions and lives in
+        tests/integration/docker/test_concurrent_click_counting.py.
+        """
+        repo.save(_make_link("repo0009"))
+        code = ShortCode("repo0009")
+
+        # Twice, not once. The first click is the only one where "add one"
+        # and "assign one" agree, and a rule rewritten as `self.clicks = 1`
+        # passed a test that stopped there.
+        started_at = datetime.now(timezone.utc)
+        first = repo.increment_clicks(code)
+        second = repo.increment_clicks(code)
+
+        expected = _make_link("repo0009")
+        expected.increment_clicks()
+        expected.increment_clicks()
+
+        assert (first.clicks, second.clicks) == (1, 2)
+        assert second.clicks == expected.clicks
+        # The rule is two things, and the counter is only one of them: an
+        # entity that stopped stamping would still agree about the count.
+        assert expected.last_accessed is not None
+        # The stamp is the time of the click, not merely a time. A constant
+        # written into the column satisfies "is not None" forever.
+        assert started_at <= second.last_accessed <= datetime.now(timezone.utc)
+        assert second.last_accessed >= first.last_accessed
+
     def test_increment_clicks_nonexistent(self, repo):
-        with pytest.raises(Exception):
+        # LinkNotFoundError, not Exception: the documented contract is that
+        # particular error, and a bare Exception cannot tell it from a typo
+        # in the query or a broken session. `match` pins the short code into
+        # the message -- without it, raising LinkNotFoundError() with no
+        # argument passes while the error stops saying which link.
+        with pytest.raises(LinkNotFoundError, match="noexist"):
             repo.increment_clicks(ShortCode("noexist"))
 
     def test_count_guest_links(self, repo):

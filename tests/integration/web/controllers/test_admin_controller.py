@@ -2,32 +2,32 @@
 
 import pytest
 from tests.integration.conftest import (
-    auth_headers, csrf_headers, register_and_login
+    auth_headers, confirm_email, csrf_headers, register_and_login
 )
 
 
 class TestAdminHealthUnauthorized:
     """GET /api/v1/admin/health — requires admin role."""
 
-    def test_unauthorized_returns_403(self, client):
+    def test_unauthorized_returns_401(self, client):
         r = client.get("/api/v1/admin/health")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401
 
 
 class TestAdminUsersUnauthorized:
     """GET /api/v1/admin/users — requires admin role."""
 
-    def test_unauthorized_returns_403(self, client):
+    def test_unauthorized_returns_401(self, client):
         r = client.get("/api/v1/admin/users")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401
 
 
 class TestAdminRolesUnauthorized:
     """GET /api/v1/admin/roles — requires admin role."""
 
-    def test_unauthorized_returns_403(self, client):
+    def test_unauthorized_returns_401(self, client):
         r = client.get("/api/v1/admin/roles")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401
 
 
 class TestAdminWithAdminUser:
@@ -47,6 +47,7 @@ class TestAdminWithAdminUser:
         client.post("/api/v1/auth/register", json={
             "email": "admin@test.com", "password": "AdminPass1!"
         })
+        confirm_email(client.application, "admin@test.com")
 
         # Promote to admin via DB
         with app.app_context():
@@ -100,7 +101,7 @@ class TestAdminWithAdminUser:
             },
             headers=csrf_headers(client, auth_headers(self.token)),
         )
-        assert created.status_code in (200, 201), created.get_json()
+        assert created.status_code == 201, created.get_json()
 
         updated = client.put(
             "/api/v1/admin/roles/editor-typo-check/permissions",
@@ -138,3 +139,58 @@ class TestAdminWithAdminUser:
         )
 
         assert updated.status_code == 200, updated.get_json()
+
+    def test_a_role_named_so_the_delete_route_cannot_reach_it_is_refused(
+        self, client
+    ):
+        """
+        Creating it answered 201 and deleting it answered 404, forever.
+
+        The name is the last segment of the URL every single-role route is
+        reached through, and the default converter takes one path segment,
+        so ``role/with/slash`` named a role that no request could address
+        and nothing short of SQL could remove. Measured before the rule:
+        201 on the create, 404 on the delete, 200 on an ordinary role in
+        the same run.
+        """
+        refused = client.post(
+            "/api/v1/admin/roles",
+            json={
+                "name": "role/with/slash",
+                "description": "unreachable by the route that deletes it",
+                "permissions": ["link:create"],
+            },
+            headers=csrf_headers(client, auth_headers(self.token)),
+        )
+
+        assert refused.status_code == 400, refused.get_json()
+        assert refused.get_json()["error"] == "VALIDATION_ERROR"
+
+    def test_an_ordinary_role_is_still_created_and_deleted(self, client):
+        """The other half of the measurement, and the guard on the rule.
+
+        A pattern narrow enough to refuse ordinary names would leave this
+        suite green everywhere else: nothing before this created a role and
+        then removed it through the API.
+        """
+        created = client.post(
+            "/api/v1/admin/roles",
+            json={
+                "name": "editor-round-trip",
+                "description": "created and removed through the API",
+                "permissions": ["link:create"],
+            },
+            headers=csrf_headers(client, auth_headers(self.token)),
+        )
+        assert created.status_code == 201, created.get_json()
+
+        deleted = client.delete(
+            "/api/v1/admin/roles/editor-round-trip",
+            headers=csrf_headers(client, auth_headers(self.token)),
+        )
+
+        assert deleted.status_code == 200, deleted.get_json()
+        assert client.get(
+            "/api/v1/admin/roles/editor-round-trip",
+            headers=auth_headers(self.token),
+        ).status_code == 404

@@ -249,8 +249,11 @@ class SQLAlchemyLinkRepository(LinkRepository):
     def increment_clicks(self, short_code: ShortCode) -> Link:
         """Atomically increment the click counter and update ``last_accessed``.
 
-        After the update the latest state is freshly loaded from the database
-        (``populate_existing``) to avoid stale session data.
+        The row is read back after the update -- with ``populate_existing``,
+        so the read does not come out of the session's identity map --
+        because the caller is handed the updated entity and because a code
+        that is not there has to be told apart from one that is:
+        ``UPDATE`` alone raises nothing.
 
         Args:
             short_code: ShortCode of the link to update.
@@ -273,34 +276,28 @@ class SQLAlchemyLinkRepository(LinkRepository):
         )
         self.session.flush()
 
-        # Force fresh read to get the updated values
+        # ``populate_existing()`` is load-bearing, and the measurement that
+        # said otherwise was wrong. With ``synchronize_session=False``
+        # SQLAlchemy leaves the session alone -- "the state of objects in
+        # the Session is unchanged and will not automatically correspond to
+        # the UPDATE or DELETE statement that was emitted" (ORM Queryguide,
+        # DML). So a row still held in the identity map answers with the
+        # counter it had before, and this method hands that back as the new
+        # one: measured, it returned 0 while the database held 1.
+        #
+        # The suite missed it because the identity map holds objects
+        # weakly: a test that merely reads the row first has nothing left
+        # in the map by the time the UPDATE runs. It takes a live reference
+        # to reproduce, which is what the test now keeps.
         model = (
             self.session.query(LinkModel)
             .filter_by(short_code=short_code.value)
-            .populate_existing()   # bypass session cache
+            .populate_existing()   # bypass the session's identity map
             .first()
         )
         if not model:
             raise LinkNotFoundError(short_code.value)
         return self._to_domain(model)
-
-    def increment_clicks_batch(self, short_codes: List[ShortCode]) -> None:
-        """Bulk increment click counts for multiple links.
-
-        Args:
-            short_codes: List of ShortCode objects to update.
-        """
-        code_values = [sc.value for sc in short_codes]
-        self.session.query(LinkModel).filter(
-            LinkModel.short_code.in_(code_values)
-        ).update(
-            {
-                LinkModel.clicks: LinkModel.clicks + 1,
-                LinkModel.last_accessed: datetime.now(timezone.utc),
-            },
-            synchronize_session=False,
-        )
-        self.session.flush()
 
     def get_stats(self) -> dict:
         """Compute service-wide statistics.

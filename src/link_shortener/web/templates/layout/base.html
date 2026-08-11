@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Link Shortener{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('frontend.static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -50,7 +50,7 @@
         <div class="container">&copy; 2026 Linkr &mdash; Link Shortener</div>
     </footer>
 
-    <script src="{{ url_for('frontend.static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

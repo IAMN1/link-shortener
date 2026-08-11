@@ -1,6 +1,6 @@
 {% extends "layout/base.html" %}
 {% block extra_head %}
-    <link rel="stylesheet" href="{{ url_for('frontend.static', filename='css/dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 {% endblock %}
 {% block content %}
 {% if g.current_user %}
@@ -58,6 +58,6 @@
    is nested inside this one, so its script is added rather than swapped in
    and a new page has nothing to remember. #}
 {% block scripts %}
-<script src="{{ url_for('frontend.static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% block page_scripts %}{% endblock %}
 {% endblock %}

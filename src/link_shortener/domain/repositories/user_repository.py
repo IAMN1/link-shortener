@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import List, Optional
 
 from link_shortener.domain.entities.user import User
@@ -97,5 +98,23 @@ class UserRepository(ABC):
 
         Returns:
             True if the user was deleted, False if the user did not exist.
+        """
+        ...
+
+    @abstractmethod
+    def delete_unverified_before(self, cutoff: datetime) -> int:
+        """
+        Delete accounts that were never confirmed and have run out of time.
+
+        Without this an unconfirmed registration holds an address forever:
+        the account exists, so registering that address again is refused,
+        and nobody can sign in to it. Anyone could reserve an address they
+        do not own, in bulk, and the owner would find it taken.
+
+        Args:
+            cutoff: Registrations older than this are removed.
+
+        Returns:
+            Number of accounts deleted.
         """
         ...

@@ -2,7 +2,9 @@ import os
 from typing import Dict, Optional
 
 from dotenv import dotenv_values, find_dotenv
-from link_shortener.infrastructure.configs.app.base import BaseConfig
+from link_shortener.infrastructure.configs.app.base import (
+    PROJECT_ROOT, BaseConfig
+)
 from link_shortener.infrastructure.configs.app.env import is_unset
 from link_shortener.infrastructure.configs.app.development import DevelopmentConfig
 from link_shortener.infrastructure.configs.app.production import ProductionConfig
@@ -54,10 +56,19 @@ class ConfigFactory:
         """
         Read a ``.env``-style file without touching ``os.environ``.
 
-        The file is looked up from the current working directory upwards, so
-        commands started from a subdirectory (``src/``, ``migrations/``) still
-        find the project-level file instead of silently falling back to the
-        profile defaults.
+        The project root is tried first, and the walk up from the working
+        directory only after it. Searching from the caller alone made the
+        configuration depend on where the process happened to be started:
+        a celery worker or a bare ``alembic upgrade head`` launched from
+        elsewhere found no file and fell back to the profile defaults, so
+        ``DATABASE_NAME`` became ``db_shortener`` -- no extension -- while
+        the anchoring in ``_sqlite_path`` still put it under the root. A
+        second, empty database appeared beside the real one and the service
+        came up on it without a word, answering 401 to anonymous shortening
+        because the ``guest`` role was only in the other file.
+
+        Outside a source tree there is no root to read from and the walk is
+        all there is, which is what an installed copy and the image get.
 
         Args:
             filename: File name to look for, e.g. ``".env"``.
@@ -65,7 +76,14 @@ class ConfigFactory:
         Returns:
             Mapping of variable names to values; empty if the file is absent.
         """
-        path = find_dotenv(filename, usecwd=True)
+        path = ""
+        if PROJECT_ROOT is not None:
+            candidate = PROJECT_ROOT / filename
+            if candidate.is_file():
+                path = str(candidate)
+
+        if not path:
+            path = find_dotenv(filename, usecwd=True)
         if not path:
             return {}
 
@@ -137,6 +155,37 @@ class ConfigFactory:
                 os.environ[key] = value
 
     @classmethod
+    def named_env(cls, env: Optional[str] = None) -> Optional[str]:
+        """
+        Return the profile somebody actually named, if anybody did.
+
+        Separated from ``resolve_env`` because the fallback and a named
+        ``development`` are not the same thing to every caller, and the
+        resolved name cannot tell them apart. A migration is the caller
+        that cares: ``DEFAULT_ENV`` is ``development``, which is also the
+        one profile allowed to migrate a database nobody configured, so a
+        host where nothing is set would otherwise have the guard disabled
+        by the very omission it exists to catch.
+
+        Args:
+            env: Explicit profile name, or ``None`` to resolve automatically.
+
+        Returns:
+            Normalised (lower-case) profile name, or ``None`` when neither
+            the argument, nor the environment, nor ``.env`` names one.
+        """
+        if env is None or is_unset(env):
+            env = os.environ.get("FLASK_ENV")
+
+        if is_unset(env):
+            env = cls._read_env_file(".env").get("FLASK_ENV")
+
+        if is_unset(env):
+            return None
+
+        return env.strip().lower()
+
+    @classmethod
     def resolve_env(cls, env: Optional[str] = None) -> str:
         """
         Determine which configuration profile to use.
@@ -152,28 +201,30 @@ class ConfigFactory:
         Returns:
             Normalised (lower-case) profile name.
         """
-        if env is None or is_unset(env):
-            env = os.environ.get("FLASK_ENV")
+        named = cls.named_env(env)
 
-        if is_unset(env):
-            env = cls._read_env_file(".env").get("FLASK_ENV")
-
-        if is_unset(env):
-            env = cls.DEFAULT_ENV
-
-        return env.strip().lower()
+        return cls.DEFAULT_ENV if named is None else named
 
     @classmethod
-    def create_config(cls, env: str = None) -> BaseConfig:
+    def create_config_unvalidated(cls, env: str = None) -> BaseConfig:
         """
-        Create a configuration object for the given environment.
+        Assemble the configuration object without validating it.
+
+        Split out for ``migration_url.resolve_database_url``, which needs a
+        single setting rather than a working application: a migration asks
+        for the database URL, and demanding a valid mail server or domain
+        of it stopped migrations that would otherwise have run. The profile is
+        selected and the ``.env`` files are applied exactly as they are for
+        everyone else -- only the final ``validate()`` is left to the
+        caller, which is why this is not a way to run the application on a
+        configuration that could not pass it.
 
         Args:
             env: Environment name (development, staging, production, testing).
                  If None, resolved from FLASK_ENV or `.env` (default: development).
 
         Returns:
-            Configuration instance.
+            Configuration instance, not yet validated.
 
         Raises:
             ValueError: If environment is unknown.
@@ -189,7 +240,26 @@ class ConfigFactory:
         if env not in cls.NO_DOTENV_ENVS:
             cls._apply_env_files(env, cls._read_env_file(".env"))
 
-        config = config_class()
+        return config_class()
+
+    @classmethod
+    def create_config(cls, env: str = None) -> BaseConfig:
+        """
+        Create a configuration object for the given environment.
+
+        Args:
+            env: Environment name (development, staging, production, testing).
+                 If None, resolved from FLASK_ENV or `.env` (default: development).
+
+        Returns:
+            Configuration instance.
+
+        Raises:
+            ValueError: If environment is unknown, or the configuration does
+                not validate.
+        """
+
+        config = cls.create_config_unvalidated(env)
         config.validate()
         return config
 

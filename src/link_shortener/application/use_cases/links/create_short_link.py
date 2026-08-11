@@ -103,7 +103,15 @@ class CreateShortLinkUseCase(BaseUseCase):
         audit = self._get_audit_logger(self.audit_logger, context)
 
         start_time = time.perf_counter()
-        log.info("Starting short link creation", url=url[:50])
+        # The URL itself is not written here. This line runs before any
+        # validation, so what it would write is whatever the caller sent --
+        # and nine lines later that can be an address rejected for holding
+        # credentials in front of the host, by which point the password is
+        # already in application.log. OWASP's Logging Cheat Sheet lists
+        # authentication passwords among the data that "should usually not
+        # be recorded directly in the logs". The address does get logged,
+        # once it has been checked: ``audit.log_url_created`` masks it.
+        log.info("Starting short link creation", url_length=len(url))
 
         try:
 

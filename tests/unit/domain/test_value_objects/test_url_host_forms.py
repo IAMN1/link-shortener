@@ -35,7 +35,11 @@ class TestInternationalNames:
             "https://xn--e1afmkfd.xn--p1ai/тест"
         ).normalize()
 
-        assert unicode_form == punycode_form
+        # Pinned to the punycode literal, not merely to each other: two
+        # calls collapsing onto the same wrong answer would satisfy an
+        # equality between them and prove nothing.
+        assert unicode_form == "https://xn--e1afmkfd.xn--p1ai/тест"
+        assert punycode_form == unicode_form
 
     def test_case_folding_is_part_of_it(self):
         assert OriginalUrl("https://ПРИМЕР.рф/").normalize() == (
@@ -62,9 +66,10 @@ class TestDefaultPortNormalization:
         ],
     )
     def test_the_default_port_is_dropped(self, with_port, without_port):
-        assert OriginalUrl(with_port).normalize() == (
-            OriginalUrl(without_port).normalize()
-        )
+        # Compared against the parametrised literal rather than against
+        # `OriginalUrl(without_port).normalize()`: normalisation collapsing
+        # every input onto one string would keep that equality true.
+        assert OriginalUrl(with_port).normalize() == without_port
 
     def test_a_non_default_port_is_kept(self):
         assert OriginalUrl("http://example.com:8080/x").normalize() == (
@@ -132,12 +137,24 @@ class TestBracketsMeanAnAddress:
             "http://[v1.good.example]/",
             "http://[v2.api.example.com]/x",
             "http://[vFF.good.example]:8080/a?b",
-            "http://[example.com]/",
         ],
     )
     def test_a_bracketed_name_is_refused(self, url):
         with pytest.raises(ValidationError, match="IPv6"):
             OriginalUrl(url)
+
+    def test_a_bracketed_name_with_no_version_never_reaches_that_check(self):
+        """Refused one step earlier, and so with the other message.
+
+        ``[example.com]`` is not even IPvFuture -- no ``v<hex>.`` prefix --
+        so ``urlparse`` raises on it instead of handing back a host for
+        ``_validate_bracketed_host_is_an_address`` to judge. The message
+        is the one ``_parse`` produces, which names the authority rather
+        than quoting it: the quoted form is what used to carry a password
+        into the log when the authority held one.
+        """
+        with pytest.raises(ValidationError, match="authority cannot be parsed"):
+            OriginalUrl("http://[example.com]/")
 
     def test_a_bracketed_ipv6_address_is_still_admitted(self):
         assert OriginalUrl("http://[2606:4700::1]/x")

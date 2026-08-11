@@ -11,7 +11,7 @@ only the response is what a browser acts on.
 
 import pytest
 
-from tests.integration.conftest import csrf_headers, register_and_login
+from tests.integration.conftest import confirm_email, csrf_headers, register_and_login
 
 
 COOKIES = ("access_token", "refresh_token")
@@ -42,6 +42,7 @@ def login_response(app):
     email = "cookie-flags@example.test"
     password = "CookieFlags1!"
     client.post("/api/v1/auth/register", json={"email": email, "password": password})
+    confirm_email(client.application, email)
     response = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
@@ -78,9 +79,13 @@ class TestLoginCookies:
         """A session cookie without a lifetime outlives its token."""
         header = set_cookie_headers(login_response)[name]
 
-        assert "Max-Age=" in header or "Expires=" in header, (
-            f"{name} has no lifetime: {header}"
-        )
+        # Max-Age alone. The application only ever passes `max_age`, and
+        # Werkzeug derives `Expires` from it, so asserting both would test
+        # dump_cookie() rather than this code -- and would break on a
+        # Werkzeug change that has nothing to do with cookie lifetimes. The
+        # disjunction that stood here was satisfied by either half, which
+        # is why it could not say which one the application controls.
+        assert "Max-Age=" in header, f"{name} has no Max-Age: {header}"
 
     @pytest.mark.parametrize("name", COOKIES)
     def test_the_flag_matches_the_configuration(self, app, login_response, name):
@@ -109,12 +114,13 @@ class TestLogoutClearsThem:
         client.post(
             "/api/v1/auth/register", json={"email": email, "password": password}
         )
+        confirm_email(client.application, email)
         client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
         # Logout is a cookie-authenticated write, so it is CSRF-protected --
         # the header has to be echoed the way a browser would.
         response = client.post("/api/v1/auth/logout", headers=csrf_headers(client))
-        assert response.status_code in (200, 204), response.get_data(as_text=True)
+        assert response.status_code == 200, response.get_data(as_text=True)
 
         headers = set_cookie_headers(response)
         for name in COOKIES:

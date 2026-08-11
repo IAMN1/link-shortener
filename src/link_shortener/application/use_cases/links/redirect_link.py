@@ -141,9 +141,14 @@ class RedirectLinkUseCase(BaseUseCase):
             # Enqueue background stat update
             self.task_queue.enqueue_link_accessed(short_code.value, context)
 
-            log.info(
-                "Redirect successful", code=short_code.value, url=orig_url[:50]
-            )
+            # The destination is not written here. It comes from storage
+            # through ``from_storage``, which skips ``_validate_no
+            # _credentials`` on purpose -- rows admitted under older rules
+            # have to stay readable -- so a legacy row carries its
+            # password straight into application.log, on every cache-miss
+            # redirect. The audit line below records the same URL through
+            # ``mask_url``; the short code identifies the link here.
+            log.info("Redirect successful", code=short_code.value)
             audit.log_url_accessed(short_code=short_code.value, original_url=orig_url)
 
             return orig_url

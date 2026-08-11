@@ -43,3 +43,22 @@ class DevelopmentConfig(BaseConfig):
     # Auto-seed roles at startup (configurable via env)
     # --------------------------------------------------------------------------
     AUTO_SEED_ROLES: bool = env_bool("AUTO_SEED_ROLES", True)
+
+
+    # --------------------------------------------------------------------------
+    # Mail: aimed at the local catcher, which speaks no TLS
+    # --------------------------------------------------------------------------
+    MAIL_HOST: str = env_str("MAIL_HOST", "localhost")
+    MAIL_PORT: int = env_int("MAIL_PORT", 1025)
+    MAIL_USE_TLS: bool = env_bool("MAIL_USE_TLS", False)
+    MAIL_FROM: str = env_str("MAIL_FROM", "no-reply@link-shortener.local")
+    """
+    Defaults for the Mailpit container in ``docker-compose.override.yml``:
+    SMTP on 1025, no TLS, no authentication, and every message kept in its
+    own web interface on 8025 instead of being delivered.
+
+    TLS is off here and nowhere else. The catcher does not offer it, and
+    the traffic never leaves the machine. ``MAIL_USERNAME`` stays empty, so
+    no password is at stake -- and if a developer sets one, the base
+    validation refuses the combination rather than sending it in the clear.
+    """

@@ -96,5 +96,13 @@ class UrlGrouper:
                     "is_valid": False,
                     "error": str(e),
                 }
-                self.logger.warning("Invalid URL in batch", url=url[:50], error=str(e))
+                # Same reason as in ``create_short_link``: the URL that
+                # reaches this branch is one the domain has just refused,
+                # so it is unchecked input and may hold a password. The
+                # caller is told which URL failed -- it is echoed back in
+                # ``BatchItemResponse`` -- so the log loses no one's
+                # ability to find it. ``key`` ties this line to that item.
+                self.logger.warning(
+                    "Invalid URL in batch", item=key, error=str(e)
+                )
         return groups

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy import text
 
-from tests.integration.conftest import auth_headers
+from tests.integration.conftest import confirm_email, auth_headers
 
 
 # ==============================================================================
@@ -33,6 +33,7 @@ def _register_and_login(app, email, password="AccessTest1!"):
     """
     scratch = app.test_client()
     scratch.post("/api/v1/auth/register", json={"email": email, "password": password})
+    confirm_email(scratch.application, email)
     r = scratch.post("/api/v1/auth/login", json={"email": email, "password": password})
     return r.get_json().get("access_token")
 
@@ -179,7 +180,7 @@ class TestAnonymousActsAsGuest:
 
     def test_anonymous_can_still_shorten(self, client):
         r = client.post("/api/v1/shorten", json={"url": "https://guest-ok.example"})
-        assert r.status_code in (200, 201)
+        assert r.status_code == 201
 
     def test_revoking_link_create_from_guest_stops_anonymous_shortening(
         self, app, client, restore_guest_role

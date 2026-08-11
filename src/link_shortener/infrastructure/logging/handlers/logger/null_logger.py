@@ -29,7 +29,7 @@ class NullLogger(Logger):
         pass
 
     def exception(
-        self, message: str, exc_info: Optional[Exception] = None, **kwargs: Any
+        self, message: str, exc_info: Any = True, **kwargs: Any
     ) -> None:
         """No-op."""
         pass

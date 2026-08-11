@@ -5,8 +5,10 @@ This module provides ``InfrastructureHealthCheck``, which verifies the
 availability of the database, cache (Redis), and task queue (Celery).
 """
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from typing import Callable, Optional
 
 from link_shortener.application import HealthCheck
 from link_shortener.application.ports.health_check import HealthSnapshot
@@ -65,6 +67,17 @@ class InfrastructureHealthCheck(HealthCheck):
     PING_TIMEOUT_SECONDS = 1.0
     """How long to wait for a Celery worker to answer before calling it down."""
 
+    CACHE_TTL_SECONDS = 2.0
+    """How long one observation stands in for the next.
+
+    ``/health`` is anonymous and exempt from throttling -- rightly, a probe
+    has to answer when everything else is refusing -- so every request used
+    to cost a query, a Redis ping, a broker ping and a pool of four OS
+    threads. Measured: 200 anonymous requests started 563 threads. Two
+    seconds is short against any orchestrator's probe interval and long
+    enough that a flood costs one observation rather than one each.
+    """
+
     def __init__(
         self,
         db_manager: DatabaseManager,
@@ -72,6 +85,7 @@ class InfrastructureHealthCheck(HealthCheck):
         task_queue: object = None,
         timeout: float = 5.0,
         rate_limiter: object = None,
+        clock: Optional[Callable[[], float]] = None,
     ):
         """Initialise the health checker with real infrastructure components.
 
@@ -88,8 +102,48 @@ class InfrastructureHealthCheck(HealthCheck):
         self.task_queue = task_queue
         self.timeout = timeout
         self.rate_limiter = rate_limiter
+        self._clock = clock or time.monotonic
+        self._lock = threading.Lock()
+        self._cached: Optional[HealthSnapshot] = None
+        self._cached_at = 0.0
 
     def snapshot(self) -> HealthSnapshot:
+        """
+        Answer from the last observation while it is still fresh.
+
+        The observation itself is taken by ``_observe``; this is only the
+        gate in front of it. The lock is held across the observation on
+        purpose: without it a burst of requests arriving on an empty cache
+        each starts its own pool, which is the case that hurt.
+
+        A monotonic clock, because a wall clock stepping backwards -- NTP,
+        a container resuming -- would freeze the answer for as long as the
+        step.
+
+        Returns:
+            The state of all dependencies, at most ``CACHE_TTL_SECONDS``
+            old.
+        """
+        with self._lock:
+            if (
+                self._cached is not None
+                and self._clock() - self._cached_at < self.CACHE_TTL_SECONDS
+            ):
+                return self._cached
+
+            self._cached = self._observe()
+            # Stamped after the observation, not before it. Stamped before,
+            # an observation slower than the TTL is already stale when it
+            # is stored, so the next caller waiting on this lock observes
+            # again -- and the lock turns a slow dependency into a queue.
+            # Measured with a 2.5 s probe against a 2 s TTL: five parallel
+            # requests took 12.52 s instead of 2.51 s, and the cost grows
+            # with the number of callers, on an endpoint that is anonymous
+            # and exempt from throttling.
+            self._cached_at = self._clock()
+            return self._cached
+
+    def _observe(self) -> HealthSnapshot:
         """Observe every dependency at once, within the configured budget.
 
         The checks run concurrently, so the cost is the slowest dependency

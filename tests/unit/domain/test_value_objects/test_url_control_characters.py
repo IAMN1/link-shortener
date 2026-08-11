@@ -75,7 +75,7 @@ class TestAPoisonedUrlCannotStealACleanOnesIdentity:
             OriginalUrl(f"{CLEAN}#\n")
 
     def test_the_clean_form_is_unaffected(self):
-        assert OriginalUrl(CLEAN).normalize() == OriginalUrl(CLEAN).normalize()
+        assert OriginalUrl(CLEAN).normalize() == CLEAN
 
 
 class TestStoredRowsStayReadable:
