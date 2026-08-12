@@ -167,7 +167,15 @@ class Container:
         # ------------------------------------------------------------------
         def uow_factory(read_only: bool = False) -> UnitOfWork:
             return SQLAlchemyUnitOfWork(
-                self.db_component.get_db_manager(), read_only=read_only
+                self.db_component.get_db_manager(),
+                read_only=read_only,
+                # Named after the unit of work that owns it rather than
+                # after this module, so a warning from one of its
+                # repositories is filed under the database layer instead
+                # of under the container that wired it together.
+                logger=self.logger_component.get_logger(
+                    SQLAlchemyUnitOfWork.__module__
+                ),
             )
 
         self._uow_factory = uow_factory
