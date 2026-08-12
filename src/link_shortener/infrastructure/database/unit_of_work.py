@@ -9,7 +9,7 @@ from types import TracebackType
 from typing import Optional, Type
 from sqlalchemy import text
 
-from link_shortener.application import UnitOfWork
+from link_shortener.application import Logger, UnitOfWork
 from link_shortener.domain import (
     EmailVerificationRepository, LinkRepository, PermissionRepository,
     RefreshSessionRepository, RoleRepository, UserRepository
@@ -36,15 +36,25 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
     ``SET TRANSACTION READ ONLY``.
     """
 
-    def __init__(self, db_manager: DatabaseManager, read_only: bool = False):
+    def __init__(
+        self,
+        db_manager: DatabaseManager,
+        read_only: bool = False,
+        logger: Optional[Logger] = None,
+    ):
         """
         Args:
             db_manager: Configured ``DatabaseManager`` that provides sessions.
             read_only: If ``True``, the transaction is marked as read-only
                 (no writes allowed), and commit will be skipped.
+            logger: Handed to the repositories that have something to
+                report about the rows they read. Optional so that a unit
+                of work assembled by hand still works; the application
+                builds it through the container, which always passes one.
         """
         super().__init__(read_only=read_only)
         self.db_manager = db_manager
+        self.logger = logger
         self._session = None
         self._links = None
         self._users = None
@@ -83,7 +93,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
 
         self._session = self.db_manager.get_session()
         self._links = SQLAlchemyLinkRepository(self._session)
-        self._users = SQLAlchemyUserRepository(self._session)
+        self._users = SQLAlchemyUserRepository(self._session, self.logger)
         self._roles = SQLAlchemyRoleRepository(self._session)
         self._permissions = SQLAlchemyPermissionRepository(self._session)
         self._refresh_sessions = SQLAlchemyRefreshSessionRepository(self._session)

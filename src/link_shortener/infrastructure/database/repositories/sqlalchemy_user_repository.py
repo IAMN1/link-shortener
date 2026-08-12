@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 from link_shortener.infrastructure.database.models.permission_model import PermissionModel
 from link_shortener.infrastructure.database.models.role_model import RoleModel
 from link_shortener.infrastructure.database.models.user_model import UserModel
+from link_shortener.application import Logger
 from link_shortener.domain import (
     Role, User, UserRepository,
     Email, PasswordHash, Permission
@@ -19,12 +20,46 @@ class SQLAlchemyUserRepository(UserRepository):
     a fully populated domain User.
     """
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, logger: Optional[Logger] = None):
         """
         Args:
             session: Active SQLAlchemy session.
+            logger: Where to report a stored address that normalisation
+                would change. Optional because a repository built by hand
+                -- a test, a script -- has nobody to report to; the
+                application always supplies one through the unit of work.
         """
         self.session = session
+        self.logger = logger
+
+    def _report_a_row_that_predates_normalisation(self, stored: str) -> None:
+        """
+        Report a stored address that is not in the normalised form.
+
+        Such a row is invisible to every lookup -- addresses are compared
+        exactly -- so its owner cannot sign in, and registering the same
+        mailbox again makes a second account for it. Saying so is the
+        point: the row used to be rewritten in place instead, by
+        whichever request touched the account first, outside
+        ``flask maintenance normalize-emails`` and outside any log.
+
+        Repeated on every save deliberately: the row outlives the
+        request, and a message that appeared once would be gone from the
+        log by the time anyone looked.
+
+        Args:
+            stored: The address exactly as the database holds it.
+        """
+        if self.logger is None:
+            return
+
+        self.logger.warning(
+            "Stored address is not in the normalised form, so no lookup "
+            "will find it",
+            stored_email=stored,
+            normalised=Email.normalise(stored),
+            remedy="flask maintenance normalize-emails",
+        )
 
     def save(self, user: User) -> User:
         """Insert or update a user.
@@ -209,7 +244,7 @@ class SQLAlchemyUserRepository(UserRepository):
             roles.append(role)
         return User(
             id=model.id,
-            email=Email(model.email),
+            email=Email.from_storage(model.email),
             password_hash=PasswordHash(model.password_hash),
             roles=roles,
             is_active=model.is_active,
@@ -230,7 +265,16 @@ class SQLAlchemyUserRepository(UserRepository):
         Returns:
             The same model instance (mutated).
         """
+        # Written back exactly as the entity holds it. Lowering happens
+        # where an address is typed, and ``from_storage`` rebuilds a row
+        # without repeating it, so a row written before that rule keeps
+        # its own spelling instead of being quietly rewritten by whichever
+        # request touched the account first -- and instead of colliding
+        # with an account that already holds the lower-case form, which
+        # reached the caller as a 500 on confirmation.
         model.email = user.email.value
+        if model.email != Email.normalise(model.email):
+            self._report_a_row_that_predates_normalisation(model.email)
         model.password_hash = user.password_hash.value
         model.is_active = user.is_active
         model.email_verified = user.email_verified
