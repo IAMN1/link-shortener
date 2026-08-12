@@ -505,13 +505,18 @@ class BaseConfig:
     )
     """
     Comma-separated list of permission names for the default role.
-    Used only if the default role needs to be created programmatically.
+
+    Read by nothing. The programmatic creation this promised does not
+    exist: roles and their permissions come from ``configs/rbac/roles.yaml``
+    through ``seed_base_roles``, and registration refuses to invent a role
+    it cannot find -- it answers 500 and says the default role is missing.
+    Editing this value, in ``.env`` or here, changes nothing at all;
+    ``roles.yaml`` is where the default role's permissions are decided.
+
+    Left in place rather than removed because it is documented in
+    ``.env.example`` and an operator may have set it. Its removal is a
+    separate decision from this one.
     """
-
-
-    @property
-    def DEFAULT_ROLE_PERMISSIONS_SET(self) -> set:
-        return set(p.strip() for p in self.DEFAULT_ROLE_PERMISSIONS.split(',') if p.strip())
 
 
     # ==========================================================================

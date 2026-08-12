@@ -122,7 +122,7 @@ uv run pytest tests/ -v
 uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
 ```
 
-Тесты: 2300 (unit + integration + e2e), покрытие: 92.45% при пороге 88%
+Тесты: 2300 (unit + integration + e2e), покрытие: 92.50% при пороге 88%
 
 ### Структура тестов
 

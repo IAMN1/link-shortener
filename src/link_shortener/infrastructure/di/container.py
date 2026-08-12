@@ -547,10 +547,6 @@ class Container:
         """Return the application facade for admin operations."""
         return self._admin_service
 
-    def get_role_management_service(self) -> RoleManagementService:
-        """Return the service for role CRUD operations."""
-        return self._role_management_service
-
     def get_user_management_service(self) -> UserManagementService:
         """Return the service for user CRUD operations."""
         return self._user_management_service

@@ -243,12 +243,43 @@ class TestTheWarningReachesTheApplicationLog:
 
         assert [f["stored_email"] for _, f in logger.warnings] == [stored]
 
-    def test_the_container_builds_one_with_a_logger(self, app):
-        """Nothing reports anything if the container stops passing it."""
-        with app.app_context():
-            uow = app.container.get_uow_factory()()
+    def test_the_container_builds_one_that_reports_through_the_logger(
+        self, app, monkeypatch, mixed_case_row
+    ):
+        """The warning has to come out of a unit of work the container made.
 
-            assert uow.logger is not None
+        Asserted through the warning rather than through ``uow.logger is
+        not None``, which was what stood here and which a logger that
+        discards everything satisfies just as well -- and the profile this
+        runs under hands out exactly that, a ``NullLogger`` behind
+        ``LOGGING_ENABLED = False``. So the container's own logger is
+        replaced with one that keeps what it is given.
+
+        The name it is asked for is asserted too. The container names this
+        logger after the unit of work on purpose, so that a repository
+        warning is filed under the database layer rather than under the
+        wiring, and nothing held that: renaming it to this module's own
+        name left the suite green.
+        """
+        user_id, stored = mixed_case_row
+        logger = RecordingLogger()
+        asked_for = []
+
+        def naming_logger(module_name):
+            asked_for.append(module_name)
+            return logger
+
+        with app.app_context():
+            monkeypatch.setattr(
+                app.container.logger_component, "get_logger", naming_logger
+            )
+            uow = app.container.get_uow_factory()()
+            with uow:
+                uow.users.save(uow.users.find_by_id(user_id))
+                uow.commit()
+
+        assert [f["stored_email"] for _, f in logger.warnings] == [stored]
+        assert asked_for == [SQLAlchemyUnitOfWork.__module__]
 
 
 class TestThePairThatUsedToAnswer500:
