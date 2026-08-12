@@ -251,9 +251,12 @@ class SQLAlchemyLinkRepository(LinkRepository):
 
         The row is read back after the update -- with ``populate_existing``,
         so the read does not come out of the session's identity map --
-        because the caller is handed the updated entity and because a code
-        that is not there has to be told apart from one that is:
-        ``UPDATE`` alone raises nothing.
+        because a code that is not there has to be told apart from one that
+        is: ``UPDATE`` alone raises nothing.
+
+        The entity it returns is read by no caller in ``src``: the click
+        task discards it, and only tests consume it. What the read is
+        buying, then, is the ``LinkNotFoundError`` below and nothing else.
 
         Args:
             short_code: ShortCode of the link to update.

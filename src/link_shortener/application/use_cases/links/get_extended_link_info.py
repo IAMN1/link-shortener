@@ -38,9 +38,12 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
             ExtendedLinkInfoResponse with metrics.
 
         Raises:
-            LinkNotFoundError: If link not found.
+            LinkNotFoundError: If no link carries this code -- including a
+                string the format rules refuse, which is a code no link can
+                carry. ``_code_to_look_up`` decided that, so no
+                ``ValueError`` reaches a caller for a malformed code,
+                whatever the three docstrings here used to promise.
             LinkExpiredError: If the link exists but has expired.
-            ValueError: If short code format is invalid.
             DomainError: If the user is not authorised.
         """
         log = self._get_logger(self.logger, context)
@@ -52,8 +55,10 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
             short_code = self._code_to_look_up(short_code_str)
 
             # Query repository -- the authority for whether the link is
-            # still there. See GetLinkInfoUseCase for why the cache is
-            # written on this path but never read.
+            # still there. This use case has no cache to consult at all:
+            # the field was dropped in 26a9339, and the comment that stood
+            # here outlived it, still saying the cache was written on this
+            # path while the line below said it deliberately was not.
             with self.uow_factory(read_only=True) as uow:
                 link = uow.links.find_by_code(short_code)
                 if not link:

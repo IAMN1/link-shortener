@@ -144,7 +144,8 @@ def migrate_db():
     container = current_app.container
     use_alembic = current_app.config.get("USE_ALEMBIC", True)
     if not use_alembic:
-        # Объявлять базу до отказа незачем: команда её не тронет.
+        # No point naming a database this branch will not touch, and not a
+        # free thing to do either: the URL carries the host and the user.
         migrate_db_logic(container.get_db_manager(), use_alembic)
         return
     migrate_db_logic(container.get_db_manager(), use_alembic, _echo_target())
