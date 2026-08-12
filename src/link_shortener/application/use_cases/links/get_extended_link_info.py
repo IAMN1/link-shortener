@@ -7,7 +7,7 @@ from link_shortener.application.dtos.link import ExtendedLinkInfoResponse
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import LinkExpiredError, LinkNotFoundError, ShortCode
+from link_shortener.domain import LinkExpiredError, LinkNotFoundError
 
 
 @dataclass

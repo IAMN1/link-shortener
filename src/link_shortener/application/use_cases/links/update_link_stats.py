@@ -42,7 +42,7 @@ class UpdateLinkStatsUseCase(BaseUseCase):
 
         with self.uow_factory() as uow:
             try:
-                updated_link = uow.links.increment_clicks(short_code)
+                uow.links.increment_clicks(short_code)
                 uow.commit()
             except LinkNotFoundError:
                 log.warning("Link not found during stats update")

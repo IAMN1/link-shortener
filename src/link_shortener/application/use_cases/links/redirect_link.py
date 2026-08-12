@@ -11,7 +11,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import LinkNotFoundError, ShortCode, LinkExpiredError
+from link_shortener.domain import LinkNotFoundError, LinkExpiredError
 
 
 @dataclass

@@ -1,7 +1,6 @@
-from typing import Callable, List, Optional
+from typing import Callable, List
 
-from link_shortener.application import UnitOfWork, UserManagementService, RequestContext
-from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application import UnitOfWork, UserManagementService
 
 
 def create_admin(
@@ -49,7 +48,6 @@ def create_admin(
 def create_user(
         uow_factory: Callable[[], UnitOfWork],
         user_service: UserManagementService,
-        logger: Logger,
         email: str,
         password: str,
         role_names: List[str],
@@ -61,7 +59,6 @@ def create_user(
     Args:
         uow_factory: Factory for Unit of Work instances.
         user_service: Service for user CRUD operations.
-        logger: Logger instance.
         email: User email.
         password: Plain-text password.
         role_names: List of role names to assign.
@@ -73,7 +70,6 @@ def create_user(
     Raises:
         RuntimeError: If a role is not found.
     """
-    context = RequestContext(request_id="cli-create-user")
     with uow_factory() as uow:
         roles = []
         for name in role_names:

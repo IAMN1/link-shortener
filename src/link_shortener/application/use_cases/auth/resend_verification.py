@@ -6,7 +6,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import Email, ValidationError
+from link_shortener.domain import Email
 from link_shortener.domain.entities.email_verification import EmailVerification
 from link_shortener.domain.value_objects.verification_token import (
     issue_token,

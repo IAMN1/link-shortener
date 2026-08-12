@@ -1,6 +1,6 @@
 import secrets
 import os
-from typing import Optional, Callable
+from typing import Callable
 from link_shortener.application import UnitOfWork
 from link_shortener.domain import Email
 

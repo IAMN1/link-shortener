@@ -472,7 +472,7 @@ def link_create(url, code):
     try:
         result = create_link_logic(use_case, url, context, code)
         click.echo("=" * 80)
-        click.echo(f"\t\t\tShort link created successfully!")
+        click.echo("\t\t\tShort link created successfully!")
         click.echo(f"\t\t\tShort code: {result['short_code']}")
         click.echo(f"\t\t\tOriginal URL: {result['original_url']}")
         click.echo(f"\t\t\tShort URL: {result['short_url']}")
@@ -641,12 +641,10 @@ def create_user(email, password, role):
     container = current_app.container
     user_service = container.get_user_management_service()
     uow_factory = container.get_uow_factory()
-    logger = container.get_logger("cli")
     try:
         result = create_user_logic(
             uow_factory=uow_factory,
             user_service=user_service,
-            logger=logger,
             email=email,
             password=password,
             role_names=[role],
