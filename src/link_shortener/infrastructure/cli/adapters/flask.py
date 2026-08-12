@@ -3,6 +3,7 @@ from flask import current_app
 from flask.cli import with_appcontext
 
 from link_shortener.application import RequestContext
+from link_shortener.domain import Email
 from ..commands.database import init_db as init_db_logic
 from ..commands.database import drop_db as drop_db_logic
 from ..commands.database import seed_db as seed_db_logic
@@ -259,11 +260,11 @@ def normalize_emails(apply_changes):
     fixable = [r for r in rows if not r["clashes"]]
 
     for row in fixable:
-        click.echo(f"  {row['email']} -> {row['email'].lower()}")
+        click.echo(f"  {row['email']} -> {Email.normalise(row['email'])}")
     for row in clashing:
         click.echo(
             f"  {row['email']}: another account also lowers to "
-            f"{row['email'].lower()}; left alone",
+            f"{Email.normalise(row['email'])}; left alone",
             err=True,
         )
 
