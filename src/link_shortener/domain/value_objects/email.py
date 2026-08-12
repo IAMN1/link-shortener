@@ -107,8 +107,68 @@ class Email:
         # that the instance is not finished yet, so nothing has read the
         # old value. Normalising in the callers instead would leave each
         # of them responsible for remembering to.
-        object.__setattr__(self, "value", self.value.lower())
+        object.__setattr__(self, "value", self.normalise(self.value))
+
+    @staticmethod
+    def normalise(value: str) -> str:
+        """
+        Return the form an address is stored, compared and looked up in.
+
+        The rule itself, in one place. Everything that has to ask "is
+        this row normalised?" or "what would it become?" -- the
+        repository, the maintenance command -- asks here rather than
+        lowering a string of its own, so the answer cannot drift from
+        what this object does on the way in.
+
+        Args:
+            value: An address, as typed or as stored.
+
+        Returns:
+            The normalised form of it.
+        """
+        return value.lower()
     
+    @classmethod
+    def from_storage(cls, value: str) -> "Email":
+        """
+        Rebuild an address from a stored row without normalising it.
+
+        Lowering belongs to the way in, where an address is typed. A row
+        is not an input: it is what a previous way in already produced,
+        and lowering it a second time changes data rather than cleaning
+        it. Rows written before this rule exists are the ones that feel
+        the difference -- reconstructed as they are, they are written
+        back as they are.
+
+        That mattered twice over. Copying the lowered form back rewrote
+        such a row in place, outside ``flask maintenance
+        normalize-emails`` and outside any log; and where another account
+        already held the lower-case form it hit the unique index instead
+        -- measured on confirmation: ``IntegrityError``, answered as 500,
+        with the token left unspent, so the account could never be
+        confirmed at all.
+
+        The address is still validated: a row that could not be an
+        address is a broken row whichever way it got there.
+
+        Args:
+            value: The address exactly as the database holds it.
+
+        Returns:
+            An ``Email`` holding that exact string.
+
+        Raises:
+            ValidationError: If the stored value is not an address.
+        """
+        # Built through the normal constructor first, so the row goes
+        # through the same validation as an input, then set back to what
+        # was stored. The instance has not left this method yet, which is
+        # what makes writing to a frozen dataclass acceptable here -- the
+        # same reasoning ``__post_init__`` uses one method above.
+        email = cls(value)
+        object.__setattr__(email, "value", value)
+        return email
+
     def __str__(self) -> str:
         """Return the email string."""
         return self.value
