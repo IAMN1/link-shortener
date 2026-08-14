@@ -27,6 +27,12 @@ def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logge
     if not settings.log_to_console:
         return
     
+    # Declared by the base type both branches produce: one branch builds a
+    # ConsoleFormatter and the other a structlog ProcessorFormatter, and a
+    # variable typed from whichever came first rejects the other.
+    formatter: logging.Formatter
+    handler: logging.Handler
+
     if settings.logger_type == "standard":
         handler = RaisingStreamHandler()
         handler.setLevel(settings.get_log_level_int())
@@ -54,6 +60,12 @@ def _setup_file_handler(settings: LoggingSettings, root_logger: logging.Logger):
         settings: LoggingSettings object.
         root_logger: Root logger instance.
     """
+    # Declared by the base type both branches produce: the two sides build
+    # different concrete formatters and handlers, and a variable typed from
+    # whichever came first rejects the other.
+    formatter: logging.Formatter
+    handler: logging.Handler
+
     if not settings.should_log_to_file:
         return
     
@@ -83,6 +95,12 @@ def _setup_audit_handler(settings: LoggingSettings):
     Args:
         settings: LoggingSettings object.
     """
+    # Declared by the base type both branches produce: the two sides build
+    # different concrete formatters and handlers, and a variable typed from
+    # whichever came first rejects the other.
+    formatter: logging.Formatter
+    handler: logging.Handler
+
 
     if not settings.audit_enabled:
         return
@@ -136,6 +154,12 @@ def _setup_error_handler(settings: LoggingSettings, root_logger: logging.Logger)
         settings: LoggingSettings object.
         root_logger: Root logger instance.
     """
+    # Declared by the base type both branches produce: the two sides build
+    # different concrete formatters and handlers, and a variable typed from
+    # whichever came first rejects the other.
+    formatter: logging.Formatter
+    handler: logging.Handler
+
     if not settings.log_to_file:
         return
     

@@ -1,13 +1,12 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.auth import LoginResponse
 from link_shortener.application.dtos.user import UserResponse
 from link_shortener.application.ports.auth.auth_service import AuthenticationService
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import DomainError
 
@@ -24,7 +23,7 @@ class LoginUseCase(BaseUseCase):
     """
     authentication_service: AuthenticationService
     logger: Logger
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
 
     def execute(
         self, email: str, password: str, context: RequestContext

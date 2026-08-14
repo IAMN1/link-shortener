@@ -1,3 +1,4 @@
+from typing import Optional
 from link_shortener.application import LinkCache, Logger
 from link_shortener.infrastructure.cache.memory_cache import InMemoryLinkCache
 from link_shortener.infrastructure.cache.null_cache import NullCache
@@ -53,7 +54,10 @@ class CacheComponent:
         self.socket_timeout = socket_timeout
         self.retry_interval = retry_interval
         self.logger = logger
-        self._cache = None
+        # Annotated Optional rather than inferred from this assignment: the
+        # attribute holds None until the first call builds it, and a checker
+        # told otherwise reports both the assignment and the return as errors.
+        self._cache: Optional[LinkCache] = None
 
     def get_cache(self) -> LinkCache:
         """

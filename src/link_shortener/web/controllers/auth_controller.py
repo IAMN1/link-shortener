@@ -1,3 +1,4 @@
+from typing import Optional
 """
 Authentication controller -- /api/v1/auth/* endpoints.
 
@@ -64,7 +65,7 @@ def _read_credentials():
     return email or None, password or None
 
 
-def _read_refresh_token() -> str:
+def _read_refresh_token() -> Optional[str]:
     """
     Take the refresh token from wherever this client keeps it.
 

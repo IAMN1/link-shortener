@@ -1,9 +1,9 @@
-from typing import Callable
+from typing import Optional
 from flask import Flask, g, request
 
 from link_shortener.application import (
-    AuthenticationService, UnitOfWork,
-    CurrentUserInfo, AuthorizationService, Logger
+    UnitOfWorkFactory, AuthenticationService, CurrentUserInfo,
+    AuthorizationService, Logger
 )
 
 
@@ -39,8 +39,8 @@ class AuthenticationMiddleware:
             app: Flask,
             authentication_service: AuthenticationService,
             authorization_service: AuthorizationService,
-            uow_factory: Callable[[], UnitOfWork],
-            logger: Logger = None
+            uow_factory: UnitOfWorkFactory,
+            logger: Optional[Logger] = None
     ):
         """
         Args:

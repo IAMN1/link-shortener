@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.admin.role import RoleResponse
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.services.role_management_service import RoleManagementService
 from link_shortener.application.use_cases.admin.privilege_guard import (
     require_may_grant_permissions,
@@ -21,7 +21,7 @@ class CreateRoleUseCase(BaseUseCase):
     Requires the caller to hold the ``admin:manage_roles`` permission.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     role_service: RoleManagementService
     logger: Logger
 

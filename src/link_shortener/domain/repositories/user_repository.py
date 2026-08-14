@@ -54,7 +54,7 @@ class UserRepository(ABC):
         ...
 
     @abstractmethod
-    def list_all(self, limit: int, offset: int = 0) -> List[User]:
+    def list_all(self, limit: int = 100, offset: int = 0) -> List[User]:
         """
         Retrieve a paginated list of users.
 

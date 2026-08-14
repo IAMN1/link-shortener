@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import List
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.user import UserResponse
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.services.user_management_service import UserManagementService
 from link_shortener.application.use_cases.admin.privilege_guard import (
     is_administrator,
@@ -24,7 +24,7 @@ class UpdateUserRolesUseCase(BaseUseCase):
     Requires ``admin:manage_users`` permission.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     user_service: UserManagementService
     logger: Logger
 

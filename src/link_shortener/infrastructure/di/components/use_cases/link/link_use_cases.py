@@ -7,22 +7,14 @@ exposes factory methods for creating them.
 """
 
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import List
 
 from link_shortener.application import (
-    CreateShortLinkUseCase,
-    DeleteLinkUseCase,
-    GetExtendedLinkInfoUseCase,
-    GetLinkInfoUseCase,
-    GetUserLinksUseCase,
-    RedirectLinkUseCase,
-    UpdateLinkStatsUseCase,
-    AuditLogger,
-    LinkCache,
-    Logger,
-    RedirectCache,
-    TaskQueue,
-    UnitOfWork,
+    ServiceCache,
+    UnitOfWorkFactory, CreateShortLinkUseCase,
+    DeleteLinkUseCase, GetExtendedLinkInfoUseCase, GetLinkInfoUseCase,
+    GetUserLinksUseCase, RedirectLinkUseCase, UpdateLinkStatsUseCase,
+    AuditLogger, Logger, RedirectCache, TaskQueue
 )
 from link_shortener.application.ports.auth.authorization_service import (
     AuthorizationService,
@@ -62,8 +54,8 @@ class LinkUseCasesComponent:
         authorization_service: Service that answers permission questions.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
-    cache: LinkCache
+    uow_factory: UnitOfWorkFactory
+    cache: ServiceCache
     redirect_cache: RedirectCache
     hash_calculator: HashCalculator
     code_generator: CodeGenerator

@@ -65,7 +65,7 @@ class ErrorHandlerMiddleware:
                 "error.html", error=error.description
             ), error.code
 
-        response = ErrorResponse(error=code, message=error.description)
+        response = ErrorResponse(error=code, message=error.description or "")
         return jsonify(response.model_dump()), error.code
 
     def _register_error_handlers(self):

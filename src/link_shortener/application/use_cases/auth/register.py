@@ -1,11 +1,10 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.auth.auth_service import AuthenticationService
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
     DomainError, User,
@@ -56,7 +55,7 @@ class RegisterUseCase(BaseUseCase):
     and commits, a taken one does not. That remainder is small beside a
     bcrypt hash, and it is written down in the developer guide.
     """
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     authentication_service: AuthenticationService
     logger: Logger
     default_role_name: str  # Role assigned to new users by default.

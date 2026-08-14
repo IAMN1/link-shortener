@@ -217,7 +217,10 @@ class EnvField:
             return self.default
 
         raw = os.environ.get(self.name)
-        if is_unset(raw):
+        # ``raw is None`` named alongside is_unset: the helper answers True
+        # for a blank string too, so it says "not configured" without saying
+        # "not None", and the caster below needs the second.
+        if raw is None or is_unset(raw):
             return self.default
 
         try:

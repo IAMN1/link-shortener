@@ -10,7 +10,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from typing import Callable, Optional
 
-from link_shortener.application import HealthCheck
+from link_shortener.application import (
+    CacheHealth, HealthCheck, RateLimiter, TaskQueue,
+)
 from link_shortener.application.ports.health_check import HealthSnapshot
 from link_shortener.infrastructure.database.manager import DatabaseManager
 
@@ -81,10 +83,10 @@ class InfrastructureHealthCheck(HealthCheck):
     def __init__(
         self,
         db_manager: DatabaseManager,
-        cache: object,
-        task_queue: object = None,
+        cache: Optional[CacheHealth],
+        task_queue: Optional[TaskQueue] = None,
         timeout: float = 5.0,
-        rate_limiter: object = None,
+        rate_limiter: Optional[RateLimiter] = None,
         clock: Optional[Callable[[], float]] = None,
     ):
         """Initialise the health checker with real infrastructure components.

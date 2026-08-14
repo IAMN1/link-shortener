@@ -1,12 +1,8 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application import (
-    GetServiceStatsUseCase,
-    GetUserActivityStatsUseCase,
-    StatsCache,
-    Logger,
-    UnitOfWork,
+    UnitOfWorkFactory, GetServiceStatsUseCase,
+    GetUserActivityStatsUseCase, StatsCache, Logger
 )
 
 
@@ -19,7 +15,7 @@ class StatsUseCasesComponent:
     aggregated data.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     cache: StatsCache
     base_url: str
     logger: Logger

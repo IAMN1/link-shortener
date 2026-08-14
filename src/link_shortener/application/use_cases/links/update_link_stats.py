@@ -1,8 +1,7 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.domain import ShortCode, LinkNotFoundError
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
@@ -20,7 +19,7 @@ class UpdateLinkStatsUseCase(BaseUseCase):
     after its own transaction closed, which is how a deleted link comes
     back to life on the redirect path.
     """
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     logger: Logger
 
     def execute(self, short_code_str: str, context: RequestContext) -> None:

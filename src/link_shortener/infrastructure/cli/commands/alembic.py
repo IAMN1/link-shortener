@@ -1,5 +1,5 @@
 import os
-# Alembic запускается отдельным процессом намеренно, см. _run ниже.
+# Alembic is run as a subprocess on purpose; see _run below.
 import subprocess  # nosec B404
 import sys
 from pathlib import Path
@@ -91,7 +91,7 @@ class AlembicCommands:
             # no explicit target writes.
             env.pop(AlembicCommands.HANDOFF_ENV_VAR, None)
 
-        # Список аргументов, без оболочки: подставить нечего.
+        # An argument list, no shell: there is nothing to interpolate.
         return subprocess.run(  # nosec B603
             [sys.executable, "-m", "alembic", *args],
             capture_output=True,

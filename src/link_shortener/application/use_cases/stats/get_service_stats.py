@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
 import time
-from typing import Callable
 
 
 
@@ -9,7 +8,7 @@ from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.stats import ServiceStatsResponse, StatsItemResponse
 from link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.application.utils.url_utils import build_short_url
 
@@ -25,7 +24,7 @@ class GetServiceStatsUseCase(BaseUseCase):
     empty container for the first gave the caller a lie it could not detect.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     base_url: str
     cache: StatsCache
     logger: Logger

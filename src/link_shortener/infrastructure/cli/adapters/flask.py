@@ -722,7 +722,7 @@ def security_validate_token(token):
         click.echo(f"Email: {result.get('email')}")
         click.echo(f"Roles: {', '.join(result.get('roles', []))}")
         click.echo(f"Expires: {result.get('exp')}")
-        # Вид токена, а не пароль.
+        # A token kind, not a password.
         if token_type != "access":  # nosec B105
             click.echo(
                 f"\nNote: this is a {token_type} token -- it authenticates "
@@ -857,7 +857,7 @@ def _configured_database_url() -> str:
     Returns:
         SQLAlchemy-compatible database URL.
     """
-    return current_app.container.config.get_database_url()
+    return current_app.container.config.get_database_url()  # type: ignore[attr-defined]
 
 
 def _echo_target() -> str:
@@ -873,7 +873,7 @@ def _echo_target() -> str:
         The database URL to hand to alembic.
     """
     url = _configured_database_url()
-    click.echo(f"Database: {current_app.container.config.display_database_url}")
+    click.echo(f"Database: {current_app.container.config.display_database_url}")  # type: ignore[attr-defined]
     return url
 
 

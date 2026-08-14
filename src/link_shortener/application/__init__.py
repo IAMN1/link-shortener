@@ -17,6 +17,7 @@ from .dtos.user_activity import UserActivityResponse
 from .ports.cache.cache_health import CacheHealth
 from .ports.cache.link_cache import LinkCache
 from .ports.cache.link_service_stats_cache import StatsCache
+from .ports.cache.service_cache import ServiceCache
 from .ports.cache.redirect_cache import CachedRedirect, RedirectCache
 from .ports.logger.audit import AuditLogger
 from .ports.logger.logger import Logger
@@ -26,7 +27,7 @@ from .ports.rate_limiter import RateLimiter
 from .ports.task_queue import TaskQueue
 from .ports.auth.auth_service import AuthenticationService
 from .ports.auth.authorization_service import AuthorizationService
-from .ports.uow import UnitOfWork
+from .ports.uow import UnitOfWork, UnitOfWorkFactory
 from .ports.health_check import HealthCheck
 
 # ------------------------------------------------------------------
@@ -118,6 +119,7 @@ __all__ = [
     "CacheHealth",
     "LinkCache",
     "StatsCache",
+    "ServiceCache",
     "CachedRedirect",
     "RedirectCache",
     "AuditLogger",
@@ -130,6 +132,7 @@ __all__ = [
     "AuthenticationService",
     "AuthorizationService",
     "UnitOfWork",
+    "UnitOfWorkFactory",
     "HealthCheck",
 
     # Services

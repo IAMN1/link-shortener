@@ -1,13 +1,12 @@
 from dataclasses import dataclass
 import time
-from typing import Callable
 
 from link_shortener.application import (
     ShortLinkResponse, Logger
 )
 
 from link_shortener.application.context import RequestContext
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
     LinkExpiredError, LinkNotFoundError
@@ -50,7 +49,7 @@ class GetLinkInfoUseCase(BaseUseCase):
         logger: Application logger.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     base_url: str
     logger: Logger
 

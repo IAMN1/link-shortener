@@ -1,10 +1,9 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.link import ShortLinkResponse
 from link_shortener.application.dtos.user_activity import UserActivityResponse
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
 
@@ -16,7 +15,7 @@ class GetUserActivityStatsUseCase(BaseUseCase):
     Access is restricted: only the user themselves or an administrator
     (with ``admin:view_users``) can view the statistics.
     """
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     base_url: str
 
     def execute(self, user_id: str, context: RequestContext) -> UserActivityResponse:

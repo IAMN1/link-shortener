@@ -1,21 +1,11 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application import (
-    CreateUserUseCase,
-    UpdateUserRolesUseCase,
-    DeactivateUserUseCase,
-    ActivateUserUseCase,
-    ListUsersUseCase,
-    GetUserUseCase,
-    DeleteUserUseCase,
-    UserManagementService,
-    AuditLogger,
-    LinkCache,
-    Logger,
-    RedirectCache,
-    StatsCache,
-    UnitOfWork,
+    UnitOfWorkFactory, CreateUserUseCase,
+    UpdateUserRolesUseCase, DeactivateUserUseCase, ActivateUserUseCase,
+    ListUsersUseCase, GetUserUseCase, DeleteUserUseCase,
+    UserManagementService, AuditLogger, LinkCache, Logger, RedirectCache,
+    StatsCache
 )
 
 
@@ -27,7 +17,7 @@ class AdminUserUseCasesComponent:
     All methods return fully initialised use case instances.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     user_service: UserManagementService
     cache: LinkCache
     redirect_cache: RedirectCache

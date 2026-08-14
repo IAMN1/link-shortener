@@ -129,8 +129,8 @@ class BatchLinkCreator:
             Dictionary mapping each URL hash to a unique short code.
         """
         resolved = {}
-        attempts = defaultdict(int)
-        occupied = set()
+        attempts: defaultdict = defaultdict(int)
+        occupied: set = set()
         hash_to_group = {g["hash"]: g for g in groups}
         candidates = dict(hash_to_code)
 

@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import List
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.link import ShortLinkResponse
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
 
@@ -16,7 +16,7 @@ class GetUserLinksUseCase(BaseUseCase):
         uow_factory: Callable that returns a new Unit of Work instance.
         base_url: Base URL of the service for constructing short URLs.
     """
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     base_url: str
 
     def execute(

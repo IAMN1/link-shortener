@@ -207,7 +207,9 @@ class SQLAlchemyLinkRepository(LinkRepository):
             .filter(LinkModel.short_code.in_(code_values))
             .all()
         )
-        result = {ShortCode(m.short_code): self._to_domain(m) for m in models}
+        result: Dict[ShortCode, Optional[Link]] = {
+            ShortCode(m.short_code): self._to_domain(m) for m in models
+        }
         # Ensure every requested code is present in the dict (with None if absent)
         for code in short_codes:
             result.setdefault(code, None)

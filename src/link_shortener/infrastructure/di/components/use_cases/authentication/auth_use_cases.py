@@ -1,20 +1,11 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application import (
-    CleanUnverifiedAccountsUseCase,
-    LoginUseCase,
-    RegisterUseCase,
-    ResendVerificationUseCase,
-    SendAccountExistsEmailUseCase,
-    SendVerificationEmailUseCase,
-    VerifyEmailUseCase,
-    AuthenticationService,
-    Logger,
-    Mailer,
-    MailTemplates,
-    TaskQueue,
-    UnitOfWork,
+    UnitOfWorkFactory, CleanUnverifiedAccountsUseCase,
+    LoginUseCase, RegisterUseCase, ResendVerificationUseCase,
+    SendAccountExistsEmailUseCase, SendVerificationEmailUseCase,
+    VerifyEmailUseCase, AuthenticationService, Logger, Mailer,
+    MailTemplates, TaskQueue
 )
 
 
@@ -29,7 +20,7 @@ class AuthUseCasesComponent:
     and templates for the worker that sends it, and the two lifetimes.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     authentication_service: AuthenticationService
     logger: Logger
     default_role_name: str

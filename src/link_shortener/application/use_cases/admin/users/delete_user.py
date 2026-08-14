@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.cache.link_cache import LinkCache
@@ -9,7 +8,7 @@ from link_shortener.application.ports.cache.link_service_stats_cache import (
 from link_shortener.application.ports.cache.redirect_cache import RedirectCache
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.services.user_management_service import UserManagementService
 from link_shortener.application.use_cases.admin.privilege_guard import (
     is_administrator,
@@ -48,7 +47,7 @@ class DeleteUserUseCase(BaseUseCase):
         audit_logger: Audit logger for significant events.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     user_service: UserManagementService
     cache: LinkCache
     redirect_cache: RedirectCache

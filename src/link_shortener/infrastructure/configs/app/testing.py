@@ -49,8 +49,11 @@ class TestingConfig(BaseConfig):
     # --------------------------------------------------------------------------
     DATABASE_URL: str = "sqlite:///:memory:"
 
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def DATABASE_TYPE(self) -> str:
+    def DATABASE_TYPE(self) -> str:  # type: ignore[override]
         return "sqlite"
 
 

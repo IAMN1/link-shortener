@@ -1,3 +1,4 @@
+from typing import Optional
 from link_shortener.application import Mailer
 from link_shortener.infrastructure.mail.null_mailer import NullMailer
 from link_shortener.infrastructure.mail.smtp_mailer import SMTPMailer
@@ -48,7 +49,10 @@ class MailComponent:
         self.use_ssl = use_ssl
         self.timeout = timeout
         self.logger = logger
-        self._mailer = None
+        # Annotated Optional rather than inferred from this assignment: the
+        # attribute holds None until the first call builds it, and a checker
+        # told otherwise reports both the assignment and the return as errors.
+        self._mailer: Optional[Mailer] = None
 
     def get_mailer(self) -> Mailer:
         """

@@ -1,14 +1,10 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application import (
-    CleanExpiredLinksUseCase,
-    GetRecentLinksUseCase,
-    SeedDatabaseUseCase,
-    CreateShortLinkUseCase,
-    LinkCache,
-    Logger,
-    UnitOfWork,
+    ServiceCache,
+    UnitOfWorkFactory, CleanExpiredLinksUseCase,
+    GetRecentLinksUseCase, SeedDatabaseUseCase, CreateShortLinkUseCase,
+    Logger
 )
 
 
@@ -19,10 +15,10 @@ class AdminLinkUseCasesComponent:
     and exposes factory methods for the corresponding use cases.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     """Factory to create Unit of Work instances."""
 
-    cache: LinkCache
+    cache: ServiceCache
     """Cache implementation for link data."""
 
     logger: Logger

@@ -76,7 +76,7 @@ class RedisRateLimiter(RateLimiter):
         self,
         redis_client: redis.Redis,
         prefix: str = "rate_limiter",
-        logger: Logger = None,
+        logger: Optional[Logger] = None,
         retry_interval: int = 10,
     ):
         """

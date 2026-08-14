@@ -60,6 +60,7 @@ dev = [
     # образ.
     "pytest-error-for-skips>=2.0.2",
     "pytest-mock>=3.15.1",
+    "types-pyyaml>=6.0",
 ]
 # Инструмент, которым сняты числа в docs/DEVELOPER_GUIDE.md. Отдельной
 # группой по той же причине, что и `browser` выше.
@@ -153,3 +154,10 @@ disable = [
 [tool.pylint.'MASTER']
 fail-under = 9.0
 ignore-patterns = ["test_.*", "_test.*"]
+
+# celery и flask_cors не поставляют ни стабов, ни маркера py.typed. Названы
+# поимённо, а не общим --ignore-missing-imports: так молчание распространяется
+# ровно на два пакета, а новый нетипизированный импорт по-прежнему заметен.
+[[tool.mypy.overrides]]
+module = ["celery.*", "flask_cors.*"]
+ignore_missing_imports = true

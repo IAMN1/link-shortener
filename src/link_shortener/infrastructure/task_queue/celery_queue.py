@@ -1,3 +1,4 @@
+from typing import Optional
 import time
 from threading import Lock
 
@@ -30,7 +31,7 @@ class CeleryTaskQueue(TaskQueue):
         retry_interval: Seconds to skip dispatching after a failure.
     """
 
-    def __init__(self, logger: Logger = None, retry_interval: int = 10):
+    def __init__(self, logger: Optional[Logger] = None, retry_interval: int = 10):
         """
         Args:
             logger: Application logger for diagnostics.

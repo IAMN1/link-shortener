@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import time
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 
 from link_shortener.application.context import RequestContext
@@ -11,7 +11,9 @@ from link_shortener.application.ports.cache.link_service_stats_cache import (
 )
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import (
+    UnitOfWork, UnitOfWorkFactory,
+)
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
     DedupScope, Link, OriginalUrl, ShortCode, UrlHash,
@@ -59,7 +61,7 @@ class CreateShortLinkUseCase(BaseUseCase):
         max_collision_attempts: Maximum tries to generate a unique code.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     cache: LinkCache
     stats_cache: StatsCache
     hash_calculator: HashCalculator

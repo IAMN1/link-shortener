@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, Optional
 import secrets
 import uuid
 import bcrypt
 import jwt
 
-from link_shortener.application import AuthenticationService, UnitOfWork
+from link_shortener.application import UnitOfWorkFactory, AuthenticationService
 from link_shortener.application.dtos.auth import RefreshedTokens
 from link_shortener.domain import User, Email, RefreshSession
 from link_shortener.domain.policies.password_policy import validate_password
@@ -23,7 +23,7 @@ class JwtAuthenticationService(AuthenticationService):
     """
     def __init__(
         self,
-        uow_factory: Callable[[], UnitOfWork],
+        uow_factory: UnitOfWorkFactory,
         secret_key: str,
         access_expire_minutes: int,
         refresh_expire_days: int,

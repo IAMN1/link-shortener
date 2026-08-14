@@ -150,7 +150,7 @@ def create_app(config=None) -> Flask:
     # Dependency Injection Container
     # ------------------------------------------------------------------
     container = Container(config)
-    app.container = container
+    app.container = container  # type: ignore[attr-defined]
 
     # ------------------------------------------------------------------
     # Idempotent seeding of base roles & permissions (only if flag allows)
