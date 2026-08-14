@@ -6,7 +6,7 @@ from link_shortener.application import (
 )
 from link_shortener.application.use_cases.links.create_short_link import CreateShortLinkUseCase
 
-from link_shortener.domain import LinkNotFoundError, ValidationError
+from link_shortener.domain import LinkNotFoundError
 
 
 def create_link(

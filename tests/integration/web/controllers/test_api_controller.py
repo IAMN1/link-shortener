@@ -1,7 +1,5 @@
 """Integration tests for API controller endpoints with real DB."""
 
-import pytest
-from tests.integration.conftest import register_and_login, auth_headers
 
 
 
@@ -13,6 +11,12 @@ def _stored_clicks(app, code):
     counter from callers who are not entitled to the link's traffic, and a
     guest link belongs to nobody. What these tests are about is whether the
     redirect increments the counter, so they ask the row.
+
+    A missing row is reported as None rather than as zero. Zero made
+    "no such link" indistinguishable from "a link nobody has clicked", so
+    a starting assertion of ``== 0`` was satisfied by a link that was never
+    created at all -- and the failure surfaced later, on the count, naming
+    the wrong culprit.
     """
     from sqlalchemy import text
 
@@ -22,7 +26,7 @@ def _stored_clicks(app, code):
             row = session.execute(
                 text("SELECT clicks FROM urls WHERE short_code=:c"), {"c": code}
             ).fetchone()
-    return row[0] if row else 0
+    return row[0] if row else None
 
 class TestShortenEndpoint:
     """POST /api/v1/shorten — full flow with real DB."""
@@ -96,8 +100,13 @@ class TestLinkInfoEndpoint:
 class TestRedirectEndpoint:
     """GET /<short_code> — redirect to original URL."""
 
-    def _create(self, client):
-        r = client.post("/api/v1/shorten", json={"url": "https://redirect-test.com"})
+    def _create(self, client, url="https://redirect-test.com", ip=None):
+        # A guest's allowance is counted per address, and every test here
+        # that does not name one spends from the same pool as the rest of
+        # the session. Naming one keeps a new test from taking an
+        # allowance its neighbours are already relying on.
+        extra = {"environ_base": {"REMOTE_ADDR": ip}} if ip else {}
+        r = client.post("/api/v1/shorten", json={"url": url}, **extra)
         data = r.get_json()
         return data.get("short_code")
 
@@ -108,11 +117,50 @@ class TestRedirectEndpoint:
         assert "redirect-test.com" in r.headers.get("Location", "")
 
     def test_click_counter_increments(self, app, client):
-        code = self._create(client)
+        """Five redirects leave exactly five clicks, counted up from zero.
+
+        A bound is not a count. Loosened to ``>= 0`` -- the obvious way to
+        quieten a counter that reads as asynchronous -- it lets
+        ``uow.commit()`` be dropped from ``UpdateLinkStatsUseCase``, and the
+        only thing left
+        holding that was one test under ``tests/integration/docker``, which
+        needs the PostgreSQL stack up. Without the stack the loss of every
+        click passed unnoticed: 2245 passed.
+
+        The bound was never lenience about timing. With Celery off,
+        ``NullTaskQueue.enqueue_link_accessed`` runs the update on the
+        caller's thread before the redirect returns, so the count is exact.
+        What made it approximate is the address: a guest's links are
+        deduplicated within their own address, and the other tests here
+        shorten from the shared one, so this test was handed a link they
+        had already clicked. Asking from an address of its own is what
+        makes the starting value zero -- and it also keeps this creation
+        out of the guest allowance the rest of the session shares. The
+        target is its own as well, so a later test arriving at this address
+        cannot quietly hand this one a link with clicks on it.
+
+        A second link is created and never visited, because "this row went
+        up by five" is not the same statement as "the click was counted
+        here". With the ``short_code`` filter dropped from the ``UPDATE``,
+        every row in the table gains the five clicks, this test's own
+        assertion holds exactly, and everything else passes --
+        2283 of them -- while the service's entire statistics became
+        fiction.
+        """
+        code = self._create(
+            client, "https://redirect-test.com/counted-exactly", ip="203.0.113.70"
+        )
+        untouched = self._create(
+            client, "https://redirect-test.com/never-visited", ip="203.0.113.70"
+        )
+        assert _stored_clicks(app, code) == 0
+        assert _stored_clicks(app, untouched) == 0
+
         for _ in range(5):
             client.get(f"/{code}", follow_redirects=False)
 
-        assert _stored_clicks(app, code) >= 5
+        assert _stored_clicks(app, code) == 5
+        assert _stored_clicks(app, untouched) == 0
 
     def test_the_counter_is_not_public(self, client):
         """A guest link belongs to nobody, so nobody unentitled sees it."""

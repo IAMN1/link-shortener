@@ -17,12 +17,11 @@ class CleanExpiredLinksUseCase(BaseUseCase):
     """
     Use case: delete links whose expiry has passed.
 
-    Expiry is the only criterion. The command used to sweep by
-    ``last_accessed`` instead, which deleted the wrong rows in both
-    directions: a permanent link nobody had clicked for a month was removed
-    without warning, while links that had actually expired stayed on --
-    and, being found by deduplication, made their URL impossible to shorten
-    again.
+    Expiry is the only criterion. Sweeping by ``last_accessed`` instead
+    deletes the wrong rows in both directions: a permanent link nobody has
+    clicked for a month goes, while a link that has actually expired stays
+    on -- and, being found by deduplication, makes its URL impossible to
+    shorten again.
 
     Deleting an expired link removes nothing that was still being served:
     a redirect to it already answers ``410``.

@@ -45,8 +45,8 @@ class TestFoundFromTheModule:
 
         Under pytest the working directory is the repository root, which
         holds an ``alembic.ini`` -- so both legs give the same answer and
-        deleting the module leg changes nothing. Measured: with the module
-        search removed entirely, every test in this file still passed.
+        deleting the module leg changes nothing: with the module search
+        removed entirely, every other test in this file still passes.
         Standing in an empty directory is what tells them apart.
         """
         monkeypatch.chdir(tmp_path)

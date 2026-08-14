@@ -246,26 +246,35 @@ class SQLAlchemyLinkRepository(LinkRepository):
     # ------------------------------------------------------------------
     # Statistics & click updates
     # ------------------------------------------------------------------
-    def increment_clicks(self, short_code: ShortCode) -> Link:
+    def increment_clicks(self, short_code: ShortCode) -> None:
         """Atomically increment the click counter and update ``last_accessed``.
 
-        The row is read back after the update -- with ``populate_existing``,
-        so the read does not come out of the session's identity map --
-        because the caller is handed the updated entity and because a code
-        that is not there has to be told apart from one that is:
-        ``UPDATE`` alone raises nothing.
+        One statement, and it returns nothing: the ``UPDATE``'s own row
+        count answers the ``LinkNotFoundError`` below, and reading the row
+        back would cost half again as much on the redirect path, which is
+        the one path this service runs hot. A row handed back here would
+        also be a snapshot from the moment of the update, and the counter
+        is the one thing another request may already have moved.
+
+        Pending session state is flushed first -- ``autoflush`` is off on
+        this session factory -- so the ``UPDATE`` sees every row this
+        session has created and its count can be trusted.
+
+        The session is left unsynchronised (``synchronize_session=False``),
+        so a model still in the identity map answers with the counter it
+        had before. Nothing reads the row again inside this session, and
+        ``commit()`` expires its objects, so the next read is fresh.
 
         Args:
             short_code: ShortCode of the link to update.
 
-        Returns:
-            The updated Link entity.
-
         Raises:
             LinkNotFoundError: If no link with the given code exists.
         """
+        self.session.flush()
+
         # Atomic UPDATE in the database
-        self.session.query(LinkModel).filter_by(
+        updated = self.session.query(LinkModel).filter_by(
             short_code=short_code.value
         ).update(
             {
@@ -274,30 +283,9 @@ class SQLAlchemyLinkRepository(LinkRepository):
             },
             synchronize_session=False,
         )
-        self.session.flush()
 
-        # ``populate_existing()`` is load-bearing, and the measurement that
-        # said otherwise was wrong. With ``synchronize_session=False``
-        # SQLAlchemy leaves the session alone -- "the state of objects in
-        # the Session is unchanged and will not automatically correspond to
-        # the UPDATE or DELETE statement that was emitted" (ORM Queryguide,
-        # DML). So a row still held in the identity map answers with the
-        # counter it had before, and this method hands that back as the new
-        # one: measured, it returned 0 while the database held 1.
-        #
-        # The suite missed it because the identity map holds objects
-        # weakly: a test that merely reads the row first has nothing left
-        # in the map by the time the UPDATE runs. It takes a live reference
-        # to reproduce, which is what the test now keeps.
-        model = (
-            self.session.query(LinkModel)
-            .filter_by(short_code=short_code.value)
-            .populate_existing()   # bypass the session's identity map
-            .first()
-        )
-        if not model:
+        if not updated:
             raise LinkNotFoundError(short_code.value)
-        return self._to_domain(model)
 
     def get_stats(self) -> dict:
         """Compute service-wide statistics.
@@ -427,14 +415,11 @@ class SQLAlchemyLinkRepository(LinkRepository):
     def delete(self, link_id: str) -> bool:
         """Delete a link by its identifier.
 
-        Answers from the number of rows the statement actually removed, not
-        from a read that preceded it. Under READ COMMITTED two concurrent
-        deletions both see the row in their own snapshot, both issue a
-        DELETE, and only one of them matches anything -- while the other,
-        judging by its earlier read, used to report success as well. Ten
-        simultaneous requests then answered 200 ten times over one row, and
-        each of them wrote its own "link deleted" line into the audit trail,
-        which is supposed to be the record of what happened.
+        Answers from the number of rows the statement removed, not from a
+        read that preceded it. Under READ COMMITTED two concurrent deletions
+        both see the row in their own snapshot and both issue a DELETE, but
+        only one matches anything; judging by the earlier read, both would
+        report success and both would write a "link deleted" audit line.
 
         Args:
             link_id: Identifier of the link to delete.

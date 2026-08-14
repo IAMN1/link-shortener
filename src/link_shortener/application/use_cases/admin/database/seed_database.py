@@ -32,14 +32,12 @@ class SeedDatabaseUseCase(BaseUseCase):
         """
         Create `count` test links.
 
-        Links that already exist are reported separately instead of being
-        counted as created: seeding twice used to claim it had created another
-        full batch while the deduplication had simply returned the old links.
+        Links that already exist are reported separately rather than
+        counted as created: deduplication returns the stored link, and
+        counting it as new would overstate the batch.
 
-        The first failure aborts the run. Silently swallowing every exception
-        turned a hit on the guest link limit into "Created 0 test links" with a
-        success exit code, which reads like an empty database rather than a
-        rejected request.
+        The first failure aborts the run, so a rejected request is not
+        reported as an empty database.
 
         Args:
             count: Number of test links to create.

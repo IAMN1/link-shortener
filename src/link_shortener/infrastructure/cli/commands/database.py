@@ -95,40 +95,51 @@ def load_custom_roles_from_cfg(
     print(summary.describe())
     
 
-def check_db_connection(db_manager: DatabaseManager) -> bool:
+def check_db_connection(db_manager: DatabaseManager) -> Optional[str]:
     """
-    Verify that the database is reachable.
+    Verify that the database is reachable, and say why if it is not.
+
+    The reason travels back rather than being swallowed: "Database
+    connection failed." on its own does not tell a wrong password from an
+    unreachable host, a wrong database name or a timeout -- on the one
+    command whose whole job is to diagnose.
+
+    Only the first line of the reason travels, like everywhere else that
+    hands a database error to a person: the rest carries the statement
+    and its parameters.
 
     Args:
         db_manager: DatabaseManager instance.
 
     Returns:
-        True if a simple SELECT 1 succeeds, False otherwise.
+        ``None`` when a simple SELECT 1 succeeds, otherwise the first
+        line of whatever the database or the driver said.
     """
+    from link_shortener.infrastructure.cli.commands.maintenance import (
+        what_the_database_said
+    )
+
     try:
         from sqlalchemy import text
         with db_manager.session() as session:
-            result = session.execute(text("SELECT 1")).scalar()
-            return result == 1
-    except Exception:
-        return False
+            if session.execute(text("SELECT 1")).scalar() == 1:
+                return None
+            return "the database did not answer SELECT 1 with 1"
+    except Exception as error:
+        return what_the_database_said(error)
 
 def migrate_db(
-    db_manager: DatabaseManager,
     use_alembic: bool,
     database_url: Optional[str] = None,
 ) -> None:
     """
     Apply database migrations using Alembic.
 
-    Delegates to ``AlembicCommands`` rather than launching alembic itself.
-    It used to run its own subprocess, and that copy never received the
-    caller's database URL, so this command migrated whatever database the
-    ambient environment named -- while ``flask alembic upgrade``, three
-    lines of configuration away, migrated the right one.
+    Delegates to ``AlembicCommands`` rather than launching alembic itself,
+    so the caller's database URL reaches the subprocess. A copy that built
+    its own would migrate whatever database the ambient environment named.
 
     Args:
-        db_manager: DatabaseManager instance.
         use_alembic: flag indicating whether alembic is enabled
         database_url: Database to migrate. Handed to alembic so the schema
             change lands where the application actually looks.

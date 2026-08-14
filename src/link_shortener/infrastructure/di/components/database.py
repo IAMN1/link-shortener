@@ -1,16 +1,20 @@
-from typing import Callable
-from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.infrastructure.database.manager import DatabaseManager
-from link_shortener.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 
 
 class DatabaseComponent:
     """
-    Manages the lifecycle of the database connection and exposes a
-    factory for ``UnitOfWork`` instances.
+    Manages the lifecycle of the database connection.
 
     The ``DatabaseManager`` is initialised lazily and remains alive for
     the lifetime of the application.
+
+    The unit of work is built by ``Container``, not here. This class used
+    to offer a factory of its own, and it was a trap rather than a
+    convenience: it passed no logger, so a repository warning about a row
+    that is not normalised had nowhere to go, and nothing said so. No call
+    site ever used it -- every one of them goes through
+    ``Container.get_uow_factory``, which names the logger after the unit of
+    work that owns it.
     """
     def __init__(
         self,
@@ -61,21 +65,6 @@ class DatabaseComponent:
             )
             self._manager.connect()
         return self._manager
-
-    def get_uow_factory(self) -> Callable[[], UnitOfWork]:
-        """
-        Return a factory that creates a new ``UnitOfWork`` each time it is
-        called.
-
-        The factory accepts an optional ``read_only`` parameter that is
-        forwarded to the ``SQLAlchemyUnitOfWork`` constructor.
-
-        Returns:
-            A callable with signature ``(read_only: bool = False) -> UnitOfWork``.
-        """
-        def factory(read_only: bool = False) -> UnitOfWork:
-            return SQLAlchemyUnitOfWork(self.get_db_manager(), read_only=read_only)
-        return factory
 
     def close(self):
         """Dispose of the database engine and all connections."""

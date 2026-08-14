@@ -20,7 +20,7 @@ class BrokerSocketOptions:
     ``max_retries`` is what actually bounds a dead broker. The socket
     timeouts cap a single attempt, but ``Connection.default_channel`` wraps
     that attempt in ``ensure_connection``, whose back-off (2s, 4s, 6s, 8s)
-    accounted for the measured 19.5 seconds per redirect: a refused
+    accounted for 19.5 seconds per redirect: a refused
     connection returns instantly, and all of the time went into sleeping
     between retries. The worker is unaffected -- it establishes its consumer
     connection with an explicit retry count of its own, taken from

@@ -70,12 +70,12 @@ class InfrastructureHealthCheck(HealthCheck):
     CACHE_TTL_SECONDS = 2.0
     """How long one observation stands in for the next.
 
-    ``/health`` is anonymous and exempt from throttling -- rightly, a probe
-    has to answer when everything else is refusing -- so every request used
-    to cost a query, a Redis ping, a broker ping and a pool of four OS
-    threads. Measured: 200 anonymous requests started 563 threads. Two
-    seconds is short against any orchestrator's probe interval and long
-    enough that a flood costs one observation rather than one each.
+    ``/health`` is anonymous and exempt from throttling -- rightly, a
+    probe has to answer when everything else is refusing -- so without a
+    snapshot every request costs a query, a Redis ping, a broker ping and
+    a pool of four OS threads. Two seconds is short against any
+    orchestrator's probe interval and long enough that a flood costs one
+    observation rather than one each.
     """
 
     def __init__(
@@ -136,7 +136,7 @@ class InfrastructureHealthCheck(HealthCheck):
             # an observation slower than the TTL is already stale when it
             # is stored, so the next caller waiting on this lock observes
             # again -- and the lock turns a slow dependency into a queue.
-            # Measured with a 2.5 s probe against a 2 s TTL: five parallel
+            # With a 2.5 s probe against a 2 s TTL: five parallel
             # requests took 12.52 s instead of 2.51 s, and the cost grows
             # with the number of callers, on an endpoint that is anonymous
             # and exempt from throttling.
@@ -270,9 +270,8 @@ class InfrastructureHealthCheck(HealthCheck):
 
         Lets callers tell "the cache is fine" from "there is no cache",
         which a bare boolean cannot express. The question is about the
-        deployment, so the answer must not move when the server does: it is
-        the cache's own, and no longer inferred from whether a client object
-        happens to exist at this moment.
+        deployment, so the answer is the cache's own and does not move when
+        the server does.
 
         Returns:
             ``True`` if the cache talks to a server.

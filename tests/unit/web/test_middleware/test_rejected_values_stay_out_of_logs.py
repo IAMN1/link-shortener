@@ -16,7 +16,7 @@ from unittest.mock import Mock
 
 import pytest
 from flask import Flask
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
 

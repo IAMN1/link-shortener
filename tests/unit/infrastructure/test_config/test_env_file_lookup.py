@@ -1,9 +1,9 @@
 """
 Which ``.env`` a process actually reads.
 
-The file used to be looked up from the working directory upwards and
-nowhere else, so a command started outside the tree -- a celery worker, a
-bare ``alembic upgrade head`` -- found none and fell back to the profile
+Looked up from the working directory upwards and nowhere else, a command
+started outside the tree -- a celery worker, a bare
+``alembic upgrade head`` -- finds none and falls back to the profile
 defaults. That is not a loud failure: ``DATABASE_NAME`` became
 ``db_shortener`` without its extension, ``_sqlite_path`` anchored it under
 the project root all the same, and the service came up on a second, empty
@@ -44,8 +44,8 @@ class TestWhereTheFileIsLookedFor:
         """The defect this closes, in the shape it actually occurred.
 
         The process stands somewhere with no ``.env`` above it at all --
-        which is what ``/tmp`` is for a celery worker -- and used to get
-        the profile default.
+        which is what ``/tmp`` is for a celery worker -- and would
+        otherwise get the profile default.
 
         The directory it stands in has to be outside the root, not merely
         beside it: a subdirectory has the root above it, so the old walk

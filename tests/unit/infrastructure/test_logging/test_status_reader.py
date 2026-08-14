@@ -5,8 +5,8 @@ The reader that puts the chain counters on the health endpoint.
 the ``logging`` section of ``GET /api/v1/admin/health``, and nothing tested
 it: the controller test builds ``LoggingStatus`` by hand, so a reader that
 swapped the logger's counters for the audit's, or reported one chain twice,
-would have gone through green. Measured: swapping the two triples in
-``read()`` left the whole suite passing.
+would go through green: swapping the two triples in ``read()`` passes
+everything else.
 """
 
 import pytest

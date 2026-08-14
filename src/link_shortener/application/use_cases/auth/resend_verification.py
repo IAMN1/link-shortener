@@ -6,7 +6,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import Email, ValidationError
+from link_shortener.domain import Email
 from link_shortener.domain.entities.email_verification import EmailVerification
 from link_shortener.domain.value_objects.verification_token import (
     issue_token,
@@ -67,7 +67,7 @@ class ResendVerificationUseCase(BaseUseCase):
         log = self._get_logger(self.logger, context)
 
         # Refused before anything is looked up. That is not a defence
-        # against timing: measured over 200 requests, a malformed address
+        # against timing: a malformed address
         # comes back in 0.12 ms against 0.26 ms for an unknown one and
         # 0.82 ms for a registered one, and the three ranges do not
         # overlap. The status differs too, so the shape of the address was

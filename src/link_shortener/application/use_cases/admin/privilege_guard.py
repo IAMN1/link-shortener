@@ -8,7 +8,7 @@ rather than from the request context, which carries role names only and was
 assembled before the operation began.
 """
 
-from typing import Iterable, List, Optional
+from typing import Iterable, Optional
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.uow import UnitOfWork

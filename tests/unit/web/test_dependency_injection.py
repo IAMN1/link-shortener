@@ -1,4 +1,4 @@
-from unittest.mock import patch, Mock
+from unittest.mock import Mock
 from link_shortener.infrastructure.cache.null_cache import NullCache
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.infrastructure.di.container import Container
@@ -26,7 +26,6 @@ class TestContainer:
     def test_get_admin_service(self, config):
         """Container should provide an AdminService instance."""
         container = Container(config)
-        from link_shortener.application.services.admin_service import AdminService
         admin = container.get_admin_service()
         assert admin is not None
 

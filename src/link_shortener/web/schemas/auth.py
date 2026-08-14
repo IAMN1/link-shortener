@@ -15,10 +15,10 @@ class UserResponse(BaseModel):
 class RegisterResponse(BaseModel):
     """Answer to a registration attempt.
 
-    Carries a sentence and nothing else. It used to carry the account as
-    well, which meant the answer could only be given when there was an
-    account to describe -- and the absence of one was itself the reply
-    that an address is taken. Both outcomes now produce this.
+    Carries a sentence and nothing else. Carrying the account as well
+    would mean the answer could only be given when there is an account to
+    describe -- and the absence of one would itself say that an address is
+    taken. Both outcomes produce this.
     """
 
     message: str = Field(description="Human-readable acknowledgement.")

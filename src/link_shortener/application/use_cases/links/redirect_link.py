@@ -11,7 +11,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import LinkNotFoundError, ShortCode, LinkExpiredError
+from link_shortener.domain import LinkNotFoundError, LinkExpiredError
 
 
 @dataclass
@@ -48,8 +48,11 @@ class RedirectLinkUseCase(BaseUseCase):
             The original URL to redirect to.
 
         Raises:
-            LinkNotFoundError: If the short code does not exist.
-            ValueError: If the short code format is invalid.
+            LinkNotFoundError: If no link carries this code, a string the
+                format rules refuse included -- on this route above all,
+                which is where a single unmatched segment lands, a
+                malformed code is a page that is not there rather than a
+                bad request.
             RuntimeError: On unexpected failures.
         """
 

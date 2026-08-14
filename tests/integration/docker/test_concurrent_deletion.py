@@ -1,9 +1,10 @@
 """
 Deleting one link twice at once, against real PostgreSQL.
 
-``delete()`` used to answer from a read that preceded the statement: it
-fetched the row, deleted it, and returned ``True`` because the fetch had
-found something. Under READ COMMITTED two concurrent deletions both see the
+``delete()`` answers from the statement, not from a read preceding it:
+fetching the row, deleting it and returning ``True`` because the fetch found
+something is wrong under READ COMMITTED, where two concurrent deletions both
+see the
 row in their own snapshot, both issue a DELETE, and only one of them matches
 anything -- yet both reported success.
 

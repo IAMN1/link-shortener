@@ -31,6 +31,35 @@ class IntegrationTestConfig(TestingConfig):
     COOKIE_SECURE = False
     RATE_LIMIT_AUTH_DISABLED = True
 
+    GUEST_LINK_LIMIT = 20
+    """Raised from the default ten, because the suite shares one allowance.
+
+    The ``app`` fixture is session-scoped, a guest's allowance is counted
+    per address, and every test that shortens without naming an address
+    spends from the same pool. At the default the pool for ``127.0.0.1`` is
+    spent to its last unit, so one further guest creation anywhere in
+    ``tests/integration`` reddens an unrelated CSRF test with
+    429 -- a failure that names neither the quota nor the test that took
+    the last one.
+
+    Twenty rather than something larger: the throttle on
+    ``api.create_short_link`` is 30 requests a minute, and a quota at or
+    above it is reached second, so a test that spends its allowance to ask
+    what a refusal says measures the throttle instead -- ``Retry-After:
+    60`` where the quota says 86400, with the throttle's counters attached.
+    At 30 three tests fail that way, at 29 none do. They are the tests that
+    name their own address, which keeps them clear of this
+    pool but not of this number: they spend ``limit + 1`` requests to reach
+    a refusal, so raising the quota raises what they send.
+
+    This is a wider allowance, not an isolated one, and the room it buys is
+    finite: measured, the suite spends 10 of the 20, so ten further guest
+    creations on the shared address pass and the eleventh reddens that same
+    CSRF test again. A test that cares about the quota -- or that creates
+    guest links in any number -- should name its own address, as the ones
+    in ``test_link_creation_limits.py`` do.
+    """
+
 
 @pytest.fixture(scope="session")
 def app():
@@ -129,9 +158,9 @@ def account_with_permissions(app, email, password, role_name, permissions):
     test meant.
 
     *Added*, not "given only": registration grants the default role as
-    well, so the account ends up with two roles. Measured on an account
-    built with ``["admin:view_system_health"]`` alone: roles ``only-probe``
-    and ``user``, permissions ``admin:view_system_health``,
+    well, so the account ends up with two roles. An account built with
+    ``["admin:view_system_health"]`` alone carries roles ``only-probe`` and
+    ``user``, permissions ``admin:view_system_health``,
     ``link:create``, ``link:delete_own``, ``link:view_own`` and
     ``stats:view_basic``. None of the default four is administrative --
     ``test_every_admin_route_is_guarded`` is what holds that -- so a

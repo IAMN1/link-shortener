@@ -28,15 +28,12 @@ class ServiceHealthStatus:
 class GetServiceHealthUseCase(BaseUseCase):
     """Check the health of all infrastructure dependencies.
 
-    Takes the same bounded snapshot ``/health`` does. It used to run its own
-    checks and cache the result for 15 seconds, so the admin panel and the
-    container probe could disagree about the same component for as long as
-    that cache lived -- with nothing to tell an operator which of the two
-    was out of date. Two surfaces reporting one system have to read it from
-    one place.
-
-    The snapshot carries its own time budget, which is what the cache was
-    really protecting against; there is nothing left for the cache to buy.
+    Takes the same bounded snapshot ``/health`` does, rather than running
+    checks of its own: two surfaces reporting one system have to read it
+    from one place, or the admin panel and the container probe can
+    disagree about the same component with nothing to say which is out of
+    date. The snapshot carries its own time budget, so there is nothing
+    left for a cache to buy here.
     """
 
     def __init__(

@@ -25,12 +25,11 @@ class DeleteUserUseCase(BaseUseCase):
 
     Requires ``admin:manage_users`` permission.
 
-    The links go with the account, by decision of the owner of this project.
-    ``urls.owner_id`` used to be cleared instead (``ondelete="SET NULL"``),
-    which left the links working, redirecting and belonging to nobody: their
-    creator was gone, so only a holder of ``link:delete_any`` could ever take
-    them down, and nothing said they existed. Deleting them is not
-    reversible and is not meant to be.
+    The links go with the account, by decision of the owner of this
+    project. Clearing ``urls.owner_id`` instead would leave them working,
+    redirecting and belonging to nobody -- only a holder of
+    ``link:delete_any`` could take them down, and nothing would say they
+    exist. Deleting them is not reversible and is not meant to be.
 
     They are deleted here rather than left to the foreign key, because a row
     that disappears behind the application leaves its cache entries behind:

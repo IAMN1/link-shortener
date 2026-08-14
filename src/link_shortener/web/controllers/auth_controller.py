@@ -176,11 +176,10 @@ class AuthController:
             result = self.login_use_case.execute(email, password, context)
         except ValidationError:
             # A malformed email is a malformed request, not a refused one.
-            # ValidationError is a DomainError, so the branch below used to
-            # take it and answer 401 -- the same status as a wrong password,
-            # for an input the same class of error is reported as 400 for
-            # everywhere else in the API. Left to the global handler, which
-            # is where every other ValidationError is answered.
+            # ValidationError is a DomainError, so without this clause the
+            # branch below would answer 401 -- the status of a wrong
+            # password -- where the rest of the API answers 400. Left to the
+            # global handler, which answers every other ValidationError.
             raise
         except DomainError as e:
             # Only domain failures carry a message meant for the client.

@@ -117,6 +117,6 @@ class TestTheProfileSeesItsOwnDefaults:
 
         config = ConfigFactory.create_config("development")
 
-        assert config.DATABASE_POOL_SIZE == 20
-        assert config.DATABASE_MAX_OVERFLOW == 10
+        assert config.DATABASE_POOL_SIZE == 5
+        assert config.DATABASE_MAX_OVERFLOW == 5
         assert config.DATABASE_POOL_RECYCLE == 3600

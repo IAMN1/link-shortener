@@ -1,9 +1,9 @@
 """Registration must not say whether an address is already registered.
 
 The response is one half of that and the work behind it is the other. A
-taken address used to return before the password was hashed, which made
-it 290x faster than a free one -- so these tests hold the shape of the
-work, not just the shape of the answer: both paths hash exactly once and
+taken address returning before the password is hashed makes it 290x faster
+than a free one -- so these tests hold the shape of the work, not just the
+shape of the answer: both paths hash exactly once and
 both hand exactly one message to the queue.
 
 What they do not hold is equality of writing, because there is none: a

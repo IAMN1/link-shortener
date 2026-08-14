@@ -124,9 +124,8 @@ class TestHealthOnTheRealWiring:
         name="standard_audit")`` -- goes on being asked for records that
         quietly go nowhere: no exception, no demotion, ``dropped_calls``
         at zero, ``/api/v1/admin/health`` reporting the chain as active.
-        Measured: each of those two renamings left the whole suite green,
-        and the audit trail moved from ``audit.log`` into the application
-        log with it.
+        Each of those two renamings passes everything else, and moves the
+        audit trail from ``audit.log`` into the application log with it.
 
         Read off the implementations the managers actually build, not off
         constructors called here: the renaming that survives is one made

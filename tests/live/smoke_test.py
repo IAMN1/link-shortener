@@ -40,10 +40,10 @@ Every client answers from an address of its own, and the checks that measure
 a quota get a fresh one. The guest quota counts per address throughout; the
 rate limiter counts per address only while the caller is anonymous and
 switches to the account once one is signed in, so `session_client` and
-`api` share a bucket whatever addresses they claim. Sharing an address made
-each check the neighbour of every check that happened to precede it:
-registrations are three per hour, and the fourth scenario used to measure
-the throttle rather than what it was named after.
+`api` share a bucket whatever addresses they claim. A shared address makes
+each check the neighbour of whatever preceded it: registrations are three
+per hour, so a fourth scenario would measure the throttle rather than what
+it is named after.
 """
 
 import re
@@ -56,6 +56,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from flask import request
+
+from mail_catcher import MailCatcher
 
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.web.app_factory import create_app
@@ -92,7 +94,31 @@ class LiveTestResult:
 
 
 result = LiveTestResult()
-app = create_app(config=TestingConfig())
+
+mail = MailCatcher()
+"""Почтовый сервер этого прогона. Принимает письма и никуда их не шлёт."""
+
+
+class SmokeConfig(TestingConfig):
+    """
+    Профиль прогона: тот же testing, но почта включена и направлена сюда.
+
+    Без неё подтверждение адреса приходилось изображать -- прогон сам
+    выпускал токен и сам писал его слепок в таблицу, то есть проверял
+    ``/api/v1/auth/verify`` против строки, которую выдал не сервис. Тогда
+    ни выпуск токена регистрацией, ни сборка ссылки шаблоном, ни отправка
+    письма не проверялись ничем.
+    """
+
+    MAIL_ENABLED = True
+    MAIL_HOST = "127.0.0.1"
+    MAIL_PORT = mail.port
+    MAIL_USE_TLS = False
+    MAIL_USE_SSL = False
+    MAIL_FROM = "no-reply@link-shortener.test"
+
+
+app = create_app(config=SmokeConfig())
 
 touched_rules = set()
 
@@ -102,9 +128,9 @@ def _record_the_rule_that_answered(response):
     """
     Note which route rule answered, so coverage is counted not claimed.
 
-    The file used to say in its own docstring how many routes it reached.
-    That number was maintained by hand and had no way of noticing a check
-    being deleted, renamed, or quietly pointed somewhere else.
+    A number stated in the docstring would be maintained by hand and could
+    not notice a check being deleted, renamed, or quietly pointed somewhere
+    else.
 
     Args:
         response: The response about to be returned.
@@ -263,84 +289,60 @@ def promote_to_admin(email: str) -> None:
             )
             session.commit()
 
+def mailed_confirmation(email: str) -> str:
+    """
+    Take the confirmation link out of the message the service sent.
+
+    Nothing here mints it and nothing here spells the path. Registration
+    issues the token, the template builds the link, the mailer submits the
+    message over SMTP, and this reads back exactly what was delivered --
+    so a token that stopped being issued, a link built on a path nothing
+    answers, and a message that never left all fail here.
+
+    Rebuilding the path from a known constant would undo that: measured --
+    with the path written out here, a ``VERIFY_PATH`` changed to
+    ``/auth/verify`` still gave 114/114.
+
+    Args:
+        email: Address the confirmation was sent to.
+
+    Only the path is handed back, and the origin is deliberately not
+    checked here. A test client can be given a path and nothing else, so
+    the only comparison available would be against ``BASE_URL`` -- the
+    same value the link was built from, which makes the assertion agree
+    with itself: with that check in place a ``BASE_URL`` of
+    ``http://attacker.example/`` still gives 114/114.
+
+    The host the link is built on is checked where the comparison can be
+    independent, against a ``Host`` header the caller chose:
+    ``tests/integration/web/controllers/test_confirmation_link_is_built_from_configuration.py``.
+    ``browser_test.py`` covers it from the other side, by opening the whole
+    URL in a browser.
+
+    Args:
+        email: Address the confirmation was sent to.
+
+    Returns:
+        Path with query string, as the link carries them.
+    """
+    target = mail.confirmation_target(email)
+    assert target is not None, f"no confirmation message was delivered to {email}"
+    return target
+
+
 def confirm_email(email: str) -> None:
     """
-    Mark an address as confirmed, as following the mailed link would.
+    Confirm an address by following the link that was mailed to it.
 
-    Registration leaves an account unconfirmed and login refuses it until
-    the address is proven, so every account this run signs in with has to
-    get past that first. It cannot be done through the route: only the
-    digest of the token is stored, and the token exists for the length of
-    one call to the mailer -- which is a ``NullMailer`` here, because this
-    run uses the testing profile and that profile cannot send mail at all.
+    Every account this run signs in with has to get past the confirmation
+    first: registration leaves it unconfirmed and login refuses it until
+    the address is proven.
 
     Args:
         email: Address of the account to confirm.
     """
-    from sqlalchemy import text
-
-    with app.app_context():
-        db = app.container.get_db_manager()
-        with db.session() as session:
-            updated = session.execute(
-                text("UPDATE users SET email_verified = 1 WHERE email = :email"),
-                {"email": email},
-            ).rowcount
-            assert updated == 1, f"no account for {email}"
-            session.commit()
-
-
-def issue_confirmation(email: str) -> str:
-    """
-    Store a confirmation for an account and hand back its raw token.
-
-    The token a real user gets arrives by mail; this run sends none, and
-    the table keeps only a digest. So the token is minted here and its
-    digest written the way registration would have written it -- which is
-    what makes the link below a real link and not a mock of one.
-
-    Args:
-        email: Address of the account.
-
-    Returns:
-        The token that opens the confirmation.
-    """
-    import uuid
-    from datetime import datetime, timedelta, timezone
-
-    from sqlalchemy import text
-
-    from link_shortener.domain.value_objects.verification_token import (
-        issue_token,
-        token_digest,
-    )
-
-    token = issue_token()
-    now = datetime.now(timezone.utc)
-    with app.app_context():
-        db = app.container.get_db_manager()
-        with db.session() as session:
-            user = session.execute(
-                text("SELECT id FROM users WHERE email = :email"),
-                {"email": email},
-            ).fetchone()
-            assert user is not None, f"no account for {email}"
-            session.execute(
-                text(
-                    "INSERT INTO email_verifications "
-                    "(id, user_id, token_hash, expires_at, created_at, used_at) "
-                    "VALUES (:id, :uid, :hash, :expires, :created, NULL)"
-                ),
-                {
-                    "id": str(uuid.uuid4()),
-                    "uid": user[0],
-                    "hash": token_digest(token),
-                    "expires": now + timedelta(hours=24),
-                    "created": now,
-                },
-            )
-            session.commit()
-    return token
+    response = new_client("10.0.0.99").get(mailed_confirmation(email))
+    assert response.status_code == 200, response.get_json()
 
 
 GUEST_URL = "https://example.com"
@@ -421,13 +423,13 @@ def _():
 
 @test("GET /api/v1/auth/verify (the real link)")
 def _():
-    token = issue_confirmation("test@example.com")
-    r = new_client("10.0.0.32").get(f"/api/v1/auth/verify?token={token}")
+    link = mailed_confirmation("test@example.com")
+    r = new_client("10.0.0.32").get(link)
     assert r.status_code == 200, r.get_json()
 
     # And once only: the same link again is refused, in the same words as
     # a link that never existed.
-    again = new_client("10.0.0.33").get(f"/api/v1/auth/verify?token={token}")
+    again = new_client("10.0.0.33").get(link)
     unknown = new_client("10.0.0.36").get("/api/v1/auth/verify?token=no-such")
     assert again.status_code == unknown.status_code == 400
     assert again.get_json()["message"] == unknown.get_json()["message"]
@@ -979,9 +981,8 @@ print("\n=== STATS ===")
 def _():
     # Asked first, and by nobody: the seeded 'guest' role carries
     # stats:view_basic, so this endpoint has no authenticated path to speak
-    # of. Its OpenAPI entry used to declare a 401 that could not happen;
-    # the owner decided on 2026-08-09 that the totals stay public, and the
-    # entry was brought to the code rather than the other way round.
+    # of, and its OpenAPI entry declares no 401: the totals are public by
+    # decision, and the entry follows the code.
     #
     # The totals live here rather than on the authenticated check below
     # because this is the read that computes them. The next one is served
@@ -1338,9 +1339,9 @@ DASHBOARD_PAGES = (
 """Every /dashboard rule the application registers, with the answer each
 owes a signed-in caller holding the plain 'user' role.
 
-Listed in full rather than sampled: the eight that used to be here were an
-incomplete transcription, and the five left out were the parameterised ones
--- exactly the rules a new page is most likely to be added beside.
+Listed in full rather than sampled: a partial transcription leaves out the
+parameterised rules, which are exactly the ones a new page is most likely
+to be added beside.
 
 The second column is what makes these thirteen checks thirteen checks.
 ``@login_required`` is the outer decorator, so asking as an anonymous
@@ -1629,5 +1630,7 @@ if unreached:
     for rule in unreached:
         print(f"  - {rule}")
     success = False
+
+mail.stop()
 
 sys.exit(0 if success else 1)

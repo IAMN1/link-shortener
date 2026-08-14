@@ -10,9 +10,9 @@ and have nowhere else to look. Nothing takes them out again, and
 ``monkeypatch`` cannot: it restores the variables it set itself, and these
 were written by the application code under test.
 
-Measured before this file had any content: a ``.env`` holding the single
-line ``GUEST_LINK_LIMIT=-7`` turned a green suite into ``5 failed, 1
-error``. One casualty was ``test_production_config_cookie_security``, which
+Without this file, a ``.env`` holding the single line
+``GUEST_LINK_LIMIT=-7`` turns a green suite into ``5 failed, 1 error``.
+One casualty is ``test_production_config_cookie_security``, which
 already carried its own ``monkeypatch.chdir`` for precisely this reason --
 it passed when run alone and failed when run behind its neighbour. The
 neighbour had published the value process-wide before the chdir could
@@ -149,13 +149,13 @@ def detached_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     profiles read ``.env``, and the walk upwards from the working directory
     finds a file, which from the repository root means the developer's own.
 
-    Changing the directory is no longer enough on its own.
-    ``_read_env_file`` reads the project root before it walks anywhere, and
-    that root comes from the location of the configuration module rather
-    than from the process -- so it stays the developer's checkout however
-    the test is run. Measured when only the ``chdir`` was here:
-    ``test_base_url_property`` began reading ``HOST=127.0.0.1`` out of the
-    real ``.env`` and expected ``localhost``. The root is therefore pointed
+    Changing the directory is not enough on its own. ``_read_env_file``
+    reads the project root before it walks anywhere, and that root comes
+    from the location of the configuration module rather than from the
+    process -- so it stays the developer's checkout however the test is
+    run. With only the ``chdir`` here, ``test_base_url_property`` reads
+    ``HOST=127.0.0.1`` out of the real ``.env`` and expects ``localhost``.
+    The root is therefore pointed
     at the same empty directory.
 
     Everything outside the allowlist above is removed, so a setting is

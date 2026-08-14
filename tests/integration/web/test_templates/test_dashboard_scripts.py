@@ -4,9 +4,9 @@ Tests that every dashboard page loads the script the dashboard runs on.
 ``dashboard.js`` binds the sidebar toggle and the sidebar's logout button.
 It was included from ``dashboard/base.html`` inside ``{% block scripts %}``
 -- the same block each page overrides to add its own script, and an override
-replaces what it overrides. Measured over HTTP, the file reached two pages
-out of twelve; on the other ten both controls were dead. Nothing failed and
-nothing was logged, which is why it survived: the page renders, the button
+replaces what it overrides. Included that way the file reaches two pages
+out of twelve; on the other ten both controls are dead. Nothing fails and
+nothing is logged: the page renders, the button
 is drawn, and it does nothing when pressed.
 
 Rendered here rather than fetched, because the defect is in template

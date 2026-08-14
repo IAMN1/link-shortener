@@ -26,7 +26,7 @@ from link_shortener.application.use_cases.auth.send_verification_email import (
 )
 from link_shortener.application.use_cases.auth.verify_email import VerifyEmailUseCase
 from link_shortener.domain import (
-    DomainError, Email, PasswordHash, Role, User, ValidationError
+    Email, PasswordHash, Role, User, ValidationError
 )
 from link_shortener.domain.entities.email_verification import EmailVerification
 from link_shortener.domain.value_objects.verification_token import (
@@ -523,7 +523,7 @@ class TestTheMessageItself:
         use_case.execute("user@example.com", "TOKEN-123", context())
 
         url = templates.verification_email.call_args.kwargs["confirm_url"]
-        assert url.startswith("https://links.example.com/auth/verify?token=")
+        assert url.startswith("https://links.example.com/api/v1/auth/verify?token=")
 
     def test_a_trailing_slash_does_not_double(self, ):
         use_case, templates = self._use_case(Mock(), "https://links.example.com/")

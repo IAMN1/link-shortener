@@ -8,14 +8,11 @@ These tests verify PostgreSQL-specific behavior that SQLite cannot test:
 - psycopg2 driver compatibility
 """
 
-import pytest
-from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 from link_shortener.domain.entities.link import Link
 from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
-from link_shortener.domain.value_objects.dedup_scope import DedupScope
 from link_shortener.domain.value_objects.owner_id import OwnerID
 from link_shortener.infrastructure.database.repositories.sqlalchemy_link_repository import (
     SQLAlchemyLinkRepository,
@@ -71,8 +68,12 @@ class TestPostgresRepositoryCRUD:
         link = _make_link("pgtest004")
         repo.save(link)
 
-        updated = repo.increment_clicks(ShortCode("pgtest004"))
-        assert updated.clicks == 1
+        repo.increment_clicks(ShortCode("pgtest004"))
+
+        # Committed before reading: the UPDATE leaves the session's own
+        # objects untouched, and it is the commit that expires them.
+        db_session.commit()
+        assert repo.find_by_code(ShortCode("pgtest004")).clicks == 1
 
     def test_find_by_owner(self, app, db_session):
         from sqlalchemy import text

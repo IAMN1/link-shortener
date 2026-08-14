@@ -4,10 +4,10 @@ The page scripts, executed by a browser.
 ``web/static/js/pages/*.js`` was reached by nothing. The one test about
 scripts asserted that a filename appears in the markup, and ``tests/e2e``
 drives the Flask test client, which has no browser in it -- so the eight
-files that turn an API answer into something a person reads were, as far as
-any run could tell, empty. Measured before this file existed: reversing
-``data.message || data.error`` in all eight -- putting the machine-readable
-code back in front of the sentence on every form -- left the whole suite and
+files that turn an API answer into something a person reads are, as far as
+any other run can tell, empty. Reversing ``data.message || data.error`` in
+all eight -- putting the machine-readable code back in front of the
+sentence on every form -- leaves the suite and
 the live run green.
 
 Run it by hand, as ``smoke_test.py`` is run:
@@ -36,6 +36,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from playwright.sync_api import sync_playwright
 from werkzeug.serving import make_server
+
+from mail_catcher import MailCatcher
 
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.web.app_factory import create_app
@@ -100,7 +102,7 @@ def free_port() -> int:
         return probe.getsockname()[1]
 
 
-def build_app(database_path: Path, base_url: str):
+def build_app(database_path: Path, base_url: str, mail_port: int):
     """
     Build the application against a file database.
 
@@ -111,6 +113,9 @@ def build_app(database_path: Path, base_url: str):
             ``Origin`` is not in ``CORS_ORIGINS``, and a browser sends the
             real one -- a port picked at random here. Without this the
             forms answer 403 and the run reads as eight broken scripts.
+            It is also the base the confirmation link is built on, so the
+            browser can follow the link straight out of the message.
+        mail_port: Port the catcher of this run listens on.
 
     Returns:
         The Flask application, tables created and roles seeded.
@@ -125,6 +130,16 @@ def build_app(database_path: Path, base_url: str):
         # look like a broken script.
         DEFAULT_RATE_LIMIT = 10_000
         RATE_LIMITS = {}
+        # Mail goes to the catcher of this run. Before it, confirmation
+        # was a direct `UPDATE users SET email_verified = 1`, and the one
+        # step a visitor actually performs -- opening the link out of the
+        # message -- was performed by nobody.
+        MAIL_ENABLED = True
+        MAIL_HOST = "127.0.0.1"
+        MAIL_PORT = mail_port
+        MAIL_USE_TLS = False
+        MAIL_USE_SSL = False
+        MAIL_FROM = "no-reply@link-shortener.test"
 
     app = create_app(config=BrowserConfig())
     with app.app_context():
@@ -172,29 +187,29 @@ def is_a_code(text: str) -> bool:
     return first.isupper() and " " not in text.strip()
 
 
-def confirm_email(app, email: str) -> None:
+def confirm_email(page, mail: MailCatcher, email: str) -> None:
     """
-    Mark an address as confirmed, as following the mailed link would.
+    Confirm an address the way its owner does: by opening the mailed link.
 
     Registration leaves the account unconfirmed and the login form refuses
-    it until the address is proven. A browser cannot do that step here:
-    nothing is mailed -- the profile below cannot send at all -- and the
-    table keeps only the token's digest.
+    it until the address is proven. Before, this step was a direct
+    ``UPDATE users SET email_verified = 1``, which proved nothing about
+    the token registration issues, the link the template builds or the
+    page that link lands on -- and one of those broke once without a
+    single check going red.
 
     Args:
-        app: The application serving this run.
+        page: An open browser page, used to follow the link.
+        mail: The catcher this run's messages were delivered to.
         email: Address of the account to confirm.
     """
-    from sqlalchemy import text
+    link = mail.confirmation_link(email)
+    assert link is not None, f"no confirmation message was delivered to {email}"
 
-    with app.app_context():
-        with app.container.get_db_manager().session() as session:
-            updated = session.execute(
-                text("UPDATE users SET email_verified = 1 WHERE email = :email"),
-                {"email": email},
-            ).rowcount
-            assert updated == 1, f"no account for {email}"
-            session.commit()
+    response = page.goto(link)
+    assert response is not None and response.status == 200, (
+        f"the mailed link answered {response and response.status}: {link}"
+    )
 
 
 def sign_in(page, base: str) -> None:
@@ -221,7 +236,8 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as workspace:
         port = free_port()
         base = f"http://127.0.0.1:{port}"
-        app = build_app(Path(workspace) / "browser.db", base)
+        mail = MailCatcher()
+        app = build_app(Path(workspace) / "browser.db", base, mail.port)
         server = make_server("127.0.0.1", port, app, threaded=True)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -231,12 +247,13 @@ def main() -> int:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
                 try:
-                    run_checks(browser, base, app)
+                    run_checks(browser, base, mail)
                 finally:
                     browser.close()
         finally:
             server.shutdown()
             thread.join(timeout=5)
+            mail.stop()
 
     print("\n" + "=" * 60)
     print(f"Results: {result.passed}/{result.passed + result.failed} passed, "
@@ -254,16 +271,15 @@ def main() -> int:
     return 0 if result.failed == 0 else 1
 
 
-def run_checks(browser, base: str, app) -> None:
+def run_checks(browser, base: str, mail: MailCatcher) -> None:
     """
     Drive every page whose script turns an answer into a sentence.
 
     Args:
         browser: A launched Playwright browser.
         base: Base URL the server answers on.
-        app: The application being served, for the one step a browser
-            cannot take: confirming an address, which normally happens by
-            opening a link that this run never mails.
+        mail: Catcher holding the messages this run sent, from which the
+            confirmation link is taken.
     """
     console_errors = []
 
@@ -373,7 +389,7 @@ def run_checks(browser, base: str, app) -> None:
 
         # From here on the account is usable: the checks below are about
         # signing in and the dashboard, not about confirmation.
-        confirm_email(app, "browser-user@example.test")
+        confirm_email(page, mail, "browser-user@example.test")
 
     @check("signing in with the wrong password says so in words")
     def _():

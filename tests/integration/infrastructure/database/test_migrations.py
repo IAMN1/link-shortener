@@ -170,10 +170,10 @@ class TestMigrationChain:
 # Everything that decides which database a subprocess opens. Dropped
 # before each run, and put back only by the test that means it: the suite
 # is also run with DATABASE_URL and friends exported -- one of the three
-# control runs does exactly that -- and a test that inherited them
-# measured that shell instead of what it set. Measured: with
-# DATABASE_URL=postgresql://prod/real exported, the refusal test stopped
-# refusing and went looking for psycopg2.
+# control runs does exactly that -- and a test that inherits them measures
+# that shell instead of what it set: with
+# DATABASE_URL=postgresql://prod/real exported, the refusal test stops
+# refusing and goes looking for psycopg2.
 AMBIENT_DATABASE_VARS = (
     "FLASK_ENV",
     "DATABASE_URL",
@@ -233,7 +233,7 @@ class TestARunWithNoCallerToInheritFrom:
     def test_it_migrates_a_configuration_the_application_could_not_start_on(
         self, tmp_path
     ):
-        """A limit on submitted links used to stop a schema from being built.
+        """A limit on submitted links must not stop a schema being built.
 
         ``MAX_URL_LENGTH`` above 2048 is refused by ``validate()`` and read
         by nothing a migration does. It stands in here for the mail
@@ -274,7 +274,7 @@ class TestARunWithNoCallerToInheritFrom:
         assert AlembicCommands.HANDOFF_ENV_VAR in result.stderr
 
     def test_it_says_which_database_it_is_about_to_change(self, tmp_path):
-        """The bare command used to be silent about its target.
+        """The command names the database it is about to change.
 
         Which matters most when a handoff is in play: an
         ``ALEMBIC_DATABASE_URL`` left over from an earlier command sends

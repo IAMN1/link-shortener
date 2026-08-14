@@ -123,27 +123,18 @@ def mask_url(url: str) -> str:
     Make a URL safe to write down, and short enough to be worth writing.
 
     Two things happen, in this order. Credentials in front of the host are
-    replaced with ``***``: "Use of the format \"user:password\" in the
-    userinfo field is deprecated." (RFC 3986, 3.2.1), and OWASP's Logging
-    Cheat Sheet lists authentication passwords among the data that "should
-    usually not be recorded directly in the logs, but instead should be
-    removed, masked, sanitized, hashed, or encrypted" -- which is what
-    this is.
+    replaced with ``***``, which is what OWASP's Logging Cheat Sheet asks
+    for; then the result is truncated.
 
-    The order is the point, and not merely for tidiness. Truncation alone
-    was all this function used to do, and it left every short address
-    whole -- ``user:pass@`` included, and secrets are short. Cutting first
-    is worse than useless on a long one: past about 42 characters of
-    userinfo the cut falls before the ``@``, so what follows has no
-    authority left to clean and hands back the head of the credentials
-    verbatim. Measured on a 60-character password: mask-then-cut removes
-    it, cut-then-mask emits 37 of its characters.
+    The order is the point: cutting first leaves the head of a long
+    password verbatim, because past about 42 characters of userinfo the
+    cut falls before the ``@`` and there is no authority left to clean.
 
     Credentials are taken from the address itself and from any address
     embedded in it. The two steps overlap rather than divide the work:
     the pattern reaches most outer authorities as well, and the parse
     reaches the two shapes it cannot -- a scheme-relative ``//`` address,
-    and userinfo holding a space. Neither step alone is enough.
+    and userinfo holding a space.
 
     What is not touched is a token in the query string. Removing those
     means keeping a list of parameter names, the list is never complete,

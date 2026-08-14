@@ -1,7 +1,6 @@
 """Integration tests for CLI commands."""
 import pytest
 from datetime import timedelta
-from unittest.mock import MagicMock
 from flask.testing import FlaskCliRunner
 from link_shortener.domain.entities.user import User
 from link_shortener.domain.value_objects.email import Email
@@ -67,6 +66,38 @@ class TestDatabaseCommands:
         # branch exits 1, and the assertion above rules that out, so
         # "failed" could never appear. Naming the one word that can.
         assert "healthy" in result.output.lower()
+
+    def test_db_check_names_the_reason_it_could_not_connect(
+        self, runner, app
+    ):
+        """One sentence for every cause is not a diagnosis.
+
+        This is the command an operator runs to find out what is wrong,
+        and one answer for a wrong password, an unreachable host and a
+        database that does not exist tells the operator nothing: with the
+        reason caught and dropped, a wrong password in the docker stack
+        produces no "password authentication failed" anywhere.
+        """
+        from sqlalchemy.exc import OperationalError
+
+        class _Unreachable:
+            def session(self):
+                raise OperationalError(
+                    "SELECT 1",
+                    {},
+                    Exception('password authentication failed for user "x"'),
+                )
+
+        real = app.container.db_component._manager
+        app.container.db_component._manager = _Unreachable()
+        try:
+            result = runner.invoke(app.cli, ["db", "check"])
+        finally:
+            app.container.db_component._manager = real
+
+        assert result.exit_code == 1
+        assert "password authentication failed" in result.stderr, result.stderr
+        assert "SELECT 1" not in result.output, "the statement leaked"
 
     def test_db_status(self, runner, app):
         result = runner.invoke(app.cli, ["db", "status"])
@@ -181,8 +212,8 @@ class TestAlembicCommands:
         The command runs alembic in a subprocess, and a subprocess inherits
         the ambient environment rather than the configuration of the
         application that launched it. The ``testing`` profile pins in-memory
-        SQLite precisely so a test run cannot reach a real database, and an
-        exported ``DATABASE_URL`` used to overrule it.
+        SQLite precisely so a test run cannot reach a real database, and
+        an exported ``DATABASE_URL`` must not overrule it.
 
         The ambient value names a dialect that does not exist, so if it were
         consulted the run would fail immediately and for an unmistakable

@@ -9,9 +9,7 @@ allowance.
 
 import uuid
 
-import pytest
 
-from link_shortener.domain import ShortCode
 from tests.integration.conftest import (
     auth_headers, csrf_headers, register_and_login
 )
@@ -216,9 +214,9 @@ class TestExpiryIsReported:
 
 class TestAPoisonedUrlCannotOccupyACleanOne:
     """
-    A URL carrying a newline used to be accepted, stored raw, and then hash
-    identically to the clean URL -- normalisation drops the fragment. The
-    clean URL then deduplicated onto it and could no longer be shortened
+    A URL carrying a newline, accepted and stored raw, hashes identically
+    to the clean URL -- normalisation drops the fragment. The clean URL then
+    deduplicates onto it and cannot be shortened
     into anything that works: its redirect raises for good, because a
     ``Location`` header cannot hold a newline.
     """
@@ -276,7 +274,22 @@ class TestBatchObeysTheGuestRules:
 
     def test_a_guest_batch_stops_at_the_quota(self, app):
         client = app.test_client()
-        urls = [_url() for _ in range(13)]
+        # Sized from the quota rather than written as a number. The 13 that
+        # stood here was three past an allowance of ten, and it stopped
+        # being three past anything the moment the allowance moved: at 20 a
+        # batch of 13 fits whole, so there is no overflow left to refuse.
+        # That much the test does notice -- it reddens on ``13 == 20``
+        # rather than passing -- but what it reports is a number it was
+        # never asked about, and the repair anyone reaches for is to write
+        # the new number in beside the old one.
+        limit = app.config["GUEST_LINK_LIMIT"]
+        urls = [_url() for _ in range(limit + 3)]
+        # Stated, not left to the reader of the arithmetic above: a batch
+        # sized at the allowance overflows by nothing, and then every
+        # assertion below holds by being asked about an empty set. Sizing
+        # the batch from the quota is what keeps this test alive when the
+        # quota moves -- it is not an invitation to size it *at* the quota.
+        assert len(urls) > limit
 
         body = client.post(
             "/api/v1/batch/shorten",
@@ -285,13 +298,15 @@ class TestBatchObeysTheGuestRules:
             environ_base=_guest("203.0.113.20"),
         ).get_json()
 
-        limit = app.config["GUEST_LINK_LIMIT"]
         assert body["successful"] == limit
         assert body["failed"] == len(urls) - limit
+        assert body["failed"] > 0
 
     def test_what_did_not_fit_comes_back_per_item(self, app):
         client = app.test_client()
-        urls = [_url() for _ in range(12)]
+        limit = app.config["GUEST_LINK_LIMIT"]
+        urls = [_url() for _ in range(limit + 2)]
+        assert len(urls) > limit  # see the note in the test above
 
         body = client.post(
             "/api/v1/batch/shorten",
@@ -301,8 +316,42 @@ class TestBatchObeysTheGuestRules:
         ).get_json()
 
         refused = [item for item in body["results"] if not item["success"]]
-        assert refused, "the overflow must be reported, not silently dropped"
+        # Counted, not merely non-empty: "at least one was refused" is
+        # satisfied by a batch that refused the wrong number of them.
+        assert len(refused) == len(urls) - limit
         assert all("limit" in item["error"].lower() for item in refused)
+
+    def test_links_the_guest_already_has_cost_nothing(self, app):
+        """Being handed an existing link is not a creation, so it is free.
+
+        The rule is written beside the code that applies it -- "Only links
+        that have to be created draw on the quota; being handed one that
+        already exists costs nothing" -- and nothing was holding it:
+        measured, charging for them as well (``- len(fetched_results)``)
+        left all 708 integration tests passing, and a guest who resubmitted
+        their own links was refused links they had allowance for.
+
+        Sized so that the difference shows: the batch fills the allowance
+        exactly, and only the free half keeps it from overflowing.
+        """
+        address = "203.0.113.24"
+        client = app.test_client()
+        limit = app.config["GUEST_LINK_LIMIT"]
+
+        already_have = [_url() for _ in range(limit // 4)]
+        for url in already_have:
+            assert _shorten(client, url, ip=address).status_code == 201
+
+        fresh = [_url() for _ in range(limit - len(already_have))]
+        body = client.post(
+            "/api/v1/batch/shorten",
+            json={"urls": already_have + fresh},
+            headers=csrf_headers(client),
+            environ_base=_guest(address),
+        ).get_json()
+
+        assert body["successful"] == len(already_have) + len(fresh)
+        assert body["failed"] == 0
 
     def test_batch_links_expire_like_single_guest_links(self, app):
         client = app.test_client()
@@ -361,9 +410,8 @@ class TestBatchObeysTheGuestRules:
     def test_an_empty_batch_is_answered_not_crashed(self, app):
         """
         The HTTP schema refuses an empty list, so this goes at the layer
-        below it: the aggregate's own empty value used to raise
-        ``TypeError`` because its ``created_at`` default was a timestamp
-        where a factory belonged.
+        below it: the aggregate's own empty value raises ``TypeError`` if
+        its ``created_at`` default is a timestamp where a factory belongs.
         """
         from link_shortener.application.context import RequestContext
 

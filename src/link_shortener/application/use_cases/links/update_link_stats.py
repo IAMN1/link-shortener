@@ -16,9 +16,9 @@ class UpdateLinkStatsUseCase(BaseUseCase):
     Designed to be called from a Celery worker. It uses its own UoW
     to ensure a fresh transaction.
 
-    It touches no cache. It used to refresh the cached entity with the new
-    click count, and that write -- landing after its transaction closed --
-    is what brought deleted links back to life on the redirect path.
+    It touches no cache: a write refreshing the cached entity would land
+    after its own transaction closed, which is how a deleted link comes
+    back to life on the redirect path.
     """
     uow_factory: Callable[[], UnitOfWork]
     logger: Logger
@@ -42,7 +42,7 @@ class UpdateLinkStatsUseCase(BaseUseCase):
 
         with self.uow_factory() as uow:
             try:
-                updated_link = uow.links.increment_clicks(short_code)
+                uow.links.increment_clicks(short_code)
                 uow.commit()
             except LinkNotFoundError:
                 log.warning("Link not found during stats update")

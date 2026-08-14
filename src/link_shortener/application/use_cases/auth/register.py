@@ -37,38 +37,24 @@ class RegisterUseCase(BaseUseCase):
     stop registration outright, and would tell an anonymous caller that it
     is down.
 
-    An address that is already registered is not refused out loud. It used
-    to be -- 400 and "Email already registered" -- which answered, for
-    anyone who cared to ask, whether an address has an account here.
-    OWASP's Authentication Cheat Sheet lists that under *Account creation*
-    as an incorrect response, alongside a plain "Welcome! You have signed
-    up successfully."; the correct one it gives is "A link to activate
-    your account has been emailed to the address provided." Both paths now
-    return the same nothing, and the controller turns that into one
-    answer.
+    An address that is already registered is not refused out loud, since
+    a refusal answers whether an address has an account here. OWASP's
+    Authentication Cheat Sheet asks for the same answer either way: "A
+    link to activate your account has been emailed to the address
+    provided."
 
-    Equal answers are half of it. The other half is that they take the
+    Equal answers are half of it; the other half is that they take the
     same time to produce, which is what the order of operations here is
-    for. Hashing used to happen after the existence check, so a taken
-    address short-circuited before bcrypt and came back in 0.56 ms against
-    162.52 ms for a free one -- 290x, with the two ranges nowhere near
-    each other, so one request was enough to tell them apart. The hash is
-    now computed before anything is looked up, which is the shape OWASP's
-    Forgot Password Cheat Sheet asks for: "Ensure that responses return in
-    a consistent amount of time... instead of using a quick exit method."
-
-    Mail is the other half of the clock. Registration submits one message
-    either way -- a confirmation link for a free address, a notice for a
-    taken one -- because without a broker the submission happens on the
-    request thread, and a path that skipped it would be shorter by the
-    length of an SMTP exchange (13-15 ms against a local catcher; a remote
-    relay is slower). See ``SendAccountExistsEmailUseCase`` for what that
-    notice may and may not say.
+    for. The password is hashed before anything is looked up, so a taken
+    address cannot short-circuit ahead of bcrypt. Registration also
+    submits one message either way -- a confirmation link for a free
+    address, a notice for a taken one -- because without a broker the
+    submission happens on the request thread, and a path that skipped it
+    would be shorter by the length of an SMTP exchange.
 
     What stays different is the writing: a free address inserts two rows
-    and commits, a taken one does not. That is a real remainder, small
-    beside a bcrypt hash, and it is measured and written down in the
-    developer guide rather than claimed away here.
+    and commits, a taken one does not. That remainder is small beside a
+    bcrypt hash, and it is written down in the developer guide.
     """
     uow_factory: Callable[[], UnitOfWork]
     authentication_service: AuthenticationService
@@ -131,9 +117,9 @@ class RegisterUseCase(BaseUseCase):
                     )
                     # A server failure in substance: the caller did nothing
                     # wrong and retrying with different input will not help.
-                    # The message says so and no longer names the missing
-                    # role, which told an anonymous caller which part of the
-                    # deployment is misconfigured.
+                    # The missing role is not named -- that would tell an
+                    # anonymous caller which part of the deployment is
+                    # misconfigured.
                     #
                     # The status is still 400, because the controller answers
                     # every DomainError that way -- so the code, not the

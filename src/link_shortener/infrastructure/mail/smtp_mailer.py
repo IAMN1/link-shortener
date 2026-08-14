@@ -12,26 +12,17 @@ class SMTPMailer(Mailer):
     Sends mail by talking SMTP to a submission server.
 
     Built on ``smtplib`` and ``email.message`` from the standard library,
-    so the mail channel adds no dependency to the runtime image. That is
-    not only about size: ``requirements.txt`` is exported from the lock
-    without filtering groups and the image installs it whole, so every
-    dependency added here travels into production.
+    so the mail channel adds no dependency to the runtime image.
 
     Two ways to reach the server, per RFC 8314 section 3.3: STARTTLS on
-    port 587 and Implicit TLS on port 465. The RFC calls them equivalent
-    -- "there is no significant difference between the security properties
-    of STARTTLS on port 587 and Implicit TLS on port 465 if the
-    implementations are correct and if both the client and the server are
-    configured to require successful negotiation of TLS prior to Message
-    Submission" -- with that last clause carrying the weight.
+    port 587 and Implicit TLS on port 465, which the RFC calls equivalent
+    provided both ends require TLS before submission.
 
-    This class keeps the half of it that concerns credentials: the
+    This class keeps the half of that which concerns credentials: the
     password is withheld unless the socket is encrypted. The other half --
-    requiring TLS for the submission itself, message and all -- is the
-    configuration's, through ``REQUIRE_MAIL_TLS``, and it is enforced on
-    the deployed profiles only. Development aims at a catcher on the
-    loopback interface that speaks no TLS, so a mailer built with both
-    flags off submits in the clear and says nothing about it.
+    requiring TLS for the submission itself -- is the configuration's,
+    through ``REQUIRE_MAIL_TLS``, enforced on the deployed profiles only.
+    Development aims at a catcher on the loopback that speaks no TLS.
 
     Attributes:
         host: Submission server hostname.
@@ -170,7 +161,7 @@ class SMTPMailer(Mailer):
             # Nothing owns this connection yet: the ``with`` in ``send``
             # only takes charge of what this method returns, so an
             # exception raised here left an open socket with no owner.
-            # Measured on a server that offers no STARTTLS: forty refused
+            # On a server that offers no STARTTLS: forty refused
             # sends leaked eighty descriptors for as long as the
             # exceptions were held, and the server saw no QUIT at all --
             # submission providers read abrupt disconnects as a reason to
@@ -199,20 +190,11 @@ class SMTPMailer(Mailer):
         """
         Refuse to send the password over a channel that is not encrypted.
 
-        Asks the socket rather than the configuration. ``use_tls`` says
-        what was intended and the socket says what happened; where they
-        come apart today is a constructor called from somewhere other than
-        the DI container with both flags off. The configuration's own
-        check catches that as a typo at startup, which is the friendlier
-        place to catch it, but it cannot catch what it never saw.
-
-        A server refusing the STARTTLS is *not* the case this covers, and
-        an earlier version of this docstring claimed it was: ``smtplib``
-        raises ``SMTPNotSupportedError`` when the extension is unadvertised
-        and ``SMTPResponseException`` when the reply is not 220, so the
-        connection never gets here. Reading the socket is still the
-        stricter of the two checks -- it cannot be satisfied by a setting
-        that says the right thing -- which is why it stays.
+        Asks the socket rather than the configuration: ``use_tls`` says
+        what was intended and the socket says what happened. A server
+        refusing STARTTLS never reaches here -- ``smtplib`` raises before
+        that -- so what this catches is a mailer built with both flags off
+        outside the DI container.
 
         Args:
             smtp: The connected client, after any TLS negotiation.

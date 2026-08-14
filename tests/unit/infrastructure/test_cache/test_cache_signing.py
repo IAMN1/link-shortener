@@ -15,13 +15,13 @@ back, so the thing that decides that must not be the thing standing in.
 import json
 import time
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
 import pytest
 
 from link_shortener.domain import (
-    DedupScope, Link, OriginalUrl, ShortCode, UrlHash,
+    Link, OriginalUrl, ShortCode, UrlHash,
 )
 from link_shortener.infrastructure.cache.redis_cache import RedisLinkCache
 from link_shortener.infrastructure.cache.signing import seal, unseal
@@ -116,7 +116,6 @@ class TestForgedEntriesAreRefused:
     def test_a_handwritten_link_entry_is_not_served(self):
         client = _client()
         with _cache(client) as cache:
-            key = cache.key_gen.for_short_code(CODE)
             # Exactly the reproduction from the audit: valid JSON of the
             # right shape, written straight into Redis -- wrapped in a
             # well-formed envelope so the signature is what has to refuse it.
@@ -363,9 +362,9 @@ class TestTheSigningPrimitive:
         """
         The *first* character of the signature, deliberately.
 
-        Overwriting the last one is what this test used to do, and it was
-        green by chance: the signature is 20 bytes in base64url, 27
-        characters carrying 162 bits, so two bits of the final character
+        Overwriting the last one passes by chance: the signature is 20
+        bytes in base64url, 27 characters carrying 162 bits, so two bits of
+        the final character
         decode to nothing. "A" through "D" all mean the same signature.
         The encoder only ever emits "A" of those four, so writing "B" over
         an "A" -- which is what the test did whenever it found one --

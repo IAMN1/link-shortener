@@ -1,5 +1,5 @@
 """Tests for the admin API controller."""
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock
 
 from link_shortener.application.ports.logging_status import LoggingStatus
 
@@ -260,18 +260,18 @@ class TestAdminApiController:
 
         # The status first: publishing the section unconditionally raises
         # on the None and the caller gets a 500 whose body has no
-        # "logging" key either -- so the assertion below passed on the
-        # error envelope. Measured: `if health.logging is not None:`
-        # widened to `if True:` left this file green.
+        # "logging" key either -- so the assertion below would pass on the
+        # error envelope. `if health.logging is not None:` widened to
+        # `if True:` leaves the rest of this file green.
         assert response.status_code == 200
         assert "logging" not in response.get_json()
 
     def test_list_users_passes_the_window_it_was_asked_for(self, app, client):
         """``limit`` and ``offset`` can be swapped and nothing notices.
 
-        Measured on the mutation run of 2026-08-10: passing ``limit=offset``
-        and ``offset=limit`` answered 200 with an empty list, because every
-        test that reached this endpoint set the service to answer ``[]``
+        Passing ``limit=offset`` and ``offset=limit`` answers 200 with an
+        empty list, because every other test that reaches this endpoint
+        sets the service to answer ``[]``
         and none looked at what it had been asked for.
         """
         ctrl = _get_admin_controller(app)

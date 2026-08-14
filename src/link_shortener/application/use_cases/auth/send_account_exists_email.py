@@ -32,8 +32,8 @@ class SendAccountExistsEmailUseCase(BaseUseCase):
     length. A taken address and a free one both hash a password and both
     submit one message, so neither the body nor the clock separates them.
     Skipping the message here would reopen the timing channel that the
-    equal bodies were meant to close -- measured against a local catcher,
-    one submission is 13-15 ms, and a remote relay is slower.
+    equal bodies are meant to close: one submission costs milliseconds
+    against a local catcher and more against a remote relay.
 
     Attributes:
         mailer: Transport the message is handed to.

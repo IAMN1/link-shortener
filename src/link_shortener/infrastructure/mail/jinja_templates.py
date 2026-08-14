@@ -39,7 +39,9 @@ class JinjaMailTemplates(MailTemplates):
         """
         self.environment = Environment(
             loader=FileSystemLoader(str(template_dir)),
-            autoescape=False,
+            # Тело text/plain: экранирование сломало бы ссылку в письме,
+            # см. докстринг класса.
+            autoescape=False,  # nosec B701
             # A missing variable renders as an empty string by default,
             # which for these templates means mailing somebody a message
             # with a blank where the link should be. Raising instead turns

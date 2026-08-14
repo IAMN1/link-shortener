@@ -11,11 +11,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Сам пакет ставится отдельно от зависимостей: requirements.txt их только
-# перечисляет (`uv export --no-emit-project`), поэтому без этого шага
-# `link_shortener` в образе не импортируется вовсе. Продакшн-команда падала
-# на `ModuleNotFoundError` — незаметно, потому что docker-compose
-# перекрывает её на `flask run` с примонтированным ./src.
+# Пакет ставится отдельно от зависимостей: requirements.txt их только
+# перечисляет (`uv export --no-emit-project`), и без этого шага
+# `link_shortener` в образе не импортируется.
 COPY pyproject.toml README.md ./
 COPY ./src ./src/
 RUN pip install --no-cache-dir --no-deps .
@@ -33,9 +31,8 @@ COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 COPY ./src ./src/
 
-# Конфиг и ревизии Alembic должны быть в образе, иначе `alembic upgrade head`
-# работает только там, где они примонтированы томом (docker-compose),
-# и недоступен при обычном развёртывании образа.
+# Конфиг и ревизии Alembic нужны в образе: иначе `alembic upgrade head`
+# работает только там, где они примонтированы томом.
 COPY alembic.ini ./
 COPY ./migrations ./migrations/
 
@@ -51,23 +48,18 @@ EXPOSE 5000
 
 ENTRYPOINT ["/entrypoint.sh"]
 
-# Команда по умолчанию – для продакшена (gunicorn)
+# Продакшн-команда: gunicorn.
 #
-# --worker-class sync задан явно, а не оставлен на умолчание: --timeout
-# гарантированно убивает зависший запрос только на sync-воркерах. У gthread
-# один запрос может идти бесконечно, и потолок ниже стал бы декорацией.
+# --worker-class sync задан явно: --timeout прерывает зависший запрос только
+# на sync-воркерах, у gthread запрос может идти бесконечно.
 #
-# --timeout нужен потому, что серверный statement_timeout не выполняется
-# замороженной (а не упавшей) БД: её ядро подтверждает пакеты, поэтому и
-# TCP-keepalive не срабатывает. Тогда единственное, что ещё способно
-# прервать ожидание, — надзор за самим процессом. Замерено: при docker pause
-# на контейнере БД редирект не отвечал 120 с, а тридцати таких запросов
-# хватает, чтобы исчерпать пул.
+# --timeout — единственное, что прерывает обращение к зависшей, а не упавшей
+# БД: её ядро подтверждает пакеты, поэтому не срабатывают ни серверный
+# statement_timeout, ни TCP-keepalive.
 #
-# --graceful-timeout строго меньше --timeout: иначе воркер, честно
-# доигрывающий запрос при перезапуске, будет убит обычной проверкой раньше,
-# чем успеет закончить.
+# --graceful-timeout строго меньше --timeout, иначе воркер, доигрывающий
+# запрос при перезапуске, будет убит раньше, чем закончит.
+#
 # Спецификация приложения в одинарных кавычках: без них `sh` разбирает
-# `create_app()` как объявление функции и падает с
-# `Syntax error: "(" unexpected`, не дойдя до gunicorn.
-CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-5000} --workers ${GUNICORN_WORKERS:-2} --worker-class ${GUNICORN_WORKER_CLASS:-sync} --timeout ${GUNICORN_TIMEOUT:-30} --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-20} --access-logfile - --error-logfile - 'link_shortener.web.app_factory:create_app()'"]
+# `create_app()` как объявление функции.
+CMD ["sh", "-c", "exec gunicorn --bind ${HOST:-0.0.0.0}:${PORT:-5000} --workers ${GUNICORN_WORKERS:-4} --worker-class ${GUNICORN_WORKER_CLASS:-sync} --timeout ${GUNICORN_TIMEOUT:-30} --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-20} --access-logfile - --error-logfile - 'link_shortener.web.app_factory:create_app()'"]

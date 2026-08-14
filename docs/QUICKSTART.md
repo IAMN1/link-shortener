@@ -1,51 +1,32 @@
 # Быстрый старт
 
-Пошаговая инструкция по запуску сервиса с нуля.
+Алгоритм запуска с нуля. Каждый шаг — команда и то, что она должна ответить.
+Почему всё устроено именно так — в [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 
-Есть два сценария запуска, они независимы:
+Два сценария, они независимы:
 
-| Сценарий | Что нужно | Для чего |
-|----------|-----------|----------|
-| **A. Локально** | Python 3.12 + [uv](https://docs.astral.sh/uv/) | Разработка и отладка. SQLite, кэш в памяти, без Celery |
-| **B. В Docker** | Docker и Docker Compose v2+ | Полный стек: PostgreSQL, Redis, Celery |
+| Сценарий | Что нужно | Что получится |
+|----------|-----------|---------------|
+| [**A. Локально**](#сценарий-a-локально) | Python 3.12 + [uv](https://docs.astral.sh/uv/) | SQLite, кэш в памяти, без Celery |
+| [**B. В Docker**](#сценарий-b-в-docker) | Docker Compose v2+ | PostgreSQL, Redis, Celery, Mailpit |
 
-## Как устроена конфигурация
-
-Прежде чем запускать, важно понять две вещи.
-
-**`FLASK_ENV` выбирает профиль** — класс конфигурации из
-`infrastructure/configs/app/`: `development`, `staging`, `production`,
-`testing`. Профиль задаёт умолчания для своего окружения.
-
-**`.env` переопределяет умолчания профиля.** Приоритет, побеждает верхний:
-
-1. настоящая переменная окружения (`export VAR=...`, `environment:` в compose);
-2. `.env.<профиль>` — например `.env.production`;
-3. `.env`;
-4. умолчание профиля в коде.
-
-То есть профиль и `.env` не конкурируют: профиль — это база, `.env` — точечные
-правки поверх неё.
-
-> Профиль `testing` намеренно **не читает** `.env`-файлы: автотесты должны
-> давать одинаковый результат на любой машине.
-
-В репозитории лежит `.env.example` — шаблон со всеми переменными и описаниями.
-Файлы `.env` и `.env.docker` в git не попадают: в них секреты.
-
-**Где ищется `.env`.** Сначала в корне проекта — том каталоге, где лежат
-`pyproject.toml` и `src`, — и только если файла там нет, от текущего каталога
-вверх. Так celery-воркер, `alembic` и любая команда, запущенная не из корня,
-читают ту же конфигурацию, что и приложение: раньше они не находили `.env`
-вовсе и молча поднимались на умолчаниях профиля, то есть на другой базе.
-В установленной копии (образ, `site-packages`) корня нет — там остаётся
-только поиск от текущего каталога.
+```mermaid
+flowchart LR
+    subgraph A["A · локально"]
+        A1[uv sync] --> A2[.env + секреты] --> A3[alembic upgrade head]
+        A3 --> A4[db load-base-roles] --> A5[create-admin] --> A6[flask run]
+    end
+    subgraph B["B · docker"]
+        B1[.env.docker + секреты] --> B2[COMPOSE_PROFILES] --> B3[compose up -d --build]
+        B3 --> B4[migrations выходит с кодом 0] --> B5[app и celery_worker]
+    end
+```
 
 ---
 
-# Сценарий A: локальный запуск
+# Сценарий A: локально
 
-## Шаг A1: Клонирование и зависимости
+### A1. Зависимости
 
 ```bash
 git clone https://github.com/your-org/link-shortener.git
@@ -53,200 +34,223 @@ cd link-shortener
 uv sync
 ```
 
-`uv sync` создаёт `.venv` и ставит сам проект в editable-режиме, поэтому
-команды `flask` и `alembic` работают без `PYTHONPATH`.
+Ожидается: создан `.venv`, проект поставлен в editable-режиме — команды
+`flask` и `alembic` работают без `PYTHONPATH`.
 
-## Шаг A2: Файл окружения
+### A2. Файл окружения
 
 ```bash
 cp .env.example .env
+uv run flask security generate-secrets
 ```
 
-Минимально задайте секреты (сгенерировать: `uv run flask security generate-secrets`):
+Вторая команда печатает две готовые строки — впишите их в `.env`:
 
 ```ini
-SECRET_KEY=<случайная hex-строка 64 байта>
-SHORT_CODE_PEPPER=<другой секретный ключ>
+SECRET_KEY=<hex-строка 64 байта>
+SHORT_CODE_PEPPER=<другая hex-строка>
 ```
 
 Остальное для локального запуска уже подходит: `DATABASE_TYPE=sqlite`,
-`REDIS_ENABLED=false`, `CELERY_ENABLED=false`.
+`CELERY_ENABLED=false`, а Redis выключен умолчанием профиля `development`.
 
-> Никогда не коммитьте реальные секреты в репозиторий.
+Почта в шаблоне включена и нацелена на `localhost:1025` — туда её принимает
+Mailpit из docker-стека, если тот поднят. Если ловушки нет, регистрация
+по-прежнему отвечает `202`, письмо не уходит, и об этом говорит строка
+`Verification email not delivered` в журнале; подтвердить адрес в таком
+запуске нечем.
 
-## Шаг A3: Создание схемы базы данных
+### A3. Схема базы
 
 ```bash
 uv run flask alembic upgrade head
 ```
 
-Применяет baseline-миграцию `0001_initial_schema` — создаёт таблицы
-`users`, `roles`, `permissions`, `urls` и связующие таблицы.
+Ожидается: `Running upgrade -> 0001, initial schema`.
 
-## Шаг A4: Системные роли
+### A4. Системные роли
 
 ```bash
 uv run flask db load-base-roles
 ```
 
-Загружает роли `guest`, `user`, `analyst`, `admin` и их разрешения из
-`infrastructure/configs/rbac/roles.yaml`. Команда идемпотентна.
+Ожидается: `Roles and permissions seeded.` с перечислением
+`admin, analyst, guest, user`.
 
-> Миграция создаёт только **схему**, но не данные. Роли — отдельный шаг.
-> В профиле `development` они досоздаются и автоматически при старте
-> (`AUTO_SEED_ROLES=true`), в `production` — нет.
->
-> Поэтому в `development` эта команда обычно печатает
-> `permissions created: 0; roles created: 0` — роли уже засеяны при первом
-> запуске приложения. Это не холостой ход и не ошибка: команда идемпотентна
-> и подтверждает, что всё на месте. Ненулевые числа увидите на базе, к
-> которой приложение ещё ни разу не подключалось, и в `production`.
+Шаг обязательный: анонимный запрос выполняется в роли `guest`, и именно она
+несёт `link:create`. Без него публичное сокращение отвечает `401`.
 
-> **Шаг обязательный, а не косметический.** Анонимный запрос выполняется в
-> роли `guest`, и именно она несёт `link:create`. Пока роли не засеяны,
-> публичное сокращение ссылок отвечает `401`. Это сделано намеренно:
-> отсутствие роли значит «не сказано, что можно гостю», и открывать доступ
-> по умолчанию в такой ситуации нельзя.
->
-> То же касается **уже развёрнутой** базы, засеянной до того, как в роль
-> `guest` добавили `link:create`: команду нужно выполнить повторно, она
-> идемпотентна. Проверить фактическое состояние — `flask security list-roles`.
-
-## Шаг A5: Администратор
+### A5. Администратор
 
 ```bash
-uv run flask create-admin --email admin@example.com --password your_password
+uv run flask create-admin --email admin@example.com --password 'ваш-пароль'
 ```
 
-## Шаг A6: Запуск
+Ожидается: `Admin user admin@example.com created successfully.`
+
+### A6. Запуск
 
 ```bash
 uv run flask run
 ```
 
-Сервис доступен на `http://127.0.0.1:5000/`.
+Ожидается: сервис на `http://127.0.0.1:5000/`.
+
+### A7. Проверка
+
+```bash
+curl -s -X POST http://127.0.0.1:5000/api/v1/shorten \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
+
+Ожидается: `201` и тело с полями `short_code`, `short_url`, `is_new: true`,
+где `short_url` — `http://localhost:5000/<код>`. Адрес ссылки собирается из
+`HOST` и `PORT`, и `HOST` в шаблоне закомментирован именно ради этого:
+активное `0.0.0.0` давало бы `http://0.0.0.0:5000/<код>`, по которому
+браузер никуда не идёт.
 
 ---
 
-# Сценарий B: запуск в Docker
+# Сценарий B: в Docker
 
-## Шаг B1: Клонирование
-
-```bash
-git clone https://github.com/your-org/link-shortener.git
-cd link-shortener
-```
-
-## Шаг B2: Файл окружения
+### B1. Файл окружения
 
 ```bash
 cp .env.example .env.docker
 ```
 
-Задайте в нём секреты и пароли инфраструктуры:
+Задайте в нём одиннадцать значений — остальное шаблон уже знает:
 
 ```ini
 ENV_FILE=.env.docker          # должен совпадать со значением --env-file
-SECRET_KEY=<случайная hex-строка 64 байта>
-SHORT_CODE_PEPPER=<другой секретный ключ>
+SECRET_KEY=<hex-строка 64 байта>
+SHORT_CODE_PEPPER=<другая hex-строка>
 
 DATABASE_TYPE=postgresql
-DATABASE_HOST=db
-DATABASE_NAME=db_shortener    # имя базы, а не файла: значение из шаблона
-                              # (db_shortener.db) рассчитано на SQLite
+DATABASE_HOST=db              # имя сервиса в сети compose
+DATABASE_NAME=db_shortener    # имя базы, а не файла
 DATABASE_USER=shortener
-DATABASE_PASSWORD=<надёжный пароль>
+DATABASE_PASSWORD=<пароль>
 
 REDIS_ENABLED=true
-REDIS_PASSWORD=<надёжный пароль>
+REDIS_PASSWORD=<пароль>
 CELERY_ENABLED=true
 
-DOMAIN=localhost:5000         # обязательно при HOST=0.0.0.0
+DOMAIN=localhost:5000         # имя, из которого строятся ссылки
 ```
 
-> `DOMAIN` без значения даст короткие ссылки вида `http://0.0.0.0:5000/<код>`,
-> которые не открываются в браузере.
+Почту править не нужно: `MAIL_ENABLED=true` стоит в шаблоне, а адрес ловушки
+контейнерам подставляет `docker-compose.override.yml`. Проверено с нуля —
+регистрация отвечает `202`, письмо приходит в Mailpit, ссылка из него даёт
+`200`, вход выдаёт пару токенов.
 
-## Шаг B3: Сборка и запуск
+### B2. Какие сервисы поднимать своими
+
+Шаблон включает все четыре:
+
+```ini
+COMPOSE_PROFILES=db,cache,broker,mail
+```
+
+| Профиль | Что поднимает | Не включён — задайте |
+|---------|---------------|----------------------|
+| `db` | PostgreSQL | `DATABASE_URL` |
+| `cache` | Redis для кэша и лимитов | `REDIS_URL` |
+| `broker` | Redis для очереди Celery | `CELERY_BROKER_URL` |
+| `mail` | ловушку писем Mailpit | `MAIL_HOST`, `MAIL_PORT` |
+
+Пустое значение означает «всё внешнее»: поднимутся только `migrations`, `app`
+и `celery_worker`. Разово тот же выбор делает флаг —
+`docker compose --profile db up -d`.
+
+### B3. Запуск
 
 ```bash
 docker compose --env-file .env.docker up -d --build
 ```
 
-Флаг `--env-file` обязателен, иначе compose возьмёт `.env`, рассчитанный на
-локальный SQLite.
+Ожидается такой порядок — отдельного шага для миграций не нужно:
 
-Это **стек для разработки**: dev-сервер Flask с отладчиком, смонтированные
-исходники, порт на `127.0.0.1`. Задано это в `docker-compose.override.yml`,
-который compose подхватывает автоматически — отдельного флага не нужно.
+```mermaid
+flowchart LR
+    P["Сервисы включённых профилей<br/>db · redis · redis_broker · mailpit"] --> H{healthy}
+    H --> M["migrations<br/>alembic upgrade head"]
+    M --> E{exited 0}
+    E --> APP[app]
+    E --> CEL[celery_worker]
+```
 
-Продакшн-форма — тот же стек без надстройки:
+При выключенном профиле его сервис из этой цепочки просто выпадает:
+`depends_on` помечены `required: false`.
+
+Флаг `--env-file` обязателен: без него compose возьмёт `.env`, рассчитанный
+на локальный SQLite, — и заодно не увидит `COMPOSE_PROFILES`, то есть не
+поднимет ни базу, ни Redis.
+
+Проверка состояния:
+
+```bash
+docker compose --env-file .env.docker ps
+```
+
+Ожидается: все сервисы `running`, `migrations` — `exited (0)`.
+
+### B4. Роли и администратор
+
+```bash
+docker compose --env-file .env.docker exec app flask db load-base-roles
+docker compose --env-file .env.docker exec app \
+    flask create-admin --email admin@example.com --password 'ваш-пароль'
+```
+
+Ожидается: то же, что в шагах A4 и A5.
+
+### B5. Проверка
+
+```bash
+curl -s http://localhost:5000/health
+```
+
+Ожидается: `{"status": "healthy", "components": {"database": "ok",
+"cache": "ok", "task_queue": "ok", "rate_limiter": "enforcing"}}`.
+
+```bash
+curl -s -X POST http://localhost:5000/api/v1/shorten \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
+
+Ожидается: `201`.
+
+### Продакшн-форма стека
 
 ```bash
 docker compose -f docker-compose.yml --env-file .env.docker up -d --build
 ```
 
-Приложение тогда запускается командой образа — gunicorn с потолком на запрос,
+Тот же стек без `docker-compose.override.yml`: gunicorn вместо dev-сервера,
 без отладчика и без монтирования исходников. Отличить одно от другого можно
-по `/console`: в dev он отвечает `200`, в продакшн-форме `404`.
-
-Порядок запуска задан зависимостями: `db` и `redis` поднимаются до `healthy`,
-затем сервис `migrations` выполняет `alembic upgrade head` и завершается,
-и только после этого стартует `app`. Отдельного шага для миграций не нужно.
-
-Проверьте состояние:
-
-```bash
-docker compose --env-file .env.docker ps
-docker compose --env-file .env.docker logs app
-```
-
-## Шаг B4: Роли и администратор
-
-```bash
-docker compose --env-file .env.docker exec app flask db load-base-roles
-docker compose --env-file .env.docker exec app \
-    flask create-admin --email admin@example.com --password your_password
-```
-
-Для создания обычного пользователя:
-
-```bash
-docker compose --env-file .env.docker exec app \
-    flask create-user --email user@example.com --password user_password --role user
-```
-
-## Шаг B5: Проверка
-
-```bash
-curl -X POST http://localhost:5000/api/v1/shorten \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}'
-```
+по `/console` — в dev он отвечает `200`, здесь `404`.
 
 ---
 
-# Использование приложения
+# Использование
 
-### Как гость (без аккаунта)
+### Как гость
 
-Откройте `http://localhost:5000/` и:
-- Вставьте URL и нажмите **Shorten** — создастся ссылка, действительная 7 дней
-- Используйте вкладку **Info** — lookup любого короткого кода
-- Используйте вкладку **Extended** — расширенная аналитика по коду
+Откройте `http://localhost:5000/` — вставьте URL и нажмите **Shorten**.
+Ссылка действительна 7 дней. Вкладки **Info** и **Extended** показывают
+данные по любому короткому коду.
 
-### Регистрация и вход
+### Регистрация
 
-1. Нажмите **Sign Up** в шапке или перейдите на `http://localhost:5000/register`.
-   Страница отвечает одинаково, свободен адрес или занят, — и в обоих случаях
-   отправляет письмо
-2. Откройте письмо и перейдите по ссылке. Без этого вход отвечает `401` с
-   кодом `EMAIL_NOT_VERIFIED`. В разработке письма ловит Mailpit:
-   `http://127.0.0.1:8025` (см. [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md#почта-в-разработке)).
-   При `MAIL_ENABLED=false` письма не будет вовсе — подтвердить учётку тогда
-   нечем
-3. Войдите на `http://localhost:5000/login`
-4. Вы попадёте на панель управления
+1. **Sign Up** в шапке или `http://localhost:5000/register`. Страница
+   отвечает одинаково, свободен адрес или занят.
+2. Откройте письмо и перейдите по ссылке. В Docker письма ловит Mailpit:
+   `http://127.0.0.1:8025`. Без подтверждения вход отвечает `401`
+   `EMAIL_NOT_VERIFIED`; при `MAIL_ENABLED=false` письма не будет вовсе.
+3. Войдите на `http://localhost:5000/login` — попадёте на панель управления.
 
 ### Примеры API
 
@@ -256,94 +260,80 @@ curl -X POST http://localhost:5000/api/v1/shorten \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com"}'
 
-# Создание с кастомным TTL (1 час)
+# С заданным временем жизни (1 час)
 curl -X POST http://localhost:5000/api/v1/shorten \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com", "ttl_seconds": 3600}'
 
-# Просмотр информации о ссылке (публичный)
+# Информация о ссылке
 curl http://localhost:5000/api/v1/links/<short_code>
-
-# Просмотр расширенной информации (публичный)
 curl http://localhost:5000/api/v1/links/<short_code>/extended
 
 # Вход
 curl -X POST http://localhost:5000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "admin@example.com", "password": "your_password"}'
+  -d '{"email": "admin@example.com", "password": "ваш-пароль"}'
 
-# Мои ссылки (с пагинацией)
-curl http://localhost:5000/api/v1/links/mine?offset=0&limit=20 \
+# Свои ссылки
+curl "http://localhost:5000/api/v1/links/mine?offset=0&limit=20" \
   -H "Authorization: Bearer <token>"
 
-# Удаление ссылки
+# Удаление
 curl -X DELETE http://localhost:5000/api/v1/links/<short_code> \
   -H "Authorization: Bearer <token>"
 ```
 
-## Разделы панели управления
+Полное описание API — `http://localhost:5000/api/docs`.
 
-| Раздел | Доступ | Описание |
-|--------|--------|----------|
-| Мои ссылки | `link:view_own`, `link:delete_own` | Просмотр, управление, удаление ссылок |
-| Моя статистика | `link:view_own` | Личная аналитика кликов |
-| Создать ссылку | `link:create` | Форма с выбором TTL |
-| Статистика сервиса | `stats:view_basic`; разбивка по популярным — `stats:view_full` | Глобальная статистика |
-| Пользователи | admin | Управление пользователями |
-| Роли | admin | Управление ролями и разрешениями |
-| Проверка здоровья | admin | Статус БД, Redis, Celery |
+### Разделы панели управления
 
-# Дальнейшие шаги
+| Раздел | Доступ |
+|--------|--------|
+| Мои ссылки | `link:view_own`, `link:delete_own` |
+| Моя статистика | `link:view_own` |
+| Создать ссылку | `link:create` |
+| Статистика сервиса | `stats:view_basic`, разбивка — `stats:view_full` |
+| Пользователи, Роли, Проверка здоровья | admin |
 
-## Тесты
+---
 
-```bash
-# Всё вместе; Docker-сервисы для уровня 2b поднимаются автоматически
-uv run pytest tests/ -v
-```
-
-Разбор уровней и остальные команды —
-[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md#запуск-тестов).
-
-## Celery локально (опционально)
-
-Нужен только при `CELERY_ENABLED=true`. Требует запущенного Redis:
+# Дальше
 
 ```bash
-uv run celery -A link_shortener.infrastructure.task_queue.celery_app worker --loglevel=info
+# Тесты (Docker-сервисы для уровня 2b поднимаются автоматически)
+uv run pytest tests/
+
+# Celery локально, если CELERY_ENABLED=true
+uv run celery -A link_shortener.infrastructure.task_queue.celery_app worker
+
+# Новая ревизия схемы после правки моделей
+uv run flask alembic migrate "описание изменения"
+uv run flask alembic upgrade head
 ```
 
-При `CELERY_ENABLED=false` клики считаются синхронно в обработчике редиректа —
-статистика не теряется, но добавляется запрос к БД в критический путь.
+- Устройство проекта и принятые решения — [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)
+- Слои и границы — [ARCHITECTURE.md](ARCHITECTURE.md)
+- Эксплуатация и миграции — [OPERATIONS_AND_MIGRATIONS.md](OPERATIONS_AND_MIGRATIONS.md)
 
-## Изменение схемы базы данных
+# Если что-то не работает
 
-После правки моделей в `infrastructure/database/models/`:
-
-```bash
-uv run flask alembic migrate "описание изменения"   # создать ревизию
-uv run flask alembic upgrade head                   # применить
-```
-
-Подробнее — [docs/OPERATIONS_AND_MIGRATIONS.md](OPERATIONS_AND_MIGRATIONS.md).
-
-## Если что-то не работает
-
-| Симптом | Причина и решение |
-|---------|-------------------|
-| `ModuleNotFoundError: No module named 'link_shortener'` | Не выполнен `uv sync`, либо команда запущена не через `uv run` |
-| `no such table: urls` | Не применены миграции: `uv run flask alembic upgrade head` |
-| `Role 'user' not found` при регистрации | Не загружены роли: `uv run flask db load-base-roles` |
-| `401` на `POST /api/v1/shorten` у неаутентифицированного клиента | Роль `guest` несёт `link:create`, и без неё анонимное сокращение закрыто. Две причины: роли нет вовсе (в логе `Guest role is missing`) или роль засеяна раньше, чем в неё добавили `link:create` — тогда лог молчит на уровне `info`, смотреть `uv run flask security list-roles`. Лечится одинаково: `uv run flask db load-base-roles` |
-| `403` на `POST /api/v1/shorten` у вошедшего пользователя | У его роли нет `link:create` — например, роль `analyst` его не имеет по замыслу. Проверить: `uv run flask security list-roles` |
-| Значения из `.env` не применяются | Профиль `testing` игнорирует `.env` намеренно. В остальных случаях проверьте, что переменная не задана в окружении — она имеет приоритет над файлом |
-| `No 'script_location' key found` | Голая команда `alembic` запущена не из каталога с `alembic.ini`. Через `flask alembic` этого не бывает: рабочий каталог подчинённого процесса прибит к найденному каталогу, а если файл не найден нигде — команда падает сразу, называя оба места, где искала |
-| `a SQLite database that no DATABASE_URL in the environment named` | Миграция вне профиля `development` отказалась идти в SQLite, не названный в `DATABASE_URL`: умолчание `DATABASE_TYPE` — `sqlite`, так что забытые настройки дали бы пустой новый файл. Задайте `DATABASE_TYPE` и части `DATABASE_*`, назовите файл в `DATABASE_URL` или передайте готовую строку в `ALEMBIC_DATABASE_URL` |
-| `this profile runs on PostgreSQL` | Профили `production` и `staging` работают только на PostgreSQL, а конфигурация назвала другой бэкенд — по умолчанию это пустой новый файл SQLite (в корне проекта, а в образе — в рабочем каталоге `/app`). Отказ одинаков для файла, названного в `DATABASE_NAME`, для файла в `DATABASE_URL`, для базы в памяти и для чужого бэкенда вроде MySQL. Что задавать, сообщение говорит по обстоятельствам: если `DATABASE_URL` задан, он решает один и части `DATABASE_*` не читаются — поменяйте сам URL или очистите его; если не задан — `DATABASE_TYPE=postgresql` вместе с частями. В `development` SQLite остаётся доступным |
-| `nothing names a profile` | Ни `FLASK_ENV` в окружении, ни `FLASK_ENV` в `.env`. Умолчание — `development`, и это единственный профиль, которому дозволена база по умолчанию, поэтому неназванный профиль к ней не приравнивается. Назовите профиль или базу |
-| `a database that exists only inside this process` | `DATABASE_URL` указывает на SQLite в памяти (`sqlite://`, `sqlite:///`, `sqlite:///:memory:`). Схема исчезнет вместе с командой — назовите файл или сервер |
-| `DATABASE_HOST must not contain` | В хосте написано что-то помимо хоста: `db.internal/base?sslmode=disable` подменяет имя базы, теряет `DATABASE_PORT` и выключает TLS, не сообщая об этом. Параметры соединения — в своих настройках |
-| `required variable DATABASE_TYPE is missing a value` | `docker compose` отказался рендерить конфигурацию: без `DATABASE_TYPE` сервис миграций получил бы `sqlite` по умолчанию и создал пустую базу внутри одноразового контейнера. Задайте переменную в env-файле |
-| Короткие ссылки вида `http://0.0.0.0:5000/...` | Не задан `DOMAIN` при `HOST=0.0.0.0` |
-| `SECRET_KEY must be set in environment` | Профили `staging` и `production` требуют явные секреты |
-| JWT перестают работать после рестарта | `SECRET_KEY` не задан — в `development` он генерируется случайно при каждом запуске |
+| Симптом | Что делать |
+|---------|------------|
+| `ModuleNotFoundError: No module named 'link_shortener'` | `uv sync`, и запускать через `uv run` |
+| `no such table: urls` | `uv run flask alembic upgrade head` |
+| `Role 'user' not found` при регистрации | `uv run flask db load-base-roles` |
+| `401` на `POST /api/v1/shorten` у анонима | Роль `guest` не засеяна или засеяна без `link:create`: `uv run flask db load-base-roles`, проверить — `flask security list-roles` |
+| `403` на `POST /api/v1/shorten` у вошедшего | У его роли нет `link:create` (например, `analyst` его не имеет по замыслу) |
+| Значения из `.env` не применяются | Профиль `testing` игнорирует `.env` намеренно; в остальных случаях переменная окружения имеет приоритет над файлом |
+| `No 'script_location' key found` | Голая команда `alembic` запущена не из каталога с `alembic.ini` — используйте `flask alembic` |
+| `this profile runs on PostgreSQL` | `production` и `staging` работают только на PostgreSQL. Если `DATABASE_URL` задан — он решает один, части `DATABASE_*` не читаются; если не задан — `DATABASE_TYPE=postgresql` и части |
+| `a SQLite database that no DATABASE_URL in the environment named` | Миграция вне `development` не пойдёт в неназванный SQLite. Задайте части `DATABASE_*`, назовите файл в `DATABASE_URL` или передайте строку в `ALEMBIC_DATABASE_URL` |
+| `nothing names a profile` | Не задан `FLASK_ENV` — назовите профиль или базу |
+| `a database that exists only inside this process` | `DATABASE_URL` указывает на SQLite в памяти — назовите файл или сервер |
+| `DATABASE_HOST must not contain` | В хосте написано что-то помимо хоста; параметры соединения — в своих настройках |
+| `required variable DATABASE_TYPE is missing a value` | Задайте `DATABASE_TYPE` в env-файле |
+| Ссылки вида `http://0.0.0.0:5000/...` | Задан `HOST=0.0.0.0` и не задан `DOMAIN`: без домена адрес ссылки собирается из `HOST` и `PORT`. В шаблоне `HOST` закомментирован именно поэтому — привязку в контейнере задаёт умолчание образа |
+| `SECRET_KEY must be set in environment` | `staging` и `production` требуют явные секреты |
+| JWT перестают работать после рестарта | `SECRET_KEY` не задан: в `development` он генерируется заново при каждом запуске |
+| Письмо с подтверждением не приходит | Смотрите журнал: `Verification email not delivered` — сервер отправки недоступен (в локальном запуске это отсутствующая ловушка на `localhost:1025`); `MAIL_ENABLED=false` — почта выключена вовсе |
+| Поднялись только `app` и `celery_worker` | В env-файле пуст или не задан `COMPOSE_PROFILES` — назовите нужные профили или задайте внешние адреса |

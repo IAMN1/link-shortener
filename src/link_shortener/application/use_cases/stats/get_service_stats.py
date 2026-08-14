@@ -110,13 +110,12 @@ class GetServiceStatsUseCase(BaseUseCase):
 
             return response
         except Exception as e:
-            # Raised on, not swallowed. This used to answer 200 with
-            # ``{0, 0, 0.0, []}`` -- "the service is empty" -- for any
-            # failure at all, which is a lie a caller cannot detect and the
-            # exact shape of the fabricated-zeroes bug already fixed twice
-            # in the cache. It is reachable without touching anything:
+            # Raised on, not swallowed. Answering 200 with
+            # ``{0, 0, 0.0, []}`` would say "the service is empty" for any
+            # failure at all, which is a lie a caller cannot detect --
+            # and it is reachable without touching anything, since
             # DATABASE_STATEMENT_TIMEOUT aborts the aggregate over a large
-            # enough table, and the endpoint reports an empty service.
+            # enough table.
             #
             # An error here is not a degraded answer, because there is no
             # fallback source for these numbers. The global handler turns it

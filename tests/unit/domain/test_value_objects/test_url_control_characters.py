@@ -1,8 +1,8 @@
 """
 Tests that control characters cannot enter through a URL.
 
-The check used to look at ``urlparse(...).path`` only, and two independent
-things made that useless:
+Looking at ``urlparse(...).path`` only is useless for two independent
+reasons:
 
 - ``urlsplit`` deletes ASCII tab, CR and LF from the input at any position
   before returning components, so a parsed component can never show them;

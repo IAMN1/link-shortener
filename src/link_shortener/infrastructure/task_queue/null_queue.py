@@ -55,7 +55,8 @@ class NullTaskQueue(TaskQueue):
             try:
                 self._update_fn(short_code_str, context)
             except Exception:
-                pass  # Best-effort: don't crash the redirect
+                # Best-effort: счёт кликов не роняет редирект.
+                pass  # nosec B110
 
     def enqueue_verification_email(
         self, email: str, token: str, context: RequestContext

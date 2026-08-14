@@ -2,9 +2,9 @@
 What a migration demands before it runs, and what it refuses to run against.
 
 ``alembic upgrade head`` connects with one string and reads nothing else
-the application knows. Obtaining it used to mean building *and validating*
-the whole configuration: measured under the ``production`` profile with
-``DATABASE_URL`` already set, the command refused four times over --
+the application knows. Obtaining it must not mean building *and
+validating* the whole configuration: under ``production`` with
+``DATABASE_URL`` already set, that refuses four times over --
 ``SECRET_KEY``, ``SHORT_CODE_PEPPER``, ``REDIS_URL``, ``DOMAIN`` -- before
 creating a single table, and a mail server or an over-long
 ``MAX_URL_LENGTH`` stopped it just as well. None of those reach a
@@ -85,8 +85,8 @@ class TestTheCallerHandoff:
     def test_a_trailing_newline_is_stripped(self, monkeypatch):
         """A URL ending in a newline names a *different* database.
 
-        Measured before the strip: it created a SQLite file whose name
-        ended in "\\n", beside the one that was meant.
+        Without the strip it creates a SQLite file whose name ends in
+        "\\n", beside the one that was meant.
         """
         monkeypatch.setenv(HANDOFF_ENV_VAR, "sqlite:///wanted.db\n")
 
@@ -254,9 +254,9 @@ class TestWhatIsNoLongerChecked:
     def test_a_url_with_a_trailing_newline_names_the_same_file_on_both_sides(
         self, monkeypatch
     ):
-        """The two sides used to disagree, and both reported success.
+        """Both sides strip, and both must name the same file.
 
-        Only the handoff was stripped, so ``flask alembic upgrade``
+        With only the handoff stripped, ``flask alembic upgrade``
         migrated ``app.db`` while the application it was launched from
         opened ``app.db\\n`` -- two files, one of them empty, no error on
         either side. A URL read out of a file or a k8s Secret is exactly
@@ -279,8 +279,8 @@ class TestHowLongAMigrationWaits:
     def test_a_migration_connects_under_the_configured_bounds(
         self, monkeypatch
     ):
-        """Measured, before this: 60 seconds and counting against an
-        unreachable server, where the application gave up in 3.6.
+        """Without the bounds: 60 seconds and counting against an
+        unreachable server, where the application gives up in 3.6.
 
         The migration builds its own engine from the ``[alembic]`` section,
         which holds nothing but the URL, so nothing bounded the wait -- and
@@ -351,14 +351,14 @@ class TestADatabaseNobodyNamed:
     def test_a_profile_nobody_named_is_refused_rather_than_defaulted(
         self, monkeypatch
     ):
-        """The omission that used to switch the guard off.
+        """An unnamed profile is a refusal, not a default.
 
         ``DEFAULT_ENV`` is ``development``, which is also the one profile
         allowed a default database -- so on a host that sets ``FLASK_ENV``
         nowhere and has no ``.env`` (the settings arrive from systemd or
         from the orchestrator), the guard resolved itself out of existence
-        and the migration created ``db_shortener`` in the project root.
-        Measured: 147456 bytes and exit 0.
+        and the migration creates ``db_shortener`` in the project root:
+        147456 bytes and exit 0.
         """
         with pytest.raises(ValueError, match="nothing names a profile"):
             resolve_database_url()
@@ -453,9 +453,9 @@ class TestADatabaseThatDoesNotOutliveTheCommand:
     ):
         """One character from ``sqlite:///path``, and no way to tell.
 
-        Measured before the check: ``alembic upgrade head`` printed
-        ``Running upgrade -> 0001`` and exited 0, having built the schema
-        in a database that ceased to exist as the process ended.
+        Without the check ``alembic upgrade head`` prints
+        ``Running upgrade -> 0001`` and exits 0, having built the schema in
+        a database that ceases to exist as the process ends.
         """
         monkeypatch.setenv("FLASK_ENV", "production")
         monkeypatch.setenv("DATABASE_URL", url)
@@ -510,3 +510,86 @@ class TestADatabaseThatDoesNotOutliveTheCommand:
 
         with pytest.raises(ValueError, match="no DATABASE_URL in the env"):
             resolve_database_url()
+
+
+class TestAPostgresqlDatabaseNobodyNamed:
+    """The SQLite default has an equivalent on the other backend.
+
+    ``DATABASE_HOST`` defaults to ``localhost`` and ``DATABASE_NAME`` to
+    ``db_shortener``, so a deployed profile that set only
+    ``DATABASE_TYPE=postgresql`` and a user builds a valid URL to a server
+    and a database nobody chose. The application refuses exactly that --
+    and the migration did not: measured under ``staging``,
+    ``resolve_database_url`` handed back
+    ``postgresql+psycopg://shortener@localhost:5432/db_shortener`` while
+    the service that would use it refused to start, naming a different
+    setting.
+    """
+
+    @pytest.mark.parametrize("profile", ["staging", "production"])
+    @pytest.mark.parametrize("missing", ["DATABASE_HOST", "DATABASE_NAME"])
+    def test_a_defaulted_part_stops_the_migration(
+        self, monkeypatch, profile, missing
+    ):
+        monkeypatch.setenv("FLASK_ENV", profile)
+        monkeypatch.setenv("DATABASE_TYPE", "postgresql")
+        monkeypatch.setenv("DATABASE_USER", "shortener")
+        for name, value in (
+            ("DATABASE_HOST", "db.internal"),
+            ("DATABASE_NAME", "shortener"),
+        ):
+            if name == missing:
+                monkeypatch.delenv(name, raising=False)
+            else:
+                monkeypatch.setenv(name, value)
+
+        with pytest.raises(ValueError, match="nobody named"):
+            resolve_database_url()
+
+    def test_named_parts_are_migrated(self, monkeypatch):
+        """The other half: this must not stop a configured deployment."""
+        monkeypatch.setenv("FLASK_ENV", "staging")
+        monkeypatch.setenv("DATABASE_TYPE", "postgresql")
+        monkeypatch.setenv("DATABASE_USER", "shortener")
+        monkeypatch.setenv("DATABASE_HOST", "db.internal")
+        monkeypatch.setenv("DATABASE_NAME", "shortener")
+
+        url = resolve_database_url()
+
+        assert "db.internal" in url
+        assert "shortener" in url
+
+    def test_localhost_is_allowed_when_somebody_says_it(self, monkeypatch):
+        """A database on the same host is a real deployment.
+
+        The difference between this and the case above is that somebody
+        wrote the value, which is what the check asks.
+        """
+        monkeypatch.setenv("FLASK_ENV", "production")
+        monkeypatch.setenv("DATABASE_TYPE", "postgresql")
+        monkeypatch.setenv("DATABASE_USER", "shortener")
+        monkeypatch.setenv("DATABASE_HOST", "localhost")
+        monkeypatch.setenv("DATABASE_NAME", "db_shortener")
+
+        assert "localhost" in resolve_database_url()
+
+    def test_a_whole_url_is_not_second_guessed(self, monkeypatch):
+        """The parts are not read at all once ``DATABASE_URL`` is set."""
+        monkeypatch.setenv("FLASK_ENV", "staging")
+        monkeypatch.setenv(
+            "DATABASE_URL", "postgresql+psycopg://u:p@elsewhere/short"
+        )
+        monkeypatch.delenv("DATABASE_HOST", raising=False)
+        monkeypatch.delenv("DATABASE_NAME", raising=False)
+
+        assert "elsewhere" in resolve_database_url()
+
+    def test_development_still_migrates_what_it_finds(self, monkeypatch):
+        """The local profile is the one allowed a database nobody named."""
+        monkeypatch.setenv("FLASK_ENV", "development")
+        monkeypatch.setenv("DATABASE_TYPE", "postgresql")
+        monkeypatch.setenv("DATABASE_USER", "shortener")
+        monkeypatch.delenv("DATABASE_HOST", raising=False)
+        monkeypatch.delenv("DATABASE_NAME", raising=False)
+
+        assert "localhost" in resolve_database_url()

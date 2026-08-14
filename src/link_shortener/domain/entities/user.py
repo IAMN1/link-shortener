@@ -99,15 +99,6 @@ class User:
         """Hash based on user ID."""
         return hash(self.id)
 
-    def is_admin(self) -> bool:
-        """
-        Convenience method to check if the user has full administrative privileges.
-
-        Returns:
-            True if the ``"admin:all"`` permission is granted.
-        """
-        return self.has_permission("admin:all")
-    
     def activate(self) -> None:
         """Activate a previously deactivated user account."""
         self.is_active = True

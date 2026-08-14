@@ -193,11 +193,10 @@ class BatchCreateLinksUseCase(BaseUseCase):
             self.stats_cache.delete_stats()
 
         # 5. A batch in which the quota refused every single item is the
-        # same refusal the single-link path answers 429 to, and it used to
-        # come back 200 here -- the same condition, two statuses, depending
-        # on which endpoint was asked. A batch that got anything at all
-        # done, including reporting a malformed URL, keeps its 200 and its
-        # per-item errors: that is what the response format is for.
+        # same refusal the single-link path answers 429 to, so it answers
+        # 429 here as well rather than 200. A batch that got anything at
+        # all done, including reporting a malformed URL, keeps its 200 and
+        # its per-item errors: that is what the response format is for.
         if quota_results and not (saved_links or fetched_results or invalid_results):
             raise GuestLinkLimitExceededError(
                 f"Guest link limit of {self.guest_link_limit} exceeded.",

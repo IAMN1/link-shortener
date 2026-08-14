@@ -11,7 +11,6 @@ refused by the rest, and the operator sees intermittent 401s with nothing
 in the logs pointing at the cause.
 """
 
-import pytest
 
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 

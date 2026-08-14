@@ -1,5 +1,4 @@
 """Tests for the dashboard controller."""
-from unittest.mock import MagicMock, Mock
 
 
 class TestDashboardController:

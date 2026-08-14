@@ -15,9 +15,9 @@ It was the second, in two directions, both measured:
   account built to watch the queue depth could read every account on the
   service;
 * ``admin:manage_users`` and ``admin:manage_roles`` were interchangeable
-  on six of the eight writing routes. Measured on live requests with the
-  swap in place: an account holding only ``admin:manage_roles`` created an
-  account (201), deactivated one (200) and **deleted** one (200), taking
+  on six of the eight writing routes. On live requests with the swap in
+  place, an account holding only ``admin:manage_roles`` creates an account
+  (201), deactivates one (200) and **deletes** one (200), taking
   its links with it -- while an account holding only ``admin:manage_users``
   was refused all three and could instead rewrite the permissions of any
   role.

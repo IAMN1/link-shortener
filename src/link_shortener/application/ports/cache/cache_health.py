@@ -5,23 +5,12 @@ class CacheHealth(ABC):
     """
     Interface a cache implements so its state can be reported truthfully.
 
-    The health check used to work this out from the outside, by reaching
-    into the cache's private attributes: it called the client's ``ping``
-    directly and, when that failed, fell back to asking whether the cache
-    believed itself connected. Both answers were wrong in opposite
-    directions.
-
-    A failing direct ``ping`` never told the cache anything, so its
-    "available" flag stayed set from the last successful operation and the
-    fallback confirmed a Redis that was switched off. Once some other
-    request did notice the outage and dropped the client, the absence of a
-    client was then read as "no cache is configured" -- so a Redis that had
-    since recovered was reported as deliberately disabled, indefinitely,
-    because nothing on the health path ever tried to reconnect.
-
-    Both readings came from inferring a state instead of asking the
-    component that owns it. The two methods below are that component's
-    answers.
+    Asked of the cache rather than worked out from the outside. A health
+    check reaching into a client of its own cannot tell the two failures
+    apart: a ``ping`` that fails leaves the cache's own state untouched,
+    and a client dropped by some other request reads as "no cache is
+    configured" rather than as an outage. The two methods below are the
+    component's own answers.
     """
 
     @abstractmethod

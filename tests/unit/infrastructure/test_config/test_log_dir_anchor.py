@@ -14,7 +14,6 @@ that is wrong.
 
 from pathlib import Path
 
-import pytest
 
 from link_shortener.infrastructure.configs.app import base as base_module
 from link_shortener.infrastructure.configs.app.base import BaseConfig
@@ -58,8 +57,8 @@ class TestARelativeDirectoryIsAnchored:
         The directory it lands in is checked by its markers rather than
         against ``PROJECT_ROOT``: an expectation built from the same
         constant the code reads agrees with whatever root that constant
-        holds, a wrong one included. Measured -- with the root moved one
-        level up, the ``PROJECT_ROOT``-shaped assertions all still passed.
+        holds, a wrong one included: with the root moved one level up, the
+        ``PROJECT_ROOT``-shaped assertions all still pass.
         """
         monkeypatch.chdir(tmp_path)
 

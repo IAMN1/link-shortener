@@ -14,9 +14,14 @@ against a list of trusted domains." A ``Host`` an attacker chooses would
 mail the victim a link to the attacker's server, carrying a live token.
 """
 
+from urllib.parse import urlsplit
+
 import pytest
 
 from link_shortener.application.ports.mailer import Mailer
+from link_shortener.application.use_cases.auth.send_verification_email import (
+    VERIFY_PATH,
+)
 
 
 class RecordingMailer(Mailer):
@@ -83,20 +88,23 @@ class TestTheMessageIsActuallySent:
             json={"email": "outbox-three@example.test", "password": "StrongPass1!"},
         )
 
-        assert "/auth/verify?token=" in outbox.messages[0]["body"]
+        assert f"{VERIFY_PATH}?token=" in outbox.messages[0]["body"]
 
     def test_the_link_in_it_works(self, client, outbox):
-        """End to end: the token that was mailed is the token that
-        confirms. A digest stored from a different token would pass every
-        other test in this file."""
+        """End to end: the address in the message is followed as it was
+        written. Taking the token out and putting it on a path of the
+        test's own choosing would pass while the mailed link answered
+        404."""
         client.post(
             "/api/v1/auth/register",
             json={"email": "outbox-four@example.test", "password": "StrongPass1!"},
         )
         body = outbox.messages[0]["body"]
-        token = body.split("/auth/verify?token=")[1].split()[0]
+        link = next(
+            word for word in body.split() if "verify?token=" in word
+        )
 
-        response = client.get(f"/api/v1/auth/verify?token={token}")
+        response = client.get(urlsplit(link).path + "?" + urlsplit(link).query)
 
         assert response.status_code == 200
 
@@ -164,7 +172,7 @@ class TestTheLinkIgnoresTheRequest:
         )
 
         base = app.container.config.BASE_URL.rstrip("/")
-        assert outbox.messages[0]["body"].count(f"{base}/auth/verify?token=") == 1
+        assert outbox.messages[0]["body"].count(f"{base}{VERIFY_PATH}?token=") == 1
 
     def test_a_forwarded_host_does_not_reach_it_either(self, client, outbox):
         """The header a proxy would set, which is not trusted here."""

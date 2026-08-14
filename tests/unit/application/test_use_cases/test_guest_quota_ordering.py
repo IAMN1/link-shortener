@@ -7,7 +7,6 @@ every simultaneous request from the same guest read the same one.
 """
 
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from unittest.mock import Mock
 
 import pytest
@@ -16,7 +15,7 @@ from link_shortener.application.context import RequestContext
 from link_shortener.application.use_cases.links.create_short_link import (
     CreateShortLinkUseCase,
 )
-from link_shortener.domain import OriginalUrl, ShortCode, UrlHash
+from link_shortener.domain import ShortCode, UrlHash
 
 
 URL = "https://example.com/quota"

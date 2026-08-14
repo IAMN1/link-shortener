@@ -22,14 +22,11 @@ class RoleManagementService:
             requested: Permission names as the caller wrote them.
             found: Permission entities the repository returned for them.
 
+        Comparison is by name rather than by count, so a name repeated in
+        the request is not mistaken for an unknown one.
+
         Raises:
             ValueError: If any requested name has no permission behind it.
-
-        Updating a role used to skip this check, so a typo did not fail --
-        it narrowed the role to whatever names happened to match and
-        answered 200. Creating a role with the same typo raised. The
-        comparison is by name rather than by count, so repeating a name is
-        not mistaken for an unknown one.
         """
         missing = set(requested) - {permission.name for permission in found}
         if missing:

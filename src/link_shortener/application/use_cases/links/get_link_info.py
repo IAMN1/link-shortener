@@ -10,7 +10,7 @@ from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
-    LinkExpiredError, LinkNotFoundError, ShortCode
+    LinkExpiredError, LinkNotFoundError
 )
 
 @dataclass
@@ -65,9 +65,11 @@ class GetLinkInfoUseCase(BaseUseCase):
             ShortLinkResponse with link details.
 
         Raises:
-            LinkNotFoundError: If the short code does not exist.
+            LinkNotFoundError: If no link carries this code, a string the
+                format rules refuse included -- ``_code_to_look_up`` answers
+                for both alike, so a malformed code raises no ``ValueError``
+                here.
             LinkExpiredError: If the link exists but has expired.
-            ValueError: If the short code format is invalid.
             DomainError: If the requester is not authorized to view the link.
         """
         log = self._get_logger(self.logger, context)

@@ -1,6 +1,6 @@
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 from link_shortener.infrastructure.configs.app.env import (
-    env_bool, env_int, env_str, read_env_for
+    env_bool, env_int, env_str, is_unset, read_env_for
 )
 
 
@@ -96,10 +96,9 @@ class StagingConfig(BaseConfig):
     Staging seeds roles as a deployment step, not on every application start.
 
     That step is `flask db load-base-roles`, run once after
-    `alembic upgrade head`. It is not a migration: no revision seeds RBAC,
-    though this comment and three others used to say so. Skip it and the
-    `roles` table stays empty, which is not a visible failure -- the service
-    starts and answers 401 to anonymous shortening.
+    `alembic upgrade head`. It is not a migration: no revision seeds RBAC.
+    Skip it and the `roles` table stays empty, which is not a visible
+    failure -- the service starts and answers 401 to anonymous shortening.
 
     The profile only sets the default – it stays overridable via env var.
     """
@@ -109,3 +108,64 @@ class StagingConfig(BaseConfig):
     # Alembic: must be enabled in staging (mirrors production)
     # --------------------------------------------------------------------------
     USE_ALEMBIC: bool = env_bool("USE_ALEMBIC", True)
+
+
+    def _collect_errors(self) -> list:
+        """Enforce presence of required environment variables.
+
+        The same override ``production`` carries. Two of this profile's
+        demands are not settings and so are not part of the base checks:
+        the database URL, which is assembled when something wants it, and
+        ``DOMAIN``, whose absence is a fallback rather than an error.
+        Unset, ``BASE_URL`` falls back to ``http://HOST:PORT/`` -- where
+        the process binds rather than where the service is reached.
+
+        The secrets are not read here: both are properties that refuse for
+        themselves, and ``BaseConfig`` collects those refusals.
+
+        Returns:
+            List of human-readable error messages.
+        """
+        errors = super()._collect_errors()
+
+        # Secrets and Redis are already collected by the base class, which
+        # reads both through the properties this profile overrides and
+        # keeps the message each raises.
+        try:
+            self.get_database_url()
+        except ValueError as error:
+            errors.append(str(error))
+
+        # The parts that have defaults, demanded explicitly on a deployed
+        # profile. ``DATABASE_HOST`` falls back to ``localhost`` and
+        # ``DATABASE_NAME`` to ``db_shortener``, so a deployment naming
+        # only ``DATABASE_TYPE=postgresql`` and a user would connect to a
+        # server and a database nobody chose -- the same class of fault
+        # ``_deployed_backend_errors`` exists for, on PostgreSQL rather
+        # than on SQLite.
+        if not self.DATABASE_URL and self.DATABASE_TYPE == "postgresql":
+            for name in ("DATABASE_HOST", "DATABASE_NAME"):
+                # Both halves are asked, because either one is a way of
+                # saying it deliberately: the variable, or a profile that
+                # pins the value as a class attribute. Only the value that
+                # is still the inherited default *and* unnamed in the
+                # environment is the one nobody chose.
+                default = vars(BaseConfig)[name].default
+                if getattr(self, name) == default and is_unset(
+                    read_env_for(self, name)
+                ):
+                    errors.append(
+                        f"{name} must be set when a deployed profile builds "
+                        f"its connection from the DATABASE_* parts -- the "
+                        f"default names a database nobody chose"
+                    )
+
+        # domain_value, not os.environ and not the raw field: it is what
+        # BASE_URL builds from, so the check and the builder cannot
+        # disagree about what counts as set.
+        if not self.domain_value:
+            errors.append(
+                "DOMAIN environment variable must be set in staging"
+            )
+
+        return errors

@@ -1,7 +1,7 @@
 """No two endpoints answer on one path.
 
-The frontend blueprint used to declare ``static_folder='../static'`` with
-``static_url_path='/static'``, which is the directory and the path Flask
+A blueprint declaring ``static_folder='../static'`` with
+``static_url_path='/static'`` claims the directory and the path Flask
 already serves from its own ``static`` endpoint. Werkzeug matches the first
 rule and never the second, so ``frontend.static`` built URLs that something
 else then served -- a route that looks live in ``url_map``, in ``url_for``

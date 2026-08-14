@@ -1,9 +1,9 @@
 """Tests for the rate limiting middleware."""
 from pathlib import Path
-from unittest.mock import MagicMock, Mock
+from unittest.mock import Mock
 
 import pytest
-from flask import Flask, g
+from flask import Flask
 
 from link_shortener.application.ports.rate_limiter import RateLimitDecision
 from link_shortener.infrastructure.configs.app.base import BaseConfig
@@ -235,7 +235,7 @@ class TestRateLimitMiddleware:
 
         app, _ = self._make_app(rate_limiter=limiter)
         with app.test_client() as client:
-            response = client.get("/test")
+            client.get("/test")
             call_args = limiter.check.call_args
             key = call_args[0][0]
             # Should not contain "user:" prefix
@@ -369,8 +369,8 @@ class TestRateLimitMiddleware:
 
         Putting request.path into the key turns "two hundred redirects a
         minute" into "two hundred per short code", which is no limit at all
-        against somebody walking the code space. Measured: two hundred and
-        fifty requests to two hundred and fifty codes, not one refusal.
+        against somebody walking the code space: two hundred and fifty
+        requests to two hundred and fifty codes, not one refusal.
         `test_key_includes_endpoint` cannot see it -- the endpoint is still
         in the key, with the path beside it.
         """
@@ -643,9 +643,9 @@ class TestRateLimitTargets:
 
     def test_none_means_no_per_endpoint_limits_to_both_halves(self):
         """
-        The two readers of this setting used to disagree about None.
+        The two readers of this setting must agree about None.
 
-        The check normalised it to an empty mapping, so startup passed; the
+        With the check normalising it to an empty mapping, startup passes; the
         middleware read `... .get(key, {})`, got None back, and failed on
         the lookup -- a 500 from whichever endpoint was asked for first,
         one request after the setting that caused it.

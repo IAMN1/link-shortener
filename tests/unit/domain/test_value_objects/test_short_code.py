@@ -27,7 +27,7 @@ class TestShortCode:
         'superverylongcode', # > 10
         'abc@123', # bad symbol - @
         'Ра_Си_Я', # not ascii
-        'abc123\n',   # trailing newline: "$" used to match before it
+        'abc123\n',   # trailing newline: "$" matches before it
         'abc123\n\n',
         'abc123\r\n',
     ])

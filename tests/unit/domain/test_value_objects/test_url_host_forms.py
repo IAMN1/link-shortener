@@ -150,8 +150,8 @@ class TestBracketsMeanAnAddress:
         so ``urlparse`` raises on it instead of handing back a host for
         ``_validate_bracketed_host_is_an_address`` to judge. The message
         is the one ``_parse`` produces, which names the authority rather
-        than quoting it: the quoted form is what used to carry a password
-        into the log when the authority held one.
+        than quoting it: the quoted form carries a password into the log
+        when the authority holds one.
         """
         with pytest.raises(ValidationError, match="authority cannot be parsed"):
             OriginalUrl("http://[example.com]/")
@@ -161,10 +161,10 @@ class TestBracketsMeanAnAddress:
 
     def test_a_row_written_before_the_check_does_not_steal_a_name(self):
         """
-        Read back rather than refused -- and no longer sharing a hash with
-        the name it wraps. A caller shortening the real URL used to be
-        handed the code of a link no browser can open, and could not get a
-        working one while that row lived.
+        Read back rather than refused, and not sharing a hash with the
+        name it wraps: sharing one hands a caller shortening the real URL
+        the code of a link no browser can open, and no working one while
+        that row lives.
         """
         stored = OriginalUrl.from_storage("http://[v1.good.example]/")
         plain = OriginalUrl("http://v1.good.example/")

@@ -2,7 +2,7 @@
 
 import pytest
 from tests.integration.conftest import (
-    auth_headers, confirm_email, csrf_headers, register_and_login
+    auth_headers, confirm_email, csrf_headers
 )
 
 

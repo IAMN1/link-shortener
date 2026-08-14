@@ -1,9 +1,9 @@
 """
 Tests for what the service will accept as a password.
 
-Registration used to accept ``short``: the policy bounded only the maximum
-length, because it existed to keep a password inside what bcrypt can hash,
-and nobody had asked what the floor should be.
+The policy bounds the minimum length as well as the maximum. Bounding
+only the maximum -- which exists to keep a password inside what bcrypt can
+hash -- lets registration accept ``short``.
 
 The rules follow NIST SP 800-63B: a length floor and a check against
 passwords attackers already have, and deliberately no composition rules --
@@ -21,13 +21,97 @@ from link_shortener.domain.policies.password_policy import (
 
 class TestTooShort:
 
-    @pytest.mark.parametrize("password", ["", "a", "short", "1234567"])
+    @pytest.mark.parametrize("password", ["a", "short", "1234567"])
     def test_it_is_refused(self, password):
         with pytest.raises(ValidationError, match="at least"):
             validate_password(password)
 
+    def test_an_empty_password_is_refused_as_blank(self):
+        """It is refused either way; the reason moved.
+
+        An empty string is now caught by the blank check, which runs
+        first, so the message says so rather than talking about a length
+        the password does not have.
+        """
+        with pytest.raises(ValidationError, match="blank"):
+            validate_password("")
+
     def test_the_shortest_allowed_length_passes(self):
         validate_password("h" * MIN_PASSWORD_LENGTH)
+
+
+class TestBlank:
+    """Whitespace is length without content, and length was the only bar.
+
+    Through ``flask create-admin``, which prompts with the input hidden:
+    eight spaces clear the floor, clear the ceiling, and are on no
+    common-password list, so the most privileged account in
+    the service was created with a password nobody saw and anybody can
+    type.
+    """
+
+    @pytest.mark.parametrize(
+        "password",
+        [
+            " " * MIN_PASSWORD_LENGTH,
+            "\t" * MIN_PASSWORD_LENGTH,
+            "\n" * MIN_PASSWORD_LENGTH,
+            "\u00a0" * MIN_PASSWORD_LENGTH,
+            " \t\n \u00a0 \t",
+            " " * 40,
+        ],
+        ids=["spaces", "tabs", "newlines", "no-break-spaces", "a-mixture",
+             "many-spaces"],
+    )
+    def test_whitespace_alone_is_refused(self, password):
+        """Including U+00A0, which is what a paste out of a document carries.
+
+        ``str.strip()`` is Unicode-aware, so the non-breaking space is
+        caught with the plain ones rather than slipping past a rule
+        written for ASCII.
+        """
+        with pytest.raises(ValidationError, match="blank"):
+            validate_password(password)
+
+    @pytest.mark.parametrize(
+        "password",
+        [" correct horse battery staple ", "        x", "x        "],
+    )
+    def test_a_password_with_content_keeps_its_spaces(self, password):
+        """NIST SP 800-63B asks for spaces to be accepted and not trimmed.
+
+        The rule refuses a password that is *only* whitespace; it must not
+        become a rule that strips one. ``"        x"`` is nine characters
+        and stays nine -- stripped, it would be one and refused as too
+        short, which is a different service than the one documented.
+        """
+        validate_password(password)
+
+
+class TestANullCharacter:
+    """A bcrypt rule rather than a Unicode one.
+
+    bcrypt reads its key as a C string, so everything from the first NUL
+    onwards is ignored: a password of eight NULs hashes to something
+    ``checkpw(b"", stored)`` accepts -- an account with no password at all
+    -- and ``str.strip()`` does not catch it, because NUL
+    is not whitespace.
+    """
+
+    @pytest.mark.parametrize(
+        "password",
+        ["\x00" * MIN_PASSWORD_LENGTH, "secret\x00tail", "\x00secret123"],
+        ids=["all-nulls", "null-inside", "leading-null"],
+    )
+    def test_it_is_refused_wherever_it_sits(self, password):
+        """Refused anywhere in the value, not only when it is the whole one.
+
+        A password whose tail follows a NUL is a password whose tail does
+        not count -- the user would be typing more than the service
+        stores, and nothing would say so.
+        """
+        with pytest.raises(ValidationError, match="null"):
+            validate_password(password)
 
 
 class TestTooLong:

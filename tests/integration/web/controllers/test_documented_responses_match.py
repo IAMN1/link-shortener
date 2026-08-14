@@ -12,7 +12,6 @@ against the models the document is generated from, on real requests through
 a real application.
 """
 
-import pytest
 
 from tests.integration.conftest import confirm_email
 

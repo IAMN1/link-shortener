@@ -8,7 +8,6 @@ noticed long after the event it was meant to record.
 import json
 import logging
 
-import pytest
 
 from link_shortener.infrastructure.logging.formatters.console_formatter import (
     ConsoleFormatter,

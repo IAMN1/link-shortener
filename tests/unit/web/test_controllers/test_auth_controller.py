@@ -1,5 +1,5 @@
 """Tests for the authentication controller."""
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock
 
 from link_shortener.application.dtos.auth import RefreshedTokens
 from link_shortener.domain import DomainError, ValidationError
@@ -90,8 +90,6 @@ class TestAuthController:
         went back to reading ``result.id`` would put the mock's stand-in
         for an identifier in the body and fail this.
         """
-        ctrl = _get_auth_controller(app)
-
         response = client.post(
             "/api/v1/auth/register",
             json={"email": "new@example.com", "password": "secret123"},

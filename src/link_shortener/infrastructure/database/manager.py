@@ -135,10 +135,17 @@ class DatabaseManager:
 
         # Add pool parameters only for PostgreSQL (SQLite doesn't support them)
         if self.database_type == "postgresql":
+            # ``None`` is dropped and nothing else. Dropping a zero with
+            # it would silently reverse two settings:
+            # ``DATABASE_MAX_OVERFLOW=0`` caps the pool at ``pool_size``
+            # and would arrive as SQLAlchemy's default of 10, and
+            # ``DATABASE_POOL_RECYCLE=0`` would arrive as -1, which is
+            # "never recycle". The zeros that mean "no pool" belong to the
+            # other backends, and the whole block is skipped for them.
             engine_kwargs.update(
                 {
-                    k: v for k, v in  self.pool_params.items()
-                        if v is not None and v != 0
+                    k: v for k, v in self.pool_params.items()
+                    if v is not None
                 }
             )
             engine_kwargs.update(self._connect_args())

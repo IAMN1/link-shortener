@@ -35,11 +35,9 @@ class ErrorHandlerMiddleware:
         """
         Determine whether the client expects an HTML response.
 
-        One rule, in one place: ``wants_html`` in ``web.responses``. It
-        used to be spelled out here as well, and the throttle -- which
-        answers 429 on the same routes -- had neither, so it returned an
-        envelope wherever the request came from. A copy is how the two
-        came apart in the first place.
+        One rule, in one place: ``wants_html`` in ``web.responses``. The
+        throttle answers 429 on the same routes and asks the same
+        function, so the two cannot come apart.
 
         Returns:
             ``True`` when this request should be answered with a page.
@@ -127,7 +125,7 @@ class ErrorHandlerMiddleware:
 
             # ``include_input=False``: pydantic puts the rejected value
             # itself in every error dict, and the values this application
-            # rejects include passwords. Measured on ``CreateUserRequest``
+            # rejects include passwords: on ``CreateUserRequest``
             # with a password shorter than the policy: the plaintext went
             # into application.log as ``'input': 'sh0rt!'`` while the 400
             # body stayed clean. What the operator needs is which field
@@ -196,11 +194,10 @@ class ErrorHandlerMiddleware:
                 "GUEST_LINK_LIMIT": 429,
                 "CODE_GENERATION_FAILED": 500,
                 # The same condition as CODE_GENERATION_FAILED, reached from
-                # the batch path: every attempt lost a race for a code. That
-                # is the service failing to store a link, not the caller
-                # asking for the wrong thing, and it used to fall through to
-                # the default below and be reported as the caller's fault --
-                # 400 on the batch endpoint, 500 on the single one, for one
+                # the batch path: every attempt lost a race for a code. The
+                # service failed to store a link, so it is not the caller's
+                # fault; without this entry the default below would answer
+                # 400 on the batch endpoint and 500 on the single one for one
                 # and the same failure.
                 "LINK_CONFLICT": 500,
                 # The caller asked for a code somebody already holds. Their

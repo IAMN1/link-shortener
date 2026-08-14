@@ -1,3 +1,4 @@
+from collections import Counter
 from typing import Any, Callable, Dict, List
 
 from sqlalchemy import text
@@ -7,6 +8,34 @@ from link_shortener.application import (
     RequestContext, CleanExpiredLinksUseCase, CleanUnverifiedAccountsUseCase,
     UnitOfWork
 )
+from link_shortener.domain.value_objects.email import Email
+
+
+def what_the_database_said(error: BaseException) -> str:
+    """
+    Render a database error as one line an operator can read.
+
+    SQLAlchemy puts the statement and its parameters into the rest of the
+    message, and the parameters here are people's addresses, which would
+    otherwise reach the terminal and whatever log a scheduled run writes
+    to.
+
+    The first line that says anything, rather than ``splitlines()[0]``:
+    an exception raised with no message has no first line, and one whose
+    text begins with a newline would lose its only sentence.
+
+    Args:
+        error: The exception to describe.
+
+    Returns:
+        The first line that says anything, or the exception's class name
+        when it says nothing at all.
+    """
+    for line in str(error).splitlines():
+        if line.strip():
+            return line.strip()
+
+    return type(error).__name__
 
 
 def clean_expired_links(
@@ -73,25 +102,18 @@ def find_addresses_needing_normalising(db_manager) -> List[Dict[str, Any]]:
     """
     List stored addresses that are not in lower case.
 
-    Read with SQL rather than through the repository on purpose. ``Email``
-    lowers what it is given, including what it is built from on the read
-    path, so an account stored as ``Case@Example.com`` comes back through
-    the domain as ``case@example.com`` -- and the very rows this looks for
-    would be invisible.
+    Read with SQL rather than through the repository because this needs
+    two columns for every account in one pass, where ``list_all`` pages
+    and builds a whole ``User`` aggregate per row.
 
-    Each row is reported with whether lowering it would collide -- that
-    is, whether any other account's address lowers to the same string.
-    Those are left alone: merging two accounts means deciding which links,
-    roles and sessions survive, and that is an owner's decision, not a
-    migration's.
+    Which rows need work is decided by ``Email.normalise`` rather than by
+    SQL ``lower()``: the two agree on PostgreSQL and part ways on SQLite,
+    whose ``lower()`` is ASCII-only, so the whole table is read and
+    filtered in Python.
 
-    The comparison is between lowered forms on both sides, which is not
-    where this started. Asking only whether the lower-case spelling is
-    *already stored* missed the pair that has no lower-case member at all:
-    ``Case@Example.com`` and ``CASE@Example.com`` were both reported safe,
-    the update hit the unique index, and the whole run rolled back --
-    leaving every unrelated address unmigrated and the operator told
-    there had been no conflicts.
+    A row is reported as clashing when another account's address lowers
+    to the same string. Those are left alone -- merging two accounts is
+    an owner's decision about whose links, roles and sessions survive.
 
     Args:
         db_manager: Database manager providing sessions.
@@ -101,66 +123,126 @@ def find_addresses_needing_normalising(db_manager) -> List[Dict[str, Any]]:
     """
     with db_manager.session() as session:
         rows = session.execute(
-            text(
-                "SELECT u.id, u.email, "
-                "(SELECT COUNT(*) FROM users o "
-                "  WHERE lower(o.email) = lower(u.email)) > 1 AS clashes "
-                "FROM users u WHERE u.email <> lower(u.email) "
-                "ORDER BY u.email"
-            )
+            text("SELECT id, email FROM users ORDER BY email")
         ).mappings().all()
 
+    # Counted over every account, not only over the ones needing work: a
+    # row can collide with an address that is already normalised, and
+    # that one never appears in the result below.
+    normalised = Counter(Email.normalise(r["email"]) for r in rows)
+
     return [
-        {"id": r["id"], "email": r["email"], "clashes": bool(r["clashes"])}
+        {
+            "id": r["id"],
+            "email": r["email"],
+            "clashes": normalised[Email.normalise(r["email"])] > 1,
+        }
         for r in rows
+        if r["email"] != Email.normalise(r["email"])
     ]
 
 
-def normalise_addresses(db_manager) -> Dict[str, int]:
+def normalise_addresses(
+    db_manager, rows: List[Dict[str, Any]]
+) -> Dict[str, Any]:
     """
     Lower the stored addresses that can be lowered without collision.
 
     Needed because ``Email`` started lowering addresses after these rows
     were written: a stored ``Case@Example.com`` is no longer found by a
     lookup for it, so its owner cannot sign in and cannot register again
-    either -- registration would find nothing and create a second account
-    for the same mailbox.
+    either.
 
-    Rows that collide with another account are skipped, and
-    ``find_addresses_needing_normalising`` reports them so an operator can
-    deal with them deliberately.
+    One transaction per address rather than one for all of them, so a row
+    the database refuses leaves the rest migrated. Every error is caught
+    per row and what the database said travels back in ``reasons``.
 
-    One transaction per address rather than one for all of them. A single
-    failure used to roll the whole run back, so one bad pair left every
-    other account unmigrated; and the index can refuse a row for a reason
-    this function cannot see in advance -- somebody registering the
-    lower-case spelling while the command runs.
+    The new value is computed by ``Email.normalise`` and sent as a
+    parameter rather than written as SQL ``lower(email)``, so the row
+    selected by one rule is not rewritten by another. The write matches
+    on the stored address as well as the id: the owner may have changed
+    it between the read and the write, and that address is not one to
+    overwrite with a lowered copy of the old one.
 
     Args:
         db_manager: Database manager providing sessions.
+        rows: The addresses to work through, as
+            ``find_addresses_needing_normalising`` reports them -- the
+            same list the caller showed the operator.
 
     Returns:
-        ``{"changed": n, "skipped": n, "refused": n}`` -- lowered, left
-        alone as a known collision, and refused by the index anyway.
+        ``{"changed", "skipped", "refused", "failed", "moved",
+        "remaining", "reasons"}`` -- lowered; left alone as a known
+        collision; refused by the unique index; failed for any other
+        reason; gone or changed by somebody else between the read and the
+        write; how many addresses were never attempted, which only a
+        ``Ctrl-C`` can leave above zero; and the distinct error texts
+        behind ``failed``.
     """
-    rows = find_addresses_needing_normalising(db_manager)
-    doomed = [row["id"] for row in rows if not row["clashes"]]
+    doomed = [
+        (row["id"], row["email"], Email.normalise(row["email"]))
+        for row in rows
+        if not row["clashes"]
+    ]
     skipped = len(rows) - len(doomed)
 
     changed = 0
     refused = 0
-    for user_id in doomed:
+    failed = 0
+    moved = 0
+    reasons: List[str] = []
+
+    for user_id, stored, normalised in doomed:
+        counted = False
         try:
             with db_manager.session() as session:
-                session.execute(
+                result = session.execute(
                     text(
-                        "UPDATE users SET email = lower(email) WHERE id = :id"
+                        "UPDATE users SET email = :email "
+                        "WHERE id = :id AND email = :stored"
                     ),
-                    {"id": user_id},
+                    {"id": user_id, "email": normalised, "stored": stored},
                 )
                 session.commit()
-            changed += 1
-        except IntegrityError:
-            refused += 1
 
-    return {"changed": changed, "skipped": skipped, "refused": refused}
+                # Counted inside the block that owns the outcome, so an
+                # error on the way out of the context cannot undo the
+                # count of a row already committed. A write that matched
+                # nothing is not a change: the row may have been deleted
+                # or its address changed by its owner in between.
+                if result.rowcount:
+                    changed += 1
+                else:
+                    moved += 1
+                counted = True
+        except IntegrityError:
+            if not counted:
+                refused += 1
+        except KeyboardInterrupt:
+            # Ctrl-C stops the work and not the report: the rows already
+            # lowered are counted, and the remainder tells the operator
+            # what is still to do.
+            break
+        except Exception as error:
+            # Everything, not ``SQLAlchemyError``: a driver exception the
+            # ORM never wrapped is not one, and it would end the run with
+            # rows silently written and no counter printed.
+            if not counted:
+                failed += 1
+                # The first line only: SQLAlchemy renders the statement
+                # and its parameters into the rest of the message, and
+                # the parameters here are addresses.
+                reason = what_the_database_said(error)
+                if reason not in reasons:
+                    reasons.append(reason)
+
+    attempted = changed + moved + refused + failed
+    return {
+        "changed": changed,
+        "skipped": skipped,
+        "refused": refused,
+        "failed": failed,
+        "moved": moved,
+        "remaining": len(doomed) - attempted,
+        "reasons": reasons,
+    }

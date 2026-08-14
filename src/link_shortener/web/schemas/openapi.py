@@ -1,11 +1,10 @@
 """
 The API described in the form a machine can read.
 
-``/api/docs`` used to render the landing page: the route existed, answered
-200, and told nobody anything. What is served now is generated rather than
-written twice -- every request and response body here is the same Pydantic
-model the endpoint actually validates against, so a field that changes shape
-changes shape in the document with it. What cannot be generated is the part
+What ``/api/docs`` serves is generated rather than written twice -- every
+request and response body here is the same Pydantic model the endpoint
+actually validates against, so a field that changes shape changes shape in
+the document with it. What cannot be generated is the part
 that lives in the routing table and the decorators: which paths exist, which
 verbs they take, who may call them, and what each status means. That is
 written out below, once, and a test holds it against the application's real
@@ -251,7 +250,11 @@ CODE_PARAMETER = {
     "name": "short_code",
     "in": "path",
     "required": True,
-    "description": "The short code, 6-10 of A-Z a-z 0-9 _ -",
+    "description": (
+        "The short code, 6-10 of A-Z a-z 0-9 _ -. A few names the service "
+        "answers to itself -- health, static, dashboard and the like -- "
+        "cannot be claimed."
+    ),
     "schema": {"type": "string"},
 }
 
@@ -427,8 +430,11 @@ PATHS: Dict[str, Any] = {
         "post": {
             "summary": "Create an account",
             "description": (
-                "The password must be at least 8 characters and must not be "
-                "one attackers already have. No composition rules. "
+                "The password must be at least 8 characters and at most "
+                "64, must not be made of whitespace alone, and must not be "
+                "one attackers already have. A password in a script that "
+                "needs more than one byte per character reaches the "
+                "ceiling sooner. No composition rules. "
                 "Answers 202 whether or not the address was already "
                 "registered, and returns no account details either way -- "
                 "telling the two apart would say who is registered. The "

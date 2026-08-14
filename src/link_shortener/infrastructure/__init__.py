@@ -50,7 +50,6 @@ __all__ = [
     "RBACAuthorizationService",
 
     # Cache
-    "CacheKeyGenerator",
     "NullCache",
     "InMemoryLinkCache",
     "RedisLinkCache",

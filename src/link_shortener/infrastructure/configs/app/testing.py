@@ -33,10 +33,8 @@ class TestingConfig(BaseConfig):
     # Batch limit: the ceiling itself
     # --------------------------------------------------------------------------
     BATCH_CREATE_LIMIT: int = MAX_BATCH_ITEMS
-    """Was 200, which the request schema refused at 101 anyway.
-
-    A test written against 200 measured the schema's message, not this
-    setting -- and the profile that sets it is the one the suite runs on.
+    """The ceiling itself, so a test written against this setting
+    measures the setting and not the request schema's own refusal.
     """
 
 

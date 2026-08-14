@@ -69,21 +69,60 @@ def validate_password(password: str) -> None:
         password: Raw password.
 
     Raises:
-        ValidationError: If the password is too short, too long, or one an
-            attacker would try immediately.
+        ValidationError: If the password is blank, too short, too long, or
+            one an attacker would try immediately.
     """
+    # Length alone does not catch this: eight spaces are eight characters
+    # and clear every bar below. `flask create-admin` asks for the
+    # password with the input hidden, so a held-down space bar would
+    # create the most privileged account in the service with a password
+    # nobody can see and anybody can guess.
+    #
+    # `str.strip()` is Unicode-aware, so a value made of tabs, newlines or
+    # non-breaking spaces is caught with the plain ones. The value itself
+    # is never stripped: NIST SP 800-63B asks for spaces to be accepted
+    # inside a password and for verifiers not to truncate, so
+    # " my pass phrase " stays exactly that, trailing space included, and
+    # that space keeps counting towards the length.
+    if not password.strip():
+        raise ValidationError(
+            "Password must not be blank",
+            field="password",
+        )
+
+    # Not a Unicode rule but a bcrypt one, and the only invisible
+    # character worth naming. bcrypt reads its key as a C string, so
+    # everything from the first NUL onwards is ignored, so a password of
+    # eight NULs hashes to something `checkpw(b"", stored)` accepts --
+    # an account with no password at all.
+    if "\x00" in password:
+        raise ValidationError(
+            "Password must not contain a null character",
+            field="password",
+        )
+
     if len(password) < MIN_PASSWORD_LENGTH:
         raise ValidationError(
             f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
             field="password",
         )
 
+    # One message for two ceilings, and the wording has to fit both. The
+    # byte limit bites first for anything outside Latin -- 37 Cyrillic
+    # characters are 74 bytes -- and a bare "must not exceed 64
+    # characters" then states a number the password does not have. Naming
+    # the byte limit outright is what this module refuses to do: it is the
+    # hashing library's, and a message quoting it tells an anonymous
+    # caller which algorithm is in use -- and a test in
+    # `test_auth_controller` holds the endpoint to that, refusing the
+    # words "byte", "72", "bcrypt" and "truncate" in any answer.
     if (
         len(password) > MAX_PASSWORD_LENGTH
         or len(password.encode("utf-8")) > MAX_PASSWORD_BYTES
     ):
         raise ValidationError(
-            f"Password must not exceed {MAX_PASSWORD_LENGTH} characters",
+            f"Password must not exceed {MAX_PASSWORD_LENGTH} characters, "
+            "and fewer for alphabets that need more room per character",
             field="password",
         )
 

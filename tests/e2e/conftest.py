@@ -42,7 +42,6 @@ def app():
     application = create_app(config=E2ETestConfig())
 
     with application.app_context():
-        from link_shortener.infrastructure.database.models.base import Base
         from link_shortener.infrastructure.database.seed import seed_base_roles
         db = application.container.get_db_manager()
         db.create_tables()

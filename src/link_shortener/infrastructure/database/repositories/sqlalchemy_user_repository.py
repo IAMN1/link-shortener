@@ -38,10 +38,9 @@ class SQLAlchemyUserRepository(UserRepository):
 
         Such a row is invisible to every lookup -- addresses are compared
         exactly -- so its owner cannot sign in, and registering the same
-        mailbox again makes a second account for it. Saying so is the
-        point: the row used to be rewritten in place instead, by
-        whichever request touched the account first, outside
-        ``flask maintenance normalize-emails`` and outside any log.
+        mailbox again makes a second account for it. Reported rather than
+        rewritten here: the remedy is ``flask maintenance
+        normalize-emails``, which can see a collision this cannot.
 
         Repeated on every save deliberately: the row outlives the
         request, and a message that appeared once would be gone from the

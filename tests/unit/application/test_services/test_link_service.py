@@ -1,7 +1,5 @@
 from unittest.mock import Mock
 from link_shortener.application.dtos.link import ShortLinkResponse
-from link_shortener.application.dtos.batch import BatchCreateResponse
-from link_shortener.application.dtos.stats import ServiceStatsResponse
 from link_shortener.application.services.link_service import LinkService
 import pytest
 

@@ -81,7 +81,12 @@ class Container:
         self.db_component = DatabaseComponent(
             database_url=self.config.get_database_url(),
             echo=self.config.SQLALCHEMY_ECHO,
-            db_type=self.config.DATABASE_TYPE,
+            # The backend of the URL being opened, not the setting that
+            # says how to assemble one: DATABASE_TYPE is not read at all
+            # once DATABASE_URL is set, and it defaults to sqlite -- so a
+            # deployment that named PostgreSQL in DATABASE_URL alone got
+            # an engine configured for SQLite against a PostgreSQL server.
+            db_type=self.config.database_backend(),
             pool_params=self.config.get_pool_params(),
             connect_timeout=self.config.DATABASE_CONNECT_TIMEOUT,
             statement_timeout=self.config.DATABASE_STATEMENT_TIMEOUT,
@@ -546,10 +551,6 @@ class Container:
     def get_admin_service(self) -> AdminService:
         """Return the application facade for admin operations."""
         return self._admin_service
-
-    def get_role_management_service(self) -> RoleManagementService:
-        """Return the service for role CRUD operations."""
-        return self._role_management_service
 
     def get_user_management_service(self) -> UserManagementService:
         """Return the service for user CRUD operations."""
