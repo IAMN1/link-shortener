@@ -8,7 +8,7 @@ from link_shortener.infrastructure.database.models.base import Base
 from link_shortener.infrastructure.database.models.associations import role_permission_table
 
 if TYPE_CHECKING:
-    from .role_model import RoleModel
+    from link_shortener.infrastructure.database.models.role_model import RoleModel
 
 class PermissionModel(Base):
     """

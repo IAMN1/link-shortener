@@ -12,8 +12,10 @@ from link_shortener.infrastructure.database.models.associations import(
     role_permission_table, user_role_table
 )
 if TYPE_CHECKING:
-    from .user_model import UserModel
-    from .permission_model import PermissionModel
+    from link_shortener.infrastructure.database.models.user_model import UserModel
+    from link_shortener.infrastructure.database.models.permission_model import (
+        PermissionModel,
+    )
 
 
 class RoleModel(Base):

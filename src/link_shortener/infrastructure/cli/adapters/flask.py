@@ -4,31 +4,32 @@ from flask.cli import with_appcontext
 
 from link_shortener.application import RequestContext
 from link_shortener.domain import Email
-from ..commands.database import init_db as init_db_logic
-from ..commands.database import drop_db as drop_db_logic
-from ..commands.database import seed_db as seed_db_logic
-from ..commands.database import load_base_roles_from_cfg as load_base_roles_logic
-from ..commands.database import load_custom_roles_from_cfg as load_custom_roles_logic
-from ..commands.database import check_db_connection as check_db_logic
-from ..commands.database import migrate_db as migrate_db_logic
-from ..commands.stats import refresh_stats as refresh_stats_logic
-from ..commands.stats import get_stats as get_stats_logic
-from ..commands.maintenance import clean_expired_links as clean_expired_logic
-from ..commands.maintenance import clean_expired_sessions as clean_sessions_logic
-from ..commands.maintenance import (
+from link_shortener.infrastructure.cli.commands.database import init_db as init_db_logic
+from link_shortener.infrastructure.cli.commands.database import drop_db as drop_db_logic
+from link_shortener.infrastructure.cli.commands.database import seed_db as seed_db_logic
+from link_shortener.infrastructure.cli.commands.database import load_base_roles_from_cfg as load_base_roles_logic
+from link_shortener.infrastructure.cli.commands.database import load_custom_roles_from_cfg as load_custom_roles_logic
+from link_shortener.infrastructure.cli.commands.database import check_db_connection as check_db_logic
+from link_shortener.infrastructure.cli.commands.database import migrate_db as migrate_db_logic
+from link_shortener.infrastructure.cli.commands.stats import refresh_stats as refresh_stats_logic
+from link_shortener.infrastructure.cli.commands.stats import get_stats as get_stats_logic
+from link_shortener.infrastructure.cli.commands.maintenance import clean_expired_links as clean_expired_logic
+from link_shortener.infrastructure.cli.commands.maintenance import clean_expired_sessions as clean_sessions_logic
+from link_shortener.infrastructure.cli.commands.maintenance import (
     clean_unverified_accounts as clean_unverified_logic,
 )
-from ..commands.maintenance import (
+from link_shortener.infrastructure.cli.commands.maintenance import (
     find_addresses_needing_normalising as find_mixed_case_logic,
 )
-from ..commands.maintenance import normalise_addresses as normalise_logic
-from ..commands.link import delete_link as delete_link_logic
-from ..commands.link import get_link_info as link_info_logic
-from ..commands.link import list_links as list_links_logic
-from ..commands.cache import check_redis_connection as check_redis_logic
-from ..commands.cache import get_cache_info as cache_info_logic
-from ..commands.cache import clear_cache as clear_cache_logic
-from ..commands.admin import create_admin as create_admin_logic
+from link_shortener.infrastructure.cli.commands.maintenance import normalise_addresses as normalise_logic
+from link_shortener.infrastructure.cli.commands.maintenance import what_the_database_said
+from link_shortener.infrastructure.cli.commands.link import delete_link as delete_link_logic
+from link_shortener.infrastructure.cli.commands.link import get_link_info as link_info_logic
+from link_shortener.infrastructure.cli.commands.link import list_links as list_links_logic
+from link_shortener.infrastructure.cli.commands.cache import check_redis_connection as check_redis_logic
+from link_shortener.infrastructure.cli.commands.cache import get_cache_info as cache_info_logic
+from link_shortener.infrastructure.cli.commands.cache import clear_cache as clear_cache_logic
+from link_shortener.infrastructure.cli.commands.admin import create_admin as create_admin_logic
 
 
 # ------------------------------------------------------------------
@@ -80,13 +81,11 @@ def seed_db(count):
     try:
         result = seed_db_logic(use_case, count, context)
     except Exception as e:
-        # Not the guest limit, whatever this used to say. Seeding goes
-        # through the regular create use case, but with a context carrying
-        # no address -- and both the guest quota and the guest expiry are
-        # keyed on one, so a CLI call is neither counted nor expired. It
-        # creates permanent, unattributed links, by design; pointing the
-        # operator at GUEST_LINK_LIMIT only sent them looking in the wrong
-        # place.
+        # Not the guest limit: seeding goes through the regular create
+        # use case, but with a context carrying no address, and both the
+        # guest quota and the guest expiry are keyed on one. A CLI call is
+        # neither counted nor expired -- it creates permanent,
+        # unattributed links, by design.
         click.echo(f"ERROR: seeding failed: {e}", err=True)
         raise SystemExit(1)
 
@@ -118,12 +117,18 @@ def load_custom_roles(file_path, update_existing):
 def check_db():
     """Check database connection health."""
     container = current_app.container
-    if check_db_logic(container.get_db_manager()):
+    failure = check_db_logic(container.get_db_manager())
+    if failure is None:
         click.echo("Database connection is healthy.")
     else:
         # Non-zero exit: this command is meant to be usable from monitoring
         # and CI, where a failure that returns 0 is indistinguishable from ok.
-        click.echo("Database connection failed.", err=True)
+        #
+        # The reason is named. Without it this command said the same
+        # sentence for a wrong password, an unreachable host and a
+        # database that does not exist -- on the one command an operator
+        # runs precisely to tell those apart.
+        click.echo(f"Database connection failed: {failure}", err=True)
         raise SystemExit(1)
 
 @db_group.command("status")
@@ -131,24 +136,24 @@ def check_db():
 def db_status():
     """Alias for 'db check' - check database connection."""
     container = current_app.container
-    if check_db_logic(container.get_db_manager()):
+    failure = check_db_logic(container.get_db_manager())
+    if failure is None:
         click.echo("Database connection is healthy.")
     else:
-        click.echo("Database connection failed.", err=True)
+        click.echo(f"Database connection failed: {failure}", err=True)
         raise SystemExit(1)
 
 @db_group.command("migrate")
 @with_appcontext
 def migrate_db():
     """Apply database migrations using Alembic."""
-    container = current_app.container
     use_alembic = current_app.config.get("USE_ALEMBIC", True)
     if not use_alembic:
         # No point naming a database this branch will not touch, and not a
         # free thing to do either: the URL carries the host and the user.
-        migrate_db_logic(container.get_db_manager(), use_alembic)
+        migrate_db_logic(use_alembic)
         return
-    migrate_db_logic(container.get_db_manager(), use_alembic, _echo_target())
+    migrate_db_logic(use_alembic, _echo_target())
 
 # ------------------------------------------------------------------
 # Stats commands group
@@ -171,9 +176,8 @@ def stats_show():
     click.echo(f"\t\t\tTotal clicks:    {stats['total_clicks']}")
     click.echo(f"\t\t\tAvg clicks/URL:  {stats['avg_clicks_per_url']}")
     click.echo("\n\t\t\tTOP 5 POPULAR LINKS:")
-    for i, (code, clicks, url) in enumerate(stats['popular_links'], 1):
-        short_url = f"{code}"
-        click.echo(f"\t\t\t{i}. {short_url} - {clicks} clicks")
+    for i, (code, clicks, _url) in enumerate(stats['popular_links'], 1):
+        click.echo(f"\t\t\t{i}. {code} - {clicks} clicks")
     click.echo("=" * 80)
 
 @stats_group.command("refresh")
@@ -204,12 +208,15 @@ def maintenance_group():
 def clean_expired():
     """Delete links whose expiry has passed.
 
-    Takes no threshold: an expired link is expired, and a redirect to it
-    already answers 410. The former ``--days`` option belonged to a
-    different sweep -- everything untouched for N days, permanent links
-    included -- and is gone rather than redefined, so an old cron line
-    fails loudly instead of quietly doing something else.
+    Takes no threshold: an expired link is expired. There is no --days
+    option, and a cron line still passing one will fail rather than sweep
+    something else.
     """
+    # `--days` belonged to a different sweep -- everything untouched for
+    # N days, permanent links included -- and was removed rather than
+    # redefined, so an old cron line fails loudly instead of quietly
+    # deleting links nobody asked it to. A redirect to an expired link
+    # already answers 410, which is why no threshold is wanted here.
     container = current_app.container
     context = RequestContext(request_id="cli-clean")
     use_case = container.get_clean_expired_links_use_case()
@@ -235,23 +242,39 @@ def clean_sessions():
 def normalize_emails(apply_changes):
     """Lower stored addresses that predate address normalisation.
 
-    An address is now held in lower case, so an account written earlier as
-    ``Case@Example.com`` is no longer found by a lookup for it: its owner
-    cannot sign in, and registering the address again would create a
-    second account for the same mailbox.
+    An address is now held in lower case, so an account written earlier
+    as Case@Example.com is no longer found by a lookup for it: its owner
+    cannot sign in, and registering the address again would make a second
+    account for the same mailbox.
 
-    Reports by default and changes nothing. Addresses that would collide
-    with another account once lowered are never touched -- merging two
-    accounts means deciding whose links, roles and sessions survive, which
-    is not a decision for a maintenance command. Both members of such a
-    pair are reported, including the case where neither is stored in lower
-    case yet.
+    Reports by default and changes nothing; pass --apply to write.
+    Addresses that would collide with another account once lowered are
+    reported and left alone, because merging two accounts is a decision
+    about whose links, roles and sessions survive.
 
-    Each address is written in its own transaction, so one refusal leaves
-    the rest migrated rather than rolling the whole run back.
+    Each address is written in its own transaction, so one that cannot be
+    written leaves the rest migrated. Exits non-zero if the accounts
+    cannot be read at all, if the database refused an address, if writing
+    one failed, or if the run was interrupted with work still to do. Two
+    outcomes are not failures and exit 0: a conflicting pair, which only
+    its owners can untangle, and a row somebody else deleted or renamed
+    while this ran -- neither is something a second run would fix.
     """
     db_manager = current_app.container.get_db_manager()
-    rows = find_mixed_case_logic(db_manager)
+
+    # Wrapped like `db init` and `db drop` next door, so an unreachable
+    # database prints "ERROR: ..." and exits 1 rather than a traceback.
+    try:
+        rows = find_mixed_case_logic(db_manager)
+    except Exception as e:
+        # First line only, like the writing path: SQLAlchemy renders the
+        # statement into the rest of the message.
+        click.echo(
+            f"ERROR: could not read the accounts: "
+            f"{what_the_database_said(e)}",
+            err=True,
+        )
+        raise SystemExit(1)
 
     if not rows:
         click.echo("Every stored address is already lower case.")
@@ -276,7 +299,10 @@ def normalize_emails(apply_changes):
         )
         return
 
-    result = normalise_logic(db_manager)
+    # The very rows that were just listed, rather than a second read of
+    # the table: read twice, the report and the counts would describe
+    # different moments.
+    result = normalise_logic(db_manager, rows)
     click.echo(f"Lowered {result['changed']} addresses.")
     if result["skipped"]:
         click.echo(
@@ -286,19 +312,60 @@ def normalize_emails(apply_changes):
         # Not a conflict this command could see when it looked: the row
         # was taken between the report and the write.
         click.echo(
-            f"{result['refused']} refused by the unique index; run again.",
+            f"{result['refused']} were taken by another account between "
+            f"the report and the write; they are conflicts now, and the "
+            f"next run will list them as such and touch nothing.",
             err=True,
         )
+    if result["moved"]:
+        # Two causes, one line: the row was deleted, or its address was
+        # changed by its owner while this ran. Either way the write
+        # matched nothing, and neither is this command's to undo.
+        click.echo(
+            f"{result['moved']} were deleted or changed by somebody else "
+            f"between the report and the write, and were left alone.",
+            err=True,
+        )
+    if result["failed"]:
+        # No verdict on whether running again helps: this bucket holds a
+        # locked database and a value too long for the column alike. The
+        # database's own words go to the operator instead.
+        click.echo(
+            f"{result['failed']} could not be written and were left as "
+            f"they are. The database gave:",
+            err=True,
+        )
+        for reason in result["reasons"]:
+            click.echo(f"  {reason}", err=True)
+    # Only when something is actually left: an interrupt arriving after
+    # the last address was written interrupts nothing. The remainder is
+    # what says so -- every other path attempts every address it was
+    # given.
+    unfinished = result["remaining"] > 0
+    if unfinished:
+        click.echo(
+            f"Interrupted. {result['remaining']} addresses were not "
+            f"attempted; running again picks them up.",
+            err=True,
+        )
+
+    # Non-zero when this run could not do what it was asked, like
+    # `db check`. Two outcomes stay at 0: a conflict, which only an owner
+    # can untangle, and a `moved` row, which is gone or already correct.
+    # Either would put a schedule into permanent alarm over something no
+    # run can change.
+    if result["failed"] or result["refused"] or unfinished:
+        raise SystemExit(1)
 
 @maintenance_group.command("clean-unverified")
 @with_appcontext
 def clean_unverified():
     """Delete registrations nobody confirmed, and dead tokens with them.
 
-    Meant to be run on a schedule, beside ``clean-expired`` and
-    ``clean-sessions``. Nothing calls it on its own: without a cron line
-    an unconfirmed registration holds its address for good, which is the
-    thing ``UNVERIFIED_ACCOUNT_TTL_HOURS`` exists to prevent.
+    Meant for a schedule, beside clean-expired and clean-sessions.
+    Nothing calls it on its own, so without a cron line an unconfirmed
+    registration holds its address for good -- which is the thing
+    UNVERIFIED_ACCOUNT_TTL_HOURS exists to prevent.
     """
     container = current_app.container
     context = RequestContext(request_id="cli-clean-unverified")
@@ -330,7 +397,7 @@ def maintenance_health():
     container = current_app.container
 
     # Check database
-    db_ok = check_db_logic(container.get_db_manager())
+    db_ok = check_db_logic(container.get_db_manager()) is None
     click.echo(f"Database: {'OK' if db_ok else 'FAILED'}")
 
     # Check Redis. A deliberately disabled cache is not a failure: the
@@ -460,25 +527,85 @@ def link_list(limit):
 @click.option(
     "--code",
     default=None,
-    help="Custom short code (6-10 of A-Z a-z 0-9 _ -). Generated if omitted.",
+    help=(
+        "Custom short code (6-10 of A-Z a-z 0-9 _ -), except the handful "
+        "the service answers to itself. Generated if omitted."
+    ),
 )
 @with_appcontext
 def link_create(url, code):
-    """Create a new short link."""
-    from ..commands.link import create_link as create_link_logic
+    """Create a new short link.
+
+    A URL this command already shortened gets its existing link back
+    rather than a second one, and the report says so. --code is then not
+    issued, which is reported too. Links made by a signed-in account or
+    by a web visitor are a separate matter and are never returned here.
+    """
+    # This docstring is what `--help` prints, so the reasoning lives here
+    # rather than in it.
+    #
+    # The command said "Short link created successfully!" either way --
+    # with "Is new: False" four lines below it, contradicting the headline
+    # nobody reads past. An operator shortening a URL a colleague had
+    # already shortened was told they had just made the link they were in
+    # fact being handed. It matters beyond the wording: the code printed
+    # is then not the one `--code` asked for, and a script reading the
+    # headline as "this is mine now" would delete a link somebody else is
+    # using.
+    # An empty --code is a script whose variable did not get filled in --
+    # `--code "$CODE"` is how it arrives -- and `if code and ...` cannot
+    # tell it from the option not being passed at all, so a code would be
+    # generated, nothing said, and the script would go on with a code it
+    # did not choose.
+    #
+    # Refused rather than treated as "generate one": that reading is
+    # available by leaving the option out, and it is not the one an
+    # operator who typed --code meant.
+    if code is not None and not code.strip():
+        click.echo(
+            "Error: --code was given an empty value. Leave the option out "
+            "to have a code generated, or pass the code you want.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    from link_shortener.infrastructure.cli.commands.link import create_link as create_link_logic
     container = current_app.container
     context = RequestContext(request_id="cli-create")
     use_case = container.get_create_short_link_use_case()
 
     try:
         result = create_link_logic(use_case, url, context, code)
+        headline = (
+            "Short link created successfully!"
+            if result["is_new"]
+            else "This URL was already shortened -- returning that link."
+        )
         click.echo("=" * 80)
-        click.echo("\t\t\tShort link created successfully!")
+        click.echo(f"\t\t\t{headline}")
         click.echo(f"\t\t\tShort code: {result['short_code']}")
         click.echo(f"\t\t\tOriginal URL: {result['original_url']}")
         click.echo(f"\t\t\tShort URL: {result['short_url']}")
         click.echo(f"\t\t\tIs new: {result['is_new']}")
         click.echo("=" * 80)
+
+        # Said out loud, on stderr, because nothing else in the report
+        # mentions it. Deduplication is decided before the chosen code is
+        # looked at, so a code that was explicitly asked for is simply
+        # not used -- and the command still exits 0.
+        #
+        # What the code does instead is deliberately not stated. This
+        # path never looked at it, so whether it is free or belongs to
+        # somebody else is not known here: saying "it remains free" was
+        # wrong against a code already held by another link,
+        # which the same argument on a new URL refuses outright.
+        if code and result["short_code"] != code:
+            click.echo(
+                f"Note: --code {code} was not issued. This URL was already "
+                f"shortened as {result['short_code']}, and that is the link "
+                f"above; nothing was created for {code}.",
+                err=True,
+            )
     except Exception as e:
         click.echo(f"Error creating link: {e}", err=True)
         raise SystemExit(1)
@@ -494,7 +621,7 @@ def security_group():
 @security_group.command("generate-secrets")
 def security_generate_secrets():
     """Generate new SECRET_KEY and SHORT_CODE_PEPPER."""
-    from ..commands.security import generate_secrets as gen_secrets
+    from link_shortener.infrastructure.cli.commands.security import generate_secrets as gen_secrets
     secrets = gen_secrets()
     click.echo("=" * 80)
     click.echo("Generated secrets (add to .env file):")
@@ -506,7 +633,7 @@ def security_generate_secrets():
 @security_group.command("check-secrets")
 def security_check_secrets():
     """Check if required secrets are configured."""
-    from ..commands.security import check_secrets
+    from link_shortener.infrastructure.cli.commands.security import check_secrets
     status = check_secrets()
     click.echo("\nSecret Configuration Status:")
     click.echo("=" * 40)
@@ -523,7 +650,7 @@ def security_check_secrets():
 @with_appcontext
 def security_list_users():
     """List all users with their roles."""
-    from ..commands.security import list_users
+    from link_shortener.infrastructure.cli.commands.security import list_users
     container = current_app.container
     users = list_users(container.get_uow_factory())
 
@@ -541,7 +668,7 @@ def security_list_users():
 @with_appcontext
 def security_list_roles():
     """List all roles with their permissions."""
-    from ..commands.security import list_roles
+    from link_shortener.infrastructure.cli.commands.security import list_roles
     container = current_app.container
     roles = list_roles(container.get_uow_factory())
 
@@ -561,7 +688,7 @@ def security_list_roles():
 @with_appcontext
 def security_reset_password(email, password):
     """Reset a user's password."""
-    from ..commands.security import reset_password
+    from link_shortener.infrastructure.cli.commands.security import reset_password
     container = current_app.container
     user_service = container.get_user_management_service()
 
@@ -576,7 +703,7 @@ def security_reset_password(email, password):
 @with_appcontext
 def security_validate_token(token):
     """Validate a JWT token and show its claims."""
-    from ..commands.security import validate_token
+    from link_shortener.infrastructure.cli.commands.security import validate_token
     container = current_app.container
     auth_service = container.get_authentication_service()
     
@@ -595,7 +722,8 @@ def security_validate_token(token):
         click.echo(f"Email: {result.get('email')}")
         click.echo(f"Roles: {', '.join(result.get('roles', []))}")
         click.echo(f"Expires: {result.get('exp')}")
-        if token_type != "access":
+        # Вид токена, а не пароль.
+        if token_type != "access":  # nosec B105
             click.echo(
                 f"\nNote: this is a {token_type} token -- it authenticates "
                 "no request. Only an access token does."
@@ -608,12 +736,65 @@ def security_validate_token(token):
 # Top-level commands
 # ------------------------------------------------------------------
 @click.command("create-admin")
-@click.option("--email", prompt="Email", help="Admin email")
-@click.option("--password", prompt="Password", hide_input=True, help="Admin password")
-@click.option("--non-interactive", is_flag=True, help="Skip confirmation prompts")
+@click.option("--email", default=None, help="Admin email")
+@click.option("--password", default=None, help="Admin password")
+@click.option(
+    "--non-interactive",
+    is_flag=True,
+    help="Refuse rather than prompt when --email or --password is missing",
+)
 @with_appcontext
 def create_admin(email, password, non_interactive):
-    """Create an admin user."""
+    """Create an admin user.
+
+    Asks for --email and --password if they are not given, unless
+    --non-interactive is passed, in which case it refuses instead. A
+    password it asks for is typed twice; one given as --password is not.
+    """
+    # This docstring is what `--help` prints, so the reasoning lives here
+    # rather than in it.
+    #
+    # The prompts are issued in the body rather than by
+    # `click.option(prompt=...)`, which is what makes `--non-interactive`
+    # mean anything. Declared as a prompting option, `--email` is asked for
+    # before the body runs and before any flag can be consulted: the flag
+    # was read by nothing at all, and a provisioning script that passed it
+    # stops at "Email:" and dies on the closed stdin with
+    # `Aborted!` -- the one situation it exists to prevent. Its help said
+    # "Skip confirmation prompts", which named something that was never
+    # here either: this command asks for values, and confirms nothing.
+    missing = [
+        name
+        for name, value in (("--email", email), ("--password", password))
+        if not value
+    ]
+    if missing and non_interactive:
+        # Named together, not one per run: a script fixed on the first
+        # complaint would come back only to be stopped by the second.
+        click.echo(
+            f"{' and '.join(missing)} required with --non-interactive",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    if not email:
+        email = click.prompt("Email")
+    if not password:
+        # Asked twice, like `create-user` and `security reset-password`
+        # next door. The input is hidden, so a typo is invisible and
+        # nothing downstream can catch one: the account is created, the
+        # command reports success, and the password that was meant is not
+        # the password that was stored. There is no recovery either --
+        # signing in needs the password, and resetting it needs an admin.
+        #
+        # Only the prompted path confirms. A `--password` on the command
+        # line was read from a script or a secret store, is visible to
+        # whoever wrote it, and asking a script to type it twice is how
+        # `--non-interactive` gets stuck at a prompt again.
+        password = click.prompt(
+            "Password", hide_input=True, confirmation_prompt=True
+        )
+
     container = current_app.container
     user_service = container.get_user_management_service()
     uow_factory = container.get_uow_factory()
@@ -638,7 +819,7 @@ def create_admin(email, password, non_interactive):
 @with_appcontext
 def create_user(email, password, role):
     """Create a new user with a specified role."""
-    from ..commands.admin import create_user as create_user_logic
+    from link_shortener.infrastructure.cli.commands.admin import create_user as create_user_logic
     container = current_app.container
     user_service = container.get_user_management_service()
     uow_factory = container.get_uow_factory()
@@ -728,7 +909,7 @@ def _require_alembic_enabled() -> str:
 @with_appcontext
 def alembic_status():
     """Show current migration status."""
-    from ..commands.alembic import AlembicCommands
+    from link_shortener.infrastructure.cli.commands.alembic import AlembicCommands
     success, output = AlembicCommands.status(_echo_target())
     click.echo(output, err=not success)
     if not success:
@@ -739,7 +920,7 @@ def alembic_status():
 @with_appcontext
 def alembic_history(revision):
     """Show migration history."""
-    from ..commands.alembic import AlembicCommands
+    from link_shortener.infrastructure.cli.commands.alembic import AlembicCommands
     success, output = AlembicCommands.history(revision, _echo_target())
     click.echo(output, err=not success)
     if not success:
@@ -750,7 +931,7 @@ def alembic_history(revision):
 @with_appcontext
 def alembic_upgrade(revision):
     """Apply migrations to target revision."""
-    from ..commands.alembic import AlembicCommands
+    from link_shortener.infrastructure.cli.commands.alembic import AlembicCommands
     success, output = AlembicCommands.upgrade(revision, _require_alembic_enabled())
     click.echo(output)
     if not success:
@@ -766,7 +947,7 @@ def alembic_upgrade(revision):
 @with_appcontext
 def alembic_downgrade(revision):
     """Rollback migrations to target revision."""
-    from ..commands.alembic import AlembicCommands
+    from link_shortener.infrastructure.cli.commands.alembic import AlembicCommands
     success, output = AlembicCommands.downgrade(revision, _require_alembic_enabled())
     click.echo(output)
     if not success:
@@ -777,7 +958,7 @@ def alembic_downgrade(revision):
 @with_appcontext
 def alembic_migrate(message):
     """Create new migration with auto-generated changes."""
-    from ..commands.alembic import AlembicCommands
+    from link_shortener.infrastructure.cli.commands.alembic import AlembicCommands
     success, output = AlembicCommands.migrate(message, _require_alembic_enabled())
     click.echo(output)
     if not success:
