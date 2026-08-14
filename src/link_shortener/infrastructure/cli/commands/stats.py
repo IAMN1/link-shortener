@@ -9,12 +9,9 @@ def refresh_stats(
     """
     Force a fresh retrieval of service statistics and update the cache.
 
-    The cached entry is dropped first. Without that this command was
-    ``get_stats`` under another name: the use case answers from the cache on
-    a hit, so it printed "STATISTIC REFRESHED IN CACHE" above the same stale
-    numbers it had just been given. That mattered because the batch endpoint
-    used to leave those numbers stale by up to a whole batch, and this is
-    the command an operator would reach for.
+    The cached entry is dropped first: the use case answers from the cache
+    on a hit, so without the drop this command would print "STATISTIC
+    REFRESHED IN CACHE" above the same numbers it was handed.
 
     Args:
         use_case: GetServiceStatsUseCase instance.

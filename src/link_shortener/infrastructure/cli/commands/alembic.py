@@ -1,5 +1,6 @@
 import os
-import subprocess
+# Alembic запускается отдельным процессом намеренно, см. _run ниже.
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 from typing import Optional
@@ -18,14 +19,10 @@ def _project_root() -> Path:
     happens to contain another ``alembic.ini`` executed *that* project's
     ``env.py``, with this process's environment handed to it.
 
-    Two places are searched: upwards from this module, and upwards from the
-    working directory. The first is what a source checkout answers with.
-    The second is what an installed copy needs -- in the image the package
-    is imported from ``site-packages``, so no parent of this file holds an
-    ``alembic.ini``, and the fallback used to count levels up from here and
-    land in ``/usr/local/lib/python3.12``. Alembic was then handed a
-    directory with no configuration in it and died with "No 'script_location'
-    key found", naming neither the directory nor the reason.
+    Two places are searched: upwards from this module, which answers in a
+    source checkout, and upwards from the working directory, which is what
+    an installed copy needs -- in the image the package is imported from
+    ``site-packages``, and no parent of this file holds an ``alembic.ini``.
 
     Returns:
         Directory containing ``alembic.ini``.
@@ -94,7 +91,8 @@ class AlembicCommands:
             # no explicit target writes.
             env.pop(AlembicCommands.HANDOFF_ENV_VAR, None)
 
-        return subprocess.run(
+        # Список аргументов, без оболочки: подставить нечего.
+        return subprocess.run(  # nosec B603
             [sys.executable, "-m", "alembic", *args],
             capture_output=True,
             text=True,
@@ -168,9 +166,8 @@ class AlembicCommands:
         if result.returncode != 0:
             return False, f"Error: {result.stderr}"
         # Alembic reports "Running upgrade X -> Y" on stderr, so on success
-        # stdout is empty and this used to print a bare "Migrations applied."
-        # -- identical output whether it created eight tables or did nothing
-        # at all, and no way to tell which database it had been pointed at.
+        # stdout is empty. Both streams are joined: without stderr the output
+        # is the same whether eight tables were created or nothing was.
         return True, (result.stdout + result.stderr).strip() or "Migrations applied."
 
     @staticmethod

@@ -40,23 +40,6 @@ class _AllServicesFailed:
     def __repr__(self) -> str:
         return "ALL_SERVICES_FAILED"
 
-    def __reduce__(self):
-        """
-        Survive pickling as the same object.
-
-        Without this the sentinel is rebuilt on the far side of a pickle
-        or a deepcopy, and ``is ALL_SERVICES_FAILED`` -- the only way
-        anyone is meant to test for it -- quietly answers False. Nothing
-        carries it across such a boundary today, and the task queue could
-        not: Celery here is configured for JSON, which refuses this object
-        outright rather than rebuilding it wrongly. One line, so that a
-        ``deepcopy`` of a structure that happens to hold it stays correct.
-
-        Returns:
-            The name to look up on unpickling.
-        """
-        return "ALL_SERVICES_FAILED"
-
 
 ALL_SERVICES_FAILED = _AllServicesFailed()
 """Singleton returned by :meth:`FailoverService.execute` on exhaustion."""
@@ -163,25 +146,16 @@ class FailoverService(Generic[T]):
         """
         Write one line about this service's own working, and never throw.
 
-        Every announcement in this class goes through here. Called
-        directly, ``self.logger`` took the caller with it whenever the
-        logger itself was the thing that broke: a full disk raises
-        ``OSError(ENOSPC)`` on the write, and the exception left
-        ``execute`` -- the one method a request thread reaches -- out of
-        the one class built so that a failing log does not reach the
-        caller. Measured before this, on a logger raising ``ENOSPC``:
-        the ``OSError`` arrived at the caller and ``dropped_calls`` stood
-        at zero, so the loss was neither absorbed nor counted.
+        Every announcement in this class goes through here, because the
+        logger is what may be broken: a full disk raises ``OSError`` on
+        the write, and that exception would leave ``execute`` -- the one
+        method a request thread reaches -- out of the one class built so
+        that a failing log does not reach the caller.
 
-        Then stderr, then silence. That order is the standard library's
-        answer to the same problem: ``Handler.handleError`` writes the
-        failure to ``sys.stderr`` -- "If raiseExceptions is false,
-        exceptions get silently ignored. This is what is mostly wanted
-        for a logging system - most users will not care about errors in
-        the logging system" -- and puts its whole diagnostic block, that
-        write included, under ``except OSError: pass`` (CPython,
-        ``Lib/logging/__init__.py``), because whatever stopped the logger
-        commonly stops stderr too. What outlives both is the count.
+        Then stderr, then silence, which is what the standard library
+        does with the same problem (``Handler.handleError``): whatever
+        stopped the logger commonly stops stderr too. What outlives both
+        is the count.
 
         Args:
             message: The line to write.
@@ -198,7 +172,7 @@ class FailoverService(Generic[T]):
         except Exception:
             # Nowhere left to say it. The count above is what remains of
             # the line, and it is reported by `GET /api/v1/admin/health`.
-            pass
+            pass  # nosec B110
 
     def _periodic_check(self) -> None:
         """
@@ -208,27 +182,17 @@ class FailoverService(Generic[T]):
 
         Down first, and then up only if nothing went down. A round that has
         just taken the work off a service has nothing left to ask: the climb
-        would put the same question to the same service in the same round --
-        and the answer, being ``False``, would spend the upgrade cooldown on
-        it. That is five minutes booked for a probe already answered, and it
-        is paid by whichever service recovers next, which waits out the
-        booking instead of one check interval. Measured before this: a
-        primary handed down by the probe and healthy again a moment later
-        took 300 s to get the work back, against 30 s when the same demotion
-        came from a call that threw.
+        would put the same question to the same service in the same round,
+        and the answer -- ``False`` -- would spend the upgrade cooldown on
+        it, so whichever service recovers next waits out that booking
+        instead of one check interval.
 
         A round that throws costs that round and nothing more. An exception
         leaving here ends the thread, and this thread is the only thing in
         the application that ever moves the work back up -- so the failure
-        would be permanent, silent, and invisible to ``shutdown()``, which
-        would go on reporting a clean stop. What the standard library does
-        with it is print to ``sys.stderr`` and let the thread die
-        (``threading.excepthook``: "the exception is printed out on
-        sys.stderr"). The line is not what is lost -- this process runs
-        gunicorn in the foreground with both logs on the standard streams,
-        and the failover logger writes to stderr itself -- the thread is.
-        The round is counted instead, on ``failed_checks``, which survives
-        even a logger that cannot say anything.
+        would be permanent, silent, and invisible to ``shutdown()``. The
+        round is counted instead, on ``failed_checks``, which survives even
+        a logger that cannot say anything.
         """
         while not self._stop_event.wait(self._check_interval):
             try:
@@ -296,11 +260,9 @@ class FailoverService(Generic[T]):
 
             for idx in range(self._current_index + 1, len(self._services)):
                 candidate, candidate_name = self._services[idx]
-                # The probe alone is guarded. With the announcement inside
-                # the same `try`, a logger that threw was reported as a
-                # probe that threw -- a message naming the wrong culprit.
-                # `_say` no longer throws, so that misattribution is all
-                # this narrow `try` still buys; it is enough.
+                # The probe alone is guarded: with the announcement inside
+                # the same `try`, a logger that threw would be reported as a
+                # probe that threw.
                 try:
                     answered = self._health_checker(candidate)
                 except Exception as e:
@@ -338,32 +300,22 @@ class FailoverService(Generic[T]):
         Try to switch to a service with higher priority (lower index) if it is healthy.
         If a healthy higher-priority service is found, switch to it and log the event.
 
-        The cooldown is spent only where there is something to spend it on.
-        Stamping it before the "already on the best one" exit meant every
-        routine check on a healthy primary -- which is nearly all of them --
-        reserved the next five minutes for an attempt that never happened,
-        so a service that broke just after such a check waited out the whole
-        cooldown instead of one interval.
+        The cooldown is spent only where there is something to spend it on,
+        so a routine check on a healthy primary -- which is nearly all of
+        them -- does not reserve the next five minutes for an attempt that
+        never happened.
 
-        It is spent once, and an upgrade does not give it back. Clearing the
-        stamp after a successful climb -- so that the next one could go
-        further up the list -- made every later attempt unconditional, and
-        the loop below already goes as far up as it can: it walks the list
-        from the top, so one attempt lands on the best healthy service there
-        is. What the clearing left was a promotion repeatable at every check.
-        Measured on the production shape, two services and a health checker
-        that calls the primary well while its calls still throw: the work
-        went back up six times in 180 seconds against a five-minute
-        cooldown, falling straight back each time. The half-open trial of
-        a circuit breaker is charged the same way when it fails ("If any
-        request fails ... It restarts the time-out timer", Azure
-        Architecture Center, Circuit Breaker pattern); it is not charged
-        for a trial that succeeds, and that is the difference. A breaker
-        that closes has the whole service back and nothing left to wait
-        for. An upgrade here is a guess: the probe asked whether the
-        service is well, not whether the calls it is about to take will
-        work, and the six climbs above were all made on a probe answering
-        yes.
+        It is spent once, and an upgrade does not give it back. The loop
+        below already goes as far up as it can, so one attempt lands on the
+        best healthy service there is; giving the cooldown back would make
+        the promotion repeatable at every check, and a health checker that
+        calls a service well while its calls still throw would send the
+        work back up on every round. The half-open trial of a circuit
+        breaker is charged the same way when it fails ("If any request
+        fails ... It restarts the time-out timer", Azure Architecture
+        Center, Circuit Breaker pattern) -- an upgrade here is a guess:
+        the probe asked whether the service is well, not whether the calls
+        it is about to take will work.
         """
         with self._lock:
             if self._current_index == 0:
@@ -398,7 +350,7 @@ class FailoverService(Generic[T]):
                     # from. Announcing first once cost more here than a
                     # lost message: the cooldown is stamped at the top of
                     # this method, so a logger throwing on this line lost
-                    # the climb and kept the booking -- measured, a healthy
+                    # the climb and kept the booking: a healthy
                     # primary stood unused for 301 s beside a standby the
                     # work had no reason to be on. `_say` is what stands
                     # between the two now; the order stays because a line
@@ -442,40 +394,20 @@ class FailoverService(Generic[T]):
 
         No ordinary exception from a wrapped service escapes -- the
         clause is ``except Exception``, so a KeyboardInterrupt still
-        stops the process, which is what it is for. What runs through
-        here is logging and auditing, and a logging subsystem that throws
-        takes the application down with the record it was trying to write;
-        the standard library takes the same view of its own handlers, whose
-        errors ``Handler.handleError`` turns into a note on stderr rather
-        than into an exception for the caller. The refusal is reported
+        stops the process. What runs through here is logging and auditing,
+        and a logging subsystem that throws would take the application
+        down with the record it was trying to write; the standard library
+        takes the same view of its own handlers. The refusal is reported
         instead: distinctly in the return value, in the count on
-        ``dropped_calls``, and in a log line of its own.
+        ``dropped_calls``, and in a log line of its own. The service's own
+        announcements go through ``_say``, which cannot throw either.
 
-        Nor does the failover service's own logger escape. It used to:
-        ``self.logger`` was called unprotected here, and a logger raising
-        ``ENOSPC`` carried that exception out to the caller with
-        ``dropped_calls`` still at zero. Every announcement now goes
-        through ``_say``, which falls back to stderr and then to silence
-        and counts the line on ``lost_log_lines``.
-
-        The lock is held around the state and not around the call. Holding
-        it across ``method(*args, **kwargs)`` put every thread in the
-        process behind whichever one was writing: a
-        ``get_current_service_name()`` -- which only reads an integer --
-        waited out whatever call happened to be in flight, however long it
-        took, and every line this application logs goes through here.
-        ``test_a_call_in_flight_does_not_hold_up_a_reader`` holds one call
-        for 0.3 s and requires the reader through in under 0.05 s.
-
-        What the wide lock did buy was that two threads failing on the same
-        service could not each switch and land the work two places down,
-        past a standby that worked. That
-        is bought instead by switching only from the index the failing call
-        was made on: a thread that finds the index already moved retries on
-        what is there now rather than moving it again. The price of the
-        narrow lock is that those threads all reach the broken service
-        before the first of them switches, so each pays for its own
-        failure once; the wide lock made them queue for it.
+        The lock is held around the state and not around the call, so a
+        reader asking which service is active does not wait out whatever
+        call is in flight. Two threads failing on the same service still
+        cannot land the work two places down: a switch is made only from
+        the index the failing call was made on, and a thread that finds
+        the index already moved retries on what is there now.
 
         Args:
             method_name: Name of the method to call on the service.
@@ -489,7 +421,7 @@ class FailoverService(Generic[T]):
         # the index stood still: a background round that moved it between
         # two turns of this loop spent a turn re-asking a service already
         # asked, and the count ran out before the last one was reached.
-        # Measured on three implementations -- a=2, b=1, c=0 -- the call
+        # On three implementations -- a=2, b=1, c=0 -- the call
         # came back ALL_SERVICES_FAILED having never spoken to c.
         tried = set()
 
