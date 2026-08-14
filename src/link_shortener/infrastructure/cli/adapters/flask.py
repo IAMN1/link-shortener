@@ -30,6 +30,22 @@ from link_shortener.infrastructure.cli.commands.cache import check_redis_connect
 from link_shortener.infrastructure.cli.commands.cache import get_cache_info as cache_info_logic
 from link_shortener.infrastructure.cli.commands.cache import clear_cache as clear_cache_logic
 from link_shortener.infrastructure.cli.commands.admin import create_admin as create_admin_logic
+from link_shortener.infrastructure.di.container import Container
+
+
+def _container() -> Container:
+    """
+    Return the DI container of the running application.
+
+    ``create_app`` writes the container onto the application object; Flask
+    declares no such attribute, so reading it needs telling the checker
+    what is there. Said once here rather than at each of the twenty-nine
+    places that ask for it -- twenty-seven commands and two helpers.
+
+    Returns:
+        The container built for the current application.
+    """
+    return current_app.container  # type: ignore[attr-defined]
 
 
 # ------------------------------------------------------------------
@@ -44,7 +60,7 @@ def db_group():
 @with_appcontext
 def init_db():
     "Create database tables (only if USE_ALEMBIC is False)."
-    container = current_app.container
+    container = _container()
     db_manager = container.get_db_manager()
     use_alembic = current_app.config.get("USE_ALEMBIC", True)
     try:
@@ -61,7 +77,7 @@ def drop_db(yes):
     """Drop all database tables (DANGEROUS)."""
     if not yes:
         click.confirm("Are you sure you want to drop all tables?", abort=True)
-    container = current_app.container
+    container = _container()
     db_manager = container.get_db_manager()
     use_alembic = current_app.config.get("USE_ALEMBIC", True)
     try:
@@ -75,7 +91,7 @@ def drop_db(yes):
 @with_appcontext
 def seed_db(count):
     """Fill database with test links."""
-    container = current_app.container
+    container = _container()
     context = RequestContext(request_id="cli-seed")
     use_case = container.get_seed_database_use_case()
     try:
@@ -97,7 +113,7 @@ def seed_db(count):
 @with_appcontext
 def load_roles():
     """Seed default roles and permissions from YAML config."""
-    container = current_app.container
+    container = _container()
     db_manager = container.get_db_manager()
     load_base_roles_logic(db_manager=db_manager)
 
@@ -107,7 +123,7 @@ def load_roles():
 @with_appcontext
 def load_custom_roles(file_path, update_existing):
     """Load roles and permissions from a YAML file."""
-    container = current_app.container
+    container = _container()
     db_manager = container.get_db_manager()
     load_custom_roles_logic(db_manager, file_path, update_existing)
     click.echo(f"Roles and permissions loaded from {file_path}")
@@ -116,7 +132,7 @@ def load_custom_roles(file_path, update_existing):
 @with_appcontext
 def check_db():
     """Check database connection health."""
-    container = current_app.container
+    container = _container()
     failure = check_db_logic(container.get_db_manager())
     if failure is None:
         click.echo("Database connection is healthy.")
@@ -135,7 +151,7 @@ def check_db():
 @with_appcontext
 def db_status():
     """Alias for 'db check' - check database connection."""
-    container = current_app.container
+    container = _container()
     failure = check_db_logic(container.get_db_manager())
     if failure is None:
         click.echo("Database connection is healthy.")
@@ -168,31 +184,31 @@ def stats_group():
 @with_appcontext
 def stats_show():
     """Display service statistic in console"""
-    container = current_app.container
+    container = _container()
     stats = get_stats_logic(container.get_get_service_stats_use_case())
     click.echo("\n\t\t\tSERVICE STATISTICS")
     click.echo("=" * 80)
-    click.echo(f"\t\t\tTotal URLs:      {stats['total_urls']}")
-    click.echo(f"\t\t\tTotal clicks:    {stats['total_clicks']}")
-    click.echo(f"\t\t\tAvg clicks/URL:  {stats['avg_clicks_per_url']}")
+    click.echo(f"\t\t\tTotal URLs:      {stats.total_urls}")
+    click.echo(f"\t\t\tTotal clicks:    {stats.total_clicks}")
+    click.echo(f"\t\t\tAvg clicks/URL:  {stats.avg_clicks_per_url}")
     click.echo("\n\t\t\tTOP 5 POPULAR LINKS:")
-    for i, (code, clicks, _url) in enumerate(stats['popular_links'], 1):
-        click.echo(f"\t\t\t{i}. {code} - {clicks} clicks")
+    for i, link in enumerate(stats.popular_links[:5], 1):
+        click.echo(f"\t\t\t{i}. {link.short_code} - {link.clicks} clicks")
     click.echo("=" * 80)
 
 @stats_group.command("refresh")
 @with_appcontext
 def stats_refresh():
     """Force refresh of cached statistics"""
-    container = current_app.container
+    container = _container()
     stats = refresh_stats_logic(
         container.get_get_service_stats_use_case(), container.get_cache()
     )
     click.echo("\n\t\t\tSTATISTIC REFRESHED IN CACHE:")
     click.echo("=" * 80)
-    click.echo(f"\t\t\tTotal URL's: {stats['total_urls']}")
-    click.echo(f"\t\t\tTotal clicks: {stats['total_clicks']}")
-    click.echo(f"\t\t\tAvg clicks per URL: {stats['avg_clicks_per_url']}")
+    click.echo(f"\t\t\tTotal URL's: {stats.total_urls}")
+    click.echo(f"\t\t\tTotal clicks: {stats.total_clicks}")
+    click.echo(f"\t\t\tAvg clicks per URL: {stats.avg_clicks_per_url}")
     click.echo("=" * 80)
 
 # ------------------------------------------------------------------
@@ -217,7 +233,7 @@ def clean_expired():
     # redefined, so an old cron line fails loudly instead of quietly
     # deleting links nobody asked it to. A redirect to an expired link
     # already answers 410, which is why no threshold is wanted here.
-    container = current_app.container
+    container = _container()
     context = RequestContext(request_id="cli-clean")
     use_case = container.get_clean_expired_links_use_case()
     deleted = clean_expired_logic(use_case, context)
@@ -227,7 +243,7 @@ def clean_expired():
 @with_appcontext
 def clean_sessions():
     """Delete refresh sessions whose tokens have already expired."""
-    container = current_app.container
+    container = _container()
     deleted = clean_sessions_logic(container.get_uow_factory())
     click.echo(f"Deleted {deleted} expired refresh sessions.")
 
@@ -260,7 +276,7 @@ def normalize_emails(apply_changes):
     its owners can untangle, and a row somebody else deleted or renamed
     while this ran -- neither is something a second run would fix.
     """
-    db_manager = current_app.container.get_db_manager()
+    db_manager = _container().get_db_manager()
 
     # Wrapped like `db init` and `db drop` next door, so an unreachable
     # database prints "ERROR: ..." and exits 1 rather than a traceback.
@@ -367,7 +383,7 @@ def clean_unverified():
     registration holds its address for good -- which is the thing
     UNVERIFIED_ACCOUNT_TTL_HOURS exists to prevent.
     """
-    container = current_app.container
+    container = _container()
     context = RequestContext(request_id="cli-clean-unverified")
     use_case = container.get_clean_unverified_accounts_use_case()
     deleted = clean_unverified_logic(use_case, context)
@@ -377,7 +393,7 @@ def clean_unverified():
 @with_appcontext
 def check_redis():
     """Check Redis connection (if Redis cache is used)."""
-    container = current_app.container
+    container = _container()
     redis_expected = current_app.config.get("REDIS_ENABLED", False) and \
         current_app.config.get("CACHE_ENABLED", True)
 
@@ -394,7 +410,7 @@ def check_redis():
 @with_appcontext
 def maintenance_health():
     """Run all health checks (database + Redis)."""
-    container = current_app.container
+    container = _container()
 
     # Check database
     db_ok = check_db_logic(container.get_db_manager()) is None
@@ -430,14 +446,14 @@ def cache_group():
 @with_appcontext
 def cache_clear(stats_only):
     """Clear the cache (all or only stats)."""
-    container = current_app.container
+    container = _container()
     clear_cache_logic(container.get_cache(), stats_only=stats_only)
 
 @cache_group.command("stats")
 @with_appcontext
 def cache_stats():
     """Show cache statistics (hits, memory, etc.)."""
-    container = current_app.container
+    container = _container()
     info = cache_info_logic(container.get_cache())
     if "error" in info:
         click.echo(f"{info['error']}")
@@ -462,7 +478,7 @@ def link_group():
 @with_appcontext
 def link_delete(short_code):
     """Delete a short link by its code."""
-    container = current_app.container
+    container = _container()
     context = RequestContext(request_id="cli-delete")
     use_case = container.get_delete_link_use_case()
 
@@ -482,18 +498,22 @@ def link_delete(short_code):
 def link_info(short_code):
     """Show information about a short link."""
 
-    container = current_app.container
+    container = _container()
     context = RequestContext(request_id="cli-info")
     use_case = container.get_get_link_info_use_case()
     info = link_info_logic(use_case, short_code, context)
     
     if info:
-        click.echo(f"\n\t\t\tLink: {info['short_code']}")
+        click.echo(f"\n\t\t\tLink: {info.short_code}")
         click.echo("=" * 80)
-        click.echo(f"\t\t\tOriginal URL: {info['original_url']}")
-        click.echo(f"\t\t\tClicks: {info['clicks']}")
-        click.echo(f"\t\t\tCreated: {info['created_at']}")
-        click.echo(f"\t\t\tLast accessed: {info['last_accessed'] or 'never'}")
+        click.echo(f"\t\t\tOriginal URL: {info.original_url}")
+        click.echo(f"\t\t\tClicks: {info.clicks}")
+        click.echo(f"\t\t\tCreated: {info.created_at.isoformat()}")
+        last_accessed = info.last_accessed
+        click.echo(
+            "\t\t\tLast accessed: "
+            f"{last_accessed.isoformat() if last_accessed else 'never'}"
+        )
     else:
         click.echo("=" * 80)
         click.echo(f"\t\t\tLink '{short_code}' not found.", err=True)
@@ -507,7 +527,7 @@ def link_info(short_code):
 @with_appcontext
 def link_list(limit):
     """List the most recent short links."""
-    container = current_app.container
+    container = _container()
     context = RequestContext(request_id="cli-list")
     use_case = container.get_get_recent_links_use_case()
     links = list_links_logic(use_case, limit, context)
@@ -519,7 +539,10 @@ def link_list(limit):
         click.echo(f"\n\t\t\tRecent {len(links)} links:")
         click.echo("=" * 80)
         for link in links:
-            click.echo(f"\t\t\t{link['short_code']} - {link['clicks']} clicks - {link['created_at'][:10]}")
+            created = link.created_at.date().isoformat()
+            click.echo(
+                f"\t\t\t{link.short_code.value} - {link.clicks} clicks - {created}"
+            )
     click.echo("=" * 80)
 
 @link_group.command("create")
@@ -570,7 +593,7 @@ def link_create(url, code):
         raise SystemExit(1)
 
     from link_shortener.infrastructure.cli.commands.link import create_link as create_link_logic
-    container = current_app.container
+    container = _container()
     context = RequestContext(request_id="cli-create")
     use_case = container.get_create_short_link_use_case()
 
@@ -578,15 +601,15 @@ def link_create(url, code):
         result = create_link_logic(use_case, url, context, code)
         headline = (
             "Short link created successfully!"
-            if result["is_new"]
+            if result.is_new
             else "This URL was already shortened -- returning that link."
         )
         click.echo("=" * 80)
         click.echo(f"\t\t\t{headline}")
-        click.echo(f"\t\t\tShort code: {result['short_code']}")
-        click.echo(f"\t\t\tOriginal URL: {result['original_url']}")
-        click.echo(f"\t\t\tShort URL: {result['short_url']}")
-        click.echo(f"\t\t\tIs new: {result['is_new']}")
+        click.echo(f"\t\t\tShort code: {result.short_code}")
+        click.echo(f"\t\t\tOriginal URL: {result.original_url}")
+        click.echo(f"\t\t\tShort URL: {result.short_url}")
+        click.echo(f"\t\t\tIs new: {result.is_new}")
         click.echo("=" * 80)
 
         # Said out loud, on stderr, because nothing else in the report
@@ -599,10 +622,10 @@ def link_create(url, code):
         # somebody else is not known here: saying "it remains free" was
         # wrong against a code already held by another link,
         # which the same argument on a new URL refuses outright.
-        if code and result["short_code"] != code:
+        if code and result.short_code != code:
             click.echo(
                 f"Note: --code {code} was not issued. This URL was already "
-                f"shortened as {result['short_code']}, and that is the link "
+                f"shortened as {result.short_code}, and that is the link "
                 f"above; nothing was created for {code}.",
                 err=True,
             )
@@ -651,7 +674,7 @@ def security_check_secrets():
 def security_list_users():
     """List all users with their roles."""
     from link_shortener.infrastructure.cli.commands.security import list_users
-    container = current_app.container
+    container = _container()
     users = list_users(container.get_uow_factory())
 
     if not users:
@@ -669,7 +692,7 @@ def security_list_users():
 def security_list_roles():
     """List all roles with their permissions."""
     from link_shortener.infrastructure.cli.commands.security import list_roles
-    container = current_app.container
+    container = _container()
     roles = list_roles(container.get_uow_factory())
 
     if not roles:
@@ -689,7 +712,7 @@ def security_list_roles():
 def security_reset_password(email, password):
     """Reset a user's password."""
     from link_shortener.infrastructure.cli.commands.security import reset_password
-    container = current_app.container
+    container = _container()
     user_service = container.get_user_management_service()
 
     if reset_password(container.get_uow_factory(), user_service, email, password):
@@ -704,7 +727,7 @@ def security_reset_password(email, password):
 def security_validate_token(token):
     """Validate a JWT token and show its claims."""
     from link_shortener.infrastructure.cli.commands.security import validate_token
-    container = current_app.container
+    container = _container()
     auth_service = container.get_authentication_service()
     
     result = validate_token(auth_service, token)
@@ -795,7 +818,7 @@ def create_admin(email, password, non_interactive):
             "Password", hide_input=True, confirmation_prompt=True
         )
 
-    container = current_app.container
+    container = _container()
     user_service = container.get_user_management_service()
     uow_factory = container.get_uow_factory()
     try:
@@ -820,7 +843,7 @@ def create_admin(email, password, non_interactive):
 def create_user(email, password, role):
     """Create a new user with a specified role."""
     from link_shortener.infrastructure.cli.commands.admin import create_user as create_user_logic
-    container = current_app.container
+    container = _container()
     user_service = container.get_user_management_service()
     uow_factory = container.get_uow_factory()
     try:
@@ -857,7 +880,7 @@ def _configured_database_url() -> str:
     Returns:
         SQLAlchemy-compatible database URL.
     """
-    return current_app.container.config.get_database_url()  # type: ignore[attr-defined]
+    return _container().config.get_database_url()
 
 
 def _echo_target() -> str:
@@ -873,7 +896,7 @@ def _echo_target() -> str:
         The database URL to hand to alembic.
     """
     url = _configured_database_url()
-    click.echo(f"Database: {current_app.container.config.display_database_url}")  # type: ignore[attr-defined]
+    click.echo(f"Database: {_container().config.display_database_url}")
     return url
 
 

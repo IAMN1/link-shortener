@@ -258,7 +258,10 @@ class InfrastructureHealthCheck(HealthCheck):
         Returns:
             ``True`` if the cache is healthy or has nothing to connect to.
         """
-        if not self.is_cache_configured():
+        # ``is_cache_configured`` already answers False for an absent cache,
+        # but it says so through a method call, and the absence has to be
+        # written out here for the attribute to read as a cache below.
+        if self.cache is None or not self.is_cache_configured():
             return True
 
         try:

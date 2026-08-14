@@ -133,7 +133,7 @@ uv run pytest tests/                      # весь набор
 uv run pytest tests/unit/                 # только unit
 uv run python tests/live/smoke_test.py    # 114 проверок по HTTP
 uv run python tests/live/browser_test.py  # 9 проверок настоящим браузером
-uv run flake8 src tests && uv run pylint src && uv run bandit -r src -q
+uv run flake8 src tests && uv run pylint src && uv run bandit -r src -q && uv run mypy src
 ```
 
 Три уровня: unit на моках, интеграционные на in-memory SQLite и отдельно на
@@ -143,7 +143,7 @@ uv run flake8 src tests && uv run pylint src && uv run bandit -r src -q
 CI гоняет набор дважды, в чистом окружении и во враждебном, чтобы поймать
 тесты, читающие конфигурацию, которую им не давали. Пропущенный тест считается
 отказом. Обе половины заканчиваются живым прогоном; отдельная задача проходит
-`flake8`, `pylint` и `bandit`, каждый своим шагом.
+`flake8`, `pylint`, `bandit` и `mypy`, каждый своим шагом.
 
 Разбор уровней и структура — в
 [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#запуск-тестов).

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -6,6 +7,43 @@ from link_shortener.domain.entities.link import Link
 from link_shortener.domain.value_objects.dedup_scope import DedupScope
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
+
+
+@dataclass(frozen=True)
+class ServiceLinkStats:
+    """What the store can say about every link in it.
+
+    Declared here rather than left as a dictionary for the same reason
+    ``CachedRedirect`` is declared in its port: the shape crosses a
+    boundary. A caller reading ``stats["total_clicks"]`` is holding the
+    repository to a contract that only the docstring stated, and a
+    misspelt key was a ``KeyError`` at runtime -- or, through
+    ``.get(name, 0)``, a silent zero on a statistics page.
+
+    Attributes:
+        total_urls: How many links exist.
+        total_clicks: Clicks summed over all of them.
+        popular_links: The most-clicked links, at most ten.
+    """
+
+    total_urls: int
+    total_clicks: int
+    popular_links: List[Link]
+
+
+@dataclass(frozen=True)
+class UserLinkStats:
+    """The same, narrowed to the links one account owns.
+
+    Attributes:
+        total_links: How many links the account owns.
+        total_clicks: Clicks summed over them.
+        recent_links: The account's most recent links, at most ten.
+    """
+
+    total_links: int
+    total_clicks: int
+    recent_links: List[Link]
 
 
 class LinkRepository(ABC):
@@ -151,15 +189,12 @@ class LinkRepository(ABC):
         ...
 
     @abstractmethod
-    def get_stats(self) -> dict:
+    def get_stats(self) -> ServiceLinkStats:
         """
         Retrieve service statistics.
 
         Returns:
-            Dictionary with keys:
-                - ``'total_urls'``: total number of shortened URLs.
-                - ``'total_clicks'``: sum of all clicks.
-                - ``'popular_links'``: list of Link objects (most popular up to 10).
+            The counts and the most-clicked links.
         """
         ...
 
@@ -278,7 +313,7 @@ class LinkRepository(ABC):
         ...
     
     @abstractmethod
-    def get_user_stats(self, user_id: str) -> dict:
+    def get_user_stats(self, user_id: str) -> UserLinkStats:
         """
         Retrieve activity statistics for a specific user.
 
@@ -286,9 +321,6 @@ class LinkRepository(ABC):
             user_id: UUID of the user.
 
         Returns:
-            Dictionary with keys:
-                - ``'total_links'``: number of links owned by the user.
-                - ``'total_clicks'``: total clicks across those links.
-                - ``'recent_links'``: list of the user's 10 most recent Link objects.
+            The account's counts and its most recent links.
         """
         ...

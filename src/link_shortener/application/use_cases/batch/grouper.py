@@ -59,7 +59,7 @@ class UrlGrouper:
                 - ``error``: error message if invalid
         """
 
-        groups = {}
+        groups: Dict[str, Dict] = {}
         invalid_counter = 0
 
         for url in urls:

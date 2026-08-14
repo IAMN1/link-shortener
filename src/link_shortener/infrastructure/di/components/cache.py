@@ -1,5 +1,5 @@
 from typing import Optional
-from link_shortener.application import LinkCache, Logger
+from link_shortener.application import Logger, ServiceCache
 from link_shortener.infrastructure.cache.memory_cache import InMemoryLinkCache
 from link_shortener.infrastructure.cache.null_cache import NullCache
 from link_shortener.infrastructure.cache.redis_cache import RedisLinkCache
@@ -7,8 +7,8 @@ from link_shortener.infrastructure.cache.redis_cache import RedisLinkCache
 
 class CacheComponent:
     """
-    Creates a singleton cache instance that implements ``LinkCache``,
-    ``RedirectCache``, and ``StatsCache``.
+    Creates a singleton cache instance in the ``ServiceCache`` combination:
+    ``LinkCache``, ``RedirectCache``, ``StatsCache`` and ``CacheHealth``.
 
     The actual implementation is chosen at first access:
     - **NullCache** if caching is globally disabled.
@@ -57,9 +57,9 @@ class CacheComponent:
         # Annotated Optional rather than inferred from this assignment: the
         # attribute holds None until the first call builds it, and a checker
         # told otherwise reports both the assignment and the return as errors.
-        self._cache: Optional[LinkCache] = None
+        self._cache: Optional[ServiceCache] = None
 
-    def get_cache(self) -> LinkCache:
+    def get_cache(self) -> ServiceCache:
         """
         Return the singleton cache instance.
 
@@ -68,8 +68,8 @@ class CacheComponent:
         and a ``NullCache`` is returned as a safe fallback.
 
         Returns:
-            An object that implements ``LinkCache``, ``RedirectCache``,
-            and ``StatsCache``.
+            The cache in all four of its roles; every implementation here
+            is a ``ServiceCache``.
         """
         if self._cache is None:
             if not self.cache_enabled:

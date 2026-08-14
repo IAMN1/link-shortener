@@ -1,9 +1,10 @@
-from typing import Optional
 """
 Authentication controller -- /api/v1/auth/* endpoints.
 
 Handles login, registration, token refresh, and logout.
 """
+
+from typing import Optional
 
 from flask import Blueprint, current_app, g, jsonify, make_response, request
 

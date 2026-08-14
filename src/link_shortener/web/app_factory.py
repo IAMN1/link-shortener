@@ -150,6 +150,8 @@ def create_app(config=None) -> Flask:
     # Dependency Injection Container
     # ------------------------------------------------------------------
     container = Container(config)
+    # Flask has no ``container`` attribute of its own: this is the line that
+    # puts it there, and every reader of ``app.container`` depends on it.
     app.container = container  # type: ignore[attr-defined]
 
     # ------------------------------------------------------------------

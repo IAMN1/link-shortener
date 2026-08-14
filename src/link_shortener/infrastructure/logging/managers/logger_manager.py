@@ -81,6 +81,11 @@ class LoggerManager:
 
         loggers: List[Tuple[Logger, str]] = []
 
+        # Declared by the port both branches produce: the two implementations
+        # are unrelated classes, and a variable typed from whichever came
+        # first rejects the other.
+        logger: Logger
+
         for type_ in order:
             if type_ == "structlog":
                 try:
@@ -122,6 +127,25 @@ class LoggerManager:
                 logger=self.logger,
             )
 
+    @property
+    def _single_logger(self) -> Logger:
+        """Return the logger built when no failover was needed.
+
+        The attribute holds ``None`` until ``_init_failover_service`` picks
+        an implementation, and stays ``None`` when several were built and
+        the failover service owns them instead.
+
+        Returns:
+            The one active implementation.
+
+        Raises:
+            RuntimeError: If the manager holds no logger, which means its
+                initialisation did not finish.
+        """
+        if self._active_logger is None:
+            raise RuntimeError("LoggerManager has no logger (initialisation failed)")
+        return self._active_logger
+
     def get_logger(self, module_name: str) -> Logger:
         """
         Return a logger for the given module name.
@@ -139,8 +163,9 @@ class LoggerManager:
         if module_name in self._loggers_cache:
             return self._loggers_cache[module_name]
 
+        logger: Logger
         if self._failover_service is None:
-            logger = _ModuleLogger(self._active_logger, module_name)
+            logger = _ModuleLogger(self._single_logger, module_name)
         else:
             logger = FailoverLoggerProxy(self._failover_service, module_name)
 

@@ -77,8 +77,11 @@ class BatchLinkCreator:
         new_links = []
         for group in groups:
             url_hash = group["hash"]
-            code = resolved.get(url_hash)
-            if not code:
+            # Its own name, not the ``code`` above: that one is what the
+            # generator produced for every group, this one is what survived
+            # collision resolution, and a hash may have nothing here.
+            resolved_code = resolved.get(url_hash)
+            if not resolved_code:
                 self.logger.error(
                     "Failed to resolve collision for hash", hash=url_hash.value[:10]
                 )
@@ -86,7 +89,7 @@ class BatchLinkCreator:
             new_links.append(
                 Link.create(
                     url_hash=url_hash,
-                    short_code=code,
+                    short_code=resolved_code,
                     original_url=group["original_url"],
                     owner=owner_id,
                     guest_identifier=guest_identifier,

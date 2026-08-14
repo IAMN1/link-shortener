@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session
 
 from link_shortener.domain import (Link, LinkRepository, OriginalUrl,
                                    ShortCode, UrlHash, LinkConflictError,
-                                   LinkNotFoundError, DedupScope, OwnerID)
+                                   LinkNotFoundError, DedupScope, OwnerID,
+                                   ServiceLinkStats, UserLinkStats)
 from link_shortener.infrastructure.database.models.link_model import LinkModel
 
 class SQLAlchemyLinkRepository(LinkRepository):
@@ -289,14 +290,11 @@ class SQLAlchemyLinkRepository(LinkRepository):
         if not updated:
             raise LinkNotFoundError(short_code.value)
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> ServiceLinkStats:
         """Compute service-wide statistics.
 
         Returns:
-            Dictionary with keys:
-                - ``total_urls``: total number of short links.
-                - ``total_clicks``: sum of all clicks.
-                - ``popular_links``: up to 10 most-clicked Link entities.
+            The counts and up to ten most-clicked links.
         """
         total_urls = self.session.query(func.count(LinkModel.id)).scalar()
         total_clicks = self.session.query(func.sum(LinkModel.clicks)).scalar() or 0
@@ -306,11 +304,11 @@ class SQLAlchemyLinkRepository(LinkRepository):
             .limit(10)
             .all()
         )
-        return {
-            "total_urls": total_urls,
-            "total_clicks": total_clicks,
-            "popular_links": [self._to_domain(m) for m in popular_links],
-        }
+        return ServiceLinkStats(
+            total_urls=total_urls,
+            total_clicks=total_clicks,
+            popular_links=[self._to_domain(m) for m in popular_links],
+        )
 
     GUEST_QUOTA_LOCK_NAMESPACE = 1029701804
     """First half of the advisory lock key.
@@ -381,7 +379,7 @@ class SQLAlchemyLinkRepository(LinkRepository):
         ).scalar()
         return count or 0
 
-    def get_user_stats(self, user_id) -> dict:
+    def get_user_stats(self, user_id) -> UserLinkStats:
         """
         Retrieve activity statistics for a specific user.
 
@@ -389,11 +387,7 @@ class SQLAlchemyLinkRepository(LinkRepository):
             user_id: UUID of the user.
 
         Returns:
-            Dictionary with keys:
-                - ``'total_links'``: number of links owned by the user.
-                - ``'total_clicks'``: sum of clicks across those links.
-                - ``'recent_links'``: list of the user's 10 most recent
-                  ``Link`` entities.
+            The account's counts and its ten most recent links.
         """
         total_links = self.session.query(func.count(LinkModel.id)).filter(
             LinkModel.owner_id == user_id
@@ -404,11 +398,11 @@ class SQLAlchemyLinkRepository(LinkRepository):
         recent = self.session.query(LinkModel).filter(
             LinkModel.owner_id == user_id
         ).order_by(LinkModel.created_at.desc()).limit(10).all()
-        return {
-            "total_links": total_links,
-            "total_clicks": total_clicks,
-            "recent_links": [self._to_domain(m) for m in recent],
-        }
+        return UserLinkStats(
+            total_links=total_links,
+            total_clicks=total_clicks,
+            recent_links=[self._to_domain(m) for m in recent],
+        )
 
 
     # ------------------------------------------------------------------

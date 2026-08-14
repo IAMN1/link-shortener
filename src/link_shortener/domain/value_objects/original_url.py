@@ -352,7 +352,7 @@ class OriginalUrl:
 
         self._validate_host(parsed.hostname)
 
-    def _validate_host(self, host: str) -> None:
+    def _validate_host(self, host: Optional[str]) -> None:
         """
         Validate hostname: can be an IP address, 'localhost', or a valid domain.
 
@@ -536,9 +536,15 @@ class OriginalUrl:
         if len(parts) > 4:
             raise ValidationError("Invalid IP address in host", field="url")
 
-        numbers = [OriginalUrl._parse_ipv4_part(part) for part in parts]
-        if any(number is None for number in numbers):
+        parsed = [OriginalUrl._parse_ipv4_part(part) for part in parts]
+        if any(number is None for number in parsed):
             raise ValidationError("Invalid IP address in host", field="url")
+
+        # Its own name for the same list without the Nones. The check above
+        # rules them out for a reader, but it runs inside ``any()`` over the
+        # list rather than on a name, so nothing carries that over to the
+        # comparisons below.
+        numbers = [number for number in parsed if number is not None]
         if any(number > 255 for number in numbers[:-1]):
             raise ValidationError("Invalid IP address in host", field="url")
         # The last part fills every octet the ones before it left out.

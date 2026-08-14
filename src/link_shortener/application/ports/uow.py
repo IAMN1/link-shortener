@@ -93,8 +93,8 @@ class UnitOfWorkFactory(Protocol):
     """
     What a caller needs in order to open a unit of work.
 
-    Declared as a protocol rather than as ``UnitOfWorkFactory``,
-    because that spelling says the factory takes nothing while fifteen call
+    Declared as a protocol rather than as ``Callable[[], UnitOfWork]``,
+    because that spelling says the factory takes nothing while fourteen call
     sites pass ``read_only=True`` -- a flag the unit of work itself accepts
     and honours. The declaration described a narrower interface than the one
     every caller uses.

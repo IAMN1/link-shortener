@@ -119,11 +119,15 @@ def confirm_email(app, email):
 
     with app.app_context():
         with app.container.get_db_manager().session() as session:
+            # ``True``, not ``1``: SQLite takes either, PostgreSQL refuses
+            # the integer for a boolean column, so the literal form worked
+            # for as long as no test ran against a real database.
             session.execute(
                 text(
-                    "UPDATE users SET email_verified = 1 WHERE email = :email"
+                    "UPDATE users SET email_verified = :verified "
+                    "WHERE email = :email"
                 ),
-                {"email": email},
+                {"email": email, "verified": True},
             )
             session.commit()
 

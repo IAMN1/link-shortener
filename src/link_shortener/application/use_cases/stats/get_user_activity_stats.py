@@ -38,12 +38,15 @@ class GetUserActivityStatsUseCase(BaseUseCase):
         with self.uow_factory(read_only=True) as uow:
             stats = uow.links.get_user_stats(user_id)
 
-        avg = (stats["total_clicks"] / stats["total_links"]) if stats["total_links"] else 0.0
-        recent = [ShortLinkResponse.from_link(link, self.base_url) for link in stats["recent_links"]]
+        avg = (stats.total_clicks / stats.total_links) if stats.total_links else 0.0
+        recent = [
+            ShortLinkResponse.from_link(link, self.base_url)
+            for link in stats.recent_links
+        ]
         return UserActivityResponse(
             user_id=user_id,
-            total_links=stats["total_links"],
-            total_clicks=stats["total_clicks"],
+            total_links=stats.total_links,
+            total_clicks=stats.total_clicks,
             avg_clicks_per_link=round(avg, 2),
             recent_links=recent,
         )

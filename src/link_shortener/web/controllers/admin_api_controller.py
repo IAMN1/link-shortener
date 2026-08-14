@@ -6,6 +6,8 @@ and checking service health.  All methods require the corresponding
 administrative permissions.
 """
 
+from typing import Any, Dict
+
 from flask import Blueprint, jsonify, request
 from link_shortener.application import AdminService
 from link_shortener.domain import DomainError, SystemPermissions
@@ -241,7 +243,7 @@ class AdminApiController:
         """Check the health of the service infrastructure."""
         context = create_request_context()
         health = self.admin_service.get_service_health(context)
-        body = {
+        body: Dict[str, Any] = {
             "database": health.database,
             "cache": health.redis,
             "task_queue": health.task_queue,

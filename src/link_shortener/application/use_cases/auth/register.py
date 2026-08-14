@@ -172,8 +172,12 @@ class RegisterUseCase(BaseUseCase):
 
         log.info("User registered", user_id=saved_user.id, email=email_vo.value)
 
+        # The token is issued in the same branch that saves the user, so
+        # past the check above it is a string. mypy follows the two
+        # variables separately and only knows that ``saved_user`` was
+        # checked.
         if not self.task_queue.enqueue_verification_email(
-            email_vo.value, token, context
+            email_vo.value, token, context  # type: ignore[arg-type]
         ):
             # Said out loud rather than swallowed: the account exists and
             # cannot be used, and nobody will find out from the response,

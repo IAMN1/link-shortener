@@ -126,14 +126,19 @@ addopts = [
     "--junitxml=test-results/junit.xml"
 ]
 
+# Проставляются автоматически по каталогу — см. `pytest_collection_modifyitems`
+# в tests/conftest.py. Руками не пишутся: категория теста — это место, где он
+# лежит, и марка, набранная в файле, может с этим местом разойтись.
+#
+# Прежний список объявлял ещё `slow`, `database`, `cache` и `api`. Их не ставил
+# ни один тест из 2444, то есть выбрать по ним было нечего.
 markers = [
-    "unit: unit tests (fast, isolated)",
-    "integration: integration tests (require external services)",
-    "e2e: end-to-end tests (full system)",
-    "slow: slow running tests",
-    "database: tests that use database",
-    "cache: tests that use cache",
-    "api: tests for API endpoints",
+    # Flask в них бывает — но со всеми службами контейнера, заменёнными на
+    # заглушки, поэтому «моков» мало, а внешнего нет ничего.
+    "unit: внешних служб не поднимает",
+    "integration: несколько настоящих слоёв вместе",
+    "docker: нужен поднятый тестовый стек (PostgreSQL и Redis)",
+    "e2e: путь пользователя целиком",
 ]
 
 # flake8 настраивается файлом .flake8: pyproject.toml он не читает.
@@ -154,6 +159,26 @@ disable = [
 [tool.pylint.'MASTER']
 fail-under = 9.0
 ignore-patterns = ["test_.*", "_test.*"]
+
+# Проверяется только src, как и bandit: тесты держат заглушки, чьё дело —
+# подставиться вместо настоящего объекта, а не повторить его тип.
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+# Без этого mypy не заходит в тела функций без аннотаций и сообщает об этом
+# заметкой, а не ошибкой: ворота молчали бы про весь `di/container.py` и
+# CLI-адаптер, где аннотаций нет. В день включения флага так пряталось
+# 39 ошибок в 5 файлах при нуле на воротах; восемь из них — про кэш,
+# который контейнер раздаёт под четыре роли, а объявлял одной.
+check_untyped_defs = true
+# Подавление, которое перестало быть нужным, — это ложь о коде: строка
+# сообщает, что здесь ограничение, а его уже нет. Двенадцать
+# `type: ignore` в src держатся этой настройкой.
+warn_unused_ignores = true
+warn_redundant_casts = true
+# То же про сами секции ниже: пакет, получивший стабы, не должен молча
+# остаться в списке необъявленных.
+warn_unused_configs = true
 
 # celery и flask_cors не поставляют ни стабов, ни маркера py.typed. Названы
 # поимённо, а не общим --ignore-missing-imports: так молчание распространяется

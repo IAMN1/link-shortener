@@ -262,7 +262,10 @@ class RedisRateLimiter(RateLimiter):
         now = time.time()
         window_start = now - period
 
-        allowed, remaining = self.redis.eval(
+        # One class in redis-py serves both the sync and the async client,
+        # so ``eval`` is declared as returning an awaitable as well; this
+        # client is the synchronous one and the script returns two numbers.
+        allowed, remaining = self.redis.eval(  # type: ignore[misc]
             SLIDING_WINDOW_SCRIPT,
             1,               # number of keys
             redis_key,       # KEYS[1]

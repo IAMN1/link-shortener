@@ -1,16 +1,12 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from link_shortener.application.ports.cache.cache_health import CacheHealth
-from link_shortener.application.ports.cache.link_cache import LinkCache
-from link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
-from link_shortener.application.ports.cache.redirect_cache import (
-    CachedRedirect, RedirectCache
-)
+from link_shortener.application.ports.cache.redirect_cache import CachedRedirect
+from link_shortener.application.ports.cache.service_cache import ServiceCache
 from link_shortener.domain import DedupScope, Link, ShortCode, UrlHash
 
 
-class NullCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
+class NullCache(ServiceCache):
     """
     Null-object cache that discards all data.
 

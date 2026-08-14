@@ -124,6 +124,25 @@ class AuditManager:
                 logger=self.logger
             )
 
+    @property
+    def _single_audit_logger(self) -> AuditLogger:
+        """Return the audit logger built when no failover was needed.
+
+        The attribute holds ``None`` until ``_init_failover_service`` picks
+        an implementation, and stays ``None`` when several were built and
+        the failover service owns them instead.
+
+        Returns:
+            The one active implementation.
+
+        Raises:
+            RuntimeError: If the manager holds no audit logger, which means
+                its initialisation did not finish.
+        """
+        if self._active_audit_logger is None:
+            raise RuntimeError("AuditManager has no audit logger (initialisation failed)")
+        return self._active_audit_logger
+
     def get_audit_logger(self) -> AuditLogger:
         """
         Return an audit logger.
@@ -139,7 +158,7 @@ class AuditManager:
             An ``AuditLogger`` instance.
         """
         if self._failover_service is None:
-            return self._active_audit_logger
+            return self._single_audit_logger
         return FailoverAuditLoggerProxy(self._failover_service)
 
     def active_name(self) -> str:

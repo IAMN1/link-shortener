@@ -75,11 +75,14 @@ class GetServiceStatsUseCase(BaseUseCase):
             with self.uow_factory(read_only=True) as uow:
                 stats_data = uow.links.get_stats()
 
-            total_urls = stats_data.get("total_urls", 0)
-            total_clicks = stats_data.get("total_clicks", 0)
+            total_urls = stats_data.total_urls
+            total_clicks = stats_data.total_clicks
             avg_clicks = total_clicks / total_urls if total_urls > 0 else 0
 
-            popular_links = stats_data.get("popular_links", [])
+            # Its own name: the branch above builds ``popular_links`` out of
+            # what the cache kept, and these are the entities the repository
+            # returned. One name for both made the two shapes look alike.
+            most_clicked = stats_data.popular_links
 
             response = ServiceStatsResponse(
                 total_urls=total_urls,
@@ -93,7 +96,7 @@ class GetServiceStatsUseCase(BaseUseCase):
                         clicks=link.clicks,
                         created_at=link.created_at,
                     )
-                    for link in popular_links
+                    for link in most_clicked
                 ],
             )
 

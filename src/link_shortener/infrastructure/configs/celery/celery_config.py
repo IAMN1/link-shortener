@@ -36,7 +36,11 @@ class BrokerSocketOptions:
         Returns:
             Transport options for the broker connection.
         """
-        timeout = owner.broker_connection_timeout
+        # The descriptor protocol declares ``owner`` as ``type | None``, and
+        # neither half carries the field: this descriptor is read through
+        # ``CeleryConfig`` and nothing else, so the class is always there and
+        # always the one that holds the timeout.
+        timeout = owner.broker_connection_timeout  # type: ignore[union-attr]
 
         return {
             "socket_connect_timeout": timeout,
