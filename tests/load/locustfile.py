@@ -1,7 +1,7 @@
 """
 Нагрузочный профиль сокращателя.
 
-Запуск (стек должен быть поднят, см. docs/DEVELOPER_GUIDE.md):
+Запуск (стек должен быть поднят, см. docs/development.md):
 
     uv sync --group load
     uv run locust -f tests/load/locustfile.py --headless \

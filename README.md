@@ -1,208 +1,237 @@
-# Link Shortener
+<div align="center">
 
-Сервис сокращения ссылок на Python/Flask, выстроенный по чистой архитектуре.
-Гостевые и пользовательские ссылки, RBAC, подтверждение адреса по почте,
-асинхронная статистика и двухуровневый кэш.
+# Linkr
 
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+**A URL shortener built the way a service that has to stay up is built.**
+
+Clean architecture, role-based access control, a two-level cache, and a test
+suite that fails when the documentation starts lying.
+
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![tests: 2497](https://img.shields.io/badge/tests-2497-0b5d3b)](docs/testing.md)
+[![coverage: 95%](https://img.shields.io/badge/coverage-95%25-0b5d3b)](docs/testing.md)
+[![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
+[![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+
+[Quick start](docs/getting-started.md) ·
+[Architecture](docs/architecture.md) ·
+[Why it is built this way](docs/decisions.md) ·
+[All docs](docs/README.md)
+
+**English** · [Русский](README.ru.md)
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     DEMO GOES HERE
+
+     Drop the file in docs/media/ and uncomment one of the lines below.
+     Recommended: a GIF, 1280×720 or wider, under 10 MB — GitHub does not
+     autoplay video in a README, so a GIF is the only thing that moves
+     without a click.
+
+     <img src="docs/media/demo.gif" alt="Shortening a link and opening the dashboard" width="820">
+
+     For a still:
+     <img src="docs/media/dashboard.png" alt="The dashboard" width="820">
+
+     For a video, GitHub renders an uploaded .mp4 as a player — paste the
+     URL GitHub gives you after dragging the file into an issue comment:
+     https://github.com/user-attachments/assets/<id>
+     ───────────────────────────────────────────────────────────────────── -->
+
+</div>
+
+---
+
+```console
+$ curl -X POST localhost:5000/api/v1/shorten -H 'Content-Type: application/json' \
+       -d '{"url": "https://example.com/a/very/long/address"}'
+
+{ "short_url": "http://localhost:5000/kR3-9fA", "is_new": true,
+  "expires_at": "2026-08-21T12:00:33Z", "deletion_token": "IjE3YzJ…" }
+```
+
+No account needed for that. The link works, expires in seven days, and the
+token in the answer is how its maker deletes it — because a link with no
+owner has nothing for ownership to match.
+
+## Why look at this one
+
+URL shorteners are a weekend project. This one is a study in what the
+weekend project leaves out.
+
+| | |
+|---|---|
+| **Anonymous callers are a role, not an exception** | A signed-out visitor acts as `guest`, a real RBAC role with real permissions. There is no `if user is None` branch deciding policy. |
+| **The document cannot drift from the code** | `/api/openapi.json` is generated from the same Pydantic models the endpoints validate against, and a test holds the route table against it. Publishing a rate limit the service does not enforce fails the suite. |
+| **Refusals are told apart** | `401` means "nobody is authenticated", `403` means "authenticated and not allowed". A guest link's own deletion token is a third answer again. |
+| **The interface offers what the caller may do** | The markup asks the same authorization service the route asks. A role cannot be shown a button that answers 403. |
+| **Failure is a state, not a crash** | The logger and the cache degrade to a fallback rather than taking the request down, and the health endpoint reports which one is live. |
+
+## Quick start
+
+<table>
+<tr><td width="50%" valign="top">
+
+**Locally** — SQLite, in-memory cache
+
+```bash
+uv sync
+cp .env.example .env
+uv run flask alembic upgrade head
+uv run flask db load-base-roles
+uv run flask create-admin \
+    --email admin@example.com \
+    --password 'your-password'
+uv run flask run
+```
+
+</td><td width="50%" valign="top">
+
+**In Docker** — PostgreSQL, Redis, Celery, Mailpit
+
+```bash
+cp .env.example .env.docker
+# set SECRET_KEY and SHORT_CODE_PEPPER
+docker compose --env-file .env.docker \
+    up -d --build
+docker compose --env-file .env.docker \
+    exec app flask db load-base-roles
+```
+
+</td></tr>
+</table>
+
+> [!TIP]
+> `flask security generate-secrets` prints the two secrets the deployed
+> profiles refuse to start without. Step-by-step, with the expected output
+> of every command: [Getting started](docs/getting-started.md).
+
+## What it does
 
 ```mermaid
 flowchart LR
-    V([Посетитель]) -->|POST /api/v1/shorten| APP
-    V -->|GET /код| APP
+    V([Visitor]) -->|POST /api/v1/shorten| APP
+    V -->|GET /code| APP
     APP{{Flask · gunicorn}} --> PG[(PostgreSQL)]
-    APP --> RC[(Redis · кэш)]
-    APP --> BR[(Redis · очередь)]
-    BR --> CEL[Celery: клики и письма]
+    APP --> RC[(Redis · cache)]
+    APP --> BR[(Redis · queue)]
+    BR --> CEL[Celery: clicks and mail]
     CEL --> PG
     CEL --> SMTP[(SMTP)]
 ```
 
-## Что умеет
-
 | | |
 |---|---|
-| **Гостевые ссылки** | Сокращение без регистрации, срок жизни 7 дней |
-| **Аккаунты** | Постоянные ссылки, личная статистика, панель управления |
-| **Пакетное создание** | Несколько URL за один запрос |
-| **TTL** | Настраиваемый срок жизни ссылки |
-| **Дедупликация** | В пределах владельца: повторное сокращение своего URL возвращает свою же живую ссылку (`200`, `is_new: false`) |
-| **RBAC** | Роли `guest`, `user`, `analyst`, `admin`; анонимный запрос выполняется в роли `guest`, а не «без ролей» |
-| **Подтверждение адреса** | Регистрация не выдаёт, занят ли адрес |
-| **Кэш** | Два уровня — редиректы и объекты ссылок — с инвалидацией |
-| **Асинхронная статистика** | Подсчёт кликов через Celery |
-| **Rate limiting** | На auth-эндпоинтах и на создании ссылок |
-| **CLI** | Семь групп команд обслуживания плюс `create-admin` и `create-user` |
-| **Отказоустойчивость** | Логгер и кэш деградируют, не роняя запрос |
-
-## Запуск
-
-**Локально** — SQLite, кэш в памяти, без Celery:
-
-```bash
-uv sync
-cp .env.example .env                       # задайте SECRET_KEY и SHORT_CODE_PEPPER
-uv run flask alembic upgrade head          # схема БД
-uv run flask db load-base-roles            # роли guest/user/analyst/admin
-uv run flask create-admin --email admin@example.com --password 'пароль'
-uv run flask run
-```
-
-**В Docker** — PostgreSQL, Redis, Celery, Mailpit:
-
-```bash
-cp .env.example .env.docker                # задайте секреты и пароли
-docker compose --env-file .env.docker up -d --build
-```
-
-Какие из четырёх сервисов поднимать своими, а какие взять внешними, решает
-`COMPOSE_PROFILES` в том же файле: шаблон включает все (`db,cache,broker,mail`),
-а тот, кто подключает внешние БД, Redis, брокер и почтовый сервер, убирает их
-из списка и получает только `migrations`, `app` и `celery_worker`.
-
-Пошагово, с ожидаемым выводом каждой команды и разбором частых ошибок —
-[docs/QUICKSTART.md](docs/QUICKSTART.md).
+| **Guest links** | Shortened without an account, seven-day life, quota per address |
+| **Accounts** | Permanent links, personal statistics, a dashboard |
+| **Batch** | Several URLs per request; what fails comes back per item |
+| **Deduplication** | Within one owner: shortening your own URL again returns your own live link |
+| **RBAC** | `guest`, `user`, `analyst`, `admin` — roles seeded from YAML, editable through the panel |
+| **Email confirmation** | Registration never says whether an address is taken |
+| **Two-level cache** | Redirects and link objects, invalidated on delete |
+| **Asynchronous counters** | Clicks counted by Celery, off the request path |
+| **Rate limiting** | On auth endpoints and on link creation |
+| **CLI** | Seven command groups for operating the service |
 
 ## API
 
-| Метод | Эндпоинт | Требуемое разрешение | Описание |
-|-------|----------|----------------------|----------|
-| POST | `/api/v1/shorten` | `link:create` (есть у `guest`) | Создать короткую ссылку |
-| POST | `/api/v1/batch/shorten` | `link:create` | Пакетное создание; не прошедшие элементы возвращаются поэлементной ошибкой, сам запрос отвечает `200` |
-| GET | `/api/v1/links/<code>` | Нет | Информация о ссылке. `owner_id`, `clicks` и `last_accessed` — только владельцу, админу и держателю `stats:view_any` |
-| GET | `/api/v1/links/<code>/extended` | Владение, `admin:all` или `stats:view_any` | Расширенная аналитика |
-| GET | `/api/v1/links/mine` | `link:view_own` | Свои ссылки (`offset`, `limit`) |
-| DELETE | `/api/v1/links/<code>` | `link:delete_own` / `link:delete_any` | Удалить ссылку |
-| GET | `/api/v1/stats` | `stats:view_basic` (есть у `guest`) | Итоги по сервису; разбивка `popular_links` требует `stats:view_full` |
-| GET | `/api/v1/stats/mine` | `link:view_own` | Личная статистика |
-| POST | `/api/v1/auth/register` | Нет | Регистрация; `202` и одинаковый ответ для занятого и свободного адреса |
-| GET | `/api/v1/auth/verify?token=…` | Нет | Подтвердить адрес по ссылке из письма (одноразовая) |
-| POST | `/api/v1/auth/resend-verification` | Нет | Прислать ссылку заново |
-| POST | `/api/v1/auth/login` | Нет | JWT-токены; неподтверждённый адрес — `EMAIL_NOT_VERIFIED` |
-| POST | `/api/v1/auth/refresh` | Refresh-токен | Обменять на новую пару (токен ротируется) |
-| POST | `/api/v1/auth/logout` | Refresh-токен или Bearer | Завершить сессию |
-| GET | `/api/v1/admin/health`, `/users`, `/roles` | Admin | Администрирование |
+Twenty-nine operations. Full description: `/api/openapi.json`, rendered at
+`/api/docs`.
 
-Машиночитаемое описание — `/api/openapi.json`, страница — `/api/docs`.
+| Method | Endpoint | Permission | |
+|---|---|---|---|
+| `POST` | `/api/v1/shorten` | `link:create` — held by `guest` | Create a link |
+| `POST` | `/api/v1/batch/shorten` | `link:create` | Several at once |
+| `GET` | `/api/v1/links/{code}` | — | Where it points. Owner and traffic withheld from everyone else |
+| `GET` | `/api/v1/links/{code}/extended` | ownership, `admin:all` or `stats:view_any` | Derived analytics |
+| `DELETE` | `/api/v1/links/{code}` | `link:delete_own` / `link:delete_any` / deletion token | Remove it |
+| `GET` | `/api/v1/stats` | `stats:view_basic` — held by `guest` | Service totals |
+| `GET` | `/api/v1/stats/mine` | `link:view_own` | Your own |
 
-## Как это себя ведёт
+<details>
+<summary>Authentication, accounts and administration</summary>
 
-Правила, о которые чаще всего спотыкаются:
+| Method | Endpoint | Permission | |
+|---|---|---|---|
+| `POST` | `/api/v1/auth/register` | — | `202`, and the same answer whether or not the address was free |
+| `GET`, `POST` | `/api/v1/auth/verify` | — | Spend the confirmation token |
+| `POST` | `/api/v1/auth/resend-verification` | — | Ask for another message |
+| `POST` | `/api/v1/auth/login` | — | Tokens; an unconfirmed address gets `EMAIL_NOT_VERIFIED` |
+| `POST` | `/api/v1/auth/refresh` | refresh token | Rotate the pair |
+| `POST` | `/api/v1/auth/logout` | session | Revoke it server-side |
+| `GET`, `POST` | `/api/v1/admin/users` | `admin:view_users` / `admin:manage_users` | List, create |
+| `PUT` | `/api/v1/admin/users/{id}/roles` | `admin:manage_users` | Replace roles |
+| `POST` | `/api/v1/admin/users/{id}/deactivate` | `admin:manage_users` | Suspend; refused for the last administrator |
+| `GET`, `POST` | `/api/v1/admin/roles` | `admin:view_roles` / `admin:manage_roles` | List, create |
+| `PUT` | `/api/v1/admin/roles/{name}/permissions` | `admin:manage_roles` | Replace permissions; system roles are protected |
+| `GET` | `/api/v1/admin/health` | `admin:view_system_health` | What each dependency answered |
 
-- **`401` против `403`.** `401` — «запрос никем не аутентифицирован», `403` —
-  «аутентифицирован, но разрешения нет». Аноним не отвергается автоматически:
-  он действует в роли `guest`.
-- **Истёкшая ссылка** отвечает `410` везде — и на редиректе, и на обоих
-  информационных эндпоинтах.
-- **Что публично:** адрес короткой ссылки, исходный URL, дата создания, срок
-  жизни. Что приватно: `owner_id` и трафик — счётчики закрыты вместе с
-  идентификатором, потому что `/extended` целиком считается из них.
-- **Регистрация** не говорит, занят ли адрес: одинаковый ответ, одинаковое
-  время и письмо в обоих случаях. Админский путь
-  (`POST /api/v1/admin/users`) говорит прямо — там вызывающий имеет право знать.
-- **Аутентификация** — `Authorization: Bearer <token>` для программных
-  клиентов, cookie для браузера. Запрос на cookie проходит проверку CSRF
-  (двойная отправка, подпись, `Origin`); запрос с валидным Bearer её не
-  проходит вовсе.
-- **Сессии.** Выход отзывает сессию на сервере, а не только удаляет cookie;
-  повторное предъявление потраченного refresh-токена отзывает цепочку этого
-  входа и только её.
+</details>
 
-Почему каждое из них устроено так — в
-[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md).
+## The parts that usually go wrong
 
-## Архитектура
+> [!NOTE]
+> These are the rules people trip over. Each one is enforced by a test that
+> fails when the behaviour changes — the reasoning is in
+> [Decisions](docs/decisions.md).
 
-```
-src/link_shortener/
-├── domain/          # Сущности, объекты-значения, интерфейсы репозиториев
-├── application/     # Use case'ы, DTO, сервисы приложения, порты
-├── infrastructure/  # Реализации: БД, кэш, авторизация, DI, CLI
-└── web/             # Контроллеры, middleware, шаблоны, статика
-```
+- **An expired link answers `410`** everywhere — on the redirect and on both
+  information endpoints.
+- **What is public**: the short address, the destination, when it was made,
+  when it expires. **What is not**: the owner and the traffic. The counters
+  are closed together with the identifier, because `/extended` is computed
+  entirely from them.
+- **Registration does not say whether an address is taken.** Same answer,
+  same timing, a message either way. The administrative path says so
+  outright — there the caller is entitled to know.
+- **Cookies pass CSRF, bearer tokens do not need to.** A client that can set
+  `Authorization` has already shown it can set headers.
+- **Logging out revokes the session** rather than merely dropping the cookie,
+  and a spent refresh token revokes the chain it belonged to.
 
-Repository, Unit of Work, DI-контейнер с ленивой инициализацией, фасады для
-веб-слоя, декораторы прав. Слои, границы и схемы —
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Тестирование
+## Testing
 
 ```bash
-uv run pytest tests/                      # весь набор
-uv run pytest tests/unit/                 # только unit
-uv run python tests/live/smoke_test.py    # 114 проверок по HTTP
-uv run python tests/live/browser_test.py  # 9 проверок настоящим браузером
-uv run flake8 src tests && uv run pylint src && uv run bandit -r src -q && uv run mypy src
+uv run pytest tests/                      # 2497 tests
+uv run python tests/live/smoke_test.py    # 115 checks over HTTP
+uv run python tests/live/browser_test.py  # 15 checks in a real browser
 ```
 
-Три уровня: unit на моках, интеграционные на in-memory SQLite и отдельно на
-настоящих PostgreSQL с Redis в Docker, плюс e2e. Живые прогоны pytest не
-собирает — их запускают отдельно.
+Four levels — unit, integration on SQLite, integration on real PostgreSQL and
+Redis, end-to-end — plus two live runs that pytest does not collect. CI runs
+the suite twice, in a clean environment and in a hostile one, to catch tests
+that read configuration nobody gave them.
 
-CI гоняет набор дважды, в чистом окружении и во враждебном, чтобы поймать
-тесты, читающие конфигурацию, которую им не давали. Пропущенный тест считается
-отказом. Обе половины заканчиваются живым прогоном; отдельная задача проходит
-`flake8`, `pylint`, `bandit` и `mypy`, каждый своим шагом.
+Full breakdown: [Testing](docs/testing.md).
 
-Разбор уровней и структура — в
-[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#запуск-тестов).
+## Documentation
 
-## Конфигурация
+| | |
+|---|---|
+| [Getting started](docs/getting-started.md) | From an empty directory to a working service, with the expected output of each step |
+| [Architecture](docs/architecture.md) | Layers, data flows, caching, authorization |
+| [Configuration](docs/configuration.md) | Every setting, what reads it, and what happens when it is wrong |
+| [Operations](docs/operations.md) | Migrations, CLI, backups, upgrades, health |
+| [Testing](docs/testing.md) | The four levels, the live runs, and what CI enforces |
+| [Development](docs/development.md) | Patterns, the frontend, the load profile |
+| [Decisions](docs/decisions.md) | Thirty write-ups of why something is the way it is |
 
-`FLASK_ENV` выбирает профиль (`development`, `staging`, `production`,
-`testing`), `.env` переопределяет его умолчания.
+## Requirements
 
-```mermaid
-flowchart LR
-    E["Переменная окружения<br/>export · environment:"] --> P1
-    P1[".env.профиль"] --> P2[".env"]
-    P2 --> P3["Умолчание профиля<br/>в коде"]
-```
+Python 3.12, [uv](https://docs.astral.sh/uv/). Docker Compose v2 for the full
+stack. PostgreSQL and Redis are required in the deployed profiles and optional
+locally.
 
-Побеждает левое. Профиль `testing` игнорирует окружение целиком — автотесты
-должны давать одинаковый результат на любой машине.
+## Contributing
 
-Пять переменных, без которых развёртывание ведёт себя не так, как ожидают:
+Issues and pull requests are welcome — [CONTRIBUTING.md](CONTRIBUTING.md)
+covers the setup, what a change has to pass, and the one-flag sign-off
+(`git commit -s`) the project uses instead of a CLA.
 
-| Переменная | По умолчанию | Что будет иначе |
-|------------|--------------|-----------------|
-| `FLASK_ENV` | development | Выбирает профиль, а с ним умолчания всего остального |
-| `SECRET_KEY` | случайный | Подписывает JWT: без явного значения токены умирают при каждом рестарте |
-| `SHORT_CODE_PEPPER` | случайный | Соль генерации кодов: разойдётся между инстансами — разойдутся и коды |
-| `DOMAIN` | (пусто) | Обязателен в `production` и `staging`. Иначе `BASE_URL` собирается как `http://{HOST}:{PORT}/` |
-| `DATABASE_TYPE` | sqlite | В `production` и `staging` допустим только `postgresql` |
+## License
 
-Остальные — в `.env.example` и
-[docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md#справочник-конфигурации).
-
-## Стек
-
-Python 3.12, Flask 3, PostgreSQL 15, Redis 7, Celery 5, Alembic, PyJWT,
-Pydantic v2, structlog, uv, Docker Compose.
-
-## CLI
-
-```bash
-flask alembic upgrade head                     # применить миграции
-flask db load-base-roles                       # системные роли из roles.yaml
-flask create-admin --email <e> --password <p>  # первый администратор
-flask security check-secrets                   # ключи не остались дефолтными?
-flask maintenance health                       # БД и Redis отвечают?
-```
-
-Полный справочник —
-[docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md#cli-команды).
-
-## Документация
-
-| Документ | О чём |
-|----------|-------|
-| [Быстрый старт](docs/QUICKSTART.md) | Запуск с нуля, шаг за шагом, с ожидаемым выводом |
-| [Архитектура](docs/ARCHITECTURE.md) | Слои, потоки данных, кэш, RBAC, наблюдаемость |
-| [Руководство разработчика](docs/DEVELOPER_GUIDE.md) | Тесты, конфигурация, нагрузочный профиль, принятые решения |
-| [Эксплуатация](docs/OPERATIONS_AND_MIGRATIONS.md) | CLI, миграции, справочник настроек, обслуживание |
-
-## Лицензия
-
-MIT
+[Apache License 2.0](LICENSE). Use it, fork it, ship it — commercially
+too. Keep the copyright notice, say what you changed, and note that the
+licence carries an explicit patent grant: a contributor cannot later sue
+users over patents in what they contributed.

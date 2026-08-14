@@ -1,7 +1,7 @@
 """
 The published rate limits against the ones the service enforces.
 
-Two documents print these numbers as the service's promise, and until now
+The configuration reference prints these numbers as the service's promise, and until now
 nothing read them: the tables drifted from the configuration and from each
 other, and the drift was found by hand. A limit is a security decision,
 and a document that names the wrong one is worse than a document that
@@ -19,11 +19,11 @@ import pytest
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 
 
-DOCS = Path("docs/OPERATIONS_AND_MIGRATIONS.md")
+DOCS = Path("docs/configuration.md")
 
 ROW = re.compile(
     r"^\|\s*`(?P<endpoint>[a-z_.]+)`\s*\|\s*(?P<limit>\d+)\s*\|\s*"
-    r"(?P<period>\d+)\s*сек\s*\|"
+    r"(?P<period>\d+)\s*s\s*\|"
 )
 
 
@@ -86,7 +86,12 @@ class TestTheTablesSayWhatTheServiceDoes:
         detached = type("Detached", (BaseConfig,), {"IGNORE_ENV": True})()
         limit = detached.DEFAULT_RATE_LIMIT
 
-        assert f"— {limit} запросов за" in DOCS.read_text(encoding="utf-8")
+        # Whitespace is collapsed first: the sentence is wrapped by the
+        # markdown around it, and a check that depends on where the line
+        # happens to break fails on a reflow that changed nothing.
+        prose = " ".join(DOCS.read_text(encoding="utf-8").split())
+
+        assert f"— {limit} requests per" in prose
 
 
 class TestTheReadLimitsKeepTheirPlaceInTheOrder:
