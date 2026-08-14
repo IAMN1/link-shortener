@@ -9,9 +9,7 @@ allowance.
 
 import uuid
 
-import pytest
 
-from link_shortener.domain import ShortCode
 from tests.integration.conftest import (
     auth_headers, csrf_headers, register_and_login
 )
@@ -216,9 +214,9 @@ class TestExpiryIsReported:
 
 class TestAPoisonedUrlCannotOccupyACleanOne:
     """
-    A URL carrying a newline used to be accepted, stored raw, and then hash
-    identically to the clean URL -- normalisation drops the fragment. The
-    clean URL then deduplicated onto it and could no longer be shortened
+    A URL carrying a newline, accepted and stored raw, hashes identically
+    to the clean URL -- normalisation drops the fragment. The clean URL then
+    deduplicates onto it and cannot be shortened
     into anything that works: its redirect raises for good, because a
     ``Location`` header cannot hold a newline.
     """
@@ -412,9 +410,8 @@ class TestBatchObeysTheGuestRules:
     def test_an_empty_batch_is_answered_not_crashed(self, app):
         """
         The HTTP schema refuses an empty list, so this goes at the layer
-        below it: the aggregate's own empty value used to raise
-        ``TypeError`` because its ``created_at`` default was a timestamp
-        where a factory belonged.
+        below it: the aggregate's own empty value raises ``TypeError`` if
+        its ``created_at`` default is a timestamp where a factory belongs.
         """
         from link_shortener.application.context import RequestContext
 

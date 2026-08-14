@@ -104,9 +104,9 @@ class TestGetServiceHealthUseCase:
 class TestTheLoggingStateIsReadWhenThereIsAReaderForIt:
     """The section can be dropped on the way out and nothing noticed.
 
-    Measured: replacing ``self.logging_status.read() if self.logging_status
-    else None`` with a bare ``None`` left the whole suite green -- and with
-    it the whole point of ``LoggingStatus``, which exists so that an audit
+    Replacing ``self.logging_status.read() if self.logging_status else
+    None`` with a bare ``None`` passes everything else -- and takes with it
+    the whole point of ``LoggingStatus``, which exists so that an audit
     trail that stopped being written stops looking like one that is fine.
     Every test here built the use case without a reader, so the branch that
     reads one was never taken.
@@ -156,9 +156,9 @@ class TestTheLoggingStateIsReadWhenThereIsAReaderForIt:
 class TestEachFieldComesFromItsOwnFieldOfTheSnapshot:
     """One component down at a time, because all-True tells none apart.
 
-    Measured: ``rate_limiter=state.database`` in place of
-    ``state.rate_limiter`` left the whole suite green. What it costs is the
-    one component nothing else reports -- a limiter that has lost its
+    ``rate_limiter=state.database`` in place of ``state.rate_limiter``
+    passes everything else. What it costs is the one component nothing else
+    reports -- a limiter that has lost its
     backend lets everything through, brute-force protection on the auth
     endpoints included, and the admin panel goes on saying it is enforcing.
     ``rate_limiter`` was not asserted by any test here, and ``_snapshot``
@@ -198,9 +198,9 @@ class TestAdminHealthMatchesTheProbe:
     """
     The admin panel and the container probe must not disagree.
 
-    The use case used to run its own checks and keep the answer for 15
-    seconds, so the two surfaces could report different states of the same
-    component with nothing to say which was stale.
+    Both read one snapshot. Running its own checks here and keeping the
+    answer for 15 seconds lets the two surfaces report different states of
+    the same component, with nothing to say which is stale.
     """
 
     def test_the_state_is_read_from_the_shared_snapshot(

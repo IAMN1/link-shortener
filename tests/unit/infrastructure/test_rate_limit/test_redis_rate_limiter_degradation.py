@@ -157,8 +157,8 @@ class TestAskingIsNotAnswering:
     """
     Reading the limiter's state must not change it.
 
-    The back-off used to clear itself inside the method that reports it, so
-    asking "are limits being enforced?" declared the outage over -- with
+    A back-off that clears itself inside the method that reports it makes
+    asking "are limits being enforced?" declare the outage over, with
     nothing having checked whether Redis came back. The health check asks
     exactly that, and the endpoint it serves is exempt from the limiter, so
     it never reopened the outage by accident either.

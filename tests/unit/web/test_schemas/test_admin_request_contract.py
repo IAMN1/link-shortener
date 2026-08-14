@@ -20,8 +20,7 @@ from pydantic import ValidationError
 from link_shortener.domain.exceptions import ValidationError as DomainError
 from link_shortener.domain.policies.password_policy import MIN_PASSWORD_LENGTH
 from link_shortener.domain.policies.role_policy import (
-    ROLE_DESCRIPTION_MAX_LENGTH, ROLE_NAME_MAX_LENGTH, ROLE_NAME_PATTERN,
-)
+    ROLE_DESCRIPTION_MAX_LENGTH, ROLE_NAME_MAX_LENGTH, )
 from link_shortener.domain.value_objects.email import Email
 from link_shortener.web.schemas.admin.admin_request import (
     CreateRoleRequest, CreateUserRequest, UpdateRolePermissionsRequest,
@@ -55,11 +54,11 @@ class TestThePasswordFloorIsTheDomainsFloor:
 
 
 class TestARoleNameIsBoundedByCharacters:
-    """``name`` was bounded by ``min_length=2`` and nothing else.
+    """``name`` is bounded by a pattern, not by ``min_length`` alone.
 
-    Measured against the live routes with the pattern removed: every name
-    below creates with 201, and the two carrying a slash then answer 404 on
-    ``GET`` and on ``DELETE`` -- the name is the last segment of the URL
+    Without the pattern every name below creates with 201, and the two
+    carrying a slash then answer 404 on ``GET`` and on ``DELETE`` -- the
+    name is the last segment of the URL
     those routes are reached through, and Werkzeug's default converter
     "accepts any string but only one path segment". The role stayed in the
     database, addressable by nothing and removable by nothing short of SQL.
@@ -76,7 +75,7 @@ class TestARoleNameIsBoundedByCharacters:
 
     @pytest.mark.parametrize("name", ["role/with/slash", "../admin"])
     def test_a_name_no_route_can_address_is_refused(self, name):
-        """Measured: 201 on create, 404 on GET and on DELETE."""
+        """Without the pattern: 201 on create, 404 on GET and DELETE."""
         with pytest.raises(ValidationError):
             CreateRoleRequest(name=name, permissions=["link:create"])
 
@@ -115,8 +114,8 @@ class TestARoleNameIsBoundedByCharacters:
         # Against the migration, which is a literal, and not against the ORM
         # model: the model builds its column from ``ROLE_NAME_MAX_LENGTH``
         # and the schema takes its bound from the same constant, so the two
-        # moved together. Measured on that comparison: widening the constant
-        # to 80 left this line green while the deployed column stayed at 50.
+        # would move together and the comparison would prove nothing:
+        # widening the constant leaves the deployed column where it was.
         assert published["maxLength"] == column_width_in_migration(
             "roles", "name"
         )
@@ -156,8 +155,8 @@ class TestTheWidthsAgreeWithTheMigratedDatabase:
     The ORM model builds the schema only for ``create_all`` on SQLite,
     where a ``VARCHAR`` length is not checked at all, so a constant widened
     on its own leaves the deployed column exactly where it was and puts the
-    500 back. Measured: ``ROLE_NAME_MAX_LENGTH = 80`` keeps every other
-    test in this file green while ``0001_initial_schema.py`` still says 50.
+    500 back: ``ROLE_NAME_MAX_LENGTH = 80`` keeps every other test in this
+    file green while ``0001_initial_schema.py`` still says 50.
     """
 
     def test_the_name_bound_is_the_width_the_migration_creates(self):
@@ -173,9 +172,9 @@ class TestTheWidthsAgreeWithTheMigratedDatabase:
 class TestADescriptionFitsTheColumnItIsStoredIn:
     """The same disagreement as the name had, on the field beside it.
 
-    Measured on PostgreSQL 15 against ``VARCHAR(255)``: 256 characters
-    raise ``StringDataRightTruncation``, which the caller meets as a 500
-    rather than as a 400 naming the field. SQLite does not check the width,
+    On PostgreSQL 15 against ``VARCHAR(255)`` 256 characters raise
+    ``StringDataRightTruncation``, which the caller meets as a 500 rather
+    than as a 400 naming the field. SQLite does not check the width,
     so nothing in the suite would have said so.
     """
 
@@ -200,9 +199,9 @@ class TestADescriptionFitsTheColumnItIsStoredIn:
 class TestTheAddressHasToBeOne:
     """The email rule had no negative case at all.
 
-    Measured on the mutation run of 2026-08-10: removing the pattern from
-    the field survived the whole suite, and so did removing its anchors --
-    which in pydantic's Rust engine turns the rule into a search, so
+    Removing the pattern from the field survives the rest of the suite,
+    and so does removing its anchors -- which in pydantic's Rust engine
+    turns the rule into a search, so
     ``"a b@c.d junk@"`` passes on the part of it that matches.
     """
 
@@ -247,7 +246,7 @@ class TestTheAddressHasToBeOne:
 
     @pytest.mark.parametrize("address", [
         "user@example.com\n",   # `$` in Python matches before this one
-        "user@ex\nample.com",   # `[^@]` used to admit it outright
+        "user@ex\nample.com",   # `[^@]` admits it without the anchors
         "a b@c.d",              # a space is not part of an unquoted address
         "user@exa mple.com",
         "\tuser@example.com",
@@ -337,7 +336,7 @@ class TestTheSchemaAndTheDomainAgreeOnAnAddress:
 class TestAnAccountArrivesUsable:
     """``is_active`` defaults to ``True``, and the default is the contract.
 
-    Measured: flipping it to ``False`` survived the whole suite. An
+    Flipping it to ``False`` survives the rest of the suite: an
     administrator creating an account without naming the field would get
     one that cannot sign in, and nothing in the answer says why.
     """
@@ -364,7 +363,7 @@ class TestAnAccountArrivesUsable:
 class TestAnEmptyListIsNotAnUpdate:
     """``min_length=1`` on three fields, and nothing held any of them.
 
-    Measured: removing it from each survived the whole suite. An empty
+    Removing it from each survives the rest of the suite. An empty
     ``roles`` takes every role off a user and an empty ``permissions``
     empties a role -- through an endpoint whose name says it is replacing
     them, so the answer is a 200 and the account quietly has nothing.

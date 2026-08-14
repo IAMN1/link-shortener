@@ -1,11 +1,11 @@
 """
 Service totals stop being true the moment a link is created or deleted.
 
-Nothing used to drop the statistics key except a CLI command, so
-``GET /api/v1/stats`` went on reporting the old count for the whole
+Both paths drop the statistics key. Left to a CLI command alone,
+``GET /api/v1/stats`` goes on reporting the old count for the whole
 ``CACHE_STATS_TTL`` -- five minutes in production -- answering 200 with no
-sign that it was reading a snapshot. Measured before the fix: two links
-reported while the database held seven.
+sign that it is reading a snapshot: two links reported while the database
+holds seven.
 
 Click totals are a different matter and deliberately still lag: they change
 on every redirect, and dropping the key each time would leave the cache
@@ -128,8 +128,8 @@ class TestAFailureIsNotAnEmptyService:
     ):
         """
         Reachable without touching anything: ``DATABASE_STATEMENT_TIMEOUT``
-        aborts the aggregate over a large enough table, and the endpoint
-        used to answer 200 with zeros -- a lie the caller cannot detect.
+        aborts the aggregate over a large enough table, and answering 200
+        with zeros would be a lie the caller cannot detect.
         """
         _create(cached_app, "https://example.com/stats-not-empty", context)
 

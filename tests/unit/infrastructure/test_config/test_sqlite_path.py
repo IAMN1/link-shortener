@@ -1,9 +1,9 @@
 """
 Which file a SQLite deployment actually opens.
 
-``DATABASE_NAME`` is a path for SQLite, and a relative one used to be read
-against the working directory of the process. That made the database's
-identity a property of where the operator happened to stand: the
+``DATABASE_NAME`` is a path for SQLite, and a relative one must not be read
+against the working directory of the process: that makes the database's
+identity a property of where the operator happens to stand -- the
 documented start from the project root opened one file, ``flask`` from
 ``src/`` created a second, and neither said anything, because SQLite makes
 a missing file rather than refusing it.
@@ -46,9 +46,9 @@ class TestTheRootItAnchorsTo:
         # `PROJECT_ROOT` is computed once, at import, and pytest imports
         # from the repository root -- so a root defined as `Path.cwd()`
         # would hold the right value all through this file and every
-        # `chdir` a test does afterwards. Measured: that mutation left the
-        # whole suite green while putting the database back beside the
-        # caller. Asking the finder again from elsewhere is what tells
+        # `chdir` a test does afterwards. That mutation passes everything
+        # else while putting the database back beside the caller. Asking
+        # the finder again from elsewhere is what tells
         # them apart.
         # Re-imported from elsewhere rather than merely re-invoked: the
         # constant is what the code reads, and calling the finder again
@@ -158,8 +158,8 @@ class TestWhatGetsAnchored:
         # relative form reads the same everywhere, and what moved was the
         # file it resolved to. So this opens the database for real, from a
         # directory that is not the root, and looks at where the file
-        # landed. Measured before the fix: it landed in the caller's
-        # directory, and SQLite created it there without a word.
+        # landed. Read against the working directory it lands in the
+        # caller's directory, and SQLite creates it there without a word.
         probe = "db_anchor_probe.db"
         config = detached(DATABASE_NAME=probe)
         here = os.getcwd()
@@ -255,7 +255,7 @@ class TestNamesThatOpenSomethingElse:
     """``validate`` refuses the two shapes anchoring cannot make safe."""
 
     def test_a_question_mark_is_refused(self):
-        """Measured: ``a?b.db`` created and opened a file called ``a``.
+        """``a?b.db`` creates and opens a file called ``a``.
 
         The loss happens in the URL round trip, not in SQLite:
         ``make_url("sqlite:///a?b.db").database`` is ``"a"``, while

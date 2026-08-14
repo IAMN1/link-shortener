@@ -307,8 +307,8 @@ class TestTheAuditProxyForwards:
         the bound fields last lets the context overwrite the event, so a
         record about one account is written down against another: an
         administrator deleting somebody else's link produces a trail
-        naming the administrator as the owner. Measured on the mutation
-        run of 2026-08-10: the swap survived the whole suite.
+        naming the administrator as the owner. The swap passes everything
+        else in the suite.
         """
         service = RecordingService()
         proxy = FailoverAuditLoggerProxy(service).bind(
@@ -352,7 +352,7 @@ class TestTheAuditProxyForwards:
 
 class TestABoundFieldNamedLikeAnEventArgument:
     """
-    The one shape of binding that used to break the call.
+    The one shape of binding that can break the call.
 
     ``log_url_created`` passes ``short_code`` and ``original_url``
     positionally and everything else as keywords, so a bound field of
@@ -413,8 +413,8 @@ class TestABareExceptionCallCarriesATraceback:
     ``exc_info`` defaulted to ``None`` here, and the renderer skips a falsy
     value -- so the ordinary spelling, the one ``logging`` and ``structlog``
     both accept, produced something that reads like a traceback and has
-    none. Measured: flipping the default back to ``False`` left the suite
-    green, because every call in ``src/`` passes ``exc_info`` explicitly.
+    none. Flipping the default back to ``False`` passes everything else,
+    because every call in ``src/`` passes ``exc_info`` explicitly.
     """
 
     def test_the_default_asks_for_the_exception_being_handled(self):

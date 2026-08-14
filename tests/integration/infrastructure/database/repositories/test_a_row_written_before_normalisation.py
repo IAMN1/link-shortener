@@ -312,9 +312,9 @@ class TestThePairThatUsedToAnswer500:
         session.commit()
 
     def test_confirming_it_now_sticks(self, session, colliding_pair):
-        """The state change that used to be lost with the 500.
+        """The state change must not be lost with the refusal.
 
-        Confirmation is the path this was measured on: the flag was set
+        Confirmation is the path this is checked on: the flag is set
         on the entity, the write failed on the unique index, and the
         token was never spent -- so the same failure repeated for good.
         """

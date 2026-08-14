@@ -65,8 +65,8 @@ class TestACodeInUseIsNeverReissued:
         The link found belongs to another owner.
 
         Deduplication is per owner, so a link for this very URL can exist
-        and still not be the caller's. Creation then proceeds against a code
-        that is already occupied -- which used to be treated as "the same
+        and still not be the caller's. Creation then proceeds against a
+        code that is already occupied, which must not be read as "the same
         URL, reuse it".
         """
         group = _group("a", "https://example.com/same")
@@ -147,9 +147,9 @@ class TestACodeInUseIsNeverReissued:
         """
         The ladder is a pure function of the URL, so it is finite.
 
-        Once every rung is taken -- which per-owner deduplication and expiry
-        make an ordinary event -- the item used to be dropped from the batch.
-        Entropy has to take over instead.
+        Once every rung is taken -- which per-owner deduplication and
+        expiry make an ordinary event -- entropy has to take over, rather
+        than the item being dropped from the batch.
         """
         group = _group("d", "https://example.com/laddered")
         repository = Mock()

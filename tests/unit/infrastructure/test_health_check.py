@@ -5,7 +5,6 @@ import time
 from contextlib import contextmanager
 from unittest.mock import MagicMock, Mock, patch
 
-import pytest
 import redis
 
 from link_shortener.domain import ShortCode
@@ -106,9 +105,10 @@ class TestCacheStateIsNotInferred:
     """
     Both directions of the same mistake: reading a state instead of asking.
 
-    The check used to ping the cache's client itself and, when that failed,
-    fall back to the cache's own opinion. The ping told the cache nothing,
-    so its "available" flag survived the outage -- and once some other
+    The check must ask the cache rather than read a state beside it.
+    Pinging the client itself and falling back to the cache's own opinion
+    tells the cache nothing, so its "available" flag survives the outage --
+    and once some other
     request did notice and dropped the client, the missing client was read
     as "no cache configured".
     """
@@ -298,9 +298,9 @@ class TestTheSnapshotIsCachedBriefly:
     """
     ``/health`` is anonymous and exempt from throttling -- correctly, a
     probe has to answer while everything else is refusing. That made it the
-    cheapest way to make the service work: every request meant a query, a
-    Redis ping, a broker ping and a fresh ``ThreadPoolExecutor``. Measured:
-    200 anonymous requests started 563 OS threads.
+    cheapest way to make the service work: unshared, every request means a
+    query, a Redis ping, a broker ping and a fresh ``ThreadPoolExecutor`` --
+    200 anonymous requests start 563 OS threads.
 
     The clock is injected rather than slept through: sleeping past a
     two-second TTL measures the scheduler, and the interesting boundary is
@@ -381,11 +381,11 @@ class TestTheCacheDoesNotBecomeAQueue:
     The lock is held across the observation, so a slow dependency must not
     turn ``/health`` into a line of callers waiting their turn.
 
-    It did. The timestamp was taken *before* the observation, so an
-    observation slower than the TTL was already stale when it was stored:
-    every caller waiting on the lock observed again. Measured on the real
-    class with a 2.5 s probe against the 2 s TTL -- five parallel requests
-    took 12.52 s instead of 2.51 s, on an endpoint that is anonymous and
+    It does, if the timestamp is taken *before* the observation: an
+    observation slower than the TTL is already stale when it is stored, so
+    every caller waiting on the lock observes again. On the real class with
+    a 2.5 s probe against the 2 s TTL, five parallel requests take 12.52 s
+    instead of 2.51 s, on an endpoint that is anonymous and
     exempt from throttling, so the number of callers is chosen by whoever
     is asking.
     """

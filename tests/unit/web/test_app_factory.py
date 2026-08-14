@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock, Mock, patch
 from link_shortener.web.app_factory import create_app, _seed_base_roles_if_ready
-from link_shortener.infrastructure.di.container import Container
 
 
 class Test_app_factory:

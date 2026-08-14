@@ -1,9 +1,9 @@
 """
 Tests for the ``clean-expired`` maintenance path.
 
-The command is named after expiry and now works by it. It used to sweep by
-``last_accessed`` instead, which removed permanent links their owners had
-simply not clicked lately, and left the expired ones -- the rows that make a
+The command is named after expiry and works by it. Sweeping by
+``last_accessed`` instead removes permanent links their owners have simply
+not clicked lately, and leaves the expired ones -- the rows that make a
 URL unshortenable -- exactly where they were.
 """
 

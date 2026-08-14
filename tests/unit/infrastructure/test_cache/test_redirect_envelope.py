@@ -16,7 +16,7 @@ import pytest
 
 from link_shortener.domain import Link, OriginalUrl, ShortCode, UrlHash
 from link_shortener.infrastructure.cache.redis_cache import RedisLinkCache
-from link_shortener.infrastructure.cache.signing import seal, unseal
+from link_shortener.infrastructure.cache.signing import unseal
 
 
 CODE = "abc123"

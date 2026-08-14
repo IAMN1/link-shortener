@@ -4,9 +4,9 @@ Tests that a refusal says which limit refused it, and when to come back.
 There are two limits and they are nothing alike: the rate limiter counts
 requests per minute, the guest quota counts links per day. Both answer 429.
 
-The quota's answer used to carry the rate limiter's headers -- a body saying
+Carrying the rate limiter's headers on the quota's answer -- a body saying
 "limit of 10 exceeded" next to ``X-RateLimit-Remaining: 19`` -- and no
-``Retry-After`` at all, so a client could not tell "wait a minute" from
+``Retry-After`` at all leaves a client unable to tell "wait a minute" from
 "come back tomorrow". And the same refusal on the batch endpoint answered
 200, so which status the caller saw depended on which endpoint they asked.
 """

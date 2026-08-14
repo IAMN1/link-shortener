@@ -20,7 +20,6 @@ from link_shortener.infrastructure.configs.app.base import BaseConfig
 
 
 DOCS = Path("docs/OPERATIONS_AND_MIGRATIONS.md")
-README = Path("README.md")
 
 ROW = re.compile(
     r"^\|\s*`(?P<endpoint>[a-z_.]+)`\s*\|\s*(?P<limit>\d+)\s*\|\s*"
@@ -57,7 +56,11 @@ def shipped_limits():
 
 
 class TestTheTablesSayWhatTheServiceDoes:
-    """The operations guide and README against ``RATE_LIMITS``."""
+    """The operations guide against ``RATE_LIMITS``.
+
+    One table, in one document: the limits are an operations matter, and a
+    copy in the README is a second place for the numbers to drift.
+    """
 
     def test_the_guide_lists_every_configured_endpoint(self):
         """A limit that exists and is not published is a limit nobody plans for."""
@@ -73,39 +76,17 @@ class TestTheTablesSayWhatTheServiceDoes:
         """
         assert documented_limits()[endpoint] == shipped_limits()[endpoint]
 
-    def test_the_readme_agrees_about_the_brute_force_limits(self):
-        """
-        The four an attacker meets, in the file most people read first.
-
-        README writes them per minute and per hour rather than in seconds,
-        so the rows are matched by their text; what matters is that the
-        numbers cannot be changed in one document and left in the other.
-        """
-        readme = README.read_text(encoding="utf-8")
-        shipped = shipped_limits()
-
-        login_limit, _ = shipped["auth.login"]
-        register_limit, _ = shipped["auth.register"]
-        refresh_limit, _ = shipped["auth.refresh_token"]
-        logout_limit, _ = shipped["auth.logout"]
-
-        assert f"| `POST /api/v1/auth/login` | {login_limit} / мин |" in readme
-        assert f"| `POST /api/v1/auth/register` | {register_limit} / час |" in readme
-        assert f"| `POST /api/v1/auth/refresh` | {refresh_limit} / мин |" in readme
-        assert f"| `POST /api/v1/auth/logout` | {logout_limit} / мин |" in readme
-
     def test_the_documented_default_is_the_configured_one(self):
         """
-        The pair that bounds everything the tables do not name.
+        The pair that bounds everything the table does not name.
 
-        Both documents state it in prose beside the table, which is the
-        sentence a reader uses to work out what an unlisted route costs.
+        Stated in prose beside the table, which is the sentence a reader
+        uses to work out what an unlisted route costs.
         """
         detached = type("Detached", (BaseConfig,), {"IGNORE_ENV": True})()
         limit = detached.DEFAULT_RATE_LIMIT
 
         assert f"— {limit} запросов за" in DOCS.read_text(encoding="utf-8")
-        assert f"— {limit} запросов в минуту" in README.read_text(encoding="utf-8")
 
 
 class TestTheReadLimitsKeepTheirPlaceInTheOrder:

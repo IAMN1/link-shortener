@@ -1,7 +1,5 @@
 """Integration tests for API controller endpoints with real DB."""
 
-import pytest
-from tests.integration.conftest import register_and_login, auth_headers
 
 
 
@@ -121,10 +119,10 @@ class TestRedirectEndpoint:
     def test_click_counter_increments(self, app, client):
         """Five redirects leave exactly five clicks, counted up from zero.
 
-        The bound this replaced was ``>= 5``, and a bound is not a count.
-        Measured: loosened to ``>= 0`` -- the obvious way to quieten a
-        counter that reads as asynchronous -- it let ``uow.commit()`` be
-        dropped from ``UpdateLinkStatsUseCase``, and the only thing left
+        A bound is not a count. Loosened to ``>= 0`` -- the obvious way to
+        quieten a counter that reads as asynchronous -- it lets
+        ``uow.commit()`` be dropped from ``UpdateLinkStatsUseCase``, and the
+        only thing left
         holding that was one test under ``tests/integration/docker``, which
         needs the PostgreSQL stack up. Without the stack the loss of every
         click passed unnoticed: 2245 passed.
@@ -143,9 +141,9 @@ class TestRedirectEndpoint:
 
         A second link is created and never visited, because "this row went
         up by five" is not the same statement as "the click was counted
-        here". Measured: with the ``short_code`` filter dropped from the
-        ``UPDATE``, every row in the table gained the five clicks, this
-        test's own assertion held exactly, and the whole suite passed --
+        here". With the ``short_code`` filter dropped from the ``UPDATE``,
+        every row in the table gains the five clicks, this test's own
+        assertion holds exactly, and everything else passes --
         2283 of them -- while the service's entire statistics became
         fiction.
         """

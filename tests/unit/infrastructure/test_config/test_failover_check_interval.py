@@ -3,9 +3,9 @@ How often the failover chains ask their implementations how they are.
 
 The number decides two things a deployment cannot see any other way: how
 long an implementation that has stopped writing keeps the work, and how
-long one that recovered waits to get it back. Nothing read it. Measured
-against the whole suite: the shipped default widened from 30 seconds to
-3000 left it green, and the configuration's own validation passes such a
+long one that recovered waits to get it back. Nothing else reads it: the
+shipped default widened from 30 seconds to 3000 passes everything else,
+and the configuration's own validation accepts such a
 value happily -- it asks only for a positive finite number, which fifty
 minutes is.
 

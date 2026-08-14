@@ -2,9 +2,9 @@
 Tests for what a cache deletion has to remove.
 
 The deduplication entry is keyed by hash and scope, so neither of them can be
-recovered from a short code. The Redis implementation used to read the code
-entry first to learn the hash -- and under ``allkeys-lru`` the two keys are
-evicted independently, so whenever the code entry had gone first, the hash
+recovered from a short code. Reading the code entry first to learn the hash
+fails under ``allkeys-lru``, where the two keys are evicted independently:
+whenever the code entry has gone first, the hash
 entry survived the deletion and went on offering a link that no longer
 exists.
 """

@@ -71,9 +71,9 @@ class TestTheDocumentIsServed:
     def test_a_real_validator_accepts_it(self, document):
         """Checked by a validator, not by reading back our own string.
 
-        This test used to assert that ``openapi`` starts with ``"3."`` --
-        a value the module itself sets two lines above, so it could not
-        fail. Meanwhile the document was declared ``3.0.3`` and was not:
+        Asserting that ``openapi`` starts with ``"3."`` checks a value the
+        module itself sets two lines above, so it cannot fail while the
+        document is declared ``3.0.3`` and is not:
         pydantic v2 emits JSON Schema 2020-12, whose ``{"type": "null"}``
         the 3.0 Schema Object has no word for -- twenty of them in this
         document -- and the 3.0 validator refuses it with an

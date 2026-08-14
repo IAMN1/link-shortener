@@ -168,14 +168,16 @@ class TestNoClickIsLost:
         session = pg_session_factory()
         try:
             repository = SQLAlchemyLinkRepository(session)
-            first = repository.increment_clicks(stored_link.short_code)
+            repository.increment_clicks(stored_link.short_code)
             session.commit()
-            second = repository.increment_clicks(stored_link.short_code)
+            first = repository.find_by_code(stored_link.short_code).clicks
+            repository.increment_clicks(stored_link.short_code)
             session.commit()
+            second = repository.find_by_code(stored_link.short_code).clicks
         finally:
             session.close()
 
-        assert (first.clicks, second.clicks) == (1, 2)
+        assert (first, second) == (1, 2)
 
 
 class TestTheUseCaseTheRedirectRunsIsAtomicToo:

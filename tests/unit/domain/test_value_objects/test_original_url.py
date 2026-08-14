@@ -91,9 +91,8 @@ class TestOriginalUrl:
     def test_valid_ip_address(self, valid_ip_url):
         """Should accept valid IPv4 and IPv6 addresses.
 
-        Public ones. The private, loopback and link-local addresses this
-        list used to carry are refused now -- see
-        ``test_url_internal_targets``.
+        Public ones only: private, loopback and link-local addresses are
+        refused -- see ``test_url_internal_targets``.
         """
 
         url = OriginalUrl(valid_ip_url)

@@ -219,9 +219,9 @@ class TestAdminRefusalsPastTheDoor:
          "USER_NOT_FOUND"),
         ("GET", "/api/v1/admin/roles/no-such-role", 404, "ROLE_NOT_FOUND"),
         # A role that is not there answers 404, like the user endpoint
-        # beside it. The two used to disagree: one exception carried both
-        # "no such role" and "that one is protected", and the status table
-        # maps that code to 400 -- so a name that simply is not there came
+        # beside it. One exception carrying both "no such role" and "that
+        # one is protected" makes them disagree: the status table maps that
+        # code to 400, so a name that simply is not there comes
         # back as a bad request.
         ("DELETE", "/api/v1/admin/roles/no-such-role", 404, "ROLE_NOT_FOUND"),
     ])
@@ -307,9 +307,9 @@ class TestRefusalsTheAnonymousSweepCannotReach:
     The sweep is anonymous, so a permission check answers it with
     ``UNAUTHENTICATED`` and its ``FORBIDDEN`` branch is never entered; and a
     refresh with no cookie at all takes the first branch, never the one for
-    a token that is present and no good. Measured: both could be answered
-    with a hand-built ``{"error": "<sentence>"}`` and the whole suite,
-    including the live run, stayed green.
+    a token that is present and no good. Both can be answered with a
+    hand-built ``{"error": "<sentence>"}`` and everything else, including
+    the live run, still passes.
     """
 
     def test_a_permission_that_is_missing_refuses_in_the_envelope(self, client):

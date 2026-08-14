@@ -5,7 +5,6 @@ Each test simulates a real user interaction from start to finish.
 These tests verify that all layers work together correctly.
 """
 
-import pytest
 
 from tests.integration.conftest import confirm_email, csrf_headers
 

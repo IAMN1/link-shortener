@@ -371,9 +371,9 @@ class TestTheSuiteCannotSendMail:
         it shadows the descriptor entirely -- not merely detached by
         ``IGNORE_ENV``, which a subclass could undo.
 
-        Measured through a subclass that undoes exactly that. Setting the
+        Checked through a subclass that undoes exactly that. Setting the
         variable against plain ``TestingConfig`` proves nothing: with
-        ``IGNORE_ENV`` on, a descriptor would return its default and the
+        ``IGNORE_ENV`` on, a descriptor returns its default and the
         assertion would pass whether the attribute were here or inherited.
         ``tests/integration/conftest.py`` builds such subclasses, so this
         is the shape the suite actually runs in.

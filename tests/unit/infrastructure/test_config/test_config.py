@@ -102,7 +102,11 @@ class TestConfigFactory:
         monkeypatch.setenv("SHORT_CODE_PEPPER", "staging-pepper")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@staging/db")
         monkeypatch.setenv("REDIS_URL", "redis://staging:6379/0")
-        
+        # Demanded since the profile gained a validate() of its own, on the
+        # same terms as production: without it BASE_URL falls back to the
+        # bind address and every short link names an internal host.
+        monkeypatch.setenv("DOMAIN", "staging.example.com")
+
         # Act
         config = ConfigFactory.create_config()
         

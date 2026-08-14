@@ -1,9 +1,8 @@
 """Integration tests for AuthenticationMiddleware with real DB."""
 
-import pytest
 
 from link_shortener.infrastructure.database.models.user_model import UserModel
-from tests.integration.conftest import confirm_email, register_and_login, auth_headers, csrf_headers
+from tests.integration.conftest import confirm_email, auth_headers, csrf_headers
 
 
 def _register_and_get_tokens(client, email, password="StrongPass1!"):

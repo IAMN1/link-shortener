@@ -8,8 +8,7 @@ because every test configuration switches logging and auditing off, so the
 component's own branch -- the one that builds a manager at all -- is not
 reached by the suite through the application.
 
-Measured against the whole suite, each mutation on its own, all four left
-it green:
+Each of the four mutations below passes everything else in the suite:
 
 * ``LoggerComponent`` and ``AuditComponent`` passing
   ``failover_check_interval=None``. No background thread starts, so an
@@ -207,9 +206,9 @@ class TestTheFlagSwitchesItsOwnChainOff:
 class TestTheContainerGivesEachComponentItsOwnFlag:
     """The one thing only the container decides, and it is two words apart.
 
-    Measured: ``audit_enabled=self.config.LOGGING_ENABLED`` left the whole
-    suite green. Both directions cost something. An operator who set
-    ``AUDIT_ENABLED=false`` and left logging on gets the full audit trail
+    ``audit_enabled=self.config.LOGGING_ENABLED`` passes everything else,
+    and both directions cost something. An operator who sets
+    ``AUDIT_ENABLED=false`` and leaves logging on gets the full audit trail
     anyway -- ``original_url``, ``remote_addr`` and ``user_id`` written
     down after they asked for none of it; one who switched logging off
     loses the audit trail they never asked to lose.

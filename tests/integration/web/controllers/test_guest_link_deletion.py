@@ -154,9 +154,9 @@ class TestATokenIsWorthExactlyOneLink:
 class TestATokenIsIssuedOnceToWhoeverCreatedTheLink:
     """
     Guests deduplicate by address. Two people behind one NAT asking for the
-    same URL get the same link back -- and the second used to get the
-    first's token with it, which is exactly the "the same address is a
-    different person" case the token exists so as not to rely on.
+    same URL get the same link back. Handing the second the first's token
+    with it is exactly the "the same address is a different person" case
+    the token exists so as not to rely on.
     """
 
     @staticmethod

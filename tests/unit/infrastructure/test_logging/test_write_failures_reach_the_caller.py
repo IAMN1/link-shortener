@@ -6,8 +6,8 @@ and returns, so the standard library treats a failed write as nothing the
 caller needs to know. Under a failover chain that is the wrong default: the
 service decides to move work by catching exceptions from the call, so the
 one failure it exists for -- a full disk, a volume that went away -- never
-reached it. Measured before the fix: three audit records lost,
-``dropped_calls`` at zero, ``is_healthy()`` still ``True``, no switch.
+reaches it: three audit records lost, ``dropped_calls`` at zero,
+``is_healthy()`` still ``True``, no switch.
 
 Only this application's own records raise. The handlers sit on the root
 logger, so they carry SQLAlchemy and werkzeug too, and neither has failover
@@ -38,8 +38,8 @@ def restore_the_loggers_this_file_takes_over():
 
     ``logging`` keeps named loggers for the life of the process, and
     ``logger_writing_to`` clears their handlers and installs a raising one.
-    Left in place, that reaches whatever runs next. Measured: the suite is
-    green only because ``tests/integration`` sorts before ``tests/unit`` --
+    Left in place, that reaches whatever runs next: the suite passes only
+    because ``tests/integration`` sorts before ``tests/unit`` --
     ``pytest tests/unit tests/integration`` fails
     ``test_the_named_logger_owns_no_handlers`` on what this file left on
     ``global``, and the ordinary ``pytest tests/`` never shows it.

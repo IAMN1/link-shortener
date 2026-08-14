@@ -238,9 +238,9 @@ class TestBoundFieldPrecedenceIsTheSameInBothImplementations:
     """
 
     def test_the_binding_cannot_reach_around_the_masking(self):
-        # The three fields the event is made of used to be overwritten by
-        # the binding as well, so a logger bound with `original_url` filed
-        # the address it was bound with instead of `mask_url(...)` of the
+        # The three fields the event is made of must not be overwritten by
+        # the binding: a logger bound with `original_url` would file the
+        # address it was bound with instead of `mask_url(...)` of the
         # one the event was about.
         backend = MagicMock()
         backend.bind.return_value = backend

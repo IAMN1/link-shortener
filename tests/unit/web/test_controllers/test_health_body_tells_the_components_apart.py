@@ -4,9 +4,9 @@
 The test that covered this endpoint set ``database``, ``cache``,
 ``task_queue`` and ``rate_limiter`` all to ``True``, so no assertion could
 tell one field from another: reading ``health.database`` under the key
-``cache`` produced exactly the answer the test expected. Measured on the
-mutation run of 2026-08-10 -- every such swap in the body survived the
-whole suite, which is a Redis that has stopped answering shown to an
+``cache`` produces exactly the answer such a test expects. Every such swap
+in the body passes everything else, which is a Redis that has stopped
+answering shown to an
 operator as healthy.
 
 Distinguishable data is the whole fix. Each component is asked for on its

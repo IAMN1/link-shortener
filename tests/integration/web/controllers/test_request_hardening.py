@@ -1,7 +1,7 @@
 """
 Tests that a malformed request is refused rather than survived.
 
-Three ways an anonymous caller used to get a 500 out of the two creation
+Three ways an anonymous caller can reach a 500 in the two creation
 endpoints, none of them needing an account:
 
 - a body that is valid JSON but not an object. The schemas are handed the
@@ -78,7 +78,7 @@ class TestABodyThatIsNotAnObject:
 
 
 class TestAMissingContentType:
-    """Flask's own refusal, which used to be reported as a crash."""
+    """Flask's own refusal, answered as a refusal rather than a crash."""
 
     @pytest.mark.parametrize(
         "path", ["/api/v1/shorten", "/api/v1/batch/shorten"]

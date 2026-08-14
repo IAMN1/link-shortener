@@ -1,10 +1,8 @@
 from unittest.mock import Mock, MagicMock
-from contextlib import contextmanager
 
 from link_shortener.application.context import RequestContext
-from link_shortener.application.dtos.current_user_info import CurrentUserInfo
 from link_shortener.application.use_cases.links.create_short_link import CreateShortLinkUseCase
-from link_shortener.domain import Link, ShortCode, UrlHash, OriginalUrl, OwnerID
+from link_shortener.domain import Link, ShortCode, UrlHash, OriginalUrl
 from link_shortener.domain import GuestLinkLimitExceededError, ValidationError
 import pytest
 

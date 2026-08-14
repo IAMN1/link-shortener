@@ -2,7 +2,6 @@
 Level 2 integration tests: Redis cache against real Redis instance.
 """
 
-import pytest
 import time
 from link_shortener.domain.value_objects.short_code import ShortCode
 

@@ -1,9 +1,9 @@
 """
 Tests for a short code the caller chooses.
 
-``flask link create --code`` used to refuse outright, and before that it
-accepted the option and ignored it, which looked like a custom code and was
-not one. Three things had to exist before it could be honoured: the format
+``flask link create --code`` honours the option rather than accepting and
+ignoring it, which looks like a custom code and is not one. Three things
+have to hold for it: the format
 rules (``ShortCode`` already had them), a uniqueness check that does not
 quietly substitute a different code, and a list of names the service answers
 to itself.

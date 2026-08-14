@@ -2,7 +2,7 @@
 
 import pytest
 from tests.integration.conftest import (
-    auth_headers, confirm_email, csrf_headers, register_and_login
+    auth_headers, confirm_email, csrf_headers
 )
 
 
@@ -38,7 +38,6 @@ class TestAdminWithAdminUser:
         """Register user, promote to admin, get token."""
         with app.app_context():
             from link_shortener.infrastructure.database.seed import seed_base_roles
-            from link_shortener.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
             db = app.container.get_db_manager()
             with db.session() as session:
                 seed_base_roles(session)
@@ -149,9 +148,9 @@ class TestAdminWithAdminUser:
         The name is the last segment of the URL every single-role route is
         reached through, and the default converter takes one path segment,
         so ``role/with/slash`` named a role that no request could address
-        and nothing short of SQL could remove. Measured before the rule:
-        201 on the create, 404 on the delete, 200 on an ordinary role in
-        the same run.
+        and nothing short of SQL can remove. Without the rule: 201 on the
+        create, 404 on the delete, 200 on an ordinary role in the same
+        run.
         """
         refused = client.post(
             "/api/v1/admin/roles",

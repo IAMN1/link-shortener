@@ -44,8 +44,8 @@ class TestMaskUrl:
         """The case the length rule could never have caught.
 
         This URL is 45 characters, so truncation leaves it whole -- and
-        secrets are short by nature. It used to reach the audit log with
-        the password in it, which is what this test asserted before.
+        secrets are short by nature. Without removal it reaches the audit
+        log with the password in it.
         """
         url = "https://user:s3cret@example.com/?token=abc123"
         assert len(url) < 100
@@ -63,8 +63,8 @@ class TestMaskUrl:
         50 characters, the ``@`` survives inside them, and removal still
         finds an authority to clean. Past about 42 characters of userinfo
         the cut lands before the ``@`` -- and then cutting first hands
-        back the head of the password verbatim. Measured on this input:
-        37 of its 60 characters.
+        back the head of the password verbatim: on this input, 37 of its
+        60 characters.
         """
         password = "S" * 60
         url = f"https://user:{password}@example.com/" + "d" * 200
@@ -281,8 +281,8 @@ class TestMaskUrl:
 
         The secret sits past character 50 and before the last 20, so
         truncation alone hides it -- and would keep hiding it right up
-        until a shorter outer URL put it back in view. Measured against
-        cutting first: the head of the password survives.
+        until a shorter outer URL puts it back in view. Cutting first
+        leaves the head of the password intact.
         """
         password = "S" * 60
         url = (
