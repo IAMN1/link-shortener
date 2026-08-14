@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.auth.authorization_service import (
@@ -12,7 +12,9 @@ from link_shortener.application.ports.cache.link_service_stats_cache import (
 from link_shortener.application.ports.cache.redirect_cache import RedirectCache
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import (
+    UnitOfWork, UnitOfWorkFactory,
+)
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
     DomainError, Link, LinkNotFoundError, SystemPermissions
@@ -38,7 +40,7 @@ class DeleteLinkUseCase(BaseUseCase):
         authorization_service: Service that answers permission questions.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     cache: LinkCache
     redirect_cache: RedirectCache
     stats_cache: StatsCache

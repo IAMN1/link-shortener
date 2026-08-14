@@ -7,7 +7,7 @@ It can be used as a primary or fallback audit logger.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Optional, Any, Dict
 
 from link_shortener.application import AuditLogger
 from link_shortener.infrastructure.logging.utils import mask_url
@@ -28,7 +28,7 @@ class StandardAuditLogger(AuditLogger):
         _bound_fields: Dictionary of contextual fields bound to the logger.
     """
 
-    def __init__(self, name: str = "audit", bound_fields: Dict[str, Any] = None):
+    def __init__(self, name: str = "audit", bound_fields: Optional[Dict[str, Any]] = None):
         """Initialise the standard audit logger.
 
         Args:

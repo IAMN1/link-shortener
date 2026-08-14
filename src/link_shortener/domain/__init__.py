@@ -11,7 +11,11 @@ from .policies.code_generator import CodeGenerator
 from .repositories.user_repository import UserRepository
 from .repositories.role_repository import RoleRepository
 from .repositories.permission_repository import PermissionRepository
-from .repositories.link_repository import LinkRepository
+from .repositories.link_repository import (
+    LinkRepository,
+    ServiceLinkStats,
+    UserLinkStats,
+)
 from .repositories.refresh_session_repository import RefreshSessionRepository
 from .repositories.email_verification_repository import EmailVerificationRepository
 
@@ -47,6 +51,8 @@ __all__ = [
     
     # Repositories
     "LinkRepository",
+    "ServiceLinkStats",
+    "UserLinkStats",
     "RefreshSessionRepository",
     "EmailVerificationRepository",
     "UserRepository",

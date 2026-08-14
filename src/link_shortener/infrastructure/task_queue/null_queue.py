@@ -1,6 +1,7 @@
 from typing import Callable, Optional
 
 from link_shortener.application.context import RequestContext
+from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
 
 
@@ -23,7 +24,7 @@ class NullTaskQueue(TaskQueue):
         update_fn: Optional[Callable] = None,
         send_verification_fn: Optional[Callable] = None,
         send_account_exists_fn: Optional[Callable] = None,
-        logger: Optional[object] = None,
+        logger: Optional[Logger] = None,
     ):
         """
         Args:
@@ -55,7 +56,7 @@ class NullTaskQueue(TaskQueue):
             try:
                 self._update_fn(short_code_str, context)
             except Exception:
-                # Best-effort: счёт кликов не роняет редирект.
+                # Best-effort: counting a click must not fail the redirect.
                 pass  # nosec B110
 
     def enqueue_verification_email(

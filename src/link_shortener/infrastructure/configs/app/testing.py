@@ -49,8 +49,12 @@ class TestingConfig(BaseConfig):
     # --------------------------------------------------------------------------
     DATABASE_URL: str = "sqlite:///:memory:"
 
+    # The base class takes this setting from the environment and lets it be
+    # written; here it is a constant, because the profile answers from
+    # itself rather than from the environment (``IGNORE_ENV`` above). A
+    # read-only property over a writeable attribute is what mypy objects to.
     @property
-    def DATABASE_TYPE(self) -> str:
+    def DATABASE_TYPE(self) -> str:  # type: ignore[override]
         return "sqlite"
 
 

@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.admin.role import RoleResponse
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
 
@@ -16,7 +16,7 @@ class GetRoleUseCase(BaseUseCase):
     Requires either ``admin:view_roles`` or ``admin:manage_roles`` permission.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     logger: Logger
 
     def execute(self, role_name: str, context: RequestContext) -> Optional[RoleResponse]:

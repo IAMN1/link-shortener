@@ -10,7 +10,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from typing import Callable, Optional
 
-from link_shortener.application import HealthCheck
+from link_shortener.application import (
+    CacheHealth, HealthCheck, RateLimiter, TaskQueue,
+)
 from link_shortener.application.ports.health_check import HealthSnapshot
 from link_shortener.infrastructure.database.manager import DatabaseManager
 
@@ -81,10 +83,10 @@ class InfrastructureHealthCheck(HealthCheck):
     def __init__(
         self,
         db_manager: DatabaseManager,
-        cache: object,
-        task_queue: object = None,
+        cache: Optional[CacheHealth],
+        task_queue: Optional[TaskQueue] = None,
         timeout: float = 5.0,
-        rate_limiter: object = None,
+        rate_limiter: Optional[RateLimiter] = None,
         clock: Optional[Callable[[], float]] = None,
     ):
         """Initialise the health checker with real infrastructure components.
@@ -256,7 +258,10 @@ class InfrastructureHealthCheck(HealthCheck):
         Returns:
             ``True`` if the cache is healthy or has nothing to connect to.
         """
-        if not self.is_cache_configured():
+        # ``is_cache_configured`` already answers False for an absent cache,
+        # but it says so through a method call, and the absence has to be
+        # written out here for the attribute to read as a cache below.
+        if self.cache is None or not self.is_cache_configured():
             return True
 
         try:

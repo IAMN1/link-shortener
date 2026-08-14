@@ -1,3 +1,4 @@
+from typing import Optional
 from link_shortener.infrastructure.database.manager import DatabaseManager
 
 
@@ -42,7 +43,10 @@ class DatabaseComponent:
         self.pool_params = pool_params
         self.connect_timeout = connect_timeout
         self.statement_timeout = statement_timeout
-        self._manager = None
+        # Annotated Optional rather than inferred from this assignment: the
+        # attribute holds None until the first call builds it, and a checker
+        # told otherwise reports both the assignment and the return as errors.
+        self._manager: Optional[DatabaseManager] = None
 
     def get_db_manager(self) -> DatabaseManager:
         """

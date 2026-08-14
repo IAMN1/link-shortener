@@ -1,15 +1,9 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application import (
-    CreateRoleUseCase,
-    UpdateRolePermissionsUseCase,
-    DeleteRoleUseCase,
-    ListRolesUseCase,
-    GetRoleUseCase,
-    RoleManagementService,
-    Logger,
-    UnitOfWork,
+    UnitOfWorkFactory, CreateRoleUseCase,
+    UpdateRolePermissionsUseCase, DeleteRoleUseCase, ListRolesUseCase,
+    GetRoleUseCase, RoleManagementService, Logger
 )
 
 
@@ -22,7 +16,7 @@ class AdminRoleUseCasesComponent:
     logger) are injected at construction time.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     role_service: RoleManagementService
     logger: Logger
 

@@ -64,7 +64,11 @@ def handed_over_url() -> Optional[str]:
     # with a trailing newline is a *different* database -- one run created
     # a SQLite file whose name ended in "\n". ``get_database_url`` strips
     # its own side for the same reason, so the two agree.
-    if is_unset(handed_over):
+    # ``handed_over is None`` is named alongside ``is_unset`` rather than
+    # left to it: is_unset answers True for a blank string too, so it states
+    # "not configured" without stating "not None", and the strip below needs
+    # the second.
+    if handed_over is None or is_unset(handed_over):
         return None
 
     # The ``postgres://`` alias is normalised on this path too, not only in

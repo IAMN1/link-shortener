@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 
 import time
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 import uuid
 
 from link_shortener.application.dtos.batch import BatchCreateResponse, BatchItemResponse
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.context import RequestContext
 
 from link_shortener.application.ports.cache.link_cache import LinkCache
@@ -63,7 +63,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
         builder: Turns created links into per-item responses.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     cache: LinkCache
     stats_cache: StatsCache
     base_url: str

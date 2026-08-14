@@ -1,11 +1,10 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.auth.auth_service import AuthenticationService
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
     DomainError, User,
@@ -56,7 +55,7 @@ class RegisterUseCase(BaseUseCase):
     and commits, a taken one does not. That remainder is small beside a
     bcrypt hash, and it is written down in the developer guide.
     """
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     authentication_service: AuthenticationService
     logger: Logger
     default_role_name: str  # Role assigned to new users by default.
@@ -173,8 +172,12 @@ class RegisterUseCase(BaseUseCase):
 
         log.info("User registered", user_id=saved_user.id, email=email_vo.value)
 
+        # The token is issued in the same branch that saves the user, so
+        # past the check above it is a string. mypy follows the two
+        # variables separately and only knows that ``saved_user`` was
+        # checked.
         if not self.task_queue.enqueue_verification_email(
-            email_vo.value, token, context
+            email_vo.value, token, context  # type: ignore[arg-type]
         ):
             # Said out loud rather than swallowed: the account exists and
             # cannot be used, and nobody will find out from the response,

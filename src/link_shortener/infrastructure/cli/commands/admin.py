@@ -1,10 +1,10 @@
-from typing import Callable, List
+from typing import List
 
-from link_shortener.application import UnitOfWork, UserManagementService
+from link_shortener.application import UnitOfWorkFactory, UserManagementService
 
 
 def create_admin(
-        uow_factory: Callable[[], UnitOfWork],
+        uow_factory: UnitOfWorkFactory,
         user_service: UserManagementService,
         role_name: str,
         email: str,
@@ -46,7 +46,7 @@ def create_admin(
 
 
 def create_user(
-        uow_factory: Callable[[], UnitOfWork],
+        uow_factory: UnitOfWorkFactory,
         user_service: UserManagementService,
         email: str,
         password: str,

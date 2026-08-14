@@ -8,6 +8,7 @@ Supports read-only transactions (on PostgreSQL sets the transaction to READ ONLY
 from types import TracebackType
 from typing import Optional, Type
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from link_shortener.application import Logger, UnitOfWork
 from link_shortener.domain import (
@@ -55,13 +56,16 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         super().__init__(read_only=read_only)
         self.db_manager = db_manager
         self.logger = logger
-        self._session = None
-        self._links = None
-        self._users = None
-        self._roles = None
-        self._permissions = None
-        self._refresh_sessions = None
-        self._email_verifications = None
+        # Annotated Optional rather than inferred from the first assignment:
+        # the attribute genuinely holds None until __enter__ runs, and a
+        # checker told otherwise reports every later use as an error.
+        self._session: Optional[Session] = None
+        self._links: Optional[LinkRepository] = None
+        self._users: Optional[UserRepository] = None
+        self._roles: Optional[RoleRepository] = None
+        self._permissions: Optional[PermissionRepository] = None
+        self._refresh_sessions: Optional[RefreshSessionRepository] = None
+        self._email_verifications: Optional[EmailVerificationRepository] = None
         self._committed = False
 
     # ------------------------------------------------------------------
@@ -73,11 +77,12 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         On PostgreSQL, if ``read_only`` is ``True``, the transaction is
         explicitly set to ``READ ONLY``.
         """
-        self._session.begin()
+        session = self._open_session
+        session.begin()
         if self.read_only:
-            dialect_name = self._session.get_bind().dialect.name
+            dialect_name = session.get_bind().dialect.name
             if dialect_name == "postgresql":
-                self._session.execute(text("SET TRANSACTION READ ONLY"))
+                session.execute(text("SET TRANSACTION READ ONLY"))
 
     # ------------------------------------------------------------------
     # Context manager protocol
@@ -122,7 +127,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
             # leaking an open transaction.
             if not self._committed:
                 self.rollback()
-        self._session.close()
+        self._open_session.close()
         self._session = None
         self._links = None
         self._users = None
@@ -139,19 +144,43 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
 
         Can only be called once per context; subsequent calls are no-ops.
         """
-        if self._session.is_active and not self._committed:
-            self._session.commit()
+        session = self._open_session
+        if session.is_active and not self._committed:
+            session.commit()
             self._committed = True
 
     def flush(self) -> None:
         """Flush pending changes to the database without committing."""
-        self._session.flush()
+        self._open_session.flush()
 
     def rollback(self) -> None:
         """Roll back the current transaction."""
-        if self._session.is_active:
-            self._session.rollback()
+        session = self._open_session
+        if session.is_active:
+            session.rollback()
             self._committed = False
+
+    # ------------------------------------------------------------------
+    # Session accessor
+    # ------------------------------------------------------------------
+    @property
+    def _open_session(self) -> Session:
+        """Return the session of an entered unit of work.
+
+        The same shape the repository accessors below use, and for the same
+        reason: the attribute holds ``None`` until ``__enter__`` runs, so a
+        call made outside the context otherwise fails on ``None`` with a
+        message naming neither the class nor the mistake.
+
+        Returns:
+            The active SQLAlchemy session.
+
+        Raises:
+            RuntimeError: If the context has not been entered.
+        """
+        if self._session is None:
+            raise RuntimeError("Unit of Work not entered (use 'with' statement)")
+        return self._session
 
     # ------------------------------------------------------------------
     # Repository accessors

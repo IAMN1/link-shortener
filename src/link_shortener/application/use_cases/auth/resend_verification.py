@@ -1,10 +1,9 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import Email
 from link_shortener.domain.entities.email_verification import EmailVerification
@@ -46,7 +45,7 @@ class ResendVerificationUseCase(BaseUseCase):
         logger: Application logger.
         ttl_hours: Lifetime of the confirmation being issued.
     """
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     task_queue: TaskQueue
     logger: Logger
     ttl_hours: int

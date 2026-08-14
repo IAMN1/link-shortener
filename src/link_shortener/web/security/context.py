@@ -95,7 +95,7 @@ def create_request_context() -> RequestContext:
         Populated ``RequestContext`` object.
     """
     return RequestContext(
-        request_id=getattr(g, 'request_id', None),
+        request_id=getattr(g, 'request_id', '') or '',
         remote_addr=get_client_ip(),
         user_agent=request.headers.get('User-Agent'),
         request_path=request.path,

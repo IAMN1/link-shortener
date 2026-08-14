@@ -423,7 +423,7 @@ class FailoverService(Generic[T]):
         # asked, and the count ran out before the last one was reached.
         # On three implementations -- a=2, b=1, c=0 -- the call
         # came back ALL_SERVICES_FAILED having never spoken to c.
-        tried = set()
+        tried: set = set()
 
         # A backstop on the loop itself. Each turn either asks a service
         # for the first time or moves the index down, and neither can

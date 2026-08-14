@@ -36,6 +36,7 @@ from typing import Iterator
 import pytest
 
 from link_shortener.infrastructure.configs.app import factory as config_factory
+from tests.support import real_stack as real_stack_support
 
 
 # ==============================================================================
@@ -171,3 +172,68 @@ def detached_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             monkeypatch.delenv(name, raising=False)
 
     return tmp_path
+
+
+# The marker a test carries is decided by where it lives, not written by
+# hand: the layout is the categorisation, and a marker typed into a file
+# can disagree with the directory the file sits in. Seven markers were
+# declared and none was ever used, so `-m integration` selected nothing.
+_MARKER_BY_DIRECTORY = (
+    ("tests/integration/docker", ("integration", "docker")),
+    ("tests/integration", ("integration",)),
+    ("tests/unit", ("unit",)),
+    ("tests/e2e", ("e2e",)),
+)
+
+
+def pytest_collection_modifyitems(items) -> None:
+    """Mark every collected test by the directory it was collected from.
+
+    A test under no known directory is refused rather than left unmarked.
+    Silently skipping it would put the failure exactly where this whole
+    mechanism exists to prevent one: ``-m unit`` would pass over the new
+    directory, and the run would be green because nothing ran.
+
+    Args:
+        items: The collected tests, marked in place.
+
+    Raises:
+        UsageError: If a collected test lies outside every known directory.
+    """
+    unmarked = []
+    for item in items:
+        path = str(item.path).replace(os.sep, "/")
+        for directory, markers in _MARKER_BY_DIRECTORY:
+            if f"/{directory}/" in path:
+                for marker in markers:
+                    item.add_marker(getattr(pytest.mark, marker))
+                break
+        else:
+            unmarked.append(item.nodeid)
+
+    if unmarked:
+        listed = "\n  ".join(unmarked[:10])
+        raise pytest.UsageError(
+            f"{len(unmarked)} test(s) lie outside every directory named in "
+            f"_MARKER_BY_DIRECTORY, so no marker describes them and `-m` "
+            f"would pass over them:\n  {listed}"
+        )
+
+
+@pytest.fixture(scope="session")
+def real_stack():
+    """Bring the PostgreSQL and Redis containers up for the whole session.
+
+    Session-scoped and declared here, not in either directory that wants
+    it: ``tests/integration/docker`` and ``tests/e2e`` both run against
+    these containers, and a per-module fixture taking the stack down at
+    the end of its module pulled it out from under the other. That failed
+    only in some collection orders -- `pytest -p no:randomly tests/...`
+    happened to be safe, `--lf` was not -- which is the kind of failure
+    that reads as flakiness.
+    """
+    real_stack_support.start()
+
+    yield
+
+    real_stack_support.stop()

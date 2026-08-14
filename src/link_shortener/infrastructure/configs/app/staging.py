@@ -31,15 +31,21 @@ class StagingConfig(BaseConfig):
     # --------------------------------------------------------------------------
     # Security: enforce presence of secrets
     # --------------------------------------------------------------------------
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def SECRET_KEY(self) -> str:
+    def SECRET_KEY(self) -> str:  # type: ignore[override]
         key = read_env_for(self, "SECRET_KEY")
         if not key:
             raise ValueError("SECRET_KEY must be set in environment")
         return key
 
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def SHORT_CODE_SECRET_PEPPER(self) -> str:
+    def SHORT_CODE_SECRET_PEPPER(self) -> str:  # type: ignore[override]
         pepper = read_env_for(self, "SHORT_CODE_PEPPER")
         if not pepper:
             raise ValueError("SHORT_CODE_PEPPER must be set in environment")
@@ -51,8 +57,11 @@ class StagingConfig(BaseConfig):
     # --------------------------------------------------------------------------
     REDIS_ENABLED: bool = env_bool("REDIS_ENABLED", True)
     
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def REDIS_URL(self) -> str:
+    def REDIS_URL(self) -> str:  # type: ignore[override]
         """Redis URL must be set in environment if Redis is enabled."""
         url = read_env_for(self, "REDIS_URL")
         if self.REDIS_ENABLED and not url:

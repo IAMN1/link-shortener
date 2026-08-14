@@ -2,6 +2,7 @@ import logging
 import logging.handlers
 import os
 import structlog
+from structlog.typing import Processor
 
 from link_shortener.infrastructure.logging.handlers.raising import (
     RaisingStreamHandler, RaisingWatchedFileHandler
@@ -27,6 +28,13 @@ def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logge
     if not settings.log_to_console:
         return
     
+    # Declared by the base type both branches produce: one branch builds a
+    # ConsoleFormatter and the other a structlog ProcessorFormatter, and a
+    # variable typed from whichever came first rejects the other. The
+    # handler needs no such declaration -- both branches build the same
+    # class.
+    formatter: logging.Formatter
+
     if settings.logger_type == "standard":
         handler = RaisingStreamHandler()
         handler.setLevel(settings.get_log_level_int())
@@ -54,6 +62,12 @@ def _setup_file_handler(settings: LoggingSettings, root_logger: logging.Logger):
         settings: LoggingSettings object.
         root_logger: Root logger instance.
     """
+    # Declared by the base type both branches produce: the two sides build
+    # different concrete formatters, and a variable typed from whichever came
+    # first rejects the other. The handler is one class here, so it needs no
+    # declaration.
+    formatter: logging.Formatter
+
     if not settings.should_log_to_file:
         return
     
@@ -83,6 +97,14 @@ def _setup_audit_handler(settings: LoggingSettings):
     Args:
         settings: LoggingSettings object.
     """
+    # Declared by the base type both branches produce: the two sides build
+    # different concrete formatters and handlers, and a variable typed from
+    # whichever came first rejects the other.
+    formatter: logging.Formatter
+    handler: logging.Handler
+    # Both a console and a file section run here, and each builds its own
+    # renderer.
+    renderer: Processor
 
     if not settings.audit_enabled:
         return
@@ -136,6 +158,12 @@ def _setup_error_handler(settings: LoggingSettings, root_logger: logging.Logger)
         settings: LoggingSettings object.
         root_logger: Root logger instance.
     """
+    # Declared by the base type both branches produce: the two sides build
+    # different concrete formatters, and a variable typed from whichever came
+    # first rejects the other. The handler is one class here, so it needs no
+    # declaration.
+    formatter: logging.Formatter
+
     if not settings.log_to_file:
         return
     

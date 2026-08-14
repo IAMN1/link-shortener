@@ -1,7 +1,7 @@
 """
 Thread-safe in-memory cache with TTL support.
 
-Implements LinkCache, RedirectCache, and StatsCache using Python dictionaries.
+Implements the four roles of ``ServiceCache`` using Python dictionaries.
 Suitable for development and testing when Redis is unavailable.
 """
 
@@ -11,14 +11,13 @@ from threading import RLock
 from typing import Any, Dict, List, Optional
 
 from link_shortener.application import (
-    CachedRedirect, CacheHealth, LinkCache, RedirectCache, StatsCache,
-    CacheKeyBuilder
+    CachedRedirect, ServiceCache, CacheKeyBuilder
 )
 from link_shortener.domain import DedupScope, Link, ShortCode, UrlHash
 
 
 
-class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
+class InMemoryLinkCache(ServiceCache):
     """
     In-memory cache that stores data in Python dictionaries.
 

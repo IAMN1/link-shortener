@@ -1,3 +1,4 @@
+from typing import Optional
 from link_shortener.domain import HashCalculator, CodeGenerator
 from link_shortener.infrastructure.policies.base64_url_code_generator import Base64UrlCodeGenerator
 from link_shortener.infrastructure.policies.sha256_hash_calculator import SHA256HashCalculator
@@ -23,8 +24,11 @@ class PolicyComponent:
         self.max_length = max_length
         self.pepper = pepper
 
-        self._hash_caclculator = None
-        self._code_generator = None
+        # Annotated Optional rather than inferred from this assignment: the
+        # attribute holds None until the first call builds it, and a checker
+        # told otherwise reports both the assignment and the return as errors.
+        self._hash_caclculator: Optional[HashCalculator] = None
+        self._code_generator: Optional[CodeGenerator] = None
 
     def get_hash_calculator(self) -> HashCalculator:
         """

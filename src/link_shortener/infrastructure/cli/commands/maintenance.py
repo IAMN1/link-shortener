@@ -1,12 +1,12 @@
 from collections import Counter
-from typing import Any, Callable, Dict, List
+from typing import Any, Dict, List
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from link_shortener.application import (
-    RequestContext, CleanExpiredLinksUseCase, CleanUnverifiedAccountsUseCase,
-    UnitOfWork
+    UnitOfWorkFactory, RequestContext, CleanExpiredLinksUseCase,
+    CleanUnverifiedAccountsUseCase
 )
 from link_shortener.domain.value_objects.email import Email
 
@@ -54,7 +54,7 @@ def clean_expired_links(
     return use_case.execute(context)
 
 
-def clean_expired_sessions(uow_factory: Callable[[], UnitOfWork]) -> int:
+def clean_expired_sessions(uow_factory: UnitOfWorkFactory) -> int:
     """
     Delete refresh sessions whose tokens have expired.
 

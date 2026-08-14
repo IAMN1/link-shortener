@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import uuid
 
 from link_shortener.application.ports.uow import UnitOfWork
@@ -35,7 +35,7 @@ class RoleManagementService:
     def create_role(self,
                     uow: UnitOfWork,
                     name: str,
-                    description: str,
+                    description: Optional[str],
                     permission_names: List[str]
     ) -> Role:
         """
@@ -44,7 +44,8 @@ class RoleManagementService:
         Args:
             uow: Active unit of work.
             name: Unique role name.
-            description: Human-readable description.
+            description: Human-readable description, or ``None``: the entity
+                stores it as optional and the admin API sends it that way.
             permission_names: List of permission names to assign.
 
         Returns:

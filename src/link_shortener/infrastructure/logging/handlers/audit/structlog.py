@@ -6,7 +6,7 @@ interface using the structlog library. It provides structured logging and
 supports field binding.
 """
 
-from typing import Any, Dict
+from typing import Optional, Any, Dict
 
 import structlog
 
@@ -26,7 +26,7 @@ class StructlogAuditLogger(AuditLogger):
         _bound_fields: Dictionary of fields bound to this logger instance.
     """
 
-    def __init__(self, bound_logger=None, bound_fields: Dict[str, Any] = None):
+    def __init__(self, bound_logger=None, bound_fields: Optional[Dict[str, Any]] = None):
         """Initialise the structlog audit logger.
 
         Args:

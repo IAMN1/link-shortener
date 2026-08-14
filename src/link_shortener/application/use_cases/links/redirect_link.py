@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import time
-from typing import Callable
 
 
 from link_shortener.application.context import RequestContext
@@ -9,7 +8,7 @@ from link_shortener.application.ports.cache.redirect_cache import RedirectCache
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import LinkNotFoundError, LinkExpiredError
 
@@ -29,7 +28,7 @@ class RedirectLinkUseCase(BaseUseCase):
     click counts and update audit logs asynchronously.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     link_cache: LinkCache
     redirect_cache: RedirectCache
     logger: Logger

@@ -1,3 +1,4 @@
+from typing import Optional
 class DomainError(Exception):
     """
     Base exception for all domain layer errors.
@@ -30,7 +31,7 @@ class ValidationError(DomainError):
         field: Optional name of the field that caused the validation error.
     """
 
-    def __init__(self, message: str, field: str = None):
+    def __init__(self, message: str, field: Optional[str] = None):
         super().__init__(message, code="VALIDATION_ERROR")
         self.field = field
 
@@ -45,7 +46,7 @@ class LinkNotFoundError(DomainError):
         short_code: The short code that was searched for, if known.
     """
 
-    def __init__(self, short_code: str = None):
+    def __init__(self, short_code: Optional[str] = None):
         self.short_code = short_code
         message = "Link not found"
         if short_code:
@@ -123,7 +124,7 @@ class GuestLinkLimitExceededError(DomainError):
     def __init__(
         self,
         message: str = "Guest link limit exceeded",
-        retry_after_seconds: int = None,
+        retry_after_seconds: Optional[int] = None,
     ):
         super().__init__(message, "GUEST_LINK_LIMIT")
         self.retry_after_seconds = retry_after_seconds

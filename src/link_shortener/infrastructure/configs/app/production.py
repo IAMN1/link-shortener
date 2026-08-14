@@ -27,8 +27,11 @@ class ProductionConfig(BaseConfig):
     # --------------------------------------------------------------------------
     # Security: secrets are mandatory
     # --------------------------------------------------------------------------
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def SECRET_KEY(self) -> str:
+    def SECRET_KEY(self) -> str:  # type: ignore[override]
         """Secret key must be set in environment."""
 
         # read_env() rather than os.environ.get(): a blank value has to count
@@ -40,8 +43,11 @@ class ProductionConfig(BaseConfig):
 
         return key
 
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def SHORT_CODE_SECRET_PEPPER(self) -> str:
+    def SHORT_CODE_SECRET_PEPPER(self) -> str:  # type: ignore[override]
         """Pepper must be set in environment."""
 
         pepper = read_env_for(self, "SHORT_CODE_PEPPER")
@@ -56,12 +62,13 @@ class ProductionConfig(BaseConfig):
     # --------------------------------------------------------------------------
     # Application settings
     # --------------------------------------------------------------------------
-    # В контейнере иначе приложение не видно снаружи, сколько портов ни
-    # опубликуй. Метка ниже без номера теста намеренно: с номером bandit
-    # подавляет находку и одновременно жалуется, что на этой строке ничего
-    # не сработало, -- находку он ищет по строке вызова, а сообщает по
-    # строке литерала. Слово-метку в обычном тексте писать тоже нельзя:
-    # bandit читает всё, что стоит за ним, как список номеров тестов.
+    # Inside a container anything narrower is invisible from outside,
+    # however many ports are published. The mark below carries no test id on
+    # purpose: given one, bandit suppresses the finding and complains in the
+    # same breath that nothing fired on that line -- it looks for the finding
+    # by the call's line and reports it by the literal's. The mark word
+    # cannot appear in prose here either, because bandit reads whatever
+    # follows it as a list of test ids.
     HOST: str = env_str("HOST", "0.0.0.0")  # nosec
     PORT: int = env_int("PORT", 8000)
 
@@ -93,8 +100,11 @@ class ProductionConfig(BaseConfig):
     # --------------------------------------------------------------------------
     REDIS_ENABLED: bool = env_bool("REDIS_ENABLED", True)
 
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def REDIS_URL(self) -> str:
+    def REDIS_URL(self) -> str:  # type: ignore[override]
         """
         Redis URL, demanded only when Redis is actually switched on.
 

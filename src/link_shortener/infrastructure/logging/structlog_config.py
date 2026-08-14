@@ -1,4 +1,8 @@
+from typing import List
+
 import structlog
+from structlog.typing import Processor
+
 from link_shortener.infrastructure.logging.logging_settings import LoggingSettings
 
 
@@ -24,7 +28,7 @@ def configure_structlog(settings: LoggingSettings):
         settings: ``LoggingSettings`` instance.
     """
 
-    processors = [
+    processors: List[Processor] = [
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt=settings.log_date_format, utc=True),

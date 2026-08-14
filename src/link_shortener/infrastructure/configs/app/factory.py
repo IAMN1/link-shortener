@@ -181,7 +181,7 @@ class ConfigFactory:
         if is_unset(env):
             env = cls._read_env_file(".env").get("FLASK_ENV")
 
-        if is_unset(env):
+        if env is None or is_unset(env):
             return None
 
         return env.strip().lower()
@@ -207,7 +207,7 @@ class ConfigFactory:
         return cls.DEFAULT_ENV if named is None else named
 
     @classmethod
-    def create_config_unvalidated(cls, env: str = None) -> BaseConfig:
+    def create_config_unvalidated(cls, env: Optional[str] = None) -> BaseConfig:
         """
         Assemble the configuration object without validating it.
 
@@ -244,7 +244,7 @@ class ConfigFactory:
         return config_class()
 
     @classmethod
-    def create_config(cls, env: str = None) -> BaseConfig:
+    def create_config(cls, env: Optional[str] = None) -> BaseConfig:
         """
         Create a configuration object for the given environment.
 
@@ -281,6 +281,6 @@ class ConfigFactory:
         return config
 
 
-def get_config(env: str = None) -> BaseConfig:
+def get_config(env: Optional[str] = None) -> BaseConfig:
     """Convenience function to get configuration."""
     return ConfigFactory.create_config(env)

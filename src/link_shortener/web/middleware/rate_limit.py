@@ -75,7 +75,7 @@ def check_rate_limit_targets(app: Flask) -> None:
             f"got {type(rate_limits).__name__}"
         )
 
-    routes = {}
+    routes: dict = {}
     for rule in app.url_map.iter_rules():
         routes.setdefault(rule.endpoint, []).append(rule.rule)
 

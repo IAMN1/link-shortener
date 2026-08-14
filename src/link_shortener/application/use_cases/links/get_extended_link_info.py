@@ -1,11 +1,10 @@
 from dataclasses import dataclass
 import time
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.link import ExtendedLinkInfoResponse
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import LinkExpiredError, LinkNotFoundError
 
@@ -20,7 +19,7 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
     derived metrics.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     base_url: str
     logger: Logger
     popular_threshold: int

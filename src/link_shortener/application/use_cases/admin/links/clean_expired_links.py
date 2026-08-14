@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.cache.link_cache import LinkCache
@@ -8,7 +7,7 @@ from link_shortener.application.ports.cache.link_service_stats_cache import (
     StatsCache,
 )
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
 
@@ -33,7 +32,7 @@ class CleanExpiredLinksUseCase(BaseUseCase):
         logger: Application logger.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     cache: LinkCache
     stats_cache: StatsCache
     logger: Logger

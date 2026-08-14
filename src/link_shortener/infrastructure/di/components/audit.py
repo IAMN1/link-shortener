@@ -1,3 +1,4 @@
+from typing import Optional
 from link_shortener.application import AuditLogger
 from link_shortener.infrastructure.logging.managers.audit_manager import AuditManager
 
@@ -21,7 +22,10 @@ class AuditComponent:
         self.audit_enabled = audit_enabled
         self.audit_type = audit_type
         self.failover_check_interval = failover_check_interval
-        self._manager = None
+        # Annotated Optional rather than inferred from this assignment: the
+        # attribute holds None until the first call builds it, and a checker
+        # told otherwise reports both the assignment and the return as errors.
+        self._manager: Optional[AuditManager] = None
 
     def get_audit_logger(self) -> AuditLogger:
         """

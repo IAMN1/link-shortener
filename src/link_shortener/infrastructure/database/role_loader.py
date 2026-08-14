@@ -6,7 +6,7 @@ Supports idempotent creation; can optionally update existing records.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Optional, Any, Dict, List
 import uuid
 import yaml
 from sqlalchemy.orm import Session
@@ -131,7 +131,7 @@ class RoleLoader:
         self,
         perm_def: Dict[str, Any],
         update_existing: bool = False,
-        summary: LoadSummary = None,
+        summary: Optional[LoadSummary] = None,
     ) -> PermissionModel:
         """
         Insert a new permission or, if allowed, update an existing one.
@@ -162,7 +162,7 @@ class RoleLoader:
         self,
         role_def: Dict[str, Any],
         update_existing: bool = True,
-        summary: LoadSummary = None,
+        summary: Optional[LoadSummary] = None,
     ) -> RoleModel:
         """
         Insert a role, or update one when updating is allowed.
@@ -192,7 +192,10 @@ class RoleLoader:
 
         role = self.session.query(RoleModel).filter_by(name=role_name).first()
         existed = role is not None
-        if existed:
+        # Narrowed on the row itself rather than on the flag beside it: the
+        # flag says the same thing, but only the row tells a reader -- and a
+        # checker -- that the branch below cannot see None.
+        if role is not None:
             if update_existing:
                 # Update scalar fields
                 for key, value in role_def.items():

@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import List
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import Link
 
@@ -14,7 +14,7 @@ class GetRecentLinksUseCase(BaseUseCase):
     Use case: retrieve most recently created links.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     logger: Logger
 
     def execute(self, limit: int, context: RequestContext) -> List[Link]:

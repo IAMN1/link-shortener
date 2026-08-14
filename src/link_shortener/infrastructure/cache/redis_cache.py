@@ -1,7 +1,7 @@
 """
 Redis-backed cache with automatic reconnection and graceful degradation.
 
-Implements LinkCache, RedirectCache, and StatsCache. Falls back silently
+Implements the four roles of ``ServiceCache``. Falls back silently
 when Redis is unavailable.
 """
 
@@ -12,8 +12,7 @@ from threading import Lock
 from typing import Any, Dict, List, Optional
 
 from link_shortener.application import (
-    CachedRedirect, CacheHealth, LinkCache, RedirectCache, StatsCache, Logger,
-    CacheKeyBuilder
+    CachedRedirect, ServiceCache, Logger, CacheKeyBuilder
 )
 from link_shortener.domain import DedupScope, Link, OriginalUrl, ShortCode, UrlHash
 from link_shortener.domain.value_objects.owner_id import OwnerID
@@ -22,9 +21,9 @@ from link_shortener.infrastructure.cache.signing import seal, unseal
 import redis
 
 
-class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
+class RedisLinkCache(ServiceCache):
     """
-    Redis implementation of all three cache interfaces.
+    Redis implementation of the four cache roles named by ``ServiceCache``.
 
     Stores link data as JSON and uses pipelines for batch operations.
     Implements a reconnection strategy to tolerate transient Redis failures.
@@ -63,7 +62,10 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
 
         # Internal state for failover
         self._reconnect_lock = Lock()
-        self._client = None
+        # Annotated rather than inferred from this assignment: the attribute
+        # holds None until ``_connect`` builds a client, and again whenever
+        # a failure drops it.
+        self._client: Optional[redis.Redis] = None
         self._available = False
         self._last_attempt = 0.0
 

@@ -44,6 +44,14 @@ def drop_db(db_manager: DatabaseManager, use_alembic: bool, confirm: bool = Fals
     if not confirm:
         print("Use confirm=True to drop all tables.")
         return
+
+    # The same check ``create_tables`` makes on the other side of this pair:
+    # the engine is built by ``connect()``, and dropping through ``None``
+    # otherwise fails with a message naming neither the manager nor the
+    # missing call.
+    if db_manager.engine is None:
+        raise RuntimeError("Database not connected. Call connect() first.")
+
     Base.metadata.drop_all(bind=db_manager.engine)
     print("All tables dropped successfully!")
 

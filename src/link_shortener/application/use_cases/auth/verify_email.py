@@ -1,9 +1,8 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import ValidationError
 from link_shortener.domain.value_objects.verification_token import token_digest
@@ -24,7 +23,7 @@ class VerifyEmailUseCase(BaseUseCase):
         uow_factory: Factory for Unit of Work instances.
         logger: Application logger.
     """
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     logger: Logger
 
     def execute(self, token: str, context: RequestContext) -> None:

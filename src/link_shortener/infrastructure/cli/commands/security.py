@@ -1,7 +1,6 @@
 import secrets
 import os
-from typing import Callable
-from link_shortener.application import UnitOfWork
+from link_shortener.application import UnitOfWorkFactory
 from link_shortener.domain import Email
 
 
@@ -52,7 +51,7 @@ def check_secrets() -> dict[str, bool]:
     }
 
 
-def list_users(uow_factory: Callable[[], UnitOfWork]) -> list[dict]:
+def list_users(uow_factory: UnitOfWorkFactory) -> list[dict]:
     """List all users with their roles."""
     with uow_factory() as uow:
         users = uow.users.list_all()
@@ -67,7 +66,7 @@ def list_users(uow_factory: Callable[[], UnitOfWork]) -> list[dict]:
         ]
 
 
-def list_roles(uow_factory: Callable[[], UnitOfWork]) -> list[dict]:
+def list_roles(uow_factory: UnitOfWorkFactory) -> list[dict]:
     """List all roles with their permissions."""
     with uow_factory() as uow:
         roles = uow.roles.list_all()
@@ -83,7 +82,7 @@ def list_roles(uow_factory: Callable[[], UnitOfWork]) -> list[dict]:
 
 
 def reset_password(
-    uow_factory: Callable[[], UnitOfWork],
+    uow_factory: UnitOfWorkFactory,
     user_service,  # UserManagementService
     email: str,
     new_password: str

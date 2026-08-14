@@ -4,6 +4,8 @@ Authentication controller -- /api/v1/auth/* endpoints.
 Handles login, registration, token refresh, and logout.
 """
 
+from typing import Optional
+
 from flask import Blueprint, current_app, g, jsonify, make_response, request
 
 from link_shortener.application import (
@@ -64,7 +66,7 @@ def _read_credentials():
     return email or None, password or None
 
 
-def _read_refresh_token() -> str:
+def _read_refresh_token() -> Optional[str]:
     """
     Take the refresh token from wherever this client keeps it.
 

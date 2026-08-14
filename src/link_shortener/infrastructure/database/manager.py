@@ -6,8 +6,9 @@ for manual sessions.
 """
 
 from contextlib import contextmanager
-from typing import Generator, Iterable
+from typing import Optional, Any, Dict, Generator, Iterable
 
+from sqlalchemy.engine import Engine
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
@@ -54,7 +55,7 @@ def postgresql_connect_args(
         Mapping for ``create_engine(connect_args=...)``, empty when
         neither timeout is configured.
     """
-    args = {}
+    args: Dict[str, Any] = {}
 
     if connect_timeout:
         args["connect_timeout"] = connect_timeout
@@ -114,9 +115,11 @@ class DatabaseManager:
         self.connect_timeout = connect_timeout
         self.statement_timeout = statement_timeout
         self.pool_params = pool_params
-        self.engine = None
-        self._session_factory = None
-        self._probe_engine = None
+        # Annotated Optional rather than inferred from these assignments:
+        # all three hold None until connect() runs.
+        self.engine: Optional[Engine] = None
+        self._session_factory: Optional[sessionmaker] = None
+        self._probe_engine: Optional[Engine] = None
 
     def connect(self) -> "DatabaseManager":
         """

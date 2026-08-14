@@ -27,7 +27,9 @@ service whose whole job is to be a small redirect. The document is served at
 Postman, a client generator -- and ``/api/docs`` renders it as a page.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Type
+
+from pydantic import BaseModel
 
 from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.error import ErrorResponse
@@ -47,7 +49,7 @@ from link_shortener.web.schemas.stats import (
 
 OPENAPI_VERSION = "3.1.0"
 
-MODELS = {
+MODELS: Dict[str, Type[BaseModel]] = {
     "CreateShortLinkRequest": CreateShortLinkRequest,
     "BatchCreateLinkRequest": BatchCreateLinkRequest,
     "ShortLinkResponse": ShortLinkResponse,
