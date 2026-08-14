@@ -172,12 +172,10 @@ class RoleLoader:
 
         An existing role is left alone in full when ``update_existing`` is
         False -- which is how every caller but the explicit
-        ``--update-existing`` CLI flag calls it, and what four places in the
-        documentation promise. The permission associations used to be
-        reassigned regardless, so a permission granted to a system role
-        through the admin API was silently taken back at the next seeding:
-        at every application start in ``development``, where
-        ``AUTO_SEED_ROLES`` is on.
+        ``--update-existing`` CLI flag calls it. Reassigning the permission
+        associations regardless would take back a permission granted to a
+        system role through the admin API at the next seeding, which in
+        ``development`` is every application start.
 
         Args:
             role_def: Dictionary describing the role (must contain a

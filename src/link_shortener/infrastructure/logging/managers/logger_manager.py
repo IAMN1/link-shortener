@@ -60,14 +60,11 @@ class LoggerManager:
         Args:
             logger_type: The configured logger type.
         """
-        # Case and surrounding blanks are taken off first. The comparison
-        # below is against exact strings, so ``NULL``, ``Null`` and
-        # ``"null "`` used to miss the ``null`` branch and fall through to
-        # the default -- which is the full chain. An operator who wrote
-        # ``AUDIT_TYPE=NULL`` to turn auditing off got a complete audit
-        # trail instead, with original_url, remote_addr and user_id in it.
-        # Anything still unrecognised keeps falling through to the
-        # default, which is what it always did.
+        # Case and surrounding blanks come off first: the comparisons below
+        # are against exact strings, so ``NULL``, ``Null`` and ``"null "``
+        # would miss the ``null`` branch and fall through to the default --
+        # the full chain, which is the opposite of what was asked for.
+        # Anything still unrecognised falls through to the default.
         logger_type = (logger_type or "").strip().lower()
 
         # Determine priority order

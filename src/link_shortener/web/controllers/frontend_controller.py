@@ -10,7 +10,7 @@ class FrontendController:
     def __init__(self):
         # No static folder of its own. Flask registers `static` on every
         # app over `/static/<path:filename>`, and this blueprint asked for
-        # the same rule over the same directory -- measured, both resolve
+        # the same rule over the same directory: both resolve
         # to web/static. Two rules on one path means the second is never
         # matched: `frontend.static` built URLs that Flask's own endpoint
         # then served, which is a dead route wearing a live one's clothes.
@@ -40,10 +40,8 @@ class FrontendController:
         """
         Render the API description as a page.
 
-        This route used to render the landing page: it existed, answered
-        200, and told nobody anything. What it shows now is generated from
-        the same document ``/api/openapi.json`` serves, so the page and the
-        machine-readable version cannot drift apart.
+        Generated from the same document ``/api/openapi.json`` serves, so
+        the page and the machine-readable version cannot drift apart.
         """
         return render_template(
             'public/api_docs.html',

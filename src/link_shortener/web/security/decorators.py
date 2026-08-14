@@ -18,7 +18,7 @@ def require_permission(permission: str):
 
     A caller who lacks the permission is refused with a ``DomainError``:
     ``UNAUTHENTICATED`` (401) if nobody is logged in, ``FORBIDDEN`` (403)
-    otherwise. Both used to be 403, which left a client unable to tell
+    otherwise -- one answer for both would leave a client unable to tell
     "log in" from "logging in will not help".
 
     Anonymous callers are not refused outright -- they act under the

@@ -97,12 +97,11 @@ class LinkCache(ABC):
 
         The entry filed under the URL hash cannot be named this way, and is
         left behind. That is the price of the only case this exists for: a
-        row deleted while an entry describing it survived, where there is no
-        entity left to name anything with. Without it, an entry that
-        outlived its row could not be cleared through the product at all --
-        every API surface reported the link deleted while the redirect went
-        on serving it, and a second DELETE returned 404 without touching the
-        cache.
+        row deleted while an entry describing it survived, where there is
+        no entity left to name anything with. Without it, such an entry
+        could not be cleared through the product at all -- every API
+        surface would report the link deleted while the redirect went on
+        serving it.
 
         Args:
             short_code: Code of the link that is no longer stored.
@@ -124,12 +123,10 @@ class LinkCache(ABC):
 
         The whole entity is required, not just its code, because the entry
         filed under the URL hash is keyed by hash *and* scope, and neither
-        can be derived from a code. Looking the hash up by reading the
-        code entry first -- which is what this used to do -- fails exactly
-        when it matters: under ``allkeys-lru`` the two keys are evicted
-        independently, so the code entry can be gone while the hash entry
-        survives, and the survivor then keeps offering a deleted link as an
-        existing one.
+        can be derived from a code. Reading the code entry to find the hash
+        fails exactly when it matters: under ``allkeys-lru`` the two keys
+        are evicted independently, so the code entry can be gone while the
+        hash entry survives and keeps offering a deleted link.
 
         Args:
             link (Link): The link whose entries should go.

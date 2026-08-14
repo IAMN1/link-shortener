@@ -68,9 +68,8 @@ class Logger(ABC):
                 ``logging.Logger.exception`` and ``structlog.exception``
                 both do. An exception instance is rendered instead.
                 ``None`` means no traceback at all: the renderer skips a
-                falsy value, so the line comes out without one. The default
-                used to be ``None``, which made a bare ``log.exception(...)``
-                print a line that looked like a traceback and had none.
+                falsy value, so the line comes out without one -- which is
+                why it is not the default.
             **kwargs: Additional structured data.
         """
         ...

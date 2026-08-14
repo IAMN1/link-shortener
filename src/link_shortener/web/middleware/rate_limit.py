@@ -35,47 +35,29 @@ def check_rate_limit_targets(app: Flask) -> None:
     An entry only applies if the throttle gets as far as looking it up,
     and three things stop it permanently: no route answers to that name,
     the name is exempt, or every route it answers on sits under the static
-    prefix, which is refused a line earlier. In all three the setting
-    reads like a live limit and throttles nothing -- which is how
-    ``RATE_LIMITS["health"] = (10, 5)`` lived long enough to be measured:
-    probe after probe and not one 429.
+    prefix. In all three the setting reads like a live limit and throttles
+    nothing.
 
-    A fourth way is deliberately not refused here.
-    ``RATE_LIMIT_AUTH_DISABLED`` switches every ``auth.*`` limit off at
-    run time, and it is meant to: it is how a development run stops
-    locking itself out. It is a stated choice rather than a contradiction
-    nobody noticed, and refusing it would refuse the integration and e2e
-    configurations that set it.
+    ``RATE_LIMIT_AUTH_DISABLED`` is deliberately not refused: switching
+    every ``auth.*`` limit off at run time is how a development run stops
+    locking itself out, and the integration and e2e configurations set it.
 
-    Values are checked too, and a bad one fails in three different ways.
-    A value the limiter cannot use -- ``10``, ``(5,)``, ``("5", 60)`` --
-    raises inside ``before_request`` and answers 500 to every request that
-    endpoint gets. A zero limit refuses every request forever. A negative
-    period puts the window's start in the future, so every recorded hit
-    falls outside it and nothing is throttled at all. The first two are
-    loud; the third is this defect again, written differently.
+    Values are checked too. A value the limiter cannot use -- ``10``,
+    ``(5,)``, ``("5", 60)`` -- raises inside ``before_request`` and answers
+    500 for that endpoint; a zero limit refuses every request forever; a
+    negative period puts the window's start in the future, so nothing is
+    throttled at all. ``("5", 60)`` is worth naming because it fails
+    against the in-memory limiter and not against Redis, whose script
+    coerces the number.
 
-    ``("5", 60)`` is worth naming: it is a defect against the in-memory
-    limiter and not against Redis, whose script coerces the number. A
-    setting that works in production and answers 500 in development is
-    harder to find than one that fails everywhere.
-
-    Held against the URL map rather than against the exempt list alone, so
-    a name that is merely misspelled is caught by the same check. Call it
-    once every route is registered: the middleware is installed before the
-    first blueprint, so at its own construction there is nothing yet to
-    hold the names against.
+    Held against the URL map, so a misspelled name is caught by the same
+    check. Call it once every route is registered: the middleware is
+    installed before the first blueprint.
 
     ``DEFAULT_RATE_LIMIT`` and ``DEFAULT_RATE_LIMIT_PERIOD`` are not
     checked here even though they bound every route this table does not
-    name. They are ordinary settings, and ``BaseConfig.validate`` already
-    refuses a non-positive one -- repeating it here would be a second
-    opinion in the wrong layer, free to drift from the first.
-
-    That leaves one gap, and it is not this function's to close:
-    ``create_app`` never calls ``validate`` on a configuration handed to
-    it directly, so an object built in code rather than through
-    ``ConfigFactory`` is never checked at all.
+    name -- ``BaseConfig.validate`` already refuses a non-positive one,
+    and a second opinion in another layer is free to drift from the first.
 
     Args:
         app: Flask application with every route already registered.

@@ -133,15 +133,20 @@ class LinkRepository(ABC):
         ...
 
     @abstractmethod
-    def increment_clicks(self, short_code: ShortCode) -> Link:
+    def increment_clicks(self, short_code: ShortCode) -> None:
         """
         Increment click count for a given short code.
+
+        Returns nothing on purpose. A counter is the one part of a link
+        that another request may move between the write and the read, so
+        an entity handed back here would be a snapshot presented as the
+        current state. A caller that needs the row asks for it.
 
         Args:
             short_code: Short code of the link to increment.
 
-        Returns:
-            The updated Link entity.
+        Raises:
+            LinkNotFoundError: If no link with the given code exists.
         """
         ...
 
@@ -239,7 +244,7 @@ class LinkRepository(ABC):
 
         Counting links and then inserting one is two statements, and nothing
         ties them together: concurrent requests from the same caller each
-        read the same allowance and each spend it in full. Measured at a
+        read the same allowance and each spend it in full. At a
         full quota per concurrent request -- five simultaneous batches
         produced fifty links against a limit of ten, and the links stay.
 

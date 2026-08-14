@@ -161,11 +161,10 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         This helper ensures the application does not crash if Redis is down.
 
         The live client is handed to the operation rather than captured by
-        the caller. Passing a bound method such as ``self._client.get``
-        instead would dereference the client while building the arguments --
-        that is, before this method gets a chance to run -- and a client set
-        to None by an earlier failure would raise ``AttributeError`` right
-        past all of this error handling.
+        the caller: a bound method such as ``self._client.get`` would
+        dereference the client while building the arguments, before this
+        method runs, so a client set to None by an earlier failure would
+        raise past all of this error handling.
 
         Args:
             operation: Callable taking the Redis client and returning a value.
@@ -598,10 +597,10 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
     def delete(self, link: Link) -> bool:
         """Remove every key written for a link.
 
-        All three keys are named from the entity. Reading the code entry to
-        discover the hash key -- the previous approach -- left an orphan
-        whenever that entry had been evicted first, and the orphan went on
-        answering deduplication lookups with a code that no longer resolves.
+        All three keys are named from the entity rather than discovered by
+        reading the code entry, which leaves an orphan whenever that entry
+        was evicted first -- and the orphan goes on answering deduplication
+        lookups with a code that no longer resolves.
 
         Returns:
             ``True`` if Redis carried the deletion out.
@@ -795,10 +794,9 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
             self.logger.error("Corrupted stats cache entry", key=key)
             return None
 
-        # Shape is checked as well as signature. A JSON document that parses
-        # but is not an object used to reach the caller, which read missing
-        # fields as zeroes and published them: "0 links, 0 clicks" served
-        # with a 200 over a database holding six.
+        # Shape is checked as well as signature: a JSON document that parses
+        # but is not an object would reach the caller, which reads missing
+        # fields as zeroes and publishes them.
         if not isinstance(payload, dict):
             self.logger.error("Stats cache entry is not an object", key=key)
             return None

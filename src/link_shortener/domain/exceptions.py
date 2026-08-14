@@ -69,11 +69,10 @@ class LinkConflictError(DomainError):
     Raised when a link could not be stored because another one got there first.
 
     Uniqueness of a short code is decided by the database, not by a lookup
-    beforehand: two requests that both check and then both insert are the
-    textbook check-then-insert race, and the loser used to surface as a 500.
-    Storage reports the conflict, and the caller retries -- by then the
-    winner's row is visible, so the retry either returns it or picks a
-    different code.
+    beforehand: two requests that both check and then both insert are a
+    check-then-insert race. Storage reports the conflict and the caller
+    retries; by then the winner's row is visible, so the retry either
+    returns it or picks a different code.
 
     Attributes:
         message: Error description.

@@ -176,30 +176,16 @@ class OriginalUrl:
         """
         Rebuild a URL that the service already accepted and stored.
 
-        Admission rules -- the length limit, the scheme list, the ban on
-        control characters, on credentials and on internal destinations --
-        decide what may *enter*. Each of them is either a setting an operator
-        can widen and narrow, or a rule newer than some stored rows.
-        Re-deciding any of them on the way out makes those rows unreadable,
-        and one unreadable row is enough to fail an entire maintenance sweep
-        or to answer 400 for a link that redirects perfectly well. This is
-        the same defect class as the email value object rejecting values it
-        had itself written -- and it is also what lets the sweep delete rows
-        admitted under rules since tightened.
-
-        The format rules are skipped too, and for the same reason rather
-        than a weaker one. They are no less a decision about what may enter,
-        and they have moved as well: the label pattern, the length ceiling,
-        the ban on control characters in the path and the port range are all
-        newer than rows written under earlier ones. A row they refuse is a
-        row nothing in the product can reach -- and ``clean_expired_links``
-        converts a whole chunk before deleting any of it, so one such row
-        stops every sweep from that point on, including the sweep that would
-        have removed it. ``GET /links/mine``, ``GET /stats`` and
-        ``flask link list`` fail the same way, on the whole answer.
-        Measured: one row with an underscore in a host label left five
-        healthy expired links undeleted, and no command in the service could
-        take any of them out.
+        Admission rules -- the length limit, the scheme list, the bans on
+        control characters, credentials and internal destinations, and the
+        format rules -- decide what may *enter*. Each is either a setting an
+        operator can widen and narrow, or a rule newer than some stored
+        rows. Re-deciding any of them on the way out makes those rows
+        unreadable, and one unreadable row is enough to fail an entire
+        maintenance sweep or to answer 400 for a link that redirects
+        perfectly well: ``clean_expired_links`` converts a whole chunk
+        before deleting any of it, so such a row stops every sweep from
+        that point on -- including the sweep that would have removed it.
 
         What still runs is parsing, because a string that cannot be split
         into components is not a URL in any sense and nothing downstream --
@@ -229,27 +215,14 @@ class OriginalUrl:
         Reject control characters anywhere in the submitted URL.
 
         Checked against the **raw string**, before parsing, and not against
-        any parsed component. ``urlsplit`` deletes ASCII tab, CR and LF from
+        any parsed component: ``urlsplit`` deletes ASCII tab, CR and LF from
         the input at any position -- WHATWG behaviour that Python adopted --
-        so a check on a parsed component can never see them, and the
-        library's own documentation says as much: it does not validate, and
-        callers are expected to verify the input themselves.
+        so a check on a parsed component can never see them.
 
-        What that let through:
-
-        - ``https://host/page#\\n`` was accepted, stored raw, and then
-          crashed the redirect for good, because an HTTP ``Location`` header
-          cannot contain a newline. Worse, ``normalize()`` drops the
-          fragment, so the poisoned URL hashed the same as the clean one and
-          took its place in deduplication: the clean URL could no longer be
-          shortened into a working link at all.
-        - ``https://host/x?a=\\x00`` reached PostgreSQL, which refuses NUL in
-          text, and the resulting error failed the whole request -- an
-          entire batch, when it arrived in one.
-
-        Rejecting rather than stripping: silently storing a different URL
-        than the one submitted is its own defect, and a URL that cannot be
-        put in a header is not a destination.
+        A newline reaches the ``Location`` header, which cannot carry one,
+        and a NUL reaches PostgreSQL, which refuses it in text. Rejecting
+        rather than stripping: silently storing a different URL than the
+        one submitted is its own defect.
 
         Raises:
             ValidationError: If any C0 control character or DEL is present.
@@ -455,18 +428,10 @@ class OriginalUrl:
         the spelling submitted, because the two differ:
         ``http://0177.0.0.1/`` and ``http://127.1/`` are both the loopback
         to ``inet_aton`` and neither is an address to
-        ``ipaddress.ip_address``.
-
-        For the same reason the host is put through UTS-46 *before* it is
-        read as an address, and not only before it is read as a name.
-        ``http://１２７．０．０．１/`` -- fullwidth digits, fullwidth stops --
-        is the loopback to every browser, which maps it exactly as this
-        does. Classifying the raw spelling meant the digits were not digits
-        and the stops were not separators, so the host was taken for a name,
-        matched no reserved suffix and was admitted; ``normalize()`` mapped
-        it anyway, so the service hashed the link under ``127.0.0.1`` while
-        letting it in. Ideographic and halfwidth stops (U+3002, U+FF61) do
-        the same job.
+        ``ipaddress.ip_address``. For the same reason the host is put
+        through UTS-46 before it is read as an address: fullwidth digits
+        and stops (``http://１２７．０．０．１/``) are the loopback to every
+        browser, which maps them exactly as this does.
 
         What this does not cover, and knowingly: a name that resolves to an
         internal address (``127.0.0.1.nip.io``, or any record its owner
@@ -694,14 +659,11 @@ class OriginalUrl:
         scheme = parsed.scheme.lower()
         host = self._to_ascii_host(parsed.hostname or "")
         if ":" in host or "[" in parsed.netloc:
-            # An IPv6 literal keeps its brackets -- and so does anything
-            # else that arrived inside them. ``parsed.hostname`` strips
-            # them, so putting them back only for a host with a colon made
-            # ``http://[v1.example.com]/`` normalize onto
-            # ``http://v1.example.com/``: two different strings, one hash,
-            # one short code. Rows written before brackets were checked on
-            # the way in are still read back, and they no longer collide
-            # with the name they wrap.
+            # An IPv6 literal keeps its brackets, and so does anything else
+            # that arrived inside them. ``parsed.hostname`` strips them, so
+            # restoring them only for a host with a colon would normalize
+            # ``http://[v1.example.com]/`` onto ``http://v1.example.com/``:
+            # two different strings, one hash, one short code.
             host = f"[{host}]"
 
         netloc = host

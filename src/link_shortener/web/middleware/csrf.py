@@ -25,15 +25,14 @@ authenticating with a **valid** ``Authorization: Bearer <token>`` has already
 proven it can set request headers and is not exposed to CSRF; those requests
 pass through untouched so programmatic API clients keep working.
 
-Three rules keep that exemption honest. Every one of them was a hole found
-in an earlier revision of this file, and all three are the same mistake:
-deciding from something that merely resembles the answer instead of asking
-the layer that knows it.
+Three rules keep that exemption honest, and all three are the same rule:
+decide from the layer that knows, not from something that resembles the
+answer.
 
 - The exemption is granted on the credential the authentication layer
   actually accepted (``g.auth_token_source``), never on the shape of the
   incoming header -- an empty or garbage ``Bearer`` token authenticates
-  nothing, yet used to buy an exemption for a request resting on cookies.
+  nothing.
 - It never applies to endpoints that read an auth cookie themselves, listed
   in ``COOKIE_AUTHORITY_ENDPOINTS``, because their authority comes from the
   cookie regardless of any header.

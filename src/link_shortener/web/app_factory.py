@@ -41,13 +41,11 @@ def _seed_base_roles_if_ready(container) -> None:
     """
     Seed the base roles, unless the schema is not in place yet.
 
-    Startup seeding runs in every process, CLI invocations included. On a
-    database without tables the attempt used to be reported as a failed
-    seed, so every single command against a fresh database greeted the
-    operator with a warning carrying a driver error -- for a state that is
-    expected and that the next command fixes. An empty schema is now stated
-    plainly and told what to do about it; a real failure (unreachable
-    database, refused permission, malformed YAML) still warns.
+    Startup seeding runs in every process, CLI invocations included, so a
+    database without tables is an expected state that the next command
+    fixes rather than a failure: it is stated plainly and told what to do
+    about it. A real failure -- unreachable database, refused permission,
+    malformed YAML -- still warns.
 
     Must be called inside an application context.
 
@@ -88,18 +86,18 @@ def create_app(config=None) -> Flask:
     if config is None:
         # Resolve the profile through the factory so that the same rules apply
         # everywhere: FLASK_ENV is case-insensitive and may come from `.env`.
-        # Reading os.environ directly here used to make `FLASK_ENV=Production`
-        # fail with "Unknown environment" while get_config() accepted it.
+        # Reading os.environ directly here makes `FLASK_ENV=Production` fail
+        # with "Unknown environment" while get_config() accepts it.
         env = ConfigFactory.resolve_env()
         config = get_config(env)
     else:
         env = getattr(config, "ENV", 'custom')
         # Validated here as well, and not only inside `ConfigFactory`.
         # A configuration built as an object -- which is every test
-        # configuration, and anything that constructs one in code -- used
-        # to skip the checks entirely: an app given
-        # `DEFAULT_RATE_LIMIT_PERIOD=-60` this way came up and throttled
-        # nothing at all, measured at 150 requests out of 150 let through.
+        # configuration, and anything that constructs one in code -- would
+        # otherwise skip the checks entirely, so an app given
+        # `DEFAULT_RATE_LIMIT_PERIOD=-60` this way would come up and
+        # throttle nothing.
         config.validate()
 
     # ------------------------------------------------------------------
@@ -180,12 +178,11 @@ def create_app(config=None) -> Flask:
     # Before CSRF, and that is the whole point of where it sits. Flask runs
     # `before_request` hooks in the order they were registered, so with CSRF
     # first every request it refused was a request the limiter never saw. A
-    # caller only had to look cookie-authenticated to be exempt from the
-    # limits: `_is_cookie_authenticated` asks whether an auth cookie is
-    # present, not whether it is valid, so any anonymous client that sent
-    # `access_token=anything` got 403 without ever being counted. Measured
-    # on `POST /api/v1/shorten`: 60 such requests, 60 refusals, not one 429,
-    # while the same client without the cookie was throttled at the 31st.
+    # caller would only have to look cookie-authenticated to be exempt
+    # from the limits: `_is_cookie_authenticated` asks whether an auth
+    # cookie is present, not whether it is valid, so any anonymous client
+    # sending `access_token=anything` would be refused without ever being
+    # counted.
     #
     # After authentication, which has to stay: the limiter counts against
     # the account once one is signed in and against the address until then,

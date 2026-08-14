@@ -40,9 +40,8 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
         Raises:
             LinkNotFoundError: If no link carries this code -- including a
                 string the format rules refuse, which is a code no link can
-                carry. ``_code_to_look_up`` decided that, so no
-                ``ValueError`` reaches a caller for a malformed code,
-                whatever the three docstrings here used to promise.
+                carry. ``_code_to_look_up`` decides that, so no
+                ``ValueError`` reaches a caller for a malformed code.
             LinkExpiredError: If the link exists but has expired.
             DomainError: If the user is not authorised.
         """

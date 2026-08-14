@@ -36,7 +36,7 @@ class _RaisesForOwnRecords:
     asked for the write. That is the right default for a library, and the
     wrong one here: the whole point of ``FailoverService`` is to move work
     off an implementation that cannot write, and it decides by catching
-    exceptions from the call. Measured before this existed -- a stream
+    exceptions from the call. Without it -- a stream
     whose ``write`` raises ``OSError(ENOSPC)``, which is a full disk or a
     volume that went away:
     three audit records were lost, ``dropped_calls`` stayed at zero,

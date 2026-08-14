@@ -20,10 +20,10 @@ sends, where a newline is how a header injection is spelled.
 ``\\s``. Python counts the four information separators (FS, GS, RS, US) as
 whitespace and the Rust ``regex`` crate, which validates the web schema,
 does not -- it reads ``\\s`` as ``\\p{White_Space}``, and those four are
-not in it. Measured over U+0000..U+3000: with ``\\s`` alone the schema
-accepted exactly those four where this object refused them, so an address
-carrying one passed validation and was then refused a layer deeper. They
-are the whole disagreement; naming them leaves none.
+not in it. With ``\\s`` alone the schema accepts exactly those four where
+this object refuses them, so an address carrying one passes validation and
+is refused a layer deeper. Over U+0000..U+3000 they are the whole
+disagreement; naming them leaves none.
 
 Spelled with ``$`` for the web schema: the Rust engine does not know
 ``\\Z``, and its ``$`` already means the end of the text.
@@ -144,7 +144,7 @@ class Email:
         such a row in place, outside ``flask maintenance
         normalize-emails`` and outside any log; and where another account
         already held the lower-case form it hit the unique index instead
-        -- measured on confirmation: ``IntegrityError``, answered as 500,
+        -- on confirmation that means ``IntegrityError``, answered as 500,
         with the token left unspent, so the account could never be
         confirmed at all.
 

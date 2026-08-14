@@ -3,7 +3,7 @@
 # ==============================================================================
 # This file defines the permissions and roles for the Role-Based Access Control
 # (RBAC) system. It is used to seed the database with initial data or to update
-# existing records via the `flask db load-roles` CLI command.
+# existing records via the `flask db load-base-roles` CLI command.
 #
 # File location: src/link_shortener/infrastructure/configs/rbac/roles.yaml
 #
@@ -151,19 +151,9 @@ roles:
   - name: "admin"
     description: "System administrator with unrestricted access"
     is_system: true
+    # One permission, and it is the whole role: ``admin:all`` passes every
+    # check on its own, and it is also what identifies an administrator to
+    # the guard that refuses to remove the last one. Listing the other
+    # twelve here would grant nothing and read as though it did.
     permissions:
-      # Admin-specific permissions
-      - "link:delete_any"
-      - "admin:view_users"
-      - "admin:manage_users"
-      - "admin:view_roles"
-      - "admin:manage_roles"
-      - "admin:view_system_health"
       - "admin:all"
-      # Additionally grant all regular user permissions for convenience
-      - "link:create"
-      - "link:view_own"
-      - "link:delete_own"
-      - "stats:view_basic"
-      - "stats:view_full"
-      - "stats:view_any"

@@ -2,12 +2,11 @@
 Signing what the cache stores, so that writing to Redis is not the same
 thing as being believed.
 
-Every value the cache hands back used to be taken at face value. A single
-``SET link_shortener:code:<code> '<valid JSON>'`` turned the redirect into
-an open one -- the entity was rebuilt from the payload verbatim and the
-destination came out of it. The same held for the redirect envelope, the
-deduplication entry, and the service statistics, where a well-formed object
-was published as fact.
+Whoever can write to Redis can otherwise decide where a short link goes:
+a single ``SET link_shortener:code:<code> '<valid JSON>'`` would rebuild
+the entity from the payload verbatim and take the destination out of it.
+The same holds for the redirect envelope, the deduplication entry and the
+service statistics.
 
 Two properties are needed, and both are old problems with settled answers,
 so this is a thin wrapper over ``itsdangerous`` rather than an HMAC written

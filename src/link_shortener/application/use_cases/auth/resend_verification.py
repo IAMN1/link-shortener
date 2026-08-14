@@ -67,7 +67,7 @@ class ResendVerificationUseCase(BaseUseCase):
         log = self._get_logger(self.logger, context)
 
         # Refused before anything is looked up. That is not a defence
-        # against timing: measured over 200 requests, a malformed address
+        # against timing: a malformed address
         # comes back in 0.12 ms against 0.26 ms for an unknown one and
         # 0.82 ms for a registered one, and the three ranges do not
         # overlap. The status differs too, so the shape of the address was

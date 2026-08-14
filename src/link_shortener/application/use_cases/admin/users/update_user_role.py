@@ -60,7 +60,7 @@ class UpdateUserRolesUseCase(BaseUseCase):
                     raise DomainError(f"Role '{name}' not found", code="VALIDATION_ERROR")
                 roles.append(role)
 
-            # ``admin:manage_users`` used to be a shorter spelling of
+            # ``admin:manage_users`` is not a shorter spelling of
             # ``admin:all``: assign yourself the admin role, read the
             # permissions back. Nothing asked whether the caller was
             # entitled to what they were handing out.

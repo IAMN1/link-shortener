@@ -65,7 +65,7 @@ class VerifyEmailUseCase(BaseUseCase):
                 # included, so the token is *not* spent. That is harmless
                 # -- it names an account that is gone, so the next attempt
                 # fails at this same line -- and it is stated because an
-                # earlier version of this comment claimed the opposite.
+                # this is the branch that decides it.
                 log.warning("Email confirmation names a missing account")
                 raise ValidationError(
                     "This confirmation link is not valid", field="token"

@@ -70,7 +70,7 @@ class StructlogAuditLogger(AuditLogger):
         same collision: ``event_dict = self._context.copy()`` and then
         ``event_dict.update(**event_kw)`` (``structlog._base``).
 
-        Applied last, as it used to be, the binding overwrote not only a
+        Applied last, the binding would overwrite not only a
         field the call named but the event's own three: a logger bound with
         ``original_url`` put that value into the record in place of
         ``mask_url(original_url)``, so binding was a way round the masking.

@@ -125,11 +125,10 @@ class ApiController:
         # returned here and nowhere else.
         #
         # Only for a link this request created. Guests deduplicate by
-        # address, so a second caller behind the same NAT asking for the
-        # same URL gets the first one's link back -- and used to get the
-        # first one's token with it, which is exactly the "same address is a
-        # different person" case the token exists to avoid relying on. The
-        # token is issued once, to whoever created the row.
+        # address, so a second caller behind the same NAT asking for the same
+        # URL gets the first one's link back; issuing the token again would
+        # hand it their handle. The token goes once, to whoever created the
+        # row.
         if result_dto.is_new and result_dto.owner_id is None and result_dto.link_id:
             response_data.deletion_token = issue_deletion_token(
                 current_app.config["SECRET_KEY"], result_dto.link_id
@@ -254,10 +253,9 @@ class ApiController:
         a token is still refused, by the use case, with the same 401 as
         before.
 
-        The ownership question is not asked here either. It used to be,
-        through a ``get_link_info`` call whose answer could come from an
-        unconfirmed cache entry, which made "is this yours" only as reliable
-        as whatever was in Redis. The use case decides it from the row it
+        The ownership question is not asked here either: asking it through
+        ``get_link_info`` would make "is this yours" only as reliable as
+        whatever is in the cache. The use case decides it from the row it
         deletes, in the same transaction.
         """
         context = create_request_context()

@@ -24,11 +24,9 @@ class DeleteLinkUseCase(BaseUseCase):
     """
     Deletes a short link.
 
-    Ownership is decided here rather than by the caller, and from the row
-    this use case loads inside its own transaction. The web layer used to
-    read the owner through ``get_link_info`` and compare it itself, which
-    made the answer only as trustworthy as whatever that read returned --
-    at the time, a cache entry nothing had confirmed.
+    Ownership is decided here, from the row this use case loads inside its
+    own transaction, rather than from a value the caller supplies: read any
+    other way, the answer is only as trustworthy as that read.
 
     Attributes:
         uow_factory: Callable that returns a new Unit of Work instance.
@@ -124,10 +122,9 @@ class DeleteLinkUseCase(BaseUseCase):
                 return deleted
         except LinkNotFoundError:
             # A code that cannot exist and a code nobody has taken are the
-            # same answer to the caller. This branch used to catch every
-            # ValueError and ValidationError raised anywhere inside the
-            # block above and report all of them as "no such link",
-            # including failures that had nothing to do with the code.
+            # same answer to the caller. LinkNotFoundError specifically: a
+            # wider except would report any failure in the block above as
+            # "no such link".
             log.warning("Not a usable short code", code=short_code_str)
             return False
 

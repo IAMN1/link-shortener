@@ -8,8 +8,13 @@ from link_shortener.application.ports.mailer import Mailer, MailDeliveryError
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
 
-VERIFY_PATH = "/auth/verify"
-"""Path the confirmation link points at."""
+VERIFY_PATH = "/api/v1/auth/verify"
+"""Path the confirmation link points at.
+
+The route the blueprint actually registers, prefix included: a link built
+on the path alone answers 404, and the person following it is told their
+confirmation is invalid.
+"""
 
 
 @dataclass

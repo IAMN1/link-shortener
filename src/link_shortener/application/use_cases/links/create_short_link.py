@@ -183,18 +183,17 @@ class CreateShortLinkUseCase(BaseUseCase):
                 "Failed to store a short link: every attempt lost a race "
                 "with a concurrent creation"
             )
-        # There is deliberately no ``except ValueError`` here. It used to
-        # wrap this whole body -- the cache read, the repository, the unit
-        # of work -- and answer 400 with ``f"Invalid URL {e}"``. Two things
-        # went wrong at once: a failure of the service was reported as the
-        # caller's mistake and so stayed out of error monitoring, and the
-        # text of an internal exception went out in the response body.
-        # ``JSONDecodeError`` and ``UnicodeDecodeError`` are ``ValueError``
-        # subclasses, so a corrupted cache entry was enough to reach it.
+        # There is deliberately no ``except ValueError`` here. Wrapping
+        # this body -- the cache read, the repository, the unit of work --
+        # and answering 400 would report a failure of the service as the
+        # caller's mistake and put the text of an internal exception in
+        # the response body. ``JSONDecodeError`` and ``UnicodeDecodeError``
+        # are ``ValueError`` subclasses, so a corrupted cache entry alone
+        # would reach it.
         # Everything the caller can actually get wrong raises
         # ``ValidationError``, which is not a ``ValueError`` and is answered
-        # 400 by the handler; ``OriginalUrl`` no longer lets a bare
-        # ``ValueError`` out of ``urlparse`` either.
+        # 400 by the handler; ``OriginalUrl`` keeps a bare ``ValueError``
+        # from ``urlparse`` inside as well.
         except Exception as e:
             log.error("Error creating short link", error=str(e))
             raise e

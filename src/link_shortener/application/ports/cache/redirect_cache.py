@@ -11,13 +11,12 @@ class CachedRedirect:
     """
     A cached redirect that can answer for itself whether it may be served.
 
-    The L1 cache used to hold a bare URL string. That made it useless: it
-    could not say whether the link had expired, so every hit still had to
-    consult L2 for the answer, and an L2 miss still went to the repository.
-    The level cost a round trip and saved nothing.
+    Carrying the expiry alongside the URL is what makes an L1 hit a
+    complete answer: a bare URL string cannot say whether the link has
+    expired, so every hit would still have to consult L2, and the level
+    would cost a round trip and save nothing.
 
-    Carrying the expiry alongside the URL is what makes an L1 hit a complete
-    answer. It is deliberately redundant with the entry's TTL -- the TTL
+    The expiry is deliberately redundant with the entry's TTL -- the TTL
     already caps the lifetime, but it is enforced by the cache server's
     clock, and the two clocks are not the same one.
 

@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import Dict, Optional
 
 from dotenv import dotenv_values, find_dotenv
@@ -260,7 +261,23 @@ class ConfigFactory:
         """
 
         config = cls.create_config_unvalidated(env)
-        config.validate()
+        try:
+            config.validate()
+        except ValueError as error:
+            # Said out loud before it is raised. The exception travels out
+            # through ``create_app`` and Flask's own ``find_best_app``, so
+            # what an operator sees is twenty-five frames of traceback with
+            # the useful part at the very bottom -- on a
+            # production profile missing DOMAIN. The list is what they
+            # need; the frames are what a developer needs, and both stay.
+            print(
+                f"\n{error}\n\n"
+                f"Profile: {cls.resolve_env(env)}. "
+                f"Settings come from the environment first, then "
+                f".env.<profile>, then .env.\n",
+                file=sys.stderr,
+            )
+            raise
         return config
 
 
