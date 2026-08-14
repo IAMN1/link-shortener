@@ -16,7 +16,6 @@ import os
 
 import pytest
 
-from link_shortener.infrastructure.configs.app.development import DevelopmentConfig
 from link_shortener.infrastructure.configs.app.env import (
     EnvField, env_bool, env_float, env_int, env_list, env_str
 )
@@ -33,9 +32,9 @@ from link_shortener.infrastructure.configs.app.base import MAX_BATCH_ITEMS
 # real application through the `development` profile, which unlike `testing`
 # is not detached from the environment, and startup seeds roles. A developer
 # or CI runner with a PostgreSQL setup exported -- the ordinary state --
-# therefore had this file connect to that database and write to it.
-# Measured: a run added four rows to the `roles` table of an outside
-# database and reported two tests passed.
+# therefore has this file connect to that database and write to it: a run
+# adds four rows to the `roles` table of an outside database and reports
+# two tests passed.
 SCRUBBED_PREFIXES = ("DATABASE_", "REDIS_", "CELERY_", "CACHE_", "AUTO_SEED_")
 
 SCRUBBED_NAMES = (
@@ -248,13 +247,20 @@ class TestTestingIsolation:
         monkeypatch.setenv("DATABASE_MAX_OVERFLOW", "888")
         monkeypatch.setenv("DATABASE_POOL_RECYCLE", "777")
 
+        # The URL is pinned beside the type, exactly as
+        # ``tests/integration/docker/conftest.py`` pins them: the pool
+        # settings follow the backend of the URL that will be opened, not
+        # the setting that says how to assemble one, so a profile naming
+        # PostgreSQL over an in-memory SQLite URL correctly reports no
+        # pool at all -- and would test nothing here.
         class OnPostgres(TestingConfig):
             DATABASE_TYPE = "postgresql"
+            DATABASE_URL = "postgresql+psycopg://u:p@db.internal/short"
 
         config = OnPostgres()
 
-        assert config.DATABASE_POOL_SIZE == 20
-        assert config.DATABASE_MAX_OVERFLOW == 10
+        assert config.DATABASE_POOL_SIZE == 5
+        assert config.DATABASE_MAX_OVERFLOW == 5
         assert config.DATABASE_POOL_RECYCLE == 3600
 
     def test_a_broken_exported_pool_setting_cannot_reach_it(
@@ -263,16 +269,18 @@ class TestTestingIsolation:
         """
         Should not even parse the value, let alone fail on it.
 
-        A non-numeric ``DATABASE_POOL_SIZE`` used to raise out of
-        ``get_pool_params()`` and take the DI container down with it, on a
-        profile that had promised to ignore the environment.
+        A non-numeric ``DATABASE_POOL_SIZE`` must not reach the parser at
+        all: parsed, it raises out of ``get_pool_params()`` and takes the DI
+        container with it, on a profile that promised to ignore the
+        environment.
         """
         monkeypatch.setenv("DATABASE_POOL_SIZE", "not-a-number")
 
         class OnPostgres(TestingConfig):
             DATABASE_TYPE = "postgresql"
+            DATABASE_URL = "postgresql+psycopg://u:p@db.internal/short"
 
-        assert OnPostgres().DATABASE_POOL_SIZE == 20
+        assert OnPostgres().DATABASE_POOL_SIZE == 5
 
     def test_it_does_not_publish_dotenv_into_the_process(
         self, env_dir, monkeypatch
@@ -441,9 +449,9 @@ class TestTheSuiteCannotReachARealDatabase:
         # derived from the configuration module's own location -- so
         # without this line the scrubbing above is undone by the
         # developer's real `.env`, which is exactly what this class exists
-        # to prevent. Measured before it was added: a `.env` naming a
-        # PostgreSQL host built a URL against that host, with its user and
-        # password in it, right here -- and five of the six
+        # to prevent. Without the line, a `.env` naming a PostgreSQL host
+        # builds a URL against that host, with its user and password in it,
+        # right here -- and five of the six
         # parametrisations still passed, because each only checks that
         # *its own* value is absent from the URL.
         monkeypatch.setattr(factory_module, "PROJECT_ROOT", tmp_path)

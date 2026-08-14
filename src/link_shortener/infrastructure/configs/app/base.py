@@ -19,15 +19,10 @@ def _find_project_root() -> Optional[Path]:
     Locate the source tree this module was loaded from, if it is one.
 
     Searched for by marker rather than counted in levels up from this
-    file. Counting looks tidier and is wrong where it matters: the image
-    installs the package into ``site-packages`` and copies that directory
-    into the runtime stage, so the module that runs in production is
-    nowhere near the project -- five levels up from it is
-    ``/usr/local/lib/python3.12``. Measured on a built image: the count
-    put the database at ``/usr/local/lib/python3.12/db_shortener.db`` and
-    the connection failed with "unable to open database file".
+    file: the image installs the package into ``site-packages``, so the
+    module that runs in production is nowhere near the project.
 
-    Both markers are required. ``pyproject.toml`` alone appears inside
+    Both markers are required -- ``pyproject.toml`` alone appears inside
     installed third-party packages, and a stray one above an installed
     copy would silently become the anchor.
 
@@ -67,12 +62,84 @@ def display_url(url: str) -> str:
         URL safe to write to a log or a terminal.
     """
     try:
-        return make_url(url).render_as_string(hide_password=True)
+        parsed = make_url(url)
+        if not parsed.password:
+            # SQLAlchemy renders ``:***`` for a password that is the empty
+            # string, which reads as "a password is set" in a startup log.
+            # Since a PostgreSQL URL may legitimately carry none -- peer,
+            # trust, .pgpass, PGPASSWORD -- the difference is worth
+            # keeping: an operator debugging authentication reads this
+            # line to find out what was sent.
+            #
+            # ``_replace`` and not ``set``: the latter reads ``None`` as
+            # "leave this alone", so it returned the empty password
+            # unchanged and the mask stayed.
+            parsed = parsed._replace(password=None)
+        return parsed.render_as_string(hide_password=True)
     except Exception:
         # Never let a log line be the thing that stops a command. An
         # unparsable URL has no password to reveal in any recognisable
         # place, so nothing is echoed.
         return "<unparsable database url>"
+
+
+DEFAULT_POSTGRESQL_DRIVER = "psycopg"
+"""Driver a PostgreSQL URL gets when it does not name one.
+
+SQLAlchemy's default for a bare ``postgresql://`` is psycopg2, which this
+project does not install -- ``pyproject.toml`` asks for ``psycopg[binary]``,
+which is psycopg 3 and a different module. So a URL without a driver raised
+``ModuleNotFoundError: No module named 'psycopg2'`` at the first connection.
+The URL assembled from the ``DATABASE_*`` parts has always said
+``postgresql+psycopg``; this is the same answer for the URL an operator
+writes out in full.
+"""
+
+
+def normalise_backend(url: str) -> str:
+    """
+    Rewrite the ``postgres://`` spelling of a PostgreSQL URL as ``postgresql://``.
+
+    The same database, written the way half the industry hands it out:
+    Heroku, Render, Railway and Supabase all print ``postgres://``.
+    SQLAlchemy dropped that alias in 1.4 and refuses it, so a value copied
+    from a hosting dashboard would die at the first connection.
+
+    A driver written into the scheme is kept, so ``postgres+psycopg2://``
+    becomes ``postgresql+psycopg2://`` rather than losing the driver the
+    operator asked for. A URL that names none gets
+    ``DEFAULT_POSTGRESQL_DRIVER``, since SQLAlchemy's own default is
+    psycopg2 and this project installs psycopg 3.
+
+    Args:
+        url: URL as configured.
+
+    Returns:
+        The URL with its scheme normalised; the value unchanged when it is
+        not a PostgreSQL one, and when it does not parse -- an unusable
+        string is left for the engine to refuse with its own message.
+    """
+    try:
+        parsed = make_url(url)
+    except Exception:
+        return url
+
+    # Lower-cased first: a URL scheme is case-insensitive by RFC 3986, so
+    # ``POSTGRES://`` -- what a copied-out-of-a-document value can look
+    # like -- would otherwise survive unchanged and then be refused with
+    # "put a PostgreSQL URL there", the dead end this function removes.
+    driver = parsed.drivername.lower()
+    if driver in ("postgres", "postgresql"):
+        return parsed.set(
+            drivername=f"postgresql+{DEFAULT_POSTGRESQL_DRIVER}"
+        ).render_as_string(hide_password=False)
+
+    if driver.startswith("postgres+"):
+        return parsed.set(
+            drivername="postgresql" + driver[len("postgres"):]
+        ).render_as_string(hide_password=False)
+
+    return url
 
 
 MAX_BATCH_ITEMS = 100
@@ -306,9 +373,9 @@ class BaseConfig:
     SESSION_COOKIE_SECURE: bool = env_bool("SESSION_COOKIE_SECURE", False)
     """
     Secure flag for Flask's own session cookie.
-    Declared here so every profile has it – it used to exist only on
-    ProductionConfig, which made `config.SESSION_COOKIE_SECURE` raise
-    AttributeError everywhere else. ProductionConfig raises the default to true.
+
+    Declared on the base so every profile carries it; ``ProductionConfig``
+    raises the default to true.
     """
 
     SESSION_COOKIE_SAMESITE: str = env_str("SESSION_COOKIE_SAMESITE", "Lax")
@@ -358,13 +425,32 @@ class BaseConfig:
     """
 
     @property
+    def domain_value(self) -> str:
+        """
+        ``DOMAIN`` as everything that uses it should see it.
+
+        Stripped, like the database URL and the alembic handoff are
+        stripped and for the same reason: a value read out of a file or a
+        Kubernetes Secret arrives with a trailing newline, and left alone
+        that newline goes into ``BASE_URL`` and into every short link
+        built from it. The check and the builder read this one value, so
+        neither can be validating a string the other does not use.
+
+        Returns:
+            The configured domain without surrounding whitespace, or an
+            empty string when it is unset.
+        """
+        return (self.DOMAIN or "").strip()
+
+    @property
     def BASE_URL(self) -> str:
         """
         Base URL of the service used for constructing full short URLs.
         """
-        if self.DOMAIN:
+        domain = self.domain_value
+        if domain:
             scheme = "https" if self.USE_HTTPS else "http"
-            return f"{scheme}://{self.DOMAIN}"
+            return f"{scheme}://{domain}"
         return f"http://{self.HOST}:{self.PORT}/"
 
 
@@ -497,25 +583,6 @@ class BaseConfig:
     """
     Name of the role assigned to newly registered users.
     Must exist in the database (created by seed or migrations).
-    """
-
-    DEFAULT_ROLE_PERMISSIONS: str = env_str(
-        "DEFAULT_ROLE_PERMISSIONS",
-        "link:create,link:view_own,link:delete_own,stats:view_basic"
-    )
-    """
-    Comma-separated list of permission names for the default role.
-
-    Read by nothing. The programmatic creation this promised does not
-    exist: roles and their permissions come from ``configs/rbac/roles.yaml``
-    through ``seed_base_roles``, and registration refuses to invent a role
-    it cannot find -- it answers 500 and says the default role is missing.
-    Editing this value, in ``.env`` or here, changes nothing at all;
-    ``roles.yaml`` is where the default role's permissions are decided.
-
-    Left in place rather than removed because it is documented in
-    ``.env.example`` and an operator may have set it. Its removal is a
-    separate decision from this one.
     """
 
 
@@ -682,7 +749,12 @@ class BaseConfig:
         Raises:
             ValueError: If the value is not a valid integer.
         """
-        if self.DATABASE_TYPE != "postgresql":
+        # The backend actually being opened, for the reason spelled out in
+        # ``database_backend``: ``DATABASE_TYPE`` describes how a URL is
+        # assembled from parts and is not read at all once ``DATABASE_URL``
+        # is set, so asking it would answer ``sqlite`` for a deployment
+        # whose URL names PostgreSQL and drop all three pool settings.
+        if self.database_backend() != "postgresql":
             return 0
 
         # IGNORE_ENV has to be honoured here as well, and was not. Reading
@@ -709,13 +781,28 @@ class BaseConfig:
 
     @property
     def DATABASE_POOL_SIZE(self) -> int:
-        """Connection pool size (PostgreSQL only)."""
-        return self._pool_setting("DATABASE_POOL_SIZE", 20)
+        """
+        Connection pool size (PostgreSQL only).
+
+        Per process, not per deployment. The image serves with sync
+        gunicorn workers, so a process holds one request and one
+        connection at a time; the pool is a ceiling on what that process
+        may keep open, and the measurement in
+        ``docs/DEVELOPER_GUIDE.md`` found the ceiling never approached --
+        1, 2, 5 and 20 gave the same throughput and the same number of
+        server-side connections.
+
+        Five rather than twenty because the ceiling is multiplied by the
+        worker count: twenty plus ten of overflow across eight workers is
+        240 connections against a PostgreSQL whose own default limit is
+        100.
+        """
+        return self._pool_setting("DATABASE_POOL_SIZE", 5)
 
     @property
     def DATABASE_MAX_OVERFLOW(self) -> int:
         """Maximum overflow connections beyond pool_size (PostgreSQL only)."""
-        return self._pool_setting("DATABASE_MAX_OVERFLOW", 10)
+        return self._pool_setting("DATABASE_MAX_OVERFLOW", 5)
 
     @property
     def DATABASE_POOL_RECYCLE(self) -> int:
@@ -770,11 +857,15 @@ class BaseConfig:
             # Stripped, and the migration path strips its own handoff the
             # same way. Left alone, a value with a trailing newline -- what
             # a URL read out of a file or a k8s Secret arrives as -- named a
-            # *different* database on each side: measured, the application
+            # *different* database on each side: the application
             # opened "app.db\n" while `flask alembic upgrade` migrated
             # "app.db", so the service came up on an empty file beside the
             # one that had just been migrated.
-            return self.DATABASE_URL.strip()
+            #
+            # Normalised here rather than where the URL is checked, because
+            # every reader has to see the same string: the check would
+            # otherwise pass a value that create_engine then refuses.
+            return normalise_backend(self.DATABASE_URL.strip())
 
         if self.DATABASE_TYPE == "sqlite":
             # SQLite: DATABASE_NAME is the file path
@@ -783,13 +874,29 @@ class BaseConfig:
             ).render_as_string(hide_password=False)
         elif self.DATABASE_TYPE == "postgresql":
             # Use psycopg3 driver
-            if not all([
-                self.DATABASE_USER,
-                self.DATABASE_PASSWORD,
-                self.DATABASE_HOST,
-                self.DATABASE_NAME
-            ]):
-                raise ValueError("PostgreSQL connection requires DATABASE_USER, DATABASE_PASSWORD, DATABASE_HOST, DATABASE_NAME")
+            #
+            # DATABASE_PASSWORD is deliberately not in this list. A password
+            # is one of several ways PostgreSQL authenticates and the only
+            # one this setting can carry: `peer` and `trust` need none at
+            # all, and `.pgpass` and `PGPASSWORD` hand libpq one that never
+            # passes through here. Demanding it refused a working
+            # deployment, and refused it inconsistently -- the same
+            # connection written as DATABASE_URL was accepted, because that
+            # path reads no part.
+            missing = [
+                name
+                for name, value in (
+                    ("DATABASE_USER", self.DATABASE_USER),
+                    ("DATABASE_HOST", self.DATABASE_HOST),
+                    ("DATABASE_NAME", self.DATABASE_NAME),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    "PostgreSQL connection requires "
+                    f"{', '.join(missing)}"
+                )
             # Assembled by SQLAlchemy rather than by an f-string, which
             # percent-encodes each part. Interpolated raw, an ordinary "@"
             # in a password split the URL: the host became "ssw0rd@127.0.0.1",
@@ -821,6 +928,25 @@ class BaseConfig:
             # as one that cannot be parsed: a log line must never be the
             # thing that stops startup.
             return "<unparsable database url>"
+
+    def database_backend(self) -> str:
+        """
+        Return the backend the configuration will actually connect to.
+
+        Read off the URL that will be opened rather than off
+        ``DATABASE_TYPE``, which says how a URL is *assembled* from parts
+        and is not read at all once ``DATABASE_URL`` is set. The two would
+        otherwise disagree, and the engine -- its pool, its timeouts, its
+        connection pragmas -- is built from this answer.
+
+        Returns:
+            SQLAlchemy backend name -- ``postgresql``, ``sqlite``, ... --
+            falling back to ``DATABASE_TYPE`` when no URL can be built.
+        """
+        try:
+            return make_url(self.get_database_url()).get_backend_name()
+        except Exception:
+            return self.DATABASE_TYPE
 
     def get_pool_params(self) -> dict:
         """
@@ -1067,31 +1193,57 @@ class BaseConfig:
         """
         Validate critical settings.
 
-        In non-debug/non-test modes, checks that SECRET_KEY and PEPPER are not
-        using the default values. Also validates allowed schemes, URL length,
-        Redis URL, and database type.
-
         Raises:
             ValueError: If any validation fails.
         """
-        
+        errors = self._collect_errors()
+
+        # Deduplicated, order kept: one fault can reach the list by two
+        # roads, and the same sentence twice reads as two problems.
+        unique = list(dict.fromkeys(errors))
+        if unique:
+            raise ValueError("Configuration errors:\n - " + "\n - ".join(unique))
+
+
+    def _collect_errors(self) -> List[str]:
+        """
+        Gather everything wrong with this configuration, rather than the first thing.
+
+        Split out of ``validate`` so that a profile adding demands of its
+        own extends one list instead of raising ahead of it.
+
+        Returns:
+            List of human-readable error messages, empty when the
+            configuration is usable.
+        """
         errors = []
 
         # In non-debug/non-test modes, ensure secrets are not default
         if not self.DEBUG and not self.TESTING:
-            
-            if self.SECRET_KEY == self._default_secret_key:
-                errors.append(
-                    "SECRET_KEY is using default value – override in .env"
-                )
+            errors.extend(self._secret_errors())
 
-            if self.SHORT_CODE_SECRET_PEPPER == self._default_pepper:
-                errors.append(
-                    "SHORT_CODE_PEPPER is using default value – override in .env"
-                )
-
+        errors.extend(self._domain_errors())
         errors.extend(self._database_errors())
         errors.extend(self._deployed_backend_errors())
+
+        errors.extend(self._bounds_errors())
+        errors.extend(self._redis_errors())
+        errors.extend(self._numeric_errors())
+        errors.extend(self._mail_errors())
+        errors.extend(self._confirmation_errors())
+        errors.extend(self._log_level_errors())
+
+        return errors
+
+
+    def _bounds_errors(self) -> List[str]:
+        """
+        Check the settings that have to lie inside a fixed range.
+
+        Returns:
+            List of human-readable error messages.
+        """
+        errors = []
 
         for scheme in self.ALLOWED_SCHEMES:
             if scheme not in ["http", "https"]:
@@ -1133,35 +1285,126 @@ class BaseConfig:
                 "and SHORT_CODE_MAX_LENGTH"
             )
 
-        if self.CACHE_ENABLED and self.REDIS_ENABLED and not self.REDIS_URL:
-            errors.append("REDIS_URL must be set when REDIS_ENABLED=True")
+        return errors
 
-        errors.extend(self._numeric_errors())
-        errors.extend(self._mail_errors())
-        errors.extend(self._confirmation_errors())
 
+    def _log_level_errors(self) -> List[str]:
+        """
+        Check that the log level is one logging understands.
+
+        Returns:
+            List of human-readable error messages.
+        """
         allowed_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
         if self.LOG_LEVEL.upper() not in allowed_levels:
-            errors.append(
+            return [
                 f"Invalid LOG_LEVEL: {self.LOG_LEVEL} "
                 f"(allowed: {', '.join(allowed_levels)})"
-            )
+            ]
 
-        if errors:
-            raise ValueError("Configuration errors:\n - " + "\n - ".join(errors))
+        return []
+
+
+    def _secret_errors(self) -> List[str]:
+        """
+        Check the two secrets, without letting either stop the other checks.
+
+        Both are plain settings here and properties on the deployed
+        profiles, where an unset one raises rather than returning a
+        default. The refusal is collected instead of leaving ``validate``,
+        so a deployment missing one hears about the rest as well.
+
+        Returns:
+            List of human-readable error messages.
+        """
+        errors = []
+        for attribute, env_name, default in (
+            ("SECRET_KEY", "SECRET_KEY", self._default_secret_key),
+            ("SHORT_CODE_SECRET_PEPPER", "SHORT_CODE_PEPPER", self._default_pepper),
+        ):
+            try:
+                value = getattr(self, attribute)
+            except ValueError as error:
+                errors.append(str(error))
+                continue
+
+            if value == default:
+                errors.append(
+                    f"{env_name} is using default value – override in .env"
+                )
+
+        return errors
+
+
+    def _redis_errors(self) -> List[str]:
+        """
+        Check that Redis has a URL to connect to when it is switched on.
+
+        Demanded whatever the cache is doing: the rate limiter reads
+        ``REDIS_URL`` even with ``CACHE_ENABLED=false``.
+
+        Returns:
+            List of human-readable error messages.
+        """
+        if not self.REDIS_ENABLED:
+            return []
+
+        try:
+            url = self.REDIS_URL
+        except ValueError as error:
+            return [str(error)]
+
+        if not url:
+            return ["REDIS_URL must be set when REDIS_ENABLED=True"]
+
+        return []
+
+
+    def _domain_errors(self) -> List[str]:
+        """
+        Check that ``DOMAIN`` is a host and not a whole URL.
+
+        ``BASE_URL`` puts a scheme in front of this value and hands the
+        result out as the address of every short link, so a value copied
+        out of a browser's address bar --
+        ``DOMAIN=https://staging.example.com`` -- builds
+        ``https://https://staging.example.com`` and every short link with
+        it.
+
+        Returns:
+            List of human-readable error messages; empty when ``DOMAIN``
+            is unset, since absence is a documented fallback rather than
+            an error.
+        """
+        domain = self.domain_value
+        if not domain:
+            return []
+
+        if "://" in domain:
+            return [
+                f"DOMAIN must be a host name, not a URL: {domain!r} carries "
+                "a scheme, which BASE_URL adds itself -- the two produce "
+                "'https://https://...'. Use the host alone"
+            ]
+
+        if "/" in domain:
+            return [
+                f"DOMAIN must be a host name, not a path: {domain!r} -- "
+                "short codes are served from the root, so a path here "
+                "builds addresses that resolve to nothing"
+            ]
+
+        return []
 
 
     def validate_database(self) -> None:
         """
         Validate only the settings that decide which database is opened.
 
-        A migration needs the connection string and nothing else. Asking it
-        to pass ``validate()`` in full meant that mail, secrets, the domain
-        and even ``MAX_URL_LENGTH`` could each stop ``alembic upgrade
-        head``: with ``DATABASE_URL`` already set, four further variables
-        were measured standing between the command and the first table --
-        ``SECRET_KEY``, ``SHORT_CODE_PEPPER``, ``REDIS_ENABLED`` and
-        ``DOMAIN`` -- and a migration reads none of them.
+        A migration needs the connection string and nothing else; asking
+        it to pass ``validate()`` in full would let mail, secrets or the
+        domain stop ``alembic upgrade head``, and a migration reads none
+        of them.
 
         The checks themselves are not skipped: they live in
         ``_database_errors`` and ``validate()`` runs them too, so there is
@@ -1185,6 +1428,22 @@ class BaseConfig:
         """
         errors = []
 
+        # A URL that will not parse, refused here rather than at whichever
+        # command reaches it first. ``make_url`` raises ``ArgumentError``,
+        # which is not a ``ValueError``, so it travelled straight past the
+        # handler in ``migrations/env.py`` written to turn a bad setting
+        # into a sentence, so ``postgres//u:p@host/db`` -- one missing
+        # colon -- would pass ``validate()`` and end ``alembic upgrade``
+        # in a traceback.
+        if self.DATABASE_URL:
+            try:
+                make_url(self.DATABASE_URL.strip())
+            except Exception as error:
+                errors.append(
+                    f"DATABASE_URL cannot be parsed as a connection URL: "
+                    f"{error}"
+                )
+
         # A database name is a name, not a place to smuggle connection
         # options. "shortener?sslmode=disable" parses back out as a query
         # string, and the connection comes up without TLS while the setting
@@ -1203,10 +1462,10 @@ class BaseConfig:
 
             # The host is the same hole and was not closed: `URL.create`
             # percent-encodes the user and the password but not the host,
-            # so "db.internal/shortener?sslmode=disable" is measured
-            # arriving as host "db.internal", database "shortener" and an
-            # sslmode the operator never set -- while DATABASE_NAME and
-            # DATABASE_PORT, which say otherwise, are silently dropped.
+            # so "db.internal/shortener?sslmode=disable" arrives as host
+            # "db.internal", database "shortener" and an sslmode nobody
+            # set -- while DATABASE_NAME and DATABASE_PORT, which say
+            # otherwise, are silently dropped.
             illegal = [c for c in "?#@/" if c in (self.DATABASE_HOST or "")]
             if illegal:
                 errors.append(
@@ -1224,8 +1483,8 @@ class BaseConfig:
         # `sqlite3.connect("a?b.db")` creates exactly that -- so the loss
         # happens in the URL round trip, and it is silent, because a
         # missing SQLite file is created rather than refused. Nothing else
-        # needs refusing here -- "#", "@", a space and "%" were each
-        # measured to open the file they name.
+        # needs refusing here: "#", "@", a space and "%" each open the
+        # file they name.
         # A ".." climbs out of the root the path is anchored to; anchoring
         # is not a sandbox and was never meant to be one, but a setting
         # that quietly lands outside the project is the same class of
@@ -1261,36 +1520,26 @@ class BaseConfig:
         Hold a deployed profile to PostgreSQL, whatever named the database.
 
         ``DATABASE_TYPE`` defaults to ``sqlite`` and ``DATABASE_NAME`` to
-        ``db_shortener``, so a deployment that configured neither came up
-        on a brand-new empty file in the project root and answered as if
-        the data had never existed. Measured before this check existed:
-        the ``production`` profile with ``SECRET_KEY``,
-        ``SHORT_CODE_PEPPER`` and ``DOMAIN`` set and ``REDIS_ENABLED``
-        off -- everything it demands apart from the database -- validated
-        clean and opened ``sqlite:////<root>/db_shortener``.
+        ``db_shortener``, so a deployment that configured neither comes up
+        on a brand-new empty file in the project root and answers as if
+        the data had never existed.
 
         What is checked is the backend the profile would connect to, not
         whether some setting was written, because every road to SQLite
-        here ends in a database that is empty and silent about it. A file
-        nobody named is created rather than refused. A relative path in
-        ``DATABASE_URL`` is read against the working directory, which
-        gunicorn, celery and the CLI do not share -- measured, a
-        migration wrote 147456 bytes into one file while the application
-        opened an empty one beside it. An in-memory URL gives each thread
-        a private database under the pool SQLAlchemy picks for it, and
-        drops all of them when the process ends.
+        here ends in a database that is empty and silent about it: a file
+        nobody named is created rather than refused, a relative path is
+        read against a working directory that gunicorn, celery and the
+        CLI do not share, and an in-memory URL gives each thread its own
+        database and drops it with the process.
 
         SQLite remains the local backend: ``development`` may still take
-        either, which is the whole point of it being the default there.
-        A profile nobody named resolves to ``development`` and is left
-        alone on purpose -- that default serves the developer who
-        configured nothing, and a refusal there would land on them rather
-        than on a deployment.
+        either, and a profile nobody named resolves to ``development``, so
+        a refusal there would land on a developer rather than on a
+        deployment.
 
         Deliberately not part of ``_database_errors``: that list is what a
         migration checks through ``validate_database``, and a migration
-        has its own, narrower rule in ``migration_url`` with a message
-        that fits the command it stops.
+        has its own, narrower rule in ``migration_url``.
 
         Returns:
             List of human-readable error messages (empty when a deployed
@@ -1312,11 +1561,10 @@ class BaseConfig:
             return []
 
         # The remedy has to fit where the database was actually named, or
-        # it sends the operator round in a circle. Measured: told to "set
-        # DATABASE_TYPE=postgresql with the DATABASE_* parts" while a
-        # SQLite DATABASE_URL was set, following the advice to the letter
-        # changed nothing -- get_database_url returns that URL first and
-        # never reads a part.
+        # it sends the operator round in a circle: "set
+        # DATABASE_TYPE=postgresql with the DATABASE_* parts", said while
+        # a SQLite DATABASE_URL is set, cannot be followed --
+        # get_database_url returns that URL first and never reads a part.
         if self.DATABASE_URL:
             remedy = (
                 "DATABASE_URL decides on its own while it is set, and the "
