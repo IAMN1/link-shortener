@@ -8,12 +8,22 @@ from link_shortener.application.ports.mailer import Mailer, MailDeliveryError
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
 
-VERIFY_PATH = "/api/v1/auth/verify"
+VERIFY_PATH = "/verify"
 """Path the confirmation link points at.
 
-The route the blueprint actually registers, prefix included: a link built
-on the path alone answers 404, and the person following it is told their
-confirmation is invalid.
+A page, not the API endpoint. What arrives in a mailbox is opened by a
+browser, and the endpoint answers ``application/json``: the person who did
+what the message asked was shown ``{"message": "Email confirmed..."}`` and
+left to work out where to sign in.
+
+The page also decides when the token is spent. Confirming from a link the
+mail client fetched is a state change behind a GET, and scanners that
+follow links spend the token before its owner opens the message -- who
+then reads that their confirmation is invalid. The page asks for a click,
+and that click is the POST.
+
+The endpoint still answers GET, so links mailed before this change go on
+working.
 """
 
 

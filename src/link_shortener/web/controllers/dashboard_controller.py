@@ -5,11 +5,16 @@ Serves HTML pages for the authenticated user's dashboard.
 All pages rely on client-side JS to fetch data from the API.
 """
 
-from flask import Blueprint, g, render_template
+from flask import Blueprint, g, render_template, request
 from link_shortener.application import LinkService, AdminService
 from link_shortener.domain.system_permissions import SystemPermissions
+from link_shortener.infrastructure.auth.rbac_authorization_service import GUEST_ROLE_NAME
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.decorators import login_required, require_permission
+
+
+USERS_PER_PAGE = 50
+"""Accounts shown on one page of the user list."""
 
 
 class DashboardController:
@@ -82,16 +87,57 @@ class DashboardController:
     @login_required
     @require_permission(SystemPermissions.ADMIN_VIEW_USERS.value)
     def users_list(self):
+        """
+        Show one page of accounts.
+
+        The list used to render whatever ``list_users`` returns, which is
+        its first hundred and no word about the rest: on a service with
+        more accounts than that, the ones past the hundredth existed only
+        through the API.
+
+        One row beyond the page is asked for and not shown. It answers
+        "is there a next page" without a second query, and nothing here
+        counts the table -- a total would cost a scan of it on every view
+        to print a number nobody navigates by.
+        """
         ctx = self._get_context()
-        users = self.admin_service.list_users(ctx)
-        return render_template("dashboard/users_list.html", users=users)
+        page = max(1, request.args.get("page", 1, type=int))
+        offset = (page - 1) * USERS_PER_PAGE
+        found = self.admin_service.list_users(
+            ctx, limit=USERS_PER_PAGE + 1, offset=offset
+        )
+        return render_template(
+            "dashboard/users_list.html",
+            users=found[:USERS_PER_PAGE],
+            page=page,
+            has_next=len(found) > USERS_PER_PAGE,
+        )
+
+    def _assignable_roles(self, ctx):
+        """
+        List the roles an operator may put on an account.
+
+        Every role but ``guest``, which is the role an anonymous request
+        acts under. Nobody holds it, and an account that does gets the
+        permissions of a passer-by: the forms offered it as a choice, and
+        an account made with it signs in to a dashboard it may not read.
+
+        Args:
+            ctx: Request context of the operator asking.
+
+        Returns:
+            The roles, in the order the service returned them.
+        """
+        return [
+            role for role in self.admin_service.list_roles(ctx)
+            if role.name != GUEST_ROLE_NAME
+        ]
 
     @login_required
     @require_permission(SystemPermissions.ADMIN_MANAGE_USERS.value)
     def create_user_form(self):
         ctx = self._get_context()
-        roles = self.admin_service.list_roles(ctx)
-        return render_template("dashboard/create_user.html", roles=roles)
+        return render_template("dashboard/create_user.html", roles=self._assignable_roles(ctx))
 
     @login_required
     @require_permission(SystemPermissions.ADMIN_MANAGE_USERS.value)
@@ -100,8 +146,16 @@ class DashboardController:
         user = self.admin_service.get_user(user_id, ctx)
         if not user:
             return render_template("error.html", error="User not found"), 404
-        all_roles = self.admin_service.list_roles(ctx)
-        return render_template("dashboard/edit_user.html", user=user, all_roles=all_roles)
+        all_roles = self._assignable_roles(ctx)
+        assignable = {role.name for role in all_roles}
+        return render_template(
+            "dashboard/edit_user.html",
+            user=user,
+            all_roles=all_roles,
+            # Held but not offered above, so saving the form would drop it
+            # without the operator ever seeing it listed.
+            unassignable_held=[name for name in user.roles if name not in assignable],
+        )
 
     @login_required
     @require_permission(SystemPermissions.ADMIN_VIEW_ROLES.value)
@@ -123,6 +177,14 @@ class DashboardController:
         role = self.admin_service.get_role(role_name, ctx)
         if not role:
             return render_template("error.html", error="Role not found"), 404
+        if role.is_system:
+            # The service refuses the save with "Cannot modify system
+            # roles", so serving the form was a working-looking dead end:
+            # the list hides the Edit link, and the URL behind it did not.
+            return render_template(
+                "error.html",
+                error=f"The role {role.name} is a system role and cannot be modified",
+            ), 403
         available_permissions = SystemPermissions.all_values()
         return render_template(
             "dashboard/edit_role.html", role=role, available_permissions=available_permissions

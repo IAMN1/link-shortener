@@ -17,6 +17,17 @@
                 <div id="login-error" class="form-error hidden"></div>
                 <button type="submit" class="btn btn--primary btn--block mt-1">Login</button>
             </form>
+
+            {# An account that never confirmed its address cannot sign in,
+               and the service will mail a fresh link on request -- which
+               had no button anywhere. Someone whose message never arrived
+               was simply stuck. #}
+            <p class="mt-1 text-sm">
+                <a href="#" id="resend-link">Didn't get the confirmation email?</a>
+            </p>
+            <div id="resend-error" class="form-error hidden"></div>
+            <div id="resend-done" class="alert alert--success hidden mt-1"></div>
+
             <p>Don't have an account? <a href="{{ url_for('frontend.register_form') }}">Sign up</a></p>
         </div>
     </div>

@@ -1,41 +1,55 @@
 {% extends "layout/base.html" %}
 {% block title %}Link Shortener{% endblock %}
-{% block extra_head %}
-<style>
-    .hero { text-align: center; margin-bottom: 2rem; }
-    .hero h1 { font-size: 2.5rem; font-weight: 700; background: linear-gradient(135deg, #2563eb, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem; }
-    .hero p { color: #6b7280; font-size: 1.1rem; }
-    .modes { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1.5rem; flex-wrap: wrap; }
-    .mode-btn { padding: 0.5rem 1.25rem; border: 1px solid #e5e7eb; border-radius: 999px; background: #fff; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all .15s; }
-    .mode-btn:hover { border-color: #2563eb; color: #2563eb; }
-    .mode-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
-    .mode-content { display: none; }
-    .mode-content.active { display: block; }
-    .result-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,.05); }
-    .result-field { display: flex; align-items: center; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.5rem 1rem; margin: 0.75rem 0; }
-    .result-url { flex: 1; word-break: break-all; font-family: monospace; font-size: 0.9rem; }
-    .result-copy { background: none; border: none; color: #2563eb; cursor: pointer; padding: 0.5rem; font-size: 1.1rem; }
-    .result-copy:hover { color: #1d4ed8; }
-    .result-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem; }
-    .stat-item { text-align: center; }
-    .stat-item strong { display: block; font-size: 1.25rem; color: #2563eb; }
-    .stat-item span { font-size: 0.75rem; color: #6b7280; }
-</style>
-{% endblock %}
 {% block content %}
-<div class="container" style="max-width: 640px;">
+{# The page used to carry its own copy of the button, card and result
+   styles, in hard-coded blues that no theme could reach. Everything here
+   is now the shared system. #}
+<div class="container" style="max-width: 660px;">
     <section class="hero">
-        <h1>Link Shortener</h1>
-        <p>Paste a long URL and get a short one</p>
+        <div class="hero-route">Long address in, route number out</div>
+        <h1>Give it a shorter name</h1>
+        <p>Paste an address and get a code you can say out loud.</p>
     </section>
 
+    {# Each mode is offered to a caller the service would actually answer.
+       Shortening needs `link:create`, which an analyst does not hold.
+       Extended info is for the link's owner or a holder of
+       `stats:view_any`: a guest link belongs to nobody, so a signed-out
+       visitor could never read one and was shown the button regardless. #}
+    {% set may_create = can('link:create') %}
+    {# Owning links is what makes this mode usable, and `link:view_own` is
+       the permission that says a caller has links of its own. Keyed on
+       "is anybody signed in" it was offered to an account holding only
+       the guest role, which can neither list its own codes nor read
+       anyone else's. #}
+    {% set may_read_extended = can('link:view_own') or can('stats:view_any') %}
     <div class="modes">
+        {% if may_create %}
         <button class="mode-btn active" data-mode="single">Single URL</button>
         <button class="mode-btn" data-mode="batch">Batch</button>
-        <button class="mode-btn" data-mode="info">Info</button>
+        {% endif %}
+        <button class="mode-btn{% if not may_create %} active{% endif %}" data-mode="info">Info</button>
+        {% if may_read_extended %}
         <button class="mode-btn" data-mode="extended">Extended</button>
+        {% endif %}
     </div>
 
+    {% if not may_create %}
+    <div class="alert alert--info mb-2">
+        This account may look links up, but not create them.
+    </div>
+    {% elif not g.current_user and guest_link_limit %}
+    {# Said before the limit is reached, not after. The quota used to
+       announce itself only by refusing the eleventh link of the day. #}
+    <p class="text-xs text-muted mb-2">
+        Without an account you can shorten {{ guest_link_limit }}
+        link{{ 's' if guest_link_limit != 1 }} a day, and each one expires after
+        {{ guest_ttl_days }} day{{ 's' if guest_ttl_days != 1 }}.
+        <a href="{{ url_for('frontend.register_form') }}">Sign up</a> to keep them.
+    </p>
+    {% endif %}
+
+    {% if may_create %}
     <div id="mode-single" class="mode-content active">
         <form id="form-single" class="card">
             <div class="form-group">
@@ -55,26 +69,30 @@
             <button type="submit" class="btn btn--primary btn--block">Shorten All</button>
         </form>
     </div>
+    {% endif %}
 
-    <div id="mode-info" class="mode-content">
+    <div id="mode-info" class="mode-content{% if not may_create %} active{% endif %}">
         <form id="form-info" class="card">
             <div class="form-group">
                 <label class="form-label" for="code-info">Short Code</label>
-                <input type="text" id="code-info" class="form-input" placeholder="abc123" required pattern="[A-Za-z0-9_-]{6,10}">
+                <input type="text" id="code-info" class="form-input" placeholder="abc123" required pattern="[A-Za-z0-9_\-]{6,10}">
             </div>
             <button type="submit" class="btn btn--primary btn--block">Get Info</button>
         </form>
     </div>
 
+    {% if may_read_extended %}
     <div id="mode-extended" class="mode-content">
         <form id="form-extended" class="card">
             <div class="form-group">
                 <label class="form-label" for="code-extended">Short Code</label>
-                <input type="text" id="code-extended" class="form-input" placeholder="abc123" required pattern="[A-Za-z0-9_-]{6,10}">
+                <input type="text" id="code-extended" class="form-input" placeholder="abc123" required pattern="[A-Za-z0-9_\-]{6,10}">
             </div>
+            <p class="text-xs text-muted mb-1">Extended figures are shown for your own links.</p>
             <button type="submit" class="btn btn--primary btn--block">Get Extended Info</button>
         </form>
     </div>
+    {% endif %}
 
     <div id="result" style="display: none;"></div>
 </div>

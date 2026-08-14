@@ -14,21 +14,42 @@
             </div>
         </div>
 
-        <div class="dash-side-section">Links</div>
-        <a href="{{ url_for('dashboard.my_links') }}">My Links</a>
-        <a href="{{ url_for('dashboard.create_link_form') }}">Create Link</a>
-
-        <div class="dash-side-section">Analytics</div>
-        <a href="{{ url_for('dashboard.my_stats') }}">My Stats</a>
-        {% if 'analyst' in g.current_user.roles or 'admin' in g.current_user.roles %}
-            <a href="{{ url_for('dashboard.service_stats') }}">Service Stats</a>
+        {# Every entry asks the permission its page asks for. Named roles
+           used to decide this, which offered an analyst a "Create Link"
+           it may not use and hid the service statistics a plain user may
+           read. #}
+        {% if can('link:view_own') or can('link:create') %}
+            <div class="dash-side-section">Links</div>
+            {% if can('link:view_own') %}
+                <a href="{{ url_for('dashboard.my_links') }}">My Links</a>
+            {% endif %}
+            {% if can('link:create') %}
+                <a href="{{ url_for('dashboard.create_link_form') }}">Create Link</a>
+            {% endif %}
         {% endif %}
 
-        {% if 'admin' in g.current_user.roles %}
+        {% if can('link:view_own') or can('stats:view_basic') %}
+            <div class="dash-side-section">Analytics</div>
+            {% if can('link:view_own') %}
+                <a href="{{ url_for('dashboard.my_stats') }}">My Stats</a>
+            {% endif %}
+            {% if can('stats:view_basic') %}
+                <a href="{{ url_for('dashboard.service_stats') }}">Service Stats</a>
+            {% endif %}
+        {% endif %}
+
+        {% if can('admin:view_users') or can('admin:view_roles')
+              or can('admin:view_system_health') %}
             <div class="dash-side-section">Administration</div>
-            <a href="{{ url_for('dashboard.users_list') }}">Users</a>
-            <a href="{{ url_for('dashboard.roles_list') }}">Roles</a>
-            <a href="{{ url_for('dashboard.service_health') }}">Health Check</a>
+            {% if can('admin:view_users') %}
+                <a href="{{ url_for('dashboard.users_list') }}">Users</a>
+            {% endif %}
+            {% if can('admin:view_roles') %}
+                <a href="{{ url_for('dashboard.roles_list') }}">Roles</a>
+            {% endif %}
+            {% if can('admin:view_system_health') %}
+                <a href="{{ url_for('dashboard.service_health') }}">Health Check</a>
+            {% endif %}
         {% endif %}
 
         <div class="dash-side-bottom">

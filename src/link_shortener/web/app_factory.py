@@ -27,6 +27,7 @@ from link_shortener.web.middleware.rate_limit import (
 )
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
 from link_shortener.web.security.context import create_request_context
+from link_shortener.web.security.template_access import register_template_access
 
 RBAC_TABLES = ("roles", "permissions")
 """Tables ``seed_base_roles`` writes to.
@@ -230,6 +231,10 @@ def create_app(config=None) -> Flask:
     app.register_blueprint(admin_api_controller.bp)
     app.register_blueprint(dashboard_controller.bp)
     app.register_blueprint(auth_controller.bp)
+
+    # Lets the markup ask the authorization service what this caller may
+    # do, rather than guess it from role names.
+    register_template_access(app)
 
     # ------------------------------------------------------------------
     # Redirect route (short code resolver)

@@ -3,10 +3,17 @@
 {% block dashboard_content %}
 <div class="flex items-center justify-between mb-2">
     <h1 class="dash-title" style="margin:0;">My Links</h1>
+    {% if can('link:create') %}
     <a href="{{ url_for('dashboard.create_link_form') }}" class="btn btn--primary btn--sm">+ New Link</a>
+    {% endif %}
 </div>
 
-<div class="card">
+<div id="links-error" class="alert alert--error hidden mb-2"></div>
+
+{# The delete column is drawn by the script, so the permission has to
+   reach it. An analyst may read its own links and may not delete them:
+   the button used to be drawn for everyone and answered 403. #}
+<div class="card" data-can-delete="{{ 'yes' if can('link:delete_own') else 'no' }}" id="links-card">
     <div class="table-wrap">
         <table class="table">
             <thead>
@@ -16,15 +23,22 @@
                     <th>Clicks</th>
                     <th>Created</th>
                     <th>Expires</th>
-                    <th></th>
+                    {% if can('link:delete_own') %}<th></th>{% endif %}
                 </tr>
             </thead>
-            <tbody id="links-tbody"><tr><td colspan="6" class="text-muted text-center">Loading...</td></tr></tbody>
+            <tbody id="links-tbody">
+                <tr><td colspan="{{ 6 if can('link:delete_own') else 5 }}" class="text-muted text-center">Loading...</td></tr>
+            </tbody>
         </table>
     </div>
     <div id="links-empty" class="empty hidden">
         <div class="empty-icon">&#128279;</div>
+        {% if can('link:create') %}
         <p>No links yet. <a href="{{ url_for('dashboard.create_link_form') }}">Create your first link</a></p>
+        {% else %}
+        <p>No links yet.</p>
+        <p class="text-sm text-muted">This account may read links but not create them.</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

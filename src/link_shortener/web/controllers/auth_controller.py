@@ -145,7 +145,12 @@ class AuthController:
         # the token before its owner does, and the owner then sees an
         # invalid link. The alternative -- a page with a button -- is a
         # better answer and a larger one; noted rather than pretended away.
-        self.bp.add_url_rule("/verify", view_func=self.verify_email, methods=["GET"])
+        # POST is what the confirmation page sends, and it is the method
+        # the act deserves: spending a token is a state change. GET stays
+        # so that links mailed before the page existed still work.
+        self.bp.add_url_rule(
+            "/verify", view_func=self.verify_email, methods=["GET", "POST"]
+        )
         self.bp.add_url_rule(
             "/resend-verification",
             view_func=self.resend_verification,
@@ -287,21 +292,26 @@ class AuthController:
             return error_response(e.code, e.message, 400)
 
     # ------------------------------------------------------------------
-    # GET /api/v1/auth/verify
+    # GET, POST /api/v1/auth/verify
     # ------------------------------------------------------------------
     def verify_email(self):
         """
         Confirm an address from the link that was mailed to it.
 
-        Reads the token from the query string. Answers the same for every
-        way a token can fail -- unknown, spent, expired, or naming an
-        account that is gone -- because telling them apart would make this
-        route say whether an address is registered.
+        Reads the token from the JSON body when the confirmation page
+        sends one, and from the query string otherwise -- which is how a
+        link mailed before that page existed still works. Answers the same
+        for every way a token can fail -- unknown, spent, expired, or
+        naming an account that is gone -- because telling them apart would
+        make this route say whether an address is registered.
 
         Returns:
             200 on success, 400 otherwise.
         """
         token = request.args.get("token")
+        if not token and request.method == "POST":
+            body = _decoded_body()
+            token = body.get("token") if isinstance(body, dict) else None
         if not isinstance(token, str) or not token:
             raise ValidationError(
                 "This confirmation link is not valid", field="token"

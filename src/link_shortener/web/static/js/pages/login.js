@@ -26,4 +26,39 @@ document.addEventListener('DOMContentLoaded', function() {
             errEl.classList.remove('hidden');
         }
     });
+
+    // Asks for a fresh confirmation message for whatever address is in
+    // the email field. The service answers the same whether or not that
+    // address is registered, so this reveals nothing the form did not.
+    var resend = document.getElementById('resend-link');
+    if (resend) {
+        resend.addEventListener('click', async function(e) {
+            e.preventDefault();
+            var email = document.getElementById('email').value;
+            var errEl = document.getElementById('resend-error');
+            var doneEl = document.getElementById('resend-done');
+            errEl.classList.add('hidden');
+            doneEl.classList.add('hidden');
+            if (!email) {
+                errEl.textContent = 'Type the address first, then ask again.';
+                errEl.classList.remove('hidden');
+                return;
+            }
+            try {
+                var resp = await fetch('/api/v1/auth/resend-verification', {
+                    method: 'POST',
+                    headers: csrfHeaders(null, 'POST'),
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ email: email })
+                });
+                var data = await resp.json();
+                if (!resp.ok) throw new Error(data.message || data.error || 'Could not send');
+                doneEl.textContent = data.message;
+                doneEl.classList.remove('hidden');
+            } catch(err) {
+                errEl.textContent = err.message;
+                errEl.classList.remove('hidden');
+            }
+        });
+    }
 });

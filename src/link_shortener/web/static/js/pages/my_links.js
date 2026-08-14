@@ -4,9 +4,19 @@
 document.addEventListener('DOMContentLoaded', async function() {
     var tbody = document.getElementById('links-tbody');
     var emptyEl = document.getElementById('links-empty');
+    // Deleting is a permission of its own: an analyst reads its links and
+    // may not remove them. The markup knows the answer, so it says so here
+    // rather than have the button drawn and refused.
+    var card = document.getElementById('links-card');
+    var mayDelete = card && card.dataset.canDelete === 'yes';
+    var columns = mayDelete ? 6 : 5;
     try {
         var resp = await apiFetch('/api/v1/links/mine');
-        if (!resp || !resp.ok) return;
+        if (!resp) return;
+        if (!resp.ok) {
+            showLoadError('links-error', await apiErrorText(resp), 'links-tbody', columns);
+            return;
+        }
         var links = await resp.json();
         if (!links.length) {
             tbody.parentElement.parentElement.classList.add('hidden');
@@ -20,7 +30,9 @@ document.addEventListener('DOMContentLoaded', async function() {
                 + '<td>' + l.clicks + '</td>'
                 + '<td>' + formatDate(l.created_at) + '</td>'
                 + '<td>' + (l.expires_at ? formatDate(l.expires_at) : '<span class="text-muted">never</span>') + '</td>'
-                + '<td><button class="btn btn--ghost btn--sm del-btn" data-code="' + escapeHtml(l.short_code) + '">Delete</button></td>'
+                + (mayDelete
+                    ? '<td><button class="btn btn--ghost btn--sm del-btn" data-code="' + escapeHtml(l.short_code) + '">Delete</button></td>'
+                    : '')
                 + '</tr>';
         }).join('');
         tbody.querySelectorAll('.del-btn').forEach(function(btn) {
@@ -28,8 +40,15 @@ document.addEventListener('DOMContentLoaded', async function() {
                 var code = this.dataset.code;
                 if (!confirm('Delete link ' + code + '?')) return;
                 var r = await apiFetch('/api/v1/links/' + encodeURIComponent(code), { method: 'DELETE' });
-                if (r && r.ok) window.location.reload();
+                if (!r) return;
+                if (!r.ok) {
+                    showLoadError('links-error', await apiErrorText(r));
+                    return;
+                }
+                window.location.reload();
             });
         });
-    } catch(e) { console.error(e); }
+    } catch(e) {
+        showLoadError('links-error', 'The service could not be reached.', 'links-tbody', columns);
+    }
 });

@@ -3,6 +3,10 @@
 {% block dashboard_content %}
 <h1 class="dash-title">Welcome back, {{ g.current_user.email.split('@')[0] }}</h1>
 
+{# The figures below are the caller's own links, which `link:view_own`
+   guards. A role without it used to land here on three dashes and a table
+   that said "Loading..." for as long as the page stayed open. #}
+{% if can('link:view_own') %}
 <div class="stats-grid" id="home-stats">
     <div class="stat-card">
         <div class="stat-value" id="stat-links">-</div>
@@ -21,8 +25,11 @@
 <div class="card mt-2">
     <div class="card-header">
         <span class="card-title">Recent Links</span>
+        {% if can('link:create') %}
         <a href="{{ url_for('dashboard.create_link_form') }}" class="btn btn--primary btn--sm">+ New Link</a>
+        {% endif %}
     </div>
+    <div id="home-error" class="alert alert--error hidden"></div>
     <div class="table-wrap">
         <table class="table">
             <thead><tr><th>Short URL</th><th>Original</th><th>Clicks</th><th>Created</th></tr></thead>
@@ -30,7 +37,30 @@
         </table>
     </div>
 </div>
+{% else %}
+<div class="card mt-2">
+    <div class="empty">
+        {# States the permission, not a fact about the account. Worded as
+           "holds no links of its own" it was a claim, and a false one:
+           an account can create links it is then not allowed to list, and
+           this screen told it they did not exist. #}
+        <p>This account cannot list links.</p>
+        <p class="text-sm text-muted">
+            Listing links needs the <code>link:view_own</code> permission.
+            {% if can('link:create') %}
+            Links it creates are still made; it just cannot see them here.
+            {% endif %}
+            {% if can('stats:view_basic') %}
+            The <a href="{{ url_for('dashboard.service_stats') }}">service statistics</a>
+            are open to it.
+            {% endif %}
+        </p>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block page_scripts %}
+{% if can('link:view_own') %}
 <script src="{{ url_for('static', filename='js/pages/home_dashboard.js') }}"></script>
+{% endif %}
 {% endblock %}

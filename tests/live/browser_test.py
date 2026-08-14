@@ -189,7 +189,8 @@ def is_a_code(text: str) -> bool:
 
 def confirm_email(page, mail: MailCatcher, email: str) -> None:
     """
-    Confirm an address the way its owner does: by opening the mailed link.
+    Confirm an address the way its owner does: by opening the mailed link
+    and pressing the button on the page it lands on.
 
     Registration leaves the account unconfirmed and the login form refuses
     it until the address is proven. Before, this step was a direct
@@ -197,6 +198,10 @@ def confirm_email(page, mail: MailCatcher, email: str) -> None:
     the token registration issues, the link the template builds or the
     page that link lands on -- and one of those broke once without a
     single check going red.
+
+    The click is the confirmation now. The link used to point straight at
+    the API, which answered JSON to a person's browser and spent the token
+    on whatever fetched it first.
 
     Args:
         page: An open browser page, used to follow the link.
@@ -210,6 +215,51 @@ def confirm_email(page, mail: MailCatcher, email: str) -> None:
     assert response is not None and response.status == 200, (
         f"the mailed link answered {response and response.status}: {link}"
     )
+    page.click("#verify-btn")
+    page.wait_for_function(
+        "document.getElementById('verify-done').textContent.trim() !== ''"
+        " || document.getElementById('verify-error').textContent.trim() !== ''",
+        timeout=5000,
+    )
+    assert page.inner_text("#verify-error").strip() == "", (
+        page.inner_text("#verify-error")
+    )
+
+
+def promote_to_admin(app, email: str) -> None:
+    """
+    Give an account the admin role, the way an operator makes the first one.
+
+    There is no endpoint for this and there should not be: the first
+    administrator cannot be appointed by an administrator. The row is
+    written directly, which is what ``smoke_test.py`` does for the same
+    reason.
+
+    Args:
+        app: The running application.
+        email: Address of the account to promote.
+    """
+    from sqlalchemy import text
+
+    with app.app_context():
+        with app.container.get_db_manager().session() as session:
+            user = session.execute(
+                text("SELECT id FROM users WHERE email = :email"),
+                {"email": email},
+            ).fetchone()
+            role = session.execute(
+                text("SELECT id FROM roles WHERE name = 'admin'")
+            ).fetchone()
+            assert user is not None, f"no account for {email}"
+            assert role is not None, "the admin role was never seeded"
+            session.execute(
+                text(
+                    "INSERT OR IGNORE INTO user_roles (user_id, role_id) "
+                    "VALUES (:uid, :rid)"
+                ),
+                {"uid": user[0], "rid": role[0]},
+            )
+            session.commit()
 
 
 def sign_in(page, base: str) -> None:
@@ -247,7 +297,7 @@ def main() -> int:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
                 try:
-                    run_checks(browser, base, mail)
+                    run_checks(browser, base, mail, app)
                 finally:
                     browser.close()
         finally:
@@ -262,7 +312,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 9
+    expected = 15
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -271,7 +321,7 @@ def main() -> int:
     return 0 if result.failed == 0 else 1
 
 
-def run_checks(browser, base: str, mail: MailCatcher) -> None:
+def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
     """
     Drive every page whose script turns an answer into a sentence.
 
@@ -280,6 +330,8 @@ def run_checks(browser, base: str, mail: MailCatcher) -> None:
         base: Base URL the server answers on.
         mail: Catcher holding the messages this run sent, from which the
             confirmation link is taken.
+        app: The running application, for the one thing no endpoint does:
+            making the first administrator.
     """
     console_errors = []
 
@@ -429,6 +481,129 @@ def run_checks(browser, base: str, mail: MailCatcher) -> None:
             page.inner_text("#create-error")
         )
         assert base.split("//")[1] in page.inner_text("#create-result")
+
+    @check("the confirmation link opens a page rather than a JSON body")
+    def _():
+        # What arrives in a mailbox is opened by a browser. The link used
+        # to point at the API, which answers `application/json`: the
+        # person who did what the message asked was shown
+        # {"message": "Email confirmed..."} and left to find the sign-in
+        # page themselves.
+        page = page_for("/register")
+        page.fill("#email", "browser-verify@example.test")
+        page.fill("#password", PASSWORD)
+        page.click("#register-form button[type=submit]")
+        page.wait_for_function(
+            "document.getElementById('reg-sent').textContent.trim() !== ''",
+            timeout=5000,
+        )
+
+        link = mail.confirmation_link("browser-verify@example.test")
+        assert link is not None, "no confirmation message was delivered"
+        page.goto(link)
+
+        assert page.is_visible("#verify-btn"), (
+            "the mailed link did not land on a page with a button on it"
+        )
+
+    @check("opening the confirmation link does not spend the token")
+    def _():
+        # A scanner that follows links in mail would otherwise confirm the
+        # address -- or, worse, spend the token and leave its owner told
+        # that their confirmation is invalid. Loading the page twice and
+        # only then pressing the button proves the load is inert.
+        page = page_for("/login")
+        link = mail.confirmation_link("browser-verify@example.test")
+        page.goto(link)
+        page.goto(link)
+        page.click("#verify-btn")
+        page.wait_for_function(
+            "document.getElementById('verify-done').textContent.trim() !== ''"
+            " || document.getElementById('verify-error').textContent.trim() !== ''",
+            timeout=5000,
+        )
+
+        assert page.inner_text("#verify-error").strip() == "", (
+            "the token was already spent by loading the page: "
+            + page.inner_text("#verify-error")
+        )
+        assert page.is_visible("#verify-next"), (
+            "the page confirmed the address and offered no way to sign in"
+        )
+
+    @check("the sign-in page can ask for another confirmation message")
+    def _():
+        # The service has always answered this request and no page ever
+        # made it: someone whose message never arrived was stuck.
+        page = page_for("/login")
+        page.fill("#email", "browser-user@example.test")
+        page.click("#resend-link")
+        page.wait_for_function(
+            "document.getElementById('resend-done').textContent.trim() !== ''"
+            " || document.getElementById('resend-error').textContent.trim() !== ''",
+            timeout=5000,
+        )
+
+        assert page.inner_text("#resend-error").strip() == "", (
+            page.inner_text("#resend-error")
+        )
+        message = page.inner_text("#resend-done").strip()
+        assert message and not is_a_code(message), message
+
+    @check("an administrator sees the roles each account holds")
+    def _():
+        # The column read `{{ role.name }}` over a list of names, and
+        # Undefined prints as nothing: it was blank for every account in
+        # the service, on the page whose job is to say who holds what.
+        promote_to_admin(app, "browser-user@example.test")
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/users")
+
+        row = page.inner_text("tr[data-user-email='browser-user@example.test']")
+        assert "admin" in row, f"the Roles column says nothing: {row!r}"
+
+    @check("an administrator can suspend an account from the users page")
+    def _():
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/users")
+        row = "tr[data-user-email='browser-verify@example.test']"
+        page.on("dialog", lambda dialog: dialog.accept())
+        page.click(f"{row} .js-deactivate")
+        page.wait_for_selector(f"{row} .js-activate", timeout=5000)
+
+        assert "Inactive" in page.inner_text(row), page.inner_text(row)
+
+    @check("a page that is refused its data says so instead of loading forever")
+    def _():
+        # The defect the page scripts all shared: `if (!resp.ok) return;`
+        # left the table on "Loading..." for good, so a refusal and a slow
+        # network looked identical to the person waiting. Measured by
+        # asking for a page whose data this account may not have: the
+        # account below holds no administrative permission, so the users
+        # page answers 403 to the markup and the script has to say it.
+        #
+        # Restoring the silent return in any page script turns this red,
+        # which is what the run above could not do.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/links")
+        page.wait_for_selector("#links-tbody tr", timeout=5000)
+        page.evaluate("() => { window.fetch = async () => new Response("
+                      "JSON.stringify({message: 'Not authorized'}), {status: 403}); }")
+        page.reload()
+        page.wait_for_function(
+            "document.getElementById('links-tbody').textContent.indexOf('Loading') === -1",
+            timeout=5000,
+        )
+        shown = page.inner_text("#links-tbody").strip()
+
+        assert "Loading" not in shown, "the table is still saying Loading"
+        assert shown, "the table went blank instead of saying what happened"
+        assert not is_a_code(shown), (
+            f"the page shows a machine-readable code: {shown!r}"
+        )
 
     @check("no page reported a script error to the console")
     def _():

@@ -3,18 +3,22 @@
 {% block dashboard_content %}
 <div class="flex items-center justify-between mb-2">
     <h1 class="dash-title" style="margin:0;">Roles</h1>
+    {% if can('admin:manage_roles') %}
     <a href="{{ url_for('dashboard.create_role_form') }}" class="btn btn--primary btn--sm">+ New Role</a>
+    {% endif %}
 </div>
+
+<div id="roles-error" class="alert alert--error hidden mb-2"></div>
 
 <div class="card">
     <div class="table-wrap">
         <table class="table">
             <thead>
-                <tr><th>Name</th><th>Description</th><th>Permissions</th><th>Actions</th></tr>
+                <tr><th>Name</th><th>Description</th><th>Permissions</th><th class="table-actions">Actions</th></tr>
             </thead>
             <tbody>
                 {% for role in roles %}
-                <tr>
+                <tr data-role-name="{{ role.name }}">
                     <td><strong>{{ role.name }}</strong>
                         {% if role.is_system %}<span class="badge badge--gray">system</span>{% endif %}
                     </td>
@@ -22,11 +26,24 @@
                     <td>
                         {% for p in role.permissions %}
                             <span class="badge badge--blue">{{ p.name }}</span>
+                        {% else %}
+                            <span class="text-muted text-sm">none</span>
                         {% endfor %}
                     </td>
-                    <td>
-                        {% if not role.is_system %}
+                    <td class="table-actions">
+                        {% if role.is_system %}
+                        {# Said to anyone who can see the table, not only to
+                           whoever could act on it: a reader with
+                           `admin:view_roles` alone was shown a blank column
+                           and no reason for it.
+
+                           The service refuses to change or remove these, so
+                           the page says so instead of offering a form whose
+                           Save answers "Cannot modify system roles". #}
+                        <span class="text-muted text-sm">protected</span>
+                        {% elif can('admin:manage_roles') %}
                         <a href="{{ url_for('dashboard.edit_role', role_name=role.name) }}" class="btn btn--ghost btn--sm">Edit</a>
+                        <button class="btn btn--ghost btn--sm btn--danger js-delete-role">Delete</button>
                         {% endif %}
                     </td>
                 </tr>
@@ -34,5 +51,11 @@
             </tbody>
         </table>
     </div>
+    {% if not roles %}
+    <div class="empty"><p>No roles found.</p></div>
+    {% endif %}
 </div>
+{% endblock %}
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/pages/roles_list.js') }}"></script>
 {% endblock %}
