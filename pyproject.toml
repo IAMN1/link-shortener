@@ -37,13 +37,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-# Not in `dev`: `requirements.txt` is exported from the lock without
-# filtering groups, and Dockerfile pip-installs that file -- so anything in
-# `dev` travels into the runtime image. Measured: adding playwright there
-# took the image from 540 MB to 731 MB, for a browser the service never
-# starts. The browser run is driven by hand from a developer's machine
-# (`tests/live/browser_test.py`), which is exactly where this group is
-# installed: `uv sync --group browser`.
+# Отдельной группой, а не в `dev`: `uv export` кладёт в requirements.txt
+# только группу по умолчанию, а этот файл ставится в образ через pip. Всё из
+# `dev` едет в рантайм-образ, всё из своей группы — нет.
+# Ставится руками: `uv sync --group browser`.
 browser = [
     "playwright>=1.49",
 ]
@@ -58,17 +55,17 @@ dev = [
     "pylint>=4.0.4",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
-    # Supplies --error-for-skips, which CI passes and nobody else does.
-    # Locked here rather than installed ad hoc in the workflow so its
-    # version is pinned by uv.lock like everything else -- which also means
-    # it reaches the image, since requirements.txt exports this group whole
-    # and Dockerfile pip-installs the file. That is how every linter here
-    # already travels; noted rather than fixed. The flag guards the
-    # single skip branch the suite has -- an unreachable Docker daemon --
-    # which is an honest skip on a laptop and a silent loss of 35
-    # PostgreSQL and Redis tests on a runner that is supposed to have it.
+    # Даёт --error-for-skips, которым пользуется только CI. Объявлен здесь,
+    # чтобы версию пинил uv.lock; вместе со всеми линтерами группы едет в
+    # образ.
     "pytest-error-for-skips>=2.0.2",
     "pytest-mock>=3.15.1",
+]
+# Инструмент, которым сняты числа в docs/DEVELOPER_GUIDE.md. Отдельной
+# группой по той же причине, что и `browser` выше.
+# Запуск: `uv sync --group load`, затем tests/load/locustfile.py.
+load = [
+    "locust>=2.32",
 ]
 
 # Без этой секции uv не устанавливает проект в виртуальное окружение,
@@ -94,9 +91,7 @@ link_shortener = [
     "infrastructure/configs/rbac/*.yaml",
     "web/templates/*.html",
     "web/templates/**/*.html",
-    # Письма — обычный текст, а не HTML, и под предыдущие два шаблона они
-    # не подпадают. Без этой строки они остаются в репозитории, как когда-то
-    # roles.yaml: страницы рисуются, регистрация проходит, письмо не уходит.
+    # Письма — обычный текст и под шаблоны выше не подпадают.
     "web/templates/**/*.txt",
     "web/static/**/*",
 ]
@@ -107,17 +102,14 @@ pythonpath = ["src"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-# --strict-markers and --strict-config used to sit in addopts below and did
-# nothing there. Both are OverrideIniAction, and Config.parse freezes the
-# override list from the real command line *before* it prepends addopts, so
-# a copy living in addopts never reaches getini. Measured: an unregistered
-# marker under the old addopts printed "1 passed, 1 warning". Declared as
-# ini options they take effect, and they take effect for every invocation
-# rather than only for the ones that spell the flags out again.
+# Именно ini-опциями, а не флагами в addopts: обе — OverrideIniAction, и
+# Config.parse замораживает список переопределений с настоящей командной
+# строки до подстановки addopts, поэтому копия внутри addopts до getini не
+# доходит. Как ini они действуют на любой запуск.
 strict_markers = true
 strict_config = true
-# The canonical name; `xfail_strict` is its alias. Turns an xfail that has
-# started passing into a failure instead of an `xpassed` line nobody reads.
+# Каноническое имя, `xfail_strict` — псевдоним. Внезапно прошедший xfail
+# становится отказом, а не строчкой `xpassed`.
 strict_xfail = true
 
 addopts = [
@@ -127,12 +119,8 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
-    # A floor, two points under where the suite stands. Coverage was
-    # measured and reported and bounded by nothing, so a private method
-    # nobody calls -- or a test quietly deleted -- cost a fraction of a
-    # percent and went unnoticed. Two points of slack so that ordinary
-    # work does not trip it and a real loss does; lowering it is a
-    # decision someone has to write down, which is the point.
+    # Нижняя граница на два пункта ниже достигнутого: обычная работа порог
+    # не задевает, настоящая потеря задевает. Снижение приходится записывать.
     "--cov-fail-under=88",
     "--junitxml=test-results/junit.xml"
 ]
@@ -147,16 +135,20 @@ markers = [
     "api: tests for API endpoints",
 ]
 
-[tool.flake8]
-max-line-length = 88
-ignore = "E203, W503"
+# flake8 настраивается файлом .flake8: pyproject.toml он не читает.
 
+# Список, а не строка: TOML внутри строки решётку комментарием не считает, и
+# pylint принял бы текст комментария за имя сообщения.
 [tool.pylint.'MESSAGES CONTROL']
-disable = """
-    W0107,  # unnecessary-pass (нормально для абстрактных методов)
-    W0511,  # fixme (можно оставить TODO)
-    R0801,  # duplicate-code (фальшивые срабатывания)
-"""
+disable = [
+    # Нормально для абстрактных методов.
+    "unnecessary-pass",
+    "unnecessary-ellipsis",
+    # TODO разрешается оставить.
+    "fixme",
+    # Ложные срабатывания: совпадают шапки однотипных обработчиков.
+    "duplicate-code",
+]
 
 [tool.pylint.'MASTER']
 fail-under = 9.0
