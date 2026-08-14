@@ -1,9 +1,11 @@
 [project]
 name = "link-shortener"
 version = "0.1.0"
-description = "Add your description here"
+description = "A URL shortener with clean architecture, RBAC and a two-level cache"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 dependencies = [
     "alembic>=1.18.4",
     "bcrypt>=5.0.0",
@@ -62,7 +64,7 @@ dev = [
     "pytest-mock>=3.15.1",
     "types-pyyaml>=6.0",
 ]
-# Инструмент, которым сняты числа в docs/DEVELOPER_GUIDE.md. Отдельной
+# Инструмент, которым сняты числа в docs/development.md. Отдельной
 # группой по той же причине, что и `browser` выше.
 # Запуск: `uv sync --group load`, затем tests/load/locustfile.py.
 load = [
