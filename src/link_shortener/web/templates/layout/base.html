@@ -10,7 +10,11 @@
 <body>
     <header class="header">
         <div class="container header-inner">
-            <a href="{{ url_for('frontend.index') }}" class="logo">&#128279; Linkr</a>
+            {# The mark is the same shield the codes wear, so the product
+               and the thing it makes are recognisably one family. #}
+            <a href="{{ url_for('frontend.index') }}" class="logo">
+                <span class="logo-shield">LR</span> Linkr
+            </a>
             <div class="header-right">
                 {% if g.current_user %}
                     <a href="{{ url_for('dashboard.home') }}" class="btn btn--ghost btn--sm">Dashboard</a>
@@ -25,8 +29,12 @@
                             <div class="dropdown-label text-xs text-muted">{{ g.current_user.roles|join(', ') }}</div>
                             <hr class="dropdown-divider">
                             <a href="{{ url_for('dashboard.home') }}" class="dropdown-item">Dashboard</a>
-                            <a href="{{ url_for('dashboard.my_links') }}" class="dropdown-item">My Links</a>
-                            <a href="{{ url_for('dashboard.create_link_form') }}" class="dropdown-item">Create Link</a>
+                            {% if can('link:view_own') %}
+                                <a href="{{ url_for('dashboard.my_links') }}" class="dropdown-item">My Links</a>
+                            {% endif %}
+                            {% if can('link:create') %}
+                                <a href="{{ url_for('dashboard.create_link_form') }}" class="dropdown-item">Create Link</a>
+                            {% endif %}
                             <hr class="dropdown-divider">
                             <a href="#" id="logout-link" class="dropdown-item dropdown-item--danger">Logout</a>
                         </div>

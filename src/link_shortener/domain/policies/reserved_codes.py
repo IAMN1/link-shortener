@@ -30,6 +30,7 @@ RESERVED_CODES = frozenset({
     "metrics",
     "openapi",
     "swagger",
+    "verify",
 })
 """Lower-cased. Comparison folds case: codes are case-sensitive to the
 router, but a person asking for ``Health`` means the word, and handing them

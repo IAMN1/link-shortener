@@ -3,22 +3,34 @@
 {% block dashboard_content %}
 <div class="flex items-center justify-between mb-2">
     <h1 class="dash-title" style="margin:0;">Users</h1>
+    {% if can('admin:manage_users') %}
     <a href="{{ url_for('dashboard.create_user_form') }}" class="btn btn--primary btn--sm">+ New User</a>
+    {% endif %}
 </div>
+
+<div id="users-error" class="alert alert--error hidden mb-2"></div>
 
 <div class="card">
     <div class="table-wrap">
         <table class="table">
             <thead>
-                <tr><th>Email</th><th>Roles</th><th>Status</th><th>Actions</th></tr>
+                <tr>
+                    <th>Email</th><th>Roles</th><th>Status</th><th class="table-actions">Actions</th>
+                </tr>
             </thead>
             <tbody>
                 {% for user in users %}
-                <tr>
+                <tr data-user-id="{{ user.id }}" data-user-email="{{ user.email }}">
                     <td>{{ user.email }}</td>
                     <td>
+                        {# ``roles`` is a list of names, not of objects.
+                           Reading ``.name`` off a string yields Undefined,
+                           which Jinja prints as nothing: every account in
+                           this table showed a blank Roles column. #}
                         {% for role in user.roles %}
-                            <span class="badge badge--blue">{{ role.name }}</span>
+                            <span class="badge badge--blue">{{ role }}</span>
+                        {% else %}
+                            <span class="text-muted text-sm">none</span>
                         {% endfor %}
                     </td>
                     <td>
@@ -28,9 +40,32 @@
                             <span class="badge badge--red">Inactive</span>
                         {% endif %}
                     </td>
-                    <td>
+                    <td class="table-actions">
+                        {% if can('admin:manage_users') %}
                         <a href="{{ url_for('dashboard.edit_user', user_id=user.id) }}" class="btn btn--ghost btn--sm">Edit</a>
+                        {% endif %}
                         <a href="{{ url_for('dashboard.user_stats', user_id=user.id) }}" class="btn btn--ghost btn--sm">Stats</a>
+                        {% if can('admin:manage_users') %}
+                            {# Deactivation, reactivation and deletion exist in
+                               the service and had no way in: an operator had to
+                               call the API by hand to suspend an account.
+
+                               Not on the operator's own row. The service
+                               refuses to leave itself without an
+                               administrator, so both buttons answered
+                               "This would leave the system without an
+                               administrator" every time they were pressed. #}
+                            {% if user.id != g.current_user.id %}
+                                {% if user.is_active %}
+                                <button class="btn btn--ghost btn--sm js-deactivate">Deactivate</button>
+                                {% else %}
+                                <button class="btn btn--ghost btn--sm js-activate">Activate</button>
+                                {% endif %}
+                                <button class="btn btn--ghost btn--sm btn--danger js-delete-user">Delete</button>
+                            {% else %}
+                                <span class="text-muted text-sm">this is you</span>
+                            {% endif %}
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -38,7 +73,27 @@
         </table>
     </div>
     {% if not users %}
-    <div class="empty"><p>No users found.</p></div>
+    <div class="empty">
+        <p>{% if page > 1 %}Nothing on this page.{% else %}No users found.{% endif %}</p>
+    </div>
     {% endif %}
 </div>
+
+{# Without this the page showed the first hundred accounts and said
+   nothing about the rest, which on a service with more than that is a
+   list that quietly lies. #}
+{% if has_next or page > 1 %}
+<div class="pager">
+    {% if page > 1 %}
+    <a class="btn btn--ghost btn--sm" href="{{ url_for('dashboard.users_list', page=page - 1) }}">&larr; Previous</a>
+    {% endif %}
+    <span class="pager-page">Page {{ page }}</span>
+    {% if has_next %}
+    <a class="btn btn--ghost btn--sm" href="{{ url_for('dashboard.users_list', page=page + 1) }}">Next &rarr;</a>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/pages/users_list.js') }}"></script>
 {% endblock %}

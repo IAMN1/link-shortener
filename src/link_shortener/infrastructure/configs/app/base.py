@@ -37,6 +37,16 @@ def _find_project_root() -> Optional[Path]:
     return None
 
 
+DATABASE_DIRECTORY = Path("datas") / "databases"
+"""Where a SQLite file lives, relative to the project root.
+
+One place to look, and not the root: a database file beside the compose
+files and the README reads as part of the project rather than as something
+a run left behind. Only relative names are anchored here -- an absolute
+``DATABASE_NAME`` and an explicit ``DATABASE_URL`` are the caller saying
+where they want it.
+"""
+
 PROJECT_ROOT = _find_project_root()
 """Directory the project is laid out from, or None outside a source tree.
 
@@ -262,8 +272,12 @@ class BaseConfig:
     Same values as LOGGER_TYPE.
     """
 
-    _default_log_dir: str = "logs"
-    """Where logs go when nothing says otherwise, before anchoring."""
+    _default_log_dir: str = "datas/logs"
+    """Where logs go when nothing says otherwise, before anchoring.
+
+    Beside the databases, under ``datas``: what a run leaves behind
+    belongs in one place, and that place is not the project root.
+    """
 
     @property
     def LOG_DIR(self) -> str:
@@ -701,6 +715,21 @@ class BaseConfig:
     DATABASE_USER: str = env_str("DATABASE_USER", "")
     DATABASE_PASSWORD: str = env_str("DATABASE_PASSWORD", "")
 
+    DATABASE_DIR: str = env_str("DATABASE_DIR", str(DATABASE_DIRECTORY))
+    """
+    Directory a SQLite file is put in. Ignored by PostgreSQL.
+
+    Relative to the project root, so the default puts the file in
+    ``data/databases`` however the process was started. An absolute value
+    is taken as it stands and works outside a source tree as well -- which
+    is the case a container is: the package is installed into
+    site-packages, there is no project directory above it, and a
+    deployment that wants ``/var/lib/shortener`` says so here.
+
+    An absolute ``DATABASE_NAME`` and an explicit ``DATABASE_URL`` both
+    win over this: they already say where the file goes.
+    """
+
     DATABASE_URL: str = env_str("DATABASE_URL", "")
     """
     Full database connection URL. If set, overrides individual DATABASE_* settings.
@@ -788,7 +817,7 @@ class BaseConfig:
         gunicorn workers, so a process holds one request and one
         connection at a time; the pool is a ceiling on what that process
         may keep open, and the measurement in
-        ``docs/DEVELOPER_GUIDE.md`` found the ceiling never approached --
+        ``docs/development.md`` found the ceiling never approached --
         1, 2, 5 and 20 gave the same throughput and the same number of
         server-side connections.
 
@@ -811,7 +840,7 @@ class BaseConfig:
 
     def _sqlite_path(self) -> str:
         """
-        Anchor a relative SQLite file to the project root.
+        Anchor a relative SQLite file to the project's database directory.
 
         SQLAlchemy leaves a relative path to Python, which reads it against
         the working directory of the process -- "the actual filename to be
@@ -822,26 +851,47 @@ class BaseConfig:
         ``src/db_shortener.db`` and reported no error at all, because an
         absent SQLite file is created rather than refused.
 
+        The anchor is ``DATABASE_DIR`` -- ``data/databases`` unless a
+        deployment says otherwise -- rather than the root itself, so that
+        there is one place to look for a database file and it is not the
+        same place as the source, the compose files and the docs. A name
+        with directories in it keeps them, underneath that directory.
+
+        The directory is created here, and this is the one method that
+        knows the path: SQLite creates a missing *file* and refuses a
+        missing *directory* with "unable to open database file", and the
+        callers that would meet that -- the application, the CLI, alembic
+        in its own subprocess -- have nothing else in common.
+
         ``:memory:`` is handed back untouched -- it is not a file. An
-        absolute path needs no guard: joining one onto a directory yields
-        the absolute path itself, which is pathlib's rule and not an
-        accident to be defended against. An explicit ``DATABASE_URL``
-        never reaches here -- ``get_database_url`` returns it first -- so a
+        absolute ``DATABASE_NAME`` is returned as it stands: it already
+        says where the file goes. An explicit ``DATABASE_URL`` never
+        reaches here -- ``get_database_url`` returns it first -- so a
         caller who writes the URL by hand keeps whatever they wrote.
 
-        Outside a source tree there is no root to anchor to, and the name
-        is returned as given: an installed copy has no project directory,
-        and inventing one would put the database somewhere no deployment
-        asked for.
+        Outside a source tree a *relative* ``DATABASE_DIR`` has no root to
+        anchor to, and the name is returned as given: an installed copy
+        has no project directory, and inventing one would put the database
+        somewhere no deployment asked for. An absolute ``DATABASE_DIR``
+        needs no root and is honoured there too, which is how a container
+        names a mounted volume.
 
         Returns:
             The path to hand to SQLAlchemy.
         """
         name = self.DATABASE_NAME
-        if name == ":memory:" or PROJECT_ROOT is None:
+        if name == ":memory:" or Path(name).is_absolute():
             return name
 
-        return str(PROJECT_ROOT / name)
+        directory = Path(self.DATABASE_DIR)
+        if not directory.is_absolute():
+            if PROJECT_ROOT is None:
+                return name
+            directory = PROJECT_ROOT / directory
+
+        path = directory / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return str(path)
 
     def get_database_url(self) -> str:
         """

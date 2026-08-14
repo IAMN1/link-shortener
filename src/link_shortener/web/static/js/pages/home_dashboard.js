@@ -4,7 +4,11 @@
 document.addEventListener('DOMContentLoaded', async function() {
     try {
         var resp = await apiFetch('/api/v1/stats/mine');
-        if (!resp || !resp.ok) return;
+        if (!resp) return;
+        if (!resp.ok) {
+            showLoadError('home-error', await apiErrorText(resp), 'recent-links', 4);
+            return;
+        }
         var data = await resp.json();
         document.getElementById('stat-links').textContent = data.total_links;
         document.getElementById('stat-clicks').textContent = data.total_clicks;
@@ -20,5 +24,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         } else {
             tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">No links yet</td></tr>';
         }
-    } catch(e) { console.error(e); }
+    } catch(e) {
+        showLoadError('home-error', 'The service could not be reached.', 'recent-links', 4);
+    }
 });

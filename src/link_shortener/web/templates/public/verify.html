@@ -1,0 +1,35 @@
+{% extends "layout/base.html" %}
+{% block title %}Confirm your address – Linkr{% endblock %}
+{% block content %}
+<div class="auth-center">
+    <div class="auth-card">
+        <div class="card" id="verify-card" data-token="{{ token or '' }}">
+            <h2>Confirm your address</h2>
+
+            {% if token %}
+            <p class="text-sm text-muted mb-2">
+                One click finishes signing up. The link expires, so do it now
+                rather than later.
+            </p>
+            <div id="verify-error" class="form-error hidden"></div>
+            <button id="verify-btn" class="btn btn--primary btn--block">Confirm this address</button>
+            <div id="verify-done" class="alert alert--success hidden mt-1"></div>
+            <p id="verify-next" class="hidden mt-1">
+                <a href="{{ url_for('frontend.login_page') }}">Sign in</a>
+            </p>
+            {% else %}
+            {# Reached without a token: somebody opened the page directly,
+               or a mail client trimmed the link. #}
+            <div class="alert alert--error">This confirmation link is not valid.</div>
+            <p class="text-sm text-muted mt-1">
+                Ask for a new one from the
+                <a href="{{ url_for('frontend.login_page') }}">sign-in page</a>.
+            </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pages/verify.js') }}"></script>
+{% endblock %}

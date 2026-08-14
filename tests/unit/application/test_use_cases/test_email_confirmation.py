@@ -523,7 +523,9 @@ class TestTheMessageItself:
         use_case.execute("user@example.com", "TOKEN-123", context())
 
         url = templates.verification_email.call_args.kwargs["confirm_url"]
-        assert url.startswith("https://links.example.com/api/v1/auth/verify?token=")
+        # The confirmation page, not the endpoint: what arrives in a
+        # mailbox is opened by a browser, and the endpoint answers JSON.
+        assert url.startswith("https://links.example.com/verify?token=")
 
     def test_a_trailing_slash_does_not_double(self, ):
         use_case, templates = self._use_case(Mock(), "https://links.example.com/")
@@ -531,7 +533,10 @@ class TestTheMessageItself:
         use_case.execute("user@example.com", "TOKEN-123", context())
 
         url = templates.verification_email.call_args.kwargs["confirm_url"]
-        assert "//auth" not in url
+        # Named after the path the link actually carries. Held against
+        # "//auth" it went on passing once that path was gone, which is a
+        # test that cannot fail rather than one that holds.
+        assert "//verify" not in url
 
     def test_the_token_is_escaped_for_a_query_string(self):
         use_case, templates = self._use_case(Mock())

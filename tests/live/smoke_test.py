@@ -52,6 +52,7 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
@@ -330,9 +331,30 @@ def mailed_confirmation(email: str) -> str:
     return target
 
 
+def token_from(link: str) -> str:
+    """
+    Take the confirmation token out of a mailed link.
+
+    Args:
+        link: Path with query string, as the message carries it.
+
+    Returns:
+        The token, unescaped.
+    """
+    query = parse_qs(urlparse(link).query)
+    token = query.get("token", [""])[0]
+    assert token, f"no token in {link!r}"
+    return token
+
+
 def confirm_email(email: str) -> None:
     """
-    Confirm an address by following the link that was mailed to it.
+    Confirm an address the way its owner does.
+
+    The mailed link opens a page; the page's button sends the token. So
+    this reads the token out of the delivered link and posts it, which is
+    the request that button makes. Following the link alone confirms
+    nothing on purpose -- see the checks around ``/verify``.
 
     Every account this run signs in with has to get past the confirmation
     first: registration leaves it unconfirmed and login refuses it until
@@ -341,7 +363,24 @@ def confirm_email(email: str) -> None:
     Args:
         email: Address of the account to confirm.
     """
-    response = new_client("10.0.0.99").get(mailed_confirmation(email))
+    link = mailed_confirmation(email)
+
+    # The link is followed, not just parsed. Reading the token out and
+    # posting it to a path written here would confirm the address whatever
+    # the message actually said: measured -- with only the post, a
+    # ``VERIFY_PATH`` pointing at a route nothing answers left this run at
+    # 114 of 115, because every account still got confirmed. Following it
+    # first puts the link itself back in the path of every check that
+    # needs an account.
+    landing = new_client("10.0.0.98").get(link)
+    assert landing.status_code == 200, (
+        f"the mailed link answered {landing.status_code}: {link}"
+    )
+
+    token = token_from(link)
+    response = new_client("10.0.0.99").post(
+        "/api/v1/auth/verify", json={"token": token}
+    )
     assert response.status_code == 200, response.get_json()
 
 
@@ -421,15 +460,30 @@ def _():
     r = new_client("10.0.0.31").get("/api/v1/auth/verify?token=never-issued")
     assert r.status_code == 400, r.get_json()
 
-@test("GET /api/v1/auth/verify (the real link)")
+@test("GET /verify (the mailed link lands on a page, and spends nothing)")
 def _():
+    # The link points at a page now, not at the endpoint. Loading it must
+    # not confirm anything: mail scanners follow links, and a load that
+    # spent the token would leave its owner told that their confirmation
+    # is invalid.
     link = mailed_confirmation("test@example.com")
     r = new_client("10.0.0.32").get(link)
+    assert r.status_code == 200, r.status_code
+    assert r.headers["Content-Type"].startswith("text/html"), r.headers["Content-Type"]
+    assert b"verify-btn" in r.data, "the page carries no button to press"
+
+@test("POST /api/v1/auth/verify (the real token)")
+def _():
+    # What the button on that page sends.
+    token = token_from(mailed_confirmation("test@example.com"))
+    r = new_client("10.0.0.37").post("/api/v1/auth/verify", json={"token": token})
     assert r.status_code == 200, r.get_json()
 
-    # And once only: the same link again is refused, in the same words as
-    # a link that never existed.
-    again = new_client("10.0.0.33").get(link)
+    # And once only: the same token again is refused, in the same words as
+    # a token that never existed.
+    again = new_client("10.0.0.33").post(
+        "/api/v1/auth/verify", json={"token": token}
+    )
     unknown = new_client("10.0.0.36").get("/api/v1/auth/verify?token=no-such")
     assert again.status_code == unknown.status_code == 400
     assert again.get_json()["message"] == unknown.get_json()["message"]
@@ -1611,7 +1665,7 @@ success = result.summary()
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 114
+EXPECTED_CHECKS = 115
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")

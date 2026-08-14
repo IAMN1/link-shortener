@@ -16,7 +16,7 @@ import pytest
 from openapi_spec_validator import validate
 
 from link_shortener.web.schemas.openapi import OPERATION_VERBS
-from tests.integration.conftest import register_and_login
+from tests.integration.conftest import account_with_permissions, register_and_login
 
 
 def operations_of(path_item):
@@ -151,8 +151,11 @@ class TestEveryApiRouteIsDescribed:
             path = str(rule)
             if not path.startswith(API_PREFIX):
                 continue
-            if path.startswith("/api/v1/admin"):
-                continue  # Administration is not part of the public API.
+            # Administration used to be skipped here, as "not part of the
+            # public API". Not public is about who may call it, not about
+            # whether it is written down: the operator's surface was the
+            # one part of the service with no contract, while the
+            # dashboard was already written against these exact bodies.
             # Werkzeug writes <converter:name>; OpenAPI writes {name}.
             openapi_path = path.replace("<", "{").replace(">", "}")
             if openapi_path not in described:
@@ -458,3 +461,55 @@ class TestADeclaredStatusIsOneThatCanHappen:
         assert "401" not in (
             document["paths"]["/api/v1/stats"]["get"]["responses"]
         )
+
+
+class TestTheHealthBodyMatchesWhatIsWrittenDown:
+    """
+    The one response in the document nothing generates.
+
+    Every other body here is a Pydantic model's own schema, so it cannot
+    disagree with what the endpoint sends. ``GET /api/v1/admin/health``
+    assembles a dict by hand, and ``HEALTH_SCHEMA`` describes it by hand:
+    two hands, which is the arrangement that drifts. This holds them
+    together by asking the running endpoint.
+    """
+
+    def test_every_field_the_endpoint_sends_is_described(self, app):
+        from link_shortener.web.schemas.openapi import HEALTH_SCHEMA
+
+        client, _, _ = account_with_permissions(
+            app,
+            "health-doc@example.com",
+            "Test1234!",
+            "health-doc",
+            ["admin:view_system_health"],
+        )
+
+        answered = client.get("/api/v1/admin/health")
+        assert answered.status_code == 200, answered.get_data(as_text=True)
+
+        described = set(HEALTH_SCHEMA["properties"])
+        sent = set(answered.get_json())
+        assert sent <= described, f"undocumented health fields: {sorted(sent - described)}"
+
+    def test_every_field_that_is_described_is_one_the_endpoint_can_send(self, app):
+        """
+        The other direction. A field written here and never sent reads as
+        a promise, and a reader who believes it stops looking.
+
+        ``logging`` is the one exception and is documented as such: it
+        appears only where a failover logger is configured.
+        """
+        from link_shortener.web.schemas.openapi import HEALTH_SCHEMA
+
+        client, _, _ = account_with_permissions(
+            app,
+            "health-doc-2@example.com",
+            "Test1234!",
+            "health-doc-2",
+            ["admin:view_system_health"],
+        )
+
+        sent = set(client.get("/api/v1/admin/health").get_json())
+        described = set(HEALTH_SCHEMA["properties"]) - {"logging"}
+        assert described <= sent, f"described and never sent: {sorted(described - sent)}"

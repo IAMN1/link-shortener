@@ -3,6 +3,8 @@
 {% block dashboard_content %}
 <h1 class="dash-title">Service Statistics</h1>
 
+<div id="service-error" class="alert alert--error hidden mb-2"></div>
+
 <div class="stats-grid mb-2">
     <div class="stat-card">
         <div class="stat-value" id="stat-total-urls">-</div>
@@ -14,6 +16,10 @@
     </div>
 </div>
 
+{# The popular-links list comes with `stats:view_full`. Without it the
+   service sends nothing for this table, and the page used to show an
+   empty "Top Links" that read as "the service has no traffic". #}
+{% if can('stats:view_full') %}
 <div class="card">
     <div class="card-header">
         <span class="card-title">Top Links</span>
@@ -27,6 +33,17 @@
         </table>
     </div>
 </div>
+{% else %}
+<div class="card">
+    <div class="empty">
+        <p>Totals only.</p>
+        <p class="text-sm text-muted">
+            The list of most-visited links needs the
+            <code>stats:view_full</code> permission.
+        </p>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/pages/service_stats.js') }}"></script>

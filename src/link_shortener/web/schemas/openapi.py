@@ -45,6 +45,13 @@ from link_shortener.web.schemas.auth import (
 from link_shortener.web.schemas.stats import (
     MyStatsResponse, ServiceStatsResponse
 )
+from link_shortener.web.schemas.admin.admin_request import (
+    CreateRoleRequest, CreateUserRequest, UpdateRolePermissionsRequest,
+    UpdateUserRolesRequest
+)
+from link_shortener.web.schemas.admin.admin_responses import (
+    RoleResponseSchema, UserResponseSchema
+)
 
 
 OPENAPI_VERSION = "3.1.0"
@@ -62,6 +69,14 @@ MODELS: Dict[str, Type[BaseModel]] = {
     "RefreshResponse": RefreshResponse,
     "MessageResponse": MessageResponse,
     "ErrorResponse": ErrorResponse,
+    # Administration. The dashboard is written against these bodies, so
+    # they were already a contract -- just an unwritten one.
+    "CreateUserRequest": CreateUserRequest,
+    "UpdateUserRolesRequest": UpdateUserRolesRequest,
+    "CreateRoleRequest": CreateRoleRequest,
+    "UpdateRolePermissionsRequest": UpdateRolePermissionsRequest,
+    "UserResponseSchema": UserResponseSchema,
+    "RoleResponseSchema": RoleResponseSchema,
 }
 """Every schema the API speaks, taken from the models it validates with."""
 
@@ -259,6 +274,63 @@ CODE_PARAMETER = {
     ),
     "schema": {"type": "string"},
 }
+
+USER_PARAMETER = {
+    "name": "user_id",
+    "in": "path",
+    "required": True,
+    "description": "Identifier of the account, as the account listing gives it.",
+    "schema": {"type": "string"},
+}
+
+ROLE_PARAMETER = {
+    "name": "role_name",
+    "in": "path",
+    "required": True,
+    "description": "Name of the role, as the role listing gives it.",
+    "schema": {"type": "string"},
+}
+
+_DEPENDENCY = {
+    "type": "boolean",
+    "description": "True when the dependency answered.",
+}
+
+_LOG_CHANNEL = {
+    "type": "object",
+    "properties": {
+        "active": {"type": "boolean"},
+        "dropped_calls": {"type": "integer"},
+        "failed_checks": {"type": "integer"},
+        "lost_log_lines": {"type": "integer"},
+    },
+}
+
+HEALTH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "database": _DEPENDENCY,
+        "cache": _DEPENDENCY,
+        "task_queue": _DEPENDENCY,
+        "rate_limiter": _DEPENDENCY,
+        "logging": {
+            "type": "object",
+            "description": (
+                "Present only where a failover logger is configured."
+            ),
+            "properties": {"logger": _LOG_CHANNEL, "audit": _LOG_CHANNEL},
+        },
+    },
+    "required": ["database", "cache", "task_queue", "rate_limiter"],
+}
+"""
+The health body, written out because the endpoint assembles it by hand.
+
+Everything else in this document is a Pydantic model's own schema, which
+is why it cannot drift from what the endpoint validates. This one can:
+``AdminApiController.get_health`` builds a dict. A test holds the two
+together instead.
+"""
 
 PATHS: Dict[str, Any] = {
     "/api/v1/shorten": {
@@ -537,6 +609,315 @@ PATHS: Dict[str, Any] = {
             },
         }
     },
+    # --- Administration ----------------------------------------------
+    #
+    # Left out of this document until now, on the grounds that it is not
+    # part of the public API. It is not public, and that is a matter of
+    # who may call it rather than of whether it is written down: every
+    # operation below is behind a permission an ordinary account does not
+    # hold, and saying so here is what tells a reader which permission
+    # that is. Undocumented, the operator's own surface was the one part
+    # of the service with no contract -- while the dashboard that drives
+    # it was written against these exact bodies.
+    #
+    # Each operation names its permission, because that is the thing a
+    # reader cannot recover from the shapes.
+    "/api/v1/admin/users": {
+        "get": {
+            "summary": "List accounts",
+            "description": (
+                "Needs admin:view_users. Paginated through limit and "
+                "offset; the default page is a hundred, and there is no "
+                "total -- ask for one more than you mean to show to learn "
+                "whether another page exists."
+            ),
+            "tags": ["admin"],
+            "parameters": [
+                {
+                    "name": "limit",
+                    "in": "query",
+                    "required": False,
+                    "description": "How many accounts to return. Default 100.",
+                    "schema": {"type": "integer"},
+                },
+                {
+                    "name": "offset",
+                    "in": "query",
+                    "required": False,
+                    "description": "How many to skip. Default 0.",
+                    "schema": {"type": "integer"},
+                },
+            ],
+            "responses": {
+                "200": {
+                    "description": "The page of accounts",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "array",
+                                "items": _ref("UserResponseSchema"),
+                            }
+                        }
+                    },
+                },
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:view_users"),
+            },
+        },
+        "post": {
+            "summary": "Create an account",
+            "description": (
+                "Needs admin:manage_users. The account is created "
+                "confirmed -- an operator making an account for somebody "
+                "is the confirmation. Omitting roles gives the default one."
+            ),
+            "tags": ["admin"],
+            "requestBody": {"required": True, **_json("CreateUserRequest")},
+            "responses": {
+                "201": {"description": "Created", **_json("UserResponseSchema")},
+                "400": _error("Malformed body, or a role that does not exist"),
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:manage_users"),
+                "409": _error("That address is already registered"),
+                "415": _error("A body that is not declared application/json"),
+            },
+        },
+    },
+    "/api/v1/admin/users/{user_id}": {
+        "get": {
+            "summary": "Read one account",
+            "description": "Needs admin:view_users.",
+            "tags": ["admin"],
+            "parameters": [USER_PARAMETER],
+            "responses": {
+                "200": {"description": "The account", **_json("UserResponseSchema")},
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:view_users"),
+                "404": _error("No account carries that id"),
+            },
+        },
+        "delete": {
+            "summary": "Delete an account",
+            "description": (
+                "Needs admin:manage_users. Refused when it would leave the "
+                "service with no administrator; the links the account made "
+                "outlive it."
+            ),
+            "tags": ["admin"],
+            "parameters": [USER_PARAMETER],
+            "responses": {
+                "200": {"description": "Deleted", **_json("MessageResponse")},
+                "401": _error("Nobody is authenticated"),
+                "403": _error(
+                    "The caller does not hold admin:manage_users, or this "
+                    "would leave the system without an administrator"
+                ),
+                "404": _error("No account carries that id"),
+            },
+        },
+    },
+    "/api/v1/admin/users/{user_id}/roles": {
+        "put": {
+            "summary": "Replace an account's roles",
+            "description": (
+                "Needs admin:manage_users. A replacement, not an addition: "
+                "what is not in the list is taken away. Refused when it "
+                "would remove the last administrator's admin role."
+            ),
+            "tags": ["admin"],
+            "parameters": [USER_PARAMETER],
+            "requestBody": {"required": True, **_json("UpdateUserRolesRequest")},
+            "responses": {
+                "200": {"description": "The account", **_json("UserResponseSchema")},
+                "400": _error("Malformed body, or a role that does not exist"),
+                "401": _error("Nobody is authenticated"),
+                "403": _error(
+                    "The caller does not hold admin:manage_users, or this "
+                    "would leave the system without an administrator"
+                ),
+                "404": _error("No account carries that id"),
+                "415": _error("A body that is not declared application/json"),
+            },
+        }
+    },
+    "/api/v1/admin/users/{user_id}/deactivate": {
+        "post": {
+            "summary": "Suspend an account",
+            "description": (
+                "Needs admin:manage_users. The account stops being able to "
+                "sign in; its links go on resolving. Refused when it would "
+                "leave the service with no administrator."
+            ),
+            "tags": ["admin"],
+            "parameters": [USER_PARAMETER],
+            "responses": {
+                "200": {"description": "The account", **_json("UserResponseSchema")},
+                "401": _error("Nobody is authenticated"),
+                "403": _error(
+                    "The caller does not hold admin:manage_users, or this "
+                    "would leave the system without an administrator"
+                ),
+                "404": _error("No account carries that id"),
+            },
+        }
+    },
+    "/api/v1/admin/users/{user_id}/activate": {
+        "post": {
+            "summary": "Restore a suspended account",
+            "description": "Needs admin:manage_users.",
+            "tags": ["admin"],
+            "parameters": [USER_PARAMETER],
+            "responses": {
+                "200": {"description": "The account", **_json("UserResponseSchema")},
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:manage_users"),
+                "404": _error("No account carries that id"),
+            },
+        }
+    },
+    "/api/v1/admin/users/{user_id}/stats": {
+        "get": {
+            "summary": "One account's traffic",
+            "description": (
+                "Needs admin:view_users. The same figures /api/v1/stats/mine "
+                "gives an account about itself."
+            ),
+            "tags": ["admin"],
+            "parameters": [USER_PARAMETER],
+            "responses": {
+                "200": {
+                    "description": "The account's totals and recent links",
+                    **_json("MyStatsResponse"),
+                },
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:view_users"),
+                "404": _error("No account carries that id"),
+            },
+        }
+    },
+    "/api/v1/admin/roles": {
+        "get": {
+            "summary": "List roles",
+            "description": "Needs admin:view_roles.",
+            "tags": ["admin"],
+            "responses": {
+                "200": {
+                    "description": "Every role, with its permissions",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "array",
+                                "items": _ref("RoleResponseSchema"),
+                            }
+                        }
+                    },
+                },
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:view_roles"),
+            },
+        },
+        "post": {
+            "summary": "Create a role",
+            "description": (
+                "Needs admin:manage_roles. Permissions are named from the "
+                "fixed set the service defines; a name outside it is a 400."
+            ),
+            "tags": ["admin"],
+            "requestBody": {"required": True, **_json("CreateRoleRequest")},
+            "responses": {
+                "201": {"description": "Created", **_json("RoleResponseSchema")},
+                "400": _error("Malformed body, or a permission that does not exist"),
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:manage_roles"),
+                "409": _error("A role of that name already exists"),
+                "415": _error("A body that is not declared application/json"),
+            },
+        },
+    },
+    "/api/v1/admin/roles/{role_name}": {
+        "get": {
+            "summary": "Read one role",
+            "description": "Needs admin:view_roles.",
+            "tags": ["admin"],
+            "parameters": [ROLE_PARAMETER],
+            "responses": {
+                "200": {"description": "The role", **_json("RoleResponseSchema")},
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:view_roles"),
+                "404": _error("No role carries that name"),
+            },
+        },
+        "delete": {
+            "summary": "Delete a role",
+            "description": (
+                "Needs admin:manage_roles. System roles -- guest, user, "
+                "analyst, admin -- are protected and cannot be deleted. "
+                "Accounts holding the role lose it."
+            ),
+            "tags": ["admin"],
+            "parameters": [ROLE_PARAMETER],
+            "responses": {
+                "200": {"description": "Deleted", **_json("MessageResponse")},
+                "400": _error("The role is a system role"),
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:manage_roles"),
+                "404": _error("No role carries that name"),
+            },
+        },
+    },
+    "/api/v1/admin/roles/{role_name}/permissions": {
+        "put": {
+            "summary": "Replace a role's permissions",
+            "description": (
+                "Needs admin:manage_roles. A replacement, not an addition. "
+                "System roles are protected and answer 400."
+            ),
+            "tags": ["admin"],
+            "parameters": [ROLE_PARAMETER],
+            "requestBody": {
+                "required": True,
+                **_json("UpdateRolePermissionsRequest"),
+            },
+            "responses": {
+                "200": {"description": "The role", **_json("RoleResponseSchema")},
+                "400": _error(
+                    "Malformed body, a permission that does not exist, or a "
+                    "system role"
+                ),
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:manage_roles"),
+                "404": _error("No role carries that name"),
+                "415": _error("A body that is not declared application/json"),
+            },
+        }
+    },
+    "/api/v1/admin/health": {
+        "get": {
+            "summary": "Infrastructure health",
+            "description": (
+                "Needs admin:view_system_health. Each dependency reports "
+                "reachable or not; the logging block appears only where a "
+                "failover logger is configured, and its counters are the "
+                "only runtime word on whether the audit trail is still "
+                "being written."
+            ),
+            "tags": ["admin"],
+            "responses": {
+                # Assembled by the endpoint rather than serialised from a
+                # model, so it is written out here. The rest of this
+                # document points at the Pydantic models the endpoints
+                # validate against; this one has none to point at.
+                "200": {
+                    "description": "What each dependency answered",
+                    "content": {
+                        "application/json": {"schema": HEALTH_SCHEMA}
+                    },
+                },
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:view_system_health"),
+            },
+        }
+    },
     "/{short_code}": {
         "get": {
             "summary": "Follow a short link",
@@ -605,6 +986,14 @@ def build_openapi(base_url: str, version: str = "1.0.0") -> Dict[str, Any]:
             {"name": "links", "description": "Creating, reading and deleting links"},
             {"name": "stats", "description": "Counters"},
             {"name": "auth", "description": "Accounts and tokens"},
+            {
+                "name": "admin",
+                "description": (
+                    "Operating the service: accounts, roles and health. "
+                    "Every operation is behind an admin: permission, and "
+                    "each one says which."
+                ),
+            },
         ],
         "paths": _add_cross_cutting_responses(PATHS),
         "components": {

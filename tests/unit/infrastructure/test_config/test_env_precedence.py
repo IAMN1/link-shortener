@@ -2,7 +2,7 @@
 Tests for the configuration contract: how a profile, `.env.<profile>`, `.env`
 and real environment variables combine.
 
-The rules under test (documented in README and docs/QUICKSTART.md):
+The rules under test (documented in README and docs/configuration.md):
 
     real environment variable  >  .env.<profile>  >  .env  >  profile default
 
@@ -237,7 +237,7 @@ class TestTestingIsolation:
         the descriptor is where ``IGNORE_ENV`` is obeyed -- so these three
         went on reading the machine. ``production`` and ``staging``
         declare their secrets the same way and are still blind to the
-        flag; see the open decisions in docs/DEVELOPER_GUIDE.md. The
+        flag; see the known limits in docs/decisions.md. The
         subclass below is what
         ``tests/integration/docker/conftest.py`` builds: a detached profile
         that does run on PostgreSQL, which is the only shape in which the

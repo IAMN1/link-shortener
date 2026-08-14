@@ -30,7 +30,8 @@ PAGES = [
     ("dashboard/service_stats.html", {}),
     ("dashboard/health.html", {}),
     ("dashboard/user_stats.html", {"user": None}),
-    ("dashboard/users_list.html", {"users": []}),
+    # `page` and `has_next` are what the view passes for the pager.
+    ("dashboard/users_list.html", {"users": [], "page": 1, "has_next": False}),
     ("dashboard/create_user.html", {"roles": []}),
     ("dashboard/edit_user.html", {"user": None, "all_roles": []}),
     ("dashboard/roles_list.html", {"roles": []}),
@@ -41,13 +42,27 @@ PAGES = [
 
 @pytest.fixture
 def signed_in(app):
-    """Render as an admin: the sidebar draws its full set of links."""
+    """
+    Render as an admin: the sidebar draws its full set of links.
+
+    ``g.authorization_service`` is put in place by hand because
+    ``test_request_context`` runs no middleware, and the markup asks that
+    service what the caller may do. Without it every ``can(...)`` answered
+    ``False``, so the sidebar rendered empty and this fixture's own
+    description was untrue -- the pages were checked for a script tag with
+    every menu entry missing.
+    """
     user = Mock()
+    user.id = "11111111-1111-1111-1111-111111111111"
     user.email = "someone@example.com"
     user.roles = ["admin"]
 
+    allows_everything = Mock()
+    allows_everything.is_allowed.return_value = True
+
     with app.test_request_context("/dashboard/"):
         g.current_user = user
+        g.authorization_service = allows_everything
         yield
 
 
@@ -72,3 +87,17 @@ class TestEveryDashboardPageLoadsTheDashboardScript:
 
         assert 'id="logout-btn"' in markup
         assert 'id="dash-toggle"' in markup
+
+    def test_the_sidebar_this_fixture_describes_is_actually_drawn(self, signed_in):
+        """
+        Holds the fixture to its word.
+
+        Every entry is behind a permission check, so a fixture that leaves
+        the authorization service unset renders an empty rail and the
+        checks above go on passing over a menu nobody would see.
+        """
+        markup = render_template("dashboard/home.html")
+
+        for entry in ("My Links", "Create Link", "My Stats", "Service Stats",
+                      "Users", "Roles", "Health Check"):
+            assert entry in markup, f"the sidebar is missing {entry}"

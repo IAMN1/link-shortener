@@ -34,7 +34,9 @@ services:
     # Alembic migration Service
     # ==========================================================================
     migrations:
-      build: .
+      build:
+        context: ..
+        dockerfile: dockers/Dockerfile
       depends_on:
         db:
           condition: service_healthy
@@ -65,7 +67,7 @@ services:
         # Тот же файл, что у app и celery_worker: DATABASE_URL живёт только
         # в нём, а get_database_url() отдаёт его в обход DATABASE_*. Без
         # env_file миграции пошли бы в другую базу, чем приложение.
-        - ${ENV_FILE:-.env}
+        - ../${ENV_FILE:-.env}
       command: alembic upgrade head
       restart: "no"               # запускается один раз и завершается
       # Конфиг и ревизии Alembic лежат в образе. Монтирование каталогов —
@@ -168,7 +170,9 @@ services:
     # Application Service (Flask)
     # ==========================================================================
     app:
-      build: .
+      build:
+        context: ..
+        dockerfile: dockers/Dockerfile
       container_name: link_shortener_app
       depends_on:
         db:
@@ -264,7 +268,7 @@ services:
         # без Docker, .env.docker — этот стек. Значение задаётся внутри самого
         # файла окружения, поэтому достаточно одного флага:
         #   docker compose --env-file .env.docker up -d
-        - ${ENV_FILE:-.env}
+        - ../${ENV_FILE:-.env}
       volumes:
         # Журналы остаются на хосте.
         - ${LOG_HOST_PATH}:/app/${LOG_DIR}
@@ -288,7 +292,9 @@ services:
     # Celery
     # ==========================================================================
     celery_worker:
-      build: .
+      build:
+        context: ..
+        dockerfile: dockers/Dockerfile
       container_name: link_shortener_celery
       depends_on:
         db:
@@ -357,7 +363,7 @@ services:
         # Тот же файл, что у app: воркер пишет в тот же кэш и ту же базу, и
         # без env_file брал бы умолчания из кода на всё, что не перечислено
         # выше. environment остаётся главнее и удерживает адреса внутри сети.
-        - ${ENV_FILE:-.env}
+        - ../${ENV_FILE:-.env}
       command: celery -A link_shortener.infrastructure.task_queue.celery_app worker --loglevel=info
       volumes:
         - ${LOG_HOST_PATH}:/app/${LOG_DIR}

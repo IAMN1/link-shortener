@@ -39,6 +39,35 @@ async function logoutUser() {
     window.location.href = '/login';
 }
 
+// What went wrong, in the words the service used. Every page that loads
+// data used to answer a refusal with `if (!resp.ok) return;`, which left
+// the screen on "Loading..." for good: a 403 and a slow network looked
+// exactly alike to the person waiting.
+async function apiErrorText(resp) {
+    if (!resp) return 'The service could not be reached.';
+    try {
+        var data = await resp.json();
+        return data.message || data.error || ('Request failed (' + resp.status + ')');
+    } catch (e) {
+        return 'Request failed (' + resp.status + ')';
+    }
+}
+
+// Puts a message where the page reserved room for one, and falls back to
+// the table body so a failure is never invisible.
+function showLoadError(elementId, message, tbodyId, columns) {
+    var el = document.getElementById(elementId);
+    if (el) {
+        el.textContent = message;
+        el.classList.remove('hidden');
+    }
+    var tbody = tbodyId ? document.getElementById(tbodyId) : null;
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="' + (columns || 4)
+            + '" class="text-muted text-center">' + escapeHtml(message) + '</td></tr>';
+    }
+}
+
 function escapeHtml(s) {
     if (s == null) return '';
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -54,6 +83,8 @@ window.csrfHeaders = csrfHeaders;
 window.logoutUser = logoutUser;
 window.escapeHtml = escapeHtml;
 window.formatDate = formatDate;
+window.apiErrorText = apiErrorText;
+window.showLoadError = showLoadError;
 
 document.addEventListener('DOMContentLoaded', function() {
     // Dropdown toggle

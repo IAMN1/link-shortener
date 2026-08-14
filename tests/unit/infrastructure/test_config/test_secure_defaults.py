@@ -101,7 +101,7 @@ class TestRateLimitingIsOnByDefault:
         all ten would turn every deliberate tuning of a read limit into a
         failing test, which is a different thing from a defect.
 
-        docs/OPERATIONS_AND_MIGRATIONS.md publishes these numbers, so
+        docs/configuration.md publishes these numbers, so
         changing one is changing the document too.
 
         Args:

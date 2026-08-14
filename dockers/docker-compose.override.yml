@@ -56,10 +56,14 @@ services:
       volumes:
         # Ревизия, созданная внутри контейнера через `flask alembic migrate`,
         # сразу оказывается на хосте.
-        - ./alembic.ini:/app/alembic.ini
-        - ./migrations:/app/migrations
+        #
+        # `../`, потому что относительный путь compose отсчитывает от
+        # каталога своего файла, а он теперь dockers/. Эти три лежат в
+        # корне проекта.
+        - ../alembic.ini:/app/alembic.ini
+        - ../migrations:/app/migrations
         # Модели нужны Alembic для --autogenerate.
-        - ./src:/app/src
+        - ../src:/app/src
 
     app:
       # Адрес ловушки. Здесь, а не в базовом файле: в продакшн-форме ловушки
@@ -81,9 +85,9 @@ services:
         - ${APP_SRC_PATH}:/app/src
         - ${LOG_HOST_PATH}:/app/${LOG_DIR}
         # Без них `flask alembic ...` внутри контейнера падает с
-        # "No 'script_location' key found".
-        - ./alembic.ini:/app/alembic.ini
-        - ./migrations:/app/migrations
+        # "No 'script_location' key found". Пути от корня, см. выше.
+        - ../alembic.ini:/app/alembic.ini
+        - ../migrations:/app/migrations
       command: flask run --host=${HOST:-0.0.0.0} --port=${PORT:-5000} --debug
 
     celery_worker:

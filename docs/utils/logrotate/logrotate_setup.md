@@ -110,7 +110,7 @@ services:
 
 ### 6. Пример для разработки на Mac с Docker
 
-Допустим, у вас проект лежит в `~/projects/link_shortener`, и в docker-compose.yml вы смонтировали `./logs:/app/logs`. Тогда на Mac:
+Допустим, у вас проект лежит в `~/projects/link_shortener`, и в dockers/docker-compose.yml вы смонтировали `./logs:/app/logs`. Тогда на Mac:
 
 **Файл конфига** `~/etc/logrotate.d/link_shortener`:
 ```bash
