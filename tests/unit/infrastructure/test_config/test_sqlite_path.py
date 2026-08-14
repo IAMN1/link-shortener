@@ -21,7 +21,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from link_shortener.infrastructure.configs.app.base import (
-    PROJECT_ROOT, BaseConfig
+    DATABASE_DIRECTORY, PROJECT_ROOT, BaseConfig
 )
 
 
@@ -117,7 +117,7 @@ class TestWhatGetsAnchored:
             "db_shortener",
         ],
     )
-    def test_a_relative_name_becomes_a_path_under_the_project_root(
+    def test_a_relative_name_becomes_a_path_under_the_database_directory(
         self, name
     ):
         url = detached(DATABASE_NAME=name).get_database_url()
@@ -130,9 +130,27 @@ class TestWhatGetsAnchored:
         opened = Path(url.replace("sqlite:///", "", 1))
         assert opened.is_absolute()
         assert opened.name == name
-        # The directory it lands in is identified by the project's own
-        # marker rather than by comparing against PROJECT_ROOT again.
-        assert (opened.parent / "pyproject.toml").is_file()
+        # `datas/databases`, and the root above it identified by the
+        # project's own marker rather than by comparing against
+        # PROJECT_ROOT again.
+        assert opened.parent.name == "databases"
+        assert opened.parent.parent.name == "datas"
+        assert (opened.parent.parent.parent / "pyproject.toml").is_file()
+
+    def test_the_directory_is_made_so_sqlite_can_open_the_file(self):
+        # SQLite creates a missing file and refuses a missing directory:
+        # "unable to open database file", which is also what it says for a
+        # dozen unrelated problems. Anchoring under a directory nobody
+        # creates would turn the shipped default into that error on a
+        # fresh clone.
+        nested = "made-by-a-test/probe.db"
+        url = detached(DATABASE_NAME=nested).get_database_url()
+
+        opened = Path(url.replace("sqlite:///", "", 1))
+        try:
+            assert opened.parent.is_dir(), opened.parent
+        finally:
+            opened.parent.rmdir()
 
     def test_a_name_with_directories_in_it_keeps_them(self):
         # ``.env.example`` calls this setting a path to the database file,
@@ -140,16 +158,22 @@ class TestWhatGetsAnchored:
         # the final component -- or refusing to anchor anything holding a
         # slash -- passes every other test here: measured, both left the
         # suite green while quietly changing which file is opened.
-        url = detached(DATABASE_NAME="data/app.db").get_database_url()
+        url = detached(DATABASE_NAME="tenants/app.db").get_database_url()
 
         opened = Path(url.replace("sqlite:///", "", 1))
-        # Absolute first: without it the checks below pass on an
-        # un-anchored `data/app.db`, since `.parent.parent` of a relative
-        # path is the working directory -- which, under pytest, is the
-        # project root and holds the marker.
-        assert opened.is_absolute()
-        assert opened.parent.name == "data"
-        assert (opened.parent.parent / "pyproject.toml").is_file()
+        try:
+            # Absolute first: without it the checks below pass on an
+            # un-anchored `tenants/app.db`, since `.parent.parent` of a
+            # relative path is the working directory -- which, under
+            # pytest, is the project root.
+            assert opened.is_absolute()
+            assert opened.parent.name == "tenants"
+            assert opened.parent.parent.name == "databases"
+            assert (
+                opened.parent.parent.parent.parent / "pyproject.toml"
+            ).is_file()
+        finally:
+            opened.parent.rmdir()
 
     def test_the_engine_opens_the_file_under_the_root_from_anywhere(
         self, tmp_path
@@ -180,13 +204,64 @@ class TestWhatGetsAnchored:
                 config.get_database_url().replace("sqlite:///", "", 1)
             )
             assert opened.is_file()
-            assert (opened.parent / "pyproject.toml").is_file()
+            assert opened.parent.name == "databases"
+            assert (opened.parent.parent.parent / "pyproject.toml").is_file()
         finally:
             if engine is not None:
                 engine.dispose()
             os.chdir(here)
             if PROJECT_ROOT is not None:
-                (PROJECT_ROOT / probe).unlink(missing_ok=True)
+                (PROJECT_ROOT / DATABASE_DIRECTORY / probe).unlink(
+                    missing_ok=True
+                )
+
+    def test_a_deployment_can_name_the_directory(self, tmp_path):
+        # The whole point of the setting: an operator says where databases
+        # live, and does not have to spell the path into every name.
+        config = detached(
+            DATABASE_DIR=str(tmp_path / "elsewhere"),
+            DATABASE_NAME="live.db",
+        )
+
+        opened = Path(config.get_database_url().replace("sqlite:///", "", 1))
+
+        assert opened == tmp_path / "elsewhere" / "live.db"
+        assert opened.parent.is_dir(), "the named directory was not created"
+
+    def test_a_relative_directory_is_anchored_to_the_project(self):
+        config = detached(DATABASE_DIR="var/db", DATABASE_NAME="live.db")
+
+        opened = Path(config.get_database_url().replace("sqlite:///", "", 1))
+        try:
+            assert opened.is_absolute()
+            assert opened.parent.name == "db"
+            assert opened.parent.parent.name == "var"
+            assert (
+                opened.parent.parent.parent / "pyproject.toml"
+            ).is_file()
+        finally:
+            opened.parent.rmdir()
+            opened.parent.parent.rmdir()
+
+    def test_an_absolute_directory_works_outside_a_source_tree(
+        self, monkeypatch, tmp_path
+    ):
+        # What a container is: the package is installed into
+        # site-packages and there is no project directory above it. A
+        # relative directory has nothing to anchor to there -- the test
+        # below holds that -- but an absolute one is exactly how a
+        # deployment names a mounted volume, and refusing it would leave
+        # the image with no way to put the file anywhere but the CWD.
+        import link_shortener.infrastructure.configs.app.base as base
+
+        monkeypatch.setattr(base, "PROJECT_ROOT", None)
+        config = detached(
+            DATABASE_DIR=str(tmp_path / "mounted"), DATABASE_NAME="live.db"
+        )
+
+        opened = Path(config.get_database_url().replace("sqlite:///", "", 1))
+
+        assert opened == tmp_path / "mounted" / "live.db"
 
     def test_an_absolute_name_is_left_alone(self):
         # Already says where it is. There is no guard for this in the code

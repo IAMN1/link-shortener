@@ -10,7 +10,7 @@ Run level 1 (fast):
     uv run pytest tests/e2e/ -v
 
 Run level 3 (Docker):
-    docker compose -f docker-compose.test.yml up -d
+    docker compose -f dockers/docker-compose.test.yml up -d
     E2E_BASE_URL=http://localhost:5000 uv run pytest tests/e2e/ -v --base-url
 """
 

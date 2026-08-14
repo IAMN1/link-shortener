@@ -41,7 +41,9 @@ RUN groupadd --gid 1000 appuser && \
     mkdir -p /app/logs && \
     chown -R appuser:appuser /app
 
-COPY entrypoint.sh /entrypoint.sh
+# Путь от корня проекта: контекст сборки — корень, а не каталог этого
+# файла, потому что образ забирает src/, migrations/ и alembic.ini.
+COPY dockers/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 5000

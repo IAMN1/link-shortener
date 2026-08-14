@@ -32,7 +32,7 @@ REDIS_URL = "redis://:test_redis_pass@localhost:6380/0"
 """The cache the same file publishes."""
 
 COMPOSE_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "..", "docker-compose.test.yml"
+    os.path.dirname(__file__), "..", "..", "dockers", "docker-compose.test.yml"
 )
 """The stack definition, resolved from this file rather than the cwd."""
 

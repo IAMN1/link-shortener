@@ -66,8 +66,12 @@ class TestARelativeDirectoryIsAnchored:
 
         assert not str(log_dir).startswith(str(tmp_path))
         assert log_dir.name == "logs"
-        assert (log_dir.parent / "pyproject.toml").is_file()
-        assert (log_dir.parent / "src").is_dir()
+        # `datas/logs`, and the root above that identified by the
+        # project's own markers rather than by PROJECT_ROOT, which
+        # would agree with any root the code reported.
+        assert log_dir.parent.name == "datas"
+        assert (log_dir.parent.parent / "pyproject.toml").is_file()
+        assert (log_dir.parent.parent / "src").is_dir()
 
     def test_a_nested_relative_directory_keeps_its_shape(self):
         """``var/log`` is a relative path too, not merely a bare name."""
@@ -107,6 +111,9 @@ class TestWhatIsLeftAlone:
 
         assert log_dir.is_absolute()
         assert log_dir.name == "staging-logs"
+        # A profile's own relative default is anchored where it says --
+        # straight under the root, not under `datas`, which is only where
+        # the base default points.
         assert (log_dir.parent / "pyproject.toml").is_file()
 
     def test_a_detached_config_does_not_read_the_machine(self, monkeypatch):
@@ -131,4 +138,4 @@ class TestWhatIsLeftAlone:
         """
         monkeypatch.setattr(base_module, "PROJECT_ROOT", None)
 
-        assert detached().LOG_DIR == "logs"
+        assert detached().LOG_DIR == "datas/logs"
