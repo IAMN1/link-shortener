@@ -1,50 +1,25 @@
-# ==============================================================================
-# The suite runs twice, and the second run is hostile on purpose
-# ==============================================================================
-# A clean runner proves what a developer's machine cannot: that the suite
-# passes on a fresh clone, with no `.env` file and none of this project's
-# settings in the environment.
-#
-# It cannot prove the opposite -- that no test reads configuration it was
-# never handed -- because a clean environment has nothing to leak. The
-# hostile run supplies the leak and demands the same result. This is not a
-# hypothetical: a config test built a `development` profile, picked up an
-# exported DATABASE_URL, connected to a real outside database and wrote four
-# rows into its `roles` table. It reported two tests passed. The measurement
-# is recorded next to the fixture that now scrubs those variables, in
-# tests/unit/infrastructure/test_config/test_env_precedence.py.
-#
-# So the two runs answer different questions, and neither substitutes for
-# the other:
-#
-#   clean    does a fresh clone pass?  Nowhere else can answer it: every
-#            developer machine already has a `.env`.
-#   hostile  does a polluted machine pass the same way?  Every developer
-#            machine is polluted; this one is polluted reproducibly.
-# ==============================================================================
+# Набор гоняется дважды: в чистом окружении и во враждебном. Первый отвечает
+# на вопрос «проходит ли свежий клон», второй — «проходит ли замусоренная
+# машина так же». Разбор — docs/DEVELOPER_GUIDE.md, «CI: набор гоняется
+# дважды».
 
 name: tests
 
 on:
-  # Unfiltered: every branch and every tag. Work happens in feature branches
-  # that are merged locally rather than through pull requests, so the push
-  # is the only moment CI is guaranteed to see the code. Add `pull_request:`
-  # if contributions ever start arriving from forks -- pushes to a fork do
-  # not trigger this workflow.
+  # Каждая ветка и каждый тег: работа идёт в feature-ветках, которые сливают
+  # локально, поэтому push — единственный гарантированный момент.
   push:
-  # Runs from the Actions tab. GitHub offers the button only for workflow
-  # files present on the default branch, so it stays absent until this file
-  # reaches master.
+  # Кнопка появляется только для файлов из ветки по умолчанию.
   workflow_dispatch:
 
-# A newer push to the same branch makes the older run's verdict answer a
-# question nobody is asking any more.
+# Более новый push делает вердикт старого прогона ответом на вопрос, который
+# уже никто не задаёт.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Nothing here writes anything back. Stated rather than inherited, because
-# the repository default may be read-write.
+# Ничего не пишется обратно. Объявлено явно: умолчание репозитория может быть
+# read-write.
 permissions:
   contents: read
 
@@ -52,13 +27,11 @@ jobs:
   suite:
     name: ${{ matrix.mode }}
     runs-on: ubuntu-latest
-    # The suite takes about 70 seconds locally and collection under one;
-    # the rest is checkout, dependency install and image pulls.
     timeout-minutes: 25
 
     strategy:
-      # Both modes report, always. "clean passed, hostile failed" is the
-      # diagnosis itself -- fail-fast would cancel the half that carries it.
+      # Обе половины досчитывают до конца: «clean прошёл, hostile упал» — это
+      # и есть диагноз.
       fail-fast: false
       matrix:
         mode: [clean, hostile]
@@ -67,54 +40,24 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install uv
-        # Pinned to an exact release, unlike actions/checkout above. This
-        # action stopped publishing floating major tags after v7: the
-        # repository has v8.0.0 and v9.0.0 but no bare v8 or v9, and a tag
-        # that does not exist fails to resolve before the step runs.
-        #
-        # Note what this does not pin. The action installs the newest uv
-        # unless told otherwise, so the tool that reads uv.lock floats even
-        # though the action does not. Pin it with a `version:` input here,
-        # or with `[tool.uv] required-version` in pyproject.toml, if a uv
-        # release ever breaks a run.
+        # Точная версия: после v7 действие перестало публиковать плавающие
+        # мажорные теги, и `v9` не резолвится.
         uses: astral-sh/setup-uv@v9.0.0
         with:
-          # Caches uv's downloads between runs. The key covers uv.lock,
-          # pyproject.toml and requirements*.txt -- setup-uv's default
-          # dependency glob is a seven-pattern list, not the lockfile alone.
           enable-cache: true
 
       - name: Install dependencies
-        # --locked, not --frozen. Both install exactly what uv.lock pins,
-        # but --frozen means "do not update the lockfile" and checks
-        # nothing: a dependency added to pyproject.toml without re-locking
-        # would simply be missing here, and CI would test a different set of
-        # packages than the one committed. --locked asserts the lockfile is
-        # already in agreement and fails when it is not.
+        # --locked, не --frozen: первый проверяет, что uv.lock согласован с
+        # pyproject.toml, второй молча ставит что есть.
         run: uv sync --locked
 
       - name: Guard requirements.txt against uv.lock
-        # The step above asserts pyproject.toml against uv.lock and stops
-        # there. requirements.txt is generated from that same lock and is
-        # what Dockerfile installs with pip, so a dependency added and
-        # locked but never re-exported leaves CI testing one set of packages
-        # and the image shipping another -- a drift nothing else here can
-        # see.
+        # requirements.txt генерируется из того же lock-файла и ставится в
+        # образ через pip. Без сверки CI тестирует один набор пакетов, а образ
+        # везёт другой.
         #
-        # `grep -v '^#'` drops the two-line generated header, which records
-        # the exact command that produced the file including an
-        # --output-file this comparison has no use for. It drops nothing
-        # else: the 121 provenance lines are indented -- `# via pkg` and
-        # its `#   pkg` continuations -- so they stay in the comparison
-        # on both sides.
-        #
-        # --no-group browser: playwright is only for the hand-driven
-        # browser run, and this file is what the image pip-installs.
-        # Measured with it in: the image went from 532 MB to 731 MB.
-        # Redirected rather than --output-file: uv export writes the list to
-        # stdout either way, and the flag would repeat all 197 lines into
-        # the job log. --frozen so the check reads the lockfile instead of
-        # re-resolving and possibly rewriting it.
+        # `grep -v '^#'` убирает двухстрочную шапку с командой генерации;
+        # строки происхождения (`# via pkg`) с отступом и остаются в сравнении.
         run: |
           uv export --format requirements-txt --no-hashes --no-emit-project \
             --frozen --no-group browser > "$RUNNER_TEMP/requirements.expected"
@@ -125,60 +68,23 @@ jobs:
           fi
 
       - name: Pre-pull the test stack images
-        # Insurance, not a measurement. tests/integration/docker/conftest.py
-        # starts the stack itself and allows `compose up -d` 60 seconds; that
-        # budget was written on a laptop that already had the images.
-        # Whether a cold runner would really spend it on the pull is
-        # untested -- the two images are about 131 MB compressed -- but
-        # pulling here costs seconds, and the failure it forecloses costs
-        # the job.
+        # tests/integration/docker/conftest.py даёт `compose up -d` 60 секунд.
+        # Бюджет писался на машине, где образы уже были.
         run: docker compose -f docker-compose.test.yml pull --quiet
 
       - name: Pollute the environment
         if: matrix.mode == 'hostile'
-        # Two kinds of pollution, because they leak through different doors.
+        # Два канала утечки. Файл `.env` профильный загрузчик читает для всех
+        # профилей, кроме testing. Экспортированные переменные выигрывают у
+        # файла и доходят до процесса, даже когда файла нет.
         #
-        # A `.env` file: the profile loader reads it for every profile
-        # except `testing`, and `.env.example` is the file every clone
-        # starts from. The copy alone is a weak instrument, because the
-        # template mostly restates the profile defaults -- measured against
-        # `development`, only five settings differ (HOST, DATABASE_NAME,
-        # CACHE_LINK_TTL, CACHE_STATS_TTL and the BASE_URL that follows
-        # from HOST); every other value a test might read is identical to
-        # what it would see with no file at all.
+        # Значения выбраны такими, каких не объявляет ни один профиль: тест,
+        # прочитавший любое из них, читает именно этот блок.
         #
-        # The appended block is what makes this channel deliberate rather
-        # than incidental. Every one of those settings is declared by a
-        # profile -- that is why writing them has any effect -- but the
-        # numbers are ones no profile declares, so a test observing any of
-        # them is observing this file and nothing else. A developer's real
-        # `.env` diverges from the template too; that is the state being
-        # reproduced.
-        #
-        # Exported variables: these outrank `.env` and reach the process
-        # even when no file exists. GUEST_LINK_LIMIT and BATCH_CREATE_LIMIT
-        # are the loud pair -- a test that reads either one sees a limit no
-        # fixture set, and says so in an assertion.
-        #
-        # DATABASE_URL is the variable the recorded leak travelled through,
-        # kept in the form the project documents. What actually stops a test
-        # that tries to use it is not the unresolvable host it looks like:
-        # SQLAlchemy maps a bare `postgresql://` to the psycopg2 dialect and
-        # this project ships psycopg 3, so create_engine() raises
-        # ModuleNotFoundError on the spot -- before a connection is opened,
-        # before DNS is consulted. Sturdier than the hostname, which a
-        # resolver with a search domain could turn into something real, and
-        # it trips earlier: at engine construction rather than at connect.
-        # A test that only reads the value and asserts on it still passes in
-        # silence; that is what the two limits above are for.
-        #
-        # The three pool sizes are exported rather than written to `.env`,
-        # and with values no profile declares, because `.env.example` sets
-        # them to exactly their defaults -- so planting the template alone
-        # left this channel carrying nothing. They are also the group
-        # BaseConfig declares as properties reading through read_env instead
-        # of as descriptors, which is how they slipped past three successive
-        # attempts to enumerate what a detached test must not see.
+        # DATABASE_URL — тот канал, через который утечка случилась. Тест,
+        # попытавшийся им воспользоваться, падает на create_engine():
+        # SQLAlchemy сопоставляет голому `postgresql://` драйвер psycopg2,
+        # которого в проекте нет.
         run: |
           cp .env.example .env
           {
@@ -202,36 +108,16 @@ jobs:
 
       - name: Guard the number of tests
         env:
-          # A floor, not an equality. Adding tests never needs a bump here;
-          # removing them has to be deliberate. Raise it when the suite
-          # genuinely grows.
-          MINIMUM_TESTS: 2300
-        # --error-for-skips closes the door marked "skipped". This closes
-        # the one beside it: a test that is never collected at all, so the
-        # run prints "N passed" and exits 0 for a smaller N. The mechanisms
-        # are quiet ones -- a file renamed out of the `python_files`
-        # pattern, a function out of `python_functions`, a `collect_ignore`
-        # in some conftest, or a directory renamed into something pytest
-        # skips by default: norecursedirs covers build, dist, venv,
-        # node_modules and anything starting with a dot, so tests/unit ->
-        # tests/build silently collects 760 instead of 2300. The tree
-        # already holds two uncollected files deliberately:
-        # tests/live/smoke_test.py and tests/live/browser_test.py.
+          # Нижняя граница, а не равенство. Добавление тестов правки не
+          # требует, сокращение — требует, и это намеренно.
+          MINIMUM_TESTS: 2440
+        # `--error-for-skips` закрывает дверь «пропущен». Эта закрывает
+        # соседнюю: тест, который вовсе не собрался, даёт «N passed» и код 0
+        # при меньшем N. Механизмы тихие — имя вне `python_files`,
+        # `collect_ignore` в conftest, каталог, который pytest не обходит.
         #
-        # Renames to other names, and deletions of a conftest.py that
-        # something imports by path, are loud instead of quiet -- but they
-        # are loud through the exit status, not through the count, which is
-        # the other reason that status is checked below. A conftest.py that
-        # only supplies fixtures is the awkward case: deleting
-        # tests/unit/conftest.py leaves collection at 2300 and exit 0, and
-        # only the run itself goes red.
-        #
-        # The exit status is checked before the count is believed. An
-        # interrupted collection prints the items gathered up to the
-        # interrupt and exits 2 -- measured: "3 tests collected, 1 error"
-        # where five were expected. Counting that output and stopping there
-        # would report a healthy number for a suite that had just lost two
-        # tests.
+        # Код возврата проверяется до того, как счёту поверят: прерванный сбор
+        # печатает собранное до прерывания и выходит с кодом 2.
         run: |
           if ! listing=$(uv run pytest tests/ -o addopts="" --collect-only -q); then
             echo "::error::collection did not finish; any count from it is a lie"
@@ -246,43 +132,60 @@ jobs:
           fi
 
       - name: Run the suite
-        # -o addopts="" clears the whole addopts list from pyproject.toml.
-        # The reports are what we are after -- coverage, HTML, JUnit, none
-        # of which anything here reads. --tb=short is passed back, so a
-        # failure reads the way it reads on a laptop.
+        # `-o addopts=""` снимает весь список из pyproject.toml: нужны отчёты
+        # покрытия, а их здесь никто не читает. Строгость при этом не
+        # страдает — strict_markers, strict_config и strict_xfail объявлены
+        # ini-опциями, а не флагами.
         #
-        # Nothing about strictness is passed back, because none of it lives
-        # in addopts any more: strict_markers, strict_config and
-        # strict_xfail are ini options, and clearing addopts does not touch
-        # those. This run is exactly as strict as a local one, by
-        # construction rather than by repeating flags that could drift.
-        #
-        # --error-for-skips turns a skipped test into a failure. The suite
-        # has exactly one skip branch: an unreachable Docker daemon. That is
-        # honest on a laptop, which may not have Docker, and a hole on a
-        # runner that is supposed to -- without the flag, a runner that lost
-        # it would drop 38 PostgreSQL and Redis tests and still report
-        # green.
-        #
-        # What the flag leaves open, since the enumeration matters more than
-        # the reassurance: it hooks the reporting phase, so a skip raised
-        # during collection (importorskip, skip(allow_module_level=True))
-        # passes unnoticed -- the count guard above is what catches those.
-        #
-        # And an xfail survives, for a reason worth writing down: at the
-        # report level an xfailed test IS skipped (rep.skipped is True,
-        # with wasxfail set). It escapes only because the plugin's second
-        # clause asks whether the exception was pytest.skip.Exception, and
-        # for a failing xfail it was not. Anyone replacing the plugin with
-        # a hand-rolled `if rep.skipped: rep.outcome = "failed"` would turn
-        # every xfail into a failure. strict_xfail in pyproject.toml catches
-        # the half that starts passing; one that keeps failing is invisible
-        # to both mechanisms, since it is collected and it reports. The
-        # suite has no xfail today.
-        #
-        # A test stack that fails to start is a separate matter and needs no
-        # flag: tests/integration/docker/conftest.py calls pytest.fail, not
-        # pytest.skip, for everything except the missing daemon.
+        # `--error-for-skips` превращает пропуск в отказ. Единственная ветка
+        # пропуска в наборе — недоступный демон Docker: честный пропуск на
+        # ноутбуке и дыра на раннере, где Docker обязан быть.
         run: >
           uv run pytest tests/ -q --no-cov -o addopts="" --tb=short
           --error-for-skips
+
+      - name: Run the live surface check
+        # 114 проверок по HTTP и единственное, что проходит по всем правилам
+        # маршрутизации: прогон запоминает, какое правило ответило на каждый
+        # запрос, и краснеет, если какое-то не задето. Он же проходит цепочку
+        # подтверждения адреса через собственный SMTP-приёмник.
+        #
+        # Своих сервисов не поднимает: профиль testing игнорирует окружение,
+        # поэтому обе половины матрицы дают один ответ.
+        #
+        # browser_test.py не включён — решение владельца от 2026-08-10.
+        run: uv run python tests/live/smoke_test.py
+
+  # Линтеры отдельной задачей и один раз: окружение не читает ни один из них.
+  # Шаги раздельные, чтобы из сводки было видно, какой инструмент возразил.
+  #
+  # Чего здесь нет и почему — docs/DEVELOPER_GUIDE.md, «CI: линтеры».
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: flake8
+        # Настраивается файлом .flake8: pyproject.toml flake8 не читает.
+        # `select = E9,F` оставляет дефекты и отбрасывает раскладку.
+        run: uv run flake8 src tests
+
+      - name: pylint
+        # Порог `fail-under = 9.0` задан в pyproject.toml.
+        run: uv run pylint src
+
+      - name: bandit
+        # Только src: `assert` для bandit находка, а для теста смысл
+        # существования. Семь разобранных находок помечены `# nosec`.
+        run: uv run bandit -r src -q
