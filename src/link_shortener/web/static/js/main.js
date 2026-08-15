@@ -36,7 +36,15 @@ async function apiFetch(url, opts) {
 
 async function logoutUser() {
     await apiFetch('/api/v1/auth/logout', { method: 'POST' });
-    window.location.href = '/login';
+    // Home, not the login form. Signing out is the end of a visit rather
+    // than the start of a sign-in, and the form asks for the credentials
+    // of the account just left. The header carries a Login link for the
+    // person who did mean to switch accounts.
+    //
+    // Assigned after the call rather than before: `apiFetch` sends its own
+    // 401 to the login page, and a logout whose session had already
+    // expired would otherwise land there.
+    window.location.href = '/';
 }
 
 // What went wrong, in the words the service used. Every page that loads
