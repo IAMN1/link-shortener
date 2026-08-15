@@ -312,7 +312,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 15
+    expected = 17
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -463,6 +463,60 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
     @check("signing in reaches the dashboard")
     def _():
         sign_in(page_for("/login"), base)
+
+    @check("signing out lands on the front page, and the session is gone")
+    def _():
+        page = page_for("/login")
+        sign_in(page, base)
+        page.click("#logout-btn")
+        page.wait_for_url(f"{base}/", timeout=5000)
+
+        # Where it landed is half the check. The other half is that the
+        # session really ended: a script that navigated without waiting for
+        # the answer would look identical here, and would leave the browser
+        # holding a live cookie.
+        page.goto(f"{base}/dashboard/")
+        assert "/login" in page.url, (
+            f"the dashboard still opened after signing out: {page.url}"
+        )
+
+    @check("the collapsed sidebar stays collapsed on the next page")
+    def _():
+        # The point of the control is that it is not asked for twice. The
+        # state rides on a cookie the server reads, so the check is the
+        # class the *next* page was rendered with rather than the class the
+        # script left behind on this one.
+        page = page_for("/login")
+        sign_in(page, base)
+        assert page.is_visible("#dash-collapse"), "no control to collapse with"
+        page.click("#dash-collapse")
+        page.wait_for_selector("#dash.dash--rail", timeout=5000)
+
+        page.goto(f"{base}/dashboard/links")
+        assert "dash--rail" in page.get_attribute("#dash", "class"), (
+            "the sidebar came back open on the next page"
+        )
+        # Measured rather than asked about: a clipped label still reports
+        # itself visible, and the class alone says nothing about whether a
+        # stylesheet acted on it.
+        width = page.evaluate(
+            "document.getElementById('dash-side').getBoundingClientRect().width"
+        )
+        assert width < 80, f"the sidebar is still {width}px wide"
+
+        # The words leave the screen; the name a screen reader announces
+        # stays, which is why the labels are clipped and not removed.
+        assert "My Links" in page.inner_text("#dash-side"), (
+            "the entry lost its accessible name along with its label"
+        )
+
+        # And back, so the check leaves the browser as it found it -- the
+        # next check signs in with the same profile.
+        page.click("#dash-collapse")
+        page.goto(f"{base}/dashboard/")
+        assert "dash--rail" not in page.get_attribute("#dash", "class"), (
+            "expanding it again did not survive the next page"
+        )
 
     @check("the dashboard creates a link through its own form")
     def _():

@@ -21,6 +21,22 @@ they are not quietly undone later:
   guest creation and every expiry sweep. Without them both are sequential
   scans over the whole table.
 
+* ``link_visits`` records *when* a link was opened, which ``urls.clicks``
+  cannot: four hundred openings look identical whether they happened last
+  Tuesday or over four months, and every chart with time on an axis needs
+  the difference. It is the largest table here by some distance, which is
+  why it is swept on a retention window and why ``link_visit_days`` exists
+  beside it -- one row per link per day, written before the sweep deletes
+  what it was computed from, so the long-range charts keep their past. Its
+  primary key is the pair, so folding a day twice replaces the row instead
+  of doubling it.
+
+  What is *not* in ``link_visits`` is deliberate: no IP address and no
+  User-Agent string. The application reduces both before they arrive -- an
+  address to its network with the host part zeroed, a User-Agent to a
+  device class, a browser family and a robot flag. A column that never
+  held an address cannot leak one. See ``domain/value_objects/visitor.py``.
+
 * ``users.email_verified`` defaults to False in the database, not only in
   the model. A row written by anything that does not know about
   confirmation -- a repair script, a fixture, a later revision -- is then
@@ -146,10 +162,35 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('user_id', 'role_id')
     )
+    op.create_table('link_visits',
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('link_id', sa.String(length=36), nullable=False),
+    sa.Column('occurred_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('visitor_network', sa.String(length=45), nullable=True),
+    sa.Column('device', sa.String(length=16), nullable=False, server_default='unknown'),
+    sa.Column('browser', sa.String(length=16), nullable=False, server_default='unknown'),
+    sa.Column('is_bot', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+    sa.ForeignKeyConstraint(['link_id'], ['urls.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('ix_link_visits_occurred_at', 'link_visits', ['occurred_at'], unique=False)
+    op.create_index('ix_link_visits_link_occurred', 'link_visits', ['link_id', 'occurred_at'], unique=False)
+    op.create_table('link_visit_days',
+    sa.Column('link_id', sa.String(length=36), nullable=False),
+    sa.Column('day', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('total', sa.Integer(), nullable=False, server_default='0'),
+    sa.Column('bots', sa.Integer(), nullable=False, server_default='0'),
+    sa.ForeignKeyConstraint(['link_id'], ['urls.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('link_id', 'day')
+    )
 
 
 def downgrade() -> None:
     """Remove everything this revision created."""
+    op.drop_table('link_visit_days')
+    op.drop_index('ix_link_visits_link_occurred', table_name='link_visits')
+    op.drop_index('ix_link_visits_occurred_at', table_name='link_visits')
+    op.drop_table('link_visits')
     op.drop_table('user_roles')
     op.drop_index('ix_urls_url_hash_owner_id', table_name='urls')
     op.drop_index('ix_urls_url_hash_guest_identifier', table_name='urls')

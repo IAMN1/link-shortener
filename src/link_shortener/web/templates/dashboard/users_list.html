@@ -33,11 +33,20 @@
                             <span class="text-muted text-sm">none</span>
                         {% endfor %}
                     </td>
+                    {# Two states, not one. Signing in needs both, and this
+                       column used to show only the first: an operator read
+                       "Active" off an account that could not log in, because
+                       nobody had confirmed its address. #}
                     <td>
                         {% if user.is_active %}
                             <span class="badge badge--green">Active</span>
                         {% else %}
                             <span class="badge badge--red">Inactive</span>
+                        {% endif %}
+                        {% if user.email_verified %}
+                            <span class="badge badge--green">Verified</span>
+                        {% else %}
+                            <span class="badge badge--amber" title="The address has not been confirmed, so this account cannot sign in">Not verified</span>
                         {% endif %}
                     </td>
                     <td class="table-actions">
@@ -45,6 +54,12 @@
                         <a href="{{ url_for('dashboard.edit_user', user_id=user.id) }}" class="btn btn--ghost btn--sm">Edit</a>
                         {% endif %}
                         <a href="{{ url_for('dashboard.user_stats', user_id=user.id) }}" class="btn btn--ghost btn--sm">Stats</a>
+                        {# Offered only where there is something to do: on a
+                           confirmed account both buttons would be no-ops. #}
+                        {% if can('admin:manage_users') and not user.email_verified %}
+                            <button class="btn btn--ghost btn--sm js-resend-verification">Send link again</button>
+                            <button class="btn btn--ghost btn--sm js-confirm-email">Confirm manually</button>
+                        {% endif %}
                         {% if can('admin:manage_users') %}
                             {# Deactivation, reactivation and deletion exist in
                                the service and had no way in: an operator had to

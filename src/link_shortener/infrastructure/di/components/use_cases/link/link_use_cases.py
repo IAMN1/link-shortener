@@ -51,6 +51,8 @@ class LinkUseCasesComponent:
         default_guest_ttl_seconds: TTL applied to guest-created links, and
             the most a guest may ask for.
         max_ttl_seconds: Longest lifetime any caller may ask for.
+        record_visits: Whether an opened link is recorded as an event and
+            not only counted, from ``VISIT_TRACKING_ENABLED``.
         authorization_service: Service that answers permission questions.
     """
 
@@ -74,6 +76,7 @@ class LinkUseCasesComponent:
     default_guest_ttl_seconds: int
     max_ttl_seconds: int
     authorization_service: AuthorizationService
+    record_visits: bool = True
 
     # ------------------------------------------------------------------
     # Creation
@@ -176,6 +179,7 @@ class LinkUseCasesComponent:
         return UpdateLinkStatsUseCase(
             uow_factory=self.uow_factory,
             logger=self.logger,
+            record_visits=self.record_visits,
         )
 
     # ------------------------------------------------------------------

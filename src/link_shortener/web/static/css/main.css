@@ -339,6 +339,10 @@ textarea.form-input { resize: vertical; font-family: var(--mono); font-size: 0.8
 .badge--green { border-color: var(--c-sign); color: var(--c-sign); }
 .badge--red { border-color: var(--c-danger); color: var(--c-danger); }
 .badge--gray { color: var(--c-text-3); }
+/* Paint yellow, as everywhere else in this design: it cautions rather
+   than refuses. An unconfirmed address is not a broken account -- it is
+   an account waiting for one step. */
+.badge--amber { border-color: var(--c-warn); color: var(--c-warn); }
 
 /* ===== Tables ===== */
 .table-wrap { overflow-x: auto; }

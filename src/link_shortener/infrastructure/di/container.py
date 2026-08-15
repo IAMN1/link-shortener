@@ -20,13 +20,15 @@ from link_shortener.application import (
     ActivateUserUseCase, AuditLogger, BatchCreateLinksUseCase,
     CleanExpiredLinksUseCase, CleanUnverifiedAccountsUseCase,
     CreateRoleUseCase, CreateShortLinkUseCase, CreateUserUseCase,
-    DeactivateUserUseCase, DeleteLinkUseCase, DeleteRoleUseCase,
+    ConfirmUserEmailUseCase, DeactivateUserUseCase, DeleteLinkUseCase,
+    DeleteRoleUseCase,
     DeleteUserUseCase, GetExtendedLinkInfoUseCase, GetLinkInfoUseCase,
     GetRecentLinksUseCase, GetRoleUseCase, GetServiceHealthUseCase,
-    GetServiceStatsUseCase, GetUserActivityStatsUseCase, GetUserLinksUseCase,
+    GetServiceStatsUseCase, GetVisitStatsUseCase,
+    GetUserActivityStatsUseCase, GetUserLinksUseCase,
     GetUserUseCase, ListRolesUseCase, ListUsersUseCase, Logger, LoginUseCase,
     Mailer, RateLimiter, RedirectLinkUseCase, RegisterUseCase,
-    ResendVerificationUseCase, SeedDatabaseUseCase,
+    ResendVerificationUseCase, RollUpVisitsUseCase, SeedDatabaseUseCase,
     SendAccountExistsEmailUseCase, SendVerificationEmailUseCase, ServiceCache,
     TaskQueue, UnitOfWorkFactory, UpdateLinkStatsUseCase,
     UpdateRolePermissionsUseCase, UpdateUserRolesUseCase, VerifyEmailUseCase,
@@ -259,6 +261,7 @@ class Container:
             redirect_link_use_case=self.get_redirect_link_use_case(),
             batch_create_links_use_case=self.get_batch_create_links_use_case(),
             get_service_stats_use_case=self.get_get_service_stats_use_case(),
+            get_visit_stats_use_case=self.get_visit_stats_use_case(),
             get_user_links_use_case=self.get_get_user_links_use_case(),
             delete_link_use_case=self.get_delete_link_use_case(),
         )
@@ -269,6 +272,8 @@ class Container:
         self._admin_service = AdminService(
             create_user_uc=self.get_create_user_use_case(),
             update_user_roles_uc=self.get_update_user_roles_use_case(),
+            confirm_user_email_uc=self.get_confirm_user_email_use_case(),
+            resend_verification_uc=self.get_resend_verification_use_case(),
             deactivate_user_uc=self.get_deactivate_user_use_case(),
             activate_user_uc=self.get_activate_user_use_case(),
             list_users_uc=self.get_list_users_use_case(),
@@ -310,6 +315,7 @@ class Container:
                 default_guest_ttl_seconds=self.config.DEFAULT_GUEST_TTL_SECONDS,
                 max_ttl_seconds=self.config.MAX_TTL_SECONDS,
                 authorization_service=self.auth_component.get_authorization_service(),
+                record_visits=self.config.VISIT_TRACKING_ENABLED,
             )
             # Wire synchronous fallback for NullTaskQueue
             if not self.config.CELERY_ENABLED:
@@ -359,6 +365,7 @@ class Container:
                 cache=self.cache_component.get_cache(),
                 logger=self.logger_component.get_logger(__name__),
                 create_short_link_use_case=self.get_create_short_link_use_case(),
+                visit_retention_days=self.config.VISIT_RETENTION_DAYS,
             )
         return self._admin_link_use_cases
 
@@ -466,7 +473,15 @@ class Container:
         """Return fully configured ``GetServiceStatsUseCase``."""
         return self._init_stats_use_cases().get_get_service_stats_use_case()
 
+    def get_visit_stats_use_case(self) -> GetVisitStatsUseCase:
+        """Return fully configured ``GetVisitStatsUseCase``."""
+        return self._init_stats_use_cases().get_visit_stats_use_case()
+
     # Admin link use cases
+    def get_roll_up_visits_use_case(self) -> RollUpVisitsUseCase:
+        """Return fully configured ``RollUpVisitsUseCase``."""
+        return self._init_admin_link_use_cases().get_roll_up_visits_use_case()
+
     def get_clean_expired_links_use_case(self) -> CleanExpiredLinksUseCase:
         """Return fully configured ``CleanExpiredLinksUseCase``."""
         return self._init_admin_link_use_cases().get_clean_expired_links_use_case()
@@ -512,6 +527,10 @@ class Container:
     def get_deactivate_user_use_case(self) -> DeactivateUserUseCase:
         """Return fully configured ``DeactivateUserUseCase``."""
         return self._init_admin_user_use_cases().get_deactivate_user_use_case()
+
+    def get_confirm_user_email_use_case(self) -> ConfirmUserEmailUseCase:
+        """Return fully configured ``ConfirmUserEmailUseCase``."""
+        return self._init_admin_user_use_cases().get_confirm_user_email_use_case()
 
     def get_activate_user_use_case(self) -> ActivateUserUseCase:
         """Return fully configured ``ActivateUserUseCase``."""

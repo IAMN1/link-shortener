@@ -1,14 +1,20 @@
 {% extends "layout/base.html" %}
+{% import "dashboard/_icons.html" as icons %}
 {% block extra_head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 {% endblock %}
 {% block content %}
 {% if g.current_user %}
-<div class="dash">
+{# The collapsed state is read here rather than applied by a script after
+   the page loads. A cookie is on the request, so the rail is drawn narrow
+   from the first paint; the same state restored from localStorage draws
+   the full sidebar and snaps it shut a moment later, on every page. #}
+{% set rail = request.cookies.get('dash_sidebar') == 'rail' %}
+<div class="dash{% if rail %} dash--rail{% endif %}" id="dash">
     <nav class="dash-side" id="dash-side">
         <div class="dash-side-header">
             <span class="avatar avatar--sm">{{ g.current_user.email[0]|upper }}</span>
-            <div>
+            <div class="dash-side-label">
                 <div class="dash-side-user">{{ g.current_user.email }}</div>
                 <div class="dash-side-role">{{ g.current_user.roles|join(', ') }}</div>
             </div>
@@ -21,20 +27,28 @@
         {% if can('link:view_own') or can('link:create') %}
             <div class="dash-side-section">Links</div>
             {% if can('link:view_own') %}
-                <a href="{{ url_for('dashboard.my_links') }}">My Links</a>
+                <a href="{{ url_for('dashboard.my_links') }}" data-title="My Links">
+                    {{ icons.nav('links') }}<span class="dash-side-label">My Links</span>
+                </a>
             {% endif %}
             {% if can('link:create') %}
-                <a href="{{ url_for('dashboard.create_link_form') }}">Create Link</a>
+                <a href="{{ url_for('dashboard.create_link_form') }}" data-title="Create Link">
+                    {{ icons.nav('create') }}<span class="dash-side-label">Create Link</span>
+                </a>
             {% endif %}
         {% endif %}
 
         {% if can('link:view_own') or can('stats:view_basic') %}
             <div class="dash-side-section">Analytics</div>
             {% if can('link:view_own') %}
-                <a href="{{ url_for('dashboard.my_stats') }}">My Stats</a>
+                <a href="{{ url_for('dashboard.my_stats') }}" data-title="My Stats">
+                    {{ icons.nav('my-stats') }}<span class="dash-side-label">My Stats</span>
+                </a>
             {% endif %}
             {% if can('stats:view_basic') %}
-                <a href="{{ url_for('dashboard.service_stats') }}">Service Stats</a>
+                <a href="{{ url_for('dashboard.service_stats') }}" data-title="Service Stats">
+                    {{ icons.nav('service-stats') }}<span class="dash-side-label">Service Stats</span>
+                </a>
             {% endif %}
         {% endif %}
 
@@ -42,19 +56,38 @@
               or can('admin:view_system_health') %}
             <div class="dash-side-section">Administration</div>
             {% if can('admin:view_users') %}
-                <a href="{{ url_for('dashboard.users_list') }}">Users</a>
+                <a href="{{ url_for('dashboard.users_list') }}" data-title="Users">
+                    {{ icons.nav('users') }}<span class="dash-side-label">Users</span>
+                </a>
             {% endif %}
             {% if can('admin:view_roles') %}
-                <a href="{{ url_for('dashboard.roles_list') }}">Roles</a>
+                <a href="{{ url_for('dashboard.roles_list') }}" data-title="Roles">
+                    {{ icons.nav('roles') }}<span class="dash-side-label">Roles</span>
+                </a>
             {% endif %}
             {% if can('admin:view_system_health') %}
-                <a href="{{ url_for('dashboard.service_health') }}">Health Check</a>
+                <a href="{{ url_for('dashboard.service_health') }}" data-title="Health Check">
+                    {{ icons.nav('health') }}<span class="dash-side-label">Health Check</span>
+                </a>
             {% endif %}
         {% endif %}
 
         <div class="dash-side-bottom">
-            <a href="{{ url_for('frontend.index') }}">Back to Home</a>
-            <button class="dash-side-logout" id="logout-btn">Logout</button>
+            <a href="{{ url_for('frontend.index') }}" data-title="Back to Home">
+                {{ icons.nav('home') }}<span class="dash-side-label">Back to Home</span>
+            </a>
+            <button class="dash-side-logout" id="logout-btn" data-title="Logout">
+                {{ icons.nav('logout') }}<span class="dash-side-label">Logout</span>
+            </button>
+            {# The control the rail is worked with. `aria-expanded` carries
+               the state the class carries, because a screen reader has no
+               way to see a width. #}
+            <button class="dash-side-collapse" id="dash-collapse"
+                    aria-controls="dash-side"
+                    aria-expanded="{{ 'false' if rail else 'true' }}"
+                    data-title="Expand the menu">
+                {{ icons.nav('collapse') }}<span class="dash-side-label">Collapse</span>
+            </button>
         </div>
     </nav>
 
@@ -63,7 +96,7 @@
     </div>
 </div>
 
-<button class="dash-toggle" id="dash-toggle">&#9776;</button>
+<button class="dash-toggle" id="dash-toggle" aria-label="Menu">&#9776;</button>
 {% else %}
     <div class="container mt-3">
         <p class="text-muted">You are not logged in. <a href="{{ url_for('frontend.login_page') }}">Login</a></p>

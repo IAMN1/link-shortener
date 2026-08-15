@@ -22,9 +22,10 @@ where to look, the table below is sorted by what you are trying to do.
 
 ## The short version of each
 
-**[Getting started](getting-started.md)** — two independent paths, local on
-SQLite and the full stack in Docker, with the output every command should
-print and the errors you are most likely to hit.
+**[Getting started](getting-started.md)** — seven commands to a service
+that answers, then what each of them did; the full stack in Docker below
+that, with the output every command should print and the errors you are
+most likely to hit.
 
 **[Architecture](architecture.md)** — four layers and the direction
 dependencies point; how a link is created, resolved and deleted; the two

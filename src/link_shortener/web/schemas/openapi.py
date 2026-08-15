@@ -45,6 +45,9 @@ from link_shortener.web.schemas.auth import (
 from link_shortener.web.schemas.stats import (
     MyStatsResponse, ServiceStatsResponse
 )
+from link_shortener.web.schemas.visit_stats import (
+    DailyVisitsResponse, VisitStatsResponse
+)
 from link_shortener.web.schemas.admin.admin_request import (
     CreateRoleRequest, CreateUserRequest, UpdateRolePermissionsRequest,
     UpdateUserRolesRequest
@@ -64,6 +67,8 @@ MODELS: Dict[str, Type[BaseModel]] = {
     "BatchCreateResponse": BatchCreateResponse,
     "ServiceStatsResponse": ServiceStatsResponse,
     "MyStatsResponse": MyStatsResponse,
+    "VisitStatsResponse": VisitStatsResponse,
+    "DailyVisitsResponse": DailyVisitsResponse,
     "RegisterResponse": RegisterResponse,
     "TokenPairResponse": TokenPairResponse,
     "RefreshResponse": RefreshResponse,
@@ -463,6 +468,86 @@ PATHS: Dict[str, Any] = {
             },
         }
     },
+    "/api/v1/stats/visits": {
+        "get": {
+            "summary": "Recorded visits over a span",
+            "description": (
+                "When links were opened, not only how often. Needs "
+                "stats:view_basic, which the seeded guest role carries. "
+                "`scope=mine` narrows the answer to the caller's own links "
+                "and requires a session. The top-links table needs "
+                "stats:view_full on top and comes back empty without it -- "
+                "a short code is somebody's link, which is a different "
+                "disclosure than a count. Robots are counted and reported "
+                "separately rather than dropped, so this total and "
+                "`urls.clicks` agree."
+            ),
+            "tags": ["stats"],
+            "parameters": [
+                {
+                    "name": "period", "in": "query", "required": False,
+                    "schema": {"type": "string",
+                               "enum": ["24h", "7d", "30d", "90d"],
+                               "default": "7d"},
+                    "description": "Span, and with it how finely it is cut.",
+                },
+                {
+                    "name": "scope", "in": "query", "required": False,
+                    "schema": {"type": "string",
+                               "enum": ["service", "mine"],
+                               "default": "service"},
+                },
+                {
+                    "name": "code", "in": "query", "required": False,
+                    "schema": {"type": "string"},
+                    "description": "Restrict to one link, by its short code.",
+                },
+            ],
+            "responses": {
+                "200": {"description": "The span",
+                        **_json("VisitStatsResponse")},
+                "400": _error("Unknown period, or a malformed code"),
+                "401": _error("scope=mine without a session"),
+                "403": _error("Not entitled to the statistics"),
+            },
+        }
+    },
+    "/api/v1/stats/visits/daily": {
+        "get": {
+            "summary": "Visits per day, past the retention window",
+            "description": (
+                "Reads the rolled-up days and the raw visits together, so "
+                "the answer reaches further back than the raw rows do. "
+                "Days with no visits are present with a zero, so a chart "
+                "draws a gap rather than joining two distant points."
+            ),
+            "tags": ["stats"],
+            "parameters": [
+                {
+                    "name": "days", "in": "query", "required": False,
+                    "schema": {"type": "integer", "minimum": 1,
+                               "maximum": 730, "default": 90},
+                },
+                {
+                    "name": "scope", "in": "query", "required": False,
+                    "schema": {"type": "string",
+                               "enum": ["service", "mine"],
+                               "default": "service"},
+                },
+                {
+                    "name": "code", "in": "query", "required": False,
+                    "schema": {"type": "string"},
+                },
+            ],
+            "responses": {
+                "200": {"description": "One entry per day",
+                        **_json("DailyVisitsResponse")},
+                "400": _error("days out of range, or a malformed code"),
+                "401": _error("scope=mine without a session"),
+                "403": _error("Not entitled to the statistics"),
+            },
+        }
+    },
     "/api/v1/stats": {
         "get": {
             "summary": "Service-wide statistics",
@@ -737,6 +822,47 @@ PATHS: Dict[str, Any] = {
                 ),
                 "404": _error("No account carries that id"),
                 "415": _error("A body that is not declared application/json"),
+            },
+        }
+    },
+    "/api/v1/admin/users/{user_id}/verify-email": {
+        "post": {
+            "summary": "Confirm an address without a mailed link",
+            "description": (
+                "Needs admin:manage_users. Marks the address as confirmed "
+                "on the operator's word, for the cases the mailed link "
+                "cannot cover -- the message never arrived, the address is "
+                "a list nobody reads, the deployment sends no mail. Any "
+                "outstanding confirmation tokens are spent along with it, "
+                "so a link still sitting in a mailbox stops working. "
+                "Idempotent: an already confirmed account answers 200."
+            ),
+            "tags": ["admin"],
+            "parameters": [USER_PARAMETER],
+            "responses": {
+                "200": {"description": "The account", **_json("UserResponseSchema")},
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:manage_users"),
+                "404": _error("No account carries that id"),
+            },
+        }
+    },
+    "/api/v1/admin/users/{user_id}/resend-verification": {
+        "post": {
+            "summary": "Send the confirmation message again",
+            "description": (
+                "Needs admin:manage_users. Runs the same use case as the "
+                "public endpoint, addressed by account id rather than by "
+                "email, and answers with the address it went to. Issuing a "
+                "new token retires the ones outstanding."
+            ),
+            "tags": ["admin"],
+            "parameters": [USER_PARAMETER],
+            "responses": {
+                "202": {"description": "Accepted", **_json("MessageResponse")},
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:manage_users"),
+                "404": _error("No account carries that id"),
             },
         }
     },

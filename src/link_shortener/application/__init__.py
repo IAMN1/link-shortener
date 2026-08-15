@@ -57,9 +57,11 @@ from .use_cases.links.update_link_stats import UpdateLinkStatsUseCase
 
 from .use_cases.stats.get_service_health import GetServiceHealthUseCase
 from .use_cases.stats.get_service_stats import GetServiceStatsUseCase
+from .use_cases.stats.get_visit_stats import GetVisitStatsUseCase
 from .use_cases.stats.get_user_activity_stats import GetUserActivityStatsUseCase
 
 from .use_cases.admin.links.clean_expired_links import CleanExpiredLinksUseCase
+from .use_cases.admin.links.roll_up_visits import RollUpVisitsUseCase
 from .use_cases.admin.links.get_recent_links import GetRecentLinksUseCase
 from .use_cases.admin.database.seed_database import SeedDatabaseUseCase
 
@@ -71,6 +73,7 @@ from .use_cases.admin.roles.get_role import GetRoleUseCase
 
 from .use_cases.admin.users.create_user import CreateUserUseCase
 from .use_cases.admin.users.update_user_role import UpdateUserRolesUseCase
+from .use_cases.admin.users.confirm_user_email import ConfirmUserEmailUseCase
 from .use_cases.admin.users.deactivate_user import DeactivateUserUseCase
 from .use_cases.admin.users.activate_user import ActivateUserUseCase
 from .use_cases.admin.users.list_user import ListUsersUseCase
@@ -158,9 +161,11 @@ __all__ = [
 
     "GetServiceHealthUseCase",
     "GetServiceStatsUseCase",
+    "GetVisitStatsUseCase",
     "GetUserActivityStatsUseCase",
 
     "CleanExpiredLinksUseCase",
+    "RollUpVisitsUseCase",
     "GetRecentLinksUseCase",
     "SeedDatabaseUseCase",
     "CreateRoleUseCase",
@@ -170,6 +175,7 @@ __all__ = [
     "GetRoleUseCase",
     "CreateUserUseCase",
     "UpdateUserRolesUseCase",
+    "ConfirmUserEmailUseCase",
     "DeactivateUserUseCase",
     "ActivateUserUseCase",
     "ListUsersUseCase",

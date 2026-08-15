@@ -10,6 +10,7 @@
     display: grid;
     grid-template-columns: 232px minmax(0, 1fr);
     min-height: calc(100vh - 60px - 69px);
+    transition: grid-template-columns .16s ease;
 }
 
 .dash-side {
@@ -55,7 +56,9 @@
 }
 
 .dash-side a {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
     padding: 0.45rem 0.6rem;
     border-radius: var(--radius);
     color: var(--c-text-2);
@@ -63,6 +66,9 @@
     font-weight: 500;
     border-left: 2px solid transparent;
 }
+/* The glyph never shrinks: it is the whole entry once the rail is closed,
+   and a label long enough to squeeze it would leave a row of slivers. */
+.dash-side-glyph { flex: none; }
 .dash-side a:hover {
     background: var(--c-surface-2);
     color: var(--c-text);
@@ -81,21 +87,27 @@
     padding-top: 1rem;
     border-top: 1px solid var(--c-border);
 }
-.dash-side-logout {
-    display: block;
+.dash-side-logout,
+.dash-side-collapse {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
     width: 100%;
     text-align: left;
     font: inherit;
     font-size: 0.875rem;
     font-weight: 500;
-    color: var(--c-danger);
     background: none;
     border: none;
     border-radius: var(--radius);
     padding: 0.45rem 0.6rem;
     cursor: pointer;
 }
-.dash-side-logout:hover { background: var(--c-surface-2); }
+.dash-side-logout { color: var(--c-danger); }
+.dash-side-collapse { color: var(--c-text-3); }
+.dash-side-logout:hover,
+.dash-side-collapse:hover { background: var(--c-surface-2); }
+.dash-side-collapse:hover { color: var(--c-text-2); }
 
 .dash-main { padding: 1.75rem 1.75rem 3rem; min-width: 0; }
 
@@ -124,8 +136,105 @@
     font-size: 1.1rem;
 }
 
+/* ===== The rail =====
+
+   Collapsed, the sidebar gives up its words and keeps its glyphs, so every
+   destination is still one click away -- which is the whole difference
+   between this and hiding the sidebar. Scoped to the wide layout: below
+   the breakpoint the sidebar is already an overlay that covers the page,
+   and a rail there would eat 56px of a screen that has none to spare.
+   ========================================================================== */
+
+@media (min-width: 861px) {
+    .dash--rail { grid-template-columns: 56px minmax(0, 1fr); }
+
+    .dash--rail .dash-side { padding-left: 0.5rem; padding-right: 0.5rem; }
+
+    /* Clipped rather than `display: none`: a screen reader still reads the
+       entry's name, and the rail is a visual economy rather than a smaller
+       menu. */
+    .dash--rail .dash-side-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .dash--rail .dash-side-header {
+        justify-content: center;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    /* A heading with no room for its word becomes what it was underneath:
+       the line between two groups. */
+    .dash--rail .dash-side-section {
+        height: 1px;
+        padding: 0;
+        margin: 0.7rem 0.35rem 0.55rem;
+        background: var(--c-border);
+        font-size: 0;
+        overflow: hidden;
+    }
+
+    .dash--rail .dash-side a,
+    .dash--rail .dash-side-logout,
+    .dash--rail .dash-side-collapse {
+        position: relative;
+        justify-content: center;
+        gap: 0;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .dash--rail .dash-side-collapse .dash-side-glyph { transform: scaleX(-1); }
+
+    /* The label the rail took away, handed back on hover and on focus.
+       Drawn from `data-title` rather than a `title` attribute, which waits
+       about a second, appears wherever the pointer is, and never shows up
+       for a keyboard at all. */
+    .dash--rail .dash-side a::after,
+    .dash--rail .dash-side-logout::after,
+    .dash--rail .dash-side-collapse::after {
+        content: attr(data-title);
+        position: absolute;
+        left: calc(100% + 0.5rem);
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 170;
+        padding: 0.25rem 0.5rem;
+        border: var(--edge);
+        border-radius: var(--radius);
+        background: var(--c-surface);
+        box-shadow: var(--shadow);
+        color: var(--c-text);
+        font-size: 0.75rem;
+        font-weight: 500;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .dash--rail .dash-side a:hover::after,
+    .dash--rail .dash-side a:focus-visible::after,
+    .dash--rail .dash-side-logout:hover::after,
+    .dash--rail .dash-side-logout:focus-visible::after,
+    .dash--rail .dash-side-collapse:hover::after,
+    .dash--rail .dash-side-collapse:focus-visible::after { opacity: 1; }
+}
+
+/* Width is animated for the person who asked for motion and nobody else. */
+@media (prefers-reduced-motion: reduce) {
+    .dash { transition: none; }
+}
+
 @media (max-width: 860px) {
-    .dash { grid-template-columns: minmax(0, 1fr); }
+    .dash,
+    .dash--rail { grid-template-columns: minmax(0, 1fr); }
+    /* Nothing to collapse: the sidebar here is an overlay the toggle at the
+       bottom of the screen opens and closes. */
+    .dash-side-collapse { display: none; }
     .dash-side {
         position: fixed;
         top: 0;

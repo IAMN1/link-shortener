@@ -120,7 +120,11 @@ class UserResponseSchema(BaseModel):
         id: Unique user identifier.
         email: User's email address.
         roles: List of assigned role names.
-        is_active: Whether the account is active.
+        is_active: Whether an administrator has left the account enabled.
+        email_verified: Whether the owner has proved the address is theirs.
+            Signing in needs both this and ``is_active``; an operator
+            reading only the latter cannot tell why an "Active" account
+            gets refused at the login form.
         created_at: Registration timestamp.
         last_login: Last login timestamp (if any).
     """
@@ -128,6 +132,7 @@ class UserResponseSchema(BaseModel):
     email: str
     roles: List[str]
     is_active: bool
+    email_verified: bool
     created_at: datetime
     last_login: Optional[datetime] = None
 
@@ -139,6 +144,7 @@ class UserResponseSchema(BaseModel):
                 "email": "user@example.com",
                 "roles": ["editor", "viewer"],
                 "is_active": True,
+                "email_verified": True,
                 "created_at": "2026-01-15T10:30:00",
                 "last_login": "2026-02-20T15:30:00"
             }
@@ -177,6 +183,7 @@ class UserResponseSchema(BaseModel):
             email=user.email,
             roles=user.roles,
             is_active=user.is_active,
+            email_verified=user.email_verified,
             created_at=user.created_at,
             last_login=user.last_login,
         )

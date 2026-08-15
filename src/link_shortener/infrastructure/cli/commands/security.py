@@ -1,5 +1,7 @@
 import secrets
 import os
+from pathlib import Path
+
 from link_shortener.application import UnitOfWorkFactory
 from link_shortener.domain import Email
 
@@ -41,6 +43,75 @@ def generate_secrets() -> dict[str, str]:
         "SECRET_KEY": secrets.token_hex(32),
         "SHORT_CODE_PEPPER": secrets.token_hex(32),
     }
+
+
+def write_secrets(path: Path, force: bool = False) -> dict[str, str]:
+    """
+    Put freshly generated secrets into an env file, in place.
+
+    The printed form of this command asks the reader to copy two lines
+    into a file by hand, which is the one step in the guide that cannot
+    be pasted into a shell. Everything around it is a command, so the
+    setup broke in the middle for the sake of two values nobody chooses.
+
+    Existing values are kept unless ``force`` says otherwise: rewriting a
+    ``SECRET_KEY`` signs out every session and voids every issued token,
+    and rewriting ``SHORT_CODE_PEPPER`` is worse -- codes already handed
+    out stop resolving. Neither is something a setup command may do
+    because a file happened to be there.
+
+    Args:
+        path: Env file to edit. It has to exist already; this command
+            fills a template in rather than inventing one.
+        force: Replace values that are already set.
+
+    Returns:
+        The values written, keyed by variable name.
+
+    Raises:
+        FileNotFoundError: When ``path`` is not there.
+        ValueError: When a value is already set and ``force`` is false.
+    """
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} does not exist")
+
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    fresh = generate_secrets()
+
+    # What each name already holds, and on which line. A name absent from
+    # the file is absent from here too, and gets appended below.
+    seen: dict[str, int] = {}
+    for number, line in enumerate(lines):
+        name = line.split("=", 1)[0].strip() if "=" in line else ""
+        if name in fresh and name not in seen:
+            seen[name] = number
+
+    if not force:
+        taken = sorted(
+            name for name, number in seen.items()
+            if lines[number].split("=", 1)[1].strip()
+        )
+        if taken:
+            raise ValueError(
+                f"{path} already sets {', '.join(taken)}. "
+                "Pass --force to replace, knowing it signs out every "
+                "session and, for SHORT_CODE_PEPPER, breaks the codes "
+                "already handed out."
+            )
+
+    for name, value in fresh.items():
+        if name in seen:
+            # The trailing newline is taken from the line being replaced,
+            # so a file that ends without one keeps ending without one.
+            ending = "\n" if lines[seen[name]].endswith("\n") else ""
+            lines[seen[name]] = f"{name}={value}{ending}"
+        else:
+            if lines and not lines[-1].endswith("\n"):
+                lines[-1] += "\n"
+            lines.append(f"{name}={value}\n")
+
+    path.write_text("".join(lines), encoding="utf-8")
+    return fresh
 
 
 def check_secrets() -> dict[str, bool]:

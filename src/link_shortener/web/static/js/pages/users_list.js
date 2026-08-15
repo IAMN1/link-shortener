@@ -46,5 +46,37 @@ document.addEventListener('DOMContentLoaded', function() {
                     'Delete %s permanently? This cannot be undone.');
             });
         }
+
+        // Confirming by hand skips the proof that the address is readable,
+        // so it asks first and says what it is skipping.
+        var confirmEmail = row.querySelector('.js-confirm-email');
+        if (confirmEmail) {
+            confirmEmail.addEventListener('click', function() {
+                act(row, 'POST', '/api/v1/admin/users/' + id + '/verify-email',
+                    'Confirm the address of %s without a mailed link? '
+                    + 'Do this only if you know the address is theirs.');
+            });
+        }
+
+        // Sending again does not change anything, so it does not ask --
+        // but the page has to say it happened, since nothing on it moves.
+        var resend = row.querySelector('.js-resend-verification');
+        if (resend) {
+            resend.addEventListener('click', async function() {
+                resend.disabled = true;
+                var resp = await apiFetch(
+                    '/api/v1/admin/users/' + id + '/resend-verification',
+                    { method: 'POST' }
+                );
+                if (!resp) return;
+                if (!resp.ok) {
+                    showLoadError('users-error', await apiErrorText(resp));
+                    resend.disabled = false;
+                    return;
+                }
+                var data = await resp.json();
+                resend.replaceWith(document.createTextNode(data.message));
+            });
+        }
     });
 });

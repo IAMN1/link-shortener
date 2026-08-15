@@ -88,7 +88,7 @@ group.
 | Command | |
 |---|---|
 | `security check-secrets` | Are the secrets set properly |
-| `security generate-secrets` | Print a fresh `SECRET_KEY` and `SHORT_CODE_PEPPER` |
+| `security generate-secrets` | Print a fresh `SECRET_KEY` and `SHORT_CODE_PEPPER`; `--write <file>` fills them into an env file instead, `--force` replaces values already set |
 | `security list-users` · `security list-roles` | What exists |
 | `security validate-token <token>` | Verdict plus claims |
 | `security reset-password` | Set a new password |
@@ -108,6 +108,7 @@ group.
 | `db check` · `db status` | Can the database be reached |
 | `db migrate` | Apply Alembic migrations |
 | `db load-base-roles` | Seed or update the system roles from YAML |
+| `maintenance roll-up-visits` | Fold finished days of visits into day totals, then delete raw rows past `VISIT_RETENTION_DAYS`. Run daily |
 | `db load-custom-roles <file>` | The same from a file of your own |
 | `db seed --count N` | Fill the database with test links. These are **guest** links, so they hit `GUEST_LINK_LIMIT` — raise it for large N |
 | `db init` · `db drop --yes` | Only meaningful with `USE_ALEMBIC=false` |

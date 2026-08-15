@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import click
 from flask import current_app
 from flask.cli import with_appcontext
@@ -238,6 +240,25 @@ def clean_expired():
     use_case = container.get_clean_expired_links_use_case()
     deleted = clean_expired_logic(use_case, context)
     click.echo(f"Deleted {deleted} expired links.")
+
+@maintenance_group.command("roll-up-visits")
+@with_appcontext
+def roll_up_visits():
+    """Fold finished days of visits, then sweep what is past retention.
+
+    Both steps, in that order: folding first means the day totals exist
+    before the rows behind them are deleted. Run it daily -- the sweep
+    is what keeps the visit table from being the reason the service
+    eventually stops.
+
+    The retention window is `VISIT_RETENTION_DAYS`, not a flag here: a
+    cron line and a running service disagreeing about how long history
+    is kept is not a disagreement anybody notices in time.
+    """
+    container = _container()
+    context = RequestContext(request_id="cli-roll-up-visits")
+    folded, swept = container.get_roll_up_visits_use_case().execute(context)
+    click.echo(f"Folded {folded} link-days; deleted {swept} raw visits.")
 
 @maintenance_group.command("clean-sessions")
 @with_appcontext
@@ -642,9 +663,28 @@ def security_group():
     pass
 
 @security_group.command("generate-secrets")
-def security_generate_secrets():
+@click.option("--write", "target", type=click.Path(path_type=Path),
+              help="Fill the secrets into this env file instead of printing them.")
+@click.option("--force", is_flag=True,
+              help="With --write: replace values the file already sets.")
+def security_generate_secrets(target, force):
     """Generate new SECRET_KEY and SHORT_CODE_PEPPER."""
-    from link_shortener.infrastructure.cli.commands.security import generate_secrets as gen_secrets
+    from link_shortener.infrastructure.cli.commands.security import (
+        generate_secrets as gen_secrets, write_secrets,
+    )
+
+    if target is not None:
+        # Written rather than printed: this is the one step of the setup
+        # that otherwise asks for a text editor in the middle of a run of
+        # commands. The values are not echoed back -- a secret that goes
+        # to a file has no reason to also go to the scrollback.
+        try:
+            write_secrets(target, force=force)
+        except (FileNotFoundError, ValueError) as failure:
+            raise click.ClickException(str(failure)) from failure
+        click.echo(f"SECRET_KEY and SHORT_CODE_PEPPER written to {target}.")
+        return
+
     secrets = gen_secrets()
     click.echo("=" * 80)
     click.echo("Generated secrets (add to .env file):")

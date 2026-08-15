@@ -4,6 +4,9 @@ from .entities.role import Role
 from .entities.permission import Permission
 from .entities.refresh_session import RefreshSession
 from .entities.email_verification import EmailVerification
+from .entities.link_visit import (
+    LinkVisit, VisitBreakdown, VisitBucket, VisitSummary, VisitsOnADay,
+)
 
 from .policies.hash_calculator import HashCalculator
 from .policies.code_generator import CodeGenerator
@@ -18,6 +21,7 @@ from .repositories.link_repository import (
 )
 from .repositories.refresh_session_repository import RefreshSessionRepository
 from .repositories.email_verification_repository import EmailVerificationRepository
+from .repositories.link_visit_repository import LinkVisitRepository
 
 from .value_objects.original_url import OriginalUrl
 from .value_objects.short_code import ShortCode
@@ -26,6 +30,7 @@ from .value_objects.email import Email
 from .value_objects.password_hash import PasswordHash
 from .value_objects.owner_id import OwnerID
 from .value_objects.dedup_scope import DedupScope
+from .value_objects.visitor import anonymise_address, classify_client
 
 from .exceptions import (
     DomainError, LinkNotFoundError, ValidationError,
@@ -44,6 +49,11 @@ __all__ = [
     "Permission",
     "RefreshSession",
     "EmailVerification",
+    "LinkVisit",
+    "VisitsOnADay",
+    "VisitBucket",
+    "VisitBreakdown",
+    "VisitSummary",
 
     # Policies
     "HashCalculator",
@@ -55,6 +65,7 @@ __all__ = [
     "UserLinkStats",
     "RefreshSessionRepository",
     "EmailVerificationRepository",
+    "LinkVisitRepository",
     "UserRepository",
     "RoleRepository",
     "PermissionRepository",
@@ -67,6 +78,8 @@ __all__ = [
     "PasswordHash",
     "OwnerID",
     "DedupScope",
+    "anonymise_address",
+    "classify_client",
 
     # Exceptions
     "DomainError",

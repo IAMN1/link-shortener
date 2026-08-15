@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from link_shortener.application import (
+    RollUpVisitsUseCase,
     ServiceCache,
     UnitOfWorkFactory, CleanExpiredLinksUseCase,
     GetRecentLinksUseCase, SeedDatabaseUseCase, CreateShortLinkUseCase,
@@ -25,6 +26,7 @@ class AdminLinkUseCasesComponent:
     """Application logger injected into the use cases."""
 
     create_short_link_use_case: CreateShortLinkUseCase
+    visit_retention_days: int = 90
     """Use case needed by ``SeedDatabaseUseCase`` to create test links."""
 
     def get_clean_expired_links_use_case(self) -> CleanExpiredLinksUseCase:
@@ -39,6 +41,20 @@ class AdminLinkUseCasesComponent:
             cache=self.cache,
             stats_cache=self.cache,
             logger=self.logger,
+        )
+
+    def get_roll_up_visits_use_case(self) -> RollUpVisitsUseCase:
+        """
+        Return a fully configured ``RollUpVisitsUseCase``.
+
+        Folds finished days of visits into day totals and then deletes the
+        raw rows past the retention window -- in that order, so the charts
+        keep their past.
+        """
+        return RollUpVisitsUseCase(
+            uow_factory=self.uow_factory,
+            logger=self.logger,
+            retention_days=self.visit_retention_days,
         )
 
     def get_get_recent_links_use_case(self) -> GetRecentLinksUseCase:

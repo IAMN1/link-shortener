@@ -29,7 +29,7 @@ expected output of every step.
 ## What a change has to pass
 
 ```bash
-uv run pytest tests/                      # 2497 tests, 88% coverage floor
+uv run pytest tests/                      # 2582 tests, 88% coverage floor
 uv run flake8 src tests
 uv run pylint src                         # floor 9.0
 uv run bandit -r src -q
@@ -39,8 +39,8 @@ uv run mypy src                           # floor: zero errors
 Plus the two live runs, if your change touches HTTP or the frontend:
 
 ```bash
-uv run python tests/live/smoke_test.py    # 115 checks
-uv run python tests/live/browser_test.py  # 15 checks, needs --group browser
+uv run python tests/live/smoke_test.py    # 123 checks
+uv run python tests/live/browser_test.py  # 17 checks, needs --group browser
 ```
 
 CI runs all of it, twice — once in a clean environment and once in a

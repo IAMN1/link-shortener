@@ -1,0 +1,137 @@
+"""
+Tests that `generate-secrets --write` edits an env file rather than a copy.
+
+The printed form of the command is why the setup guide breaks in the
+middle: every other step is a command, and this one asks for a text
+editor. Writing the values removes that break, so the file has to come
+out of it usable -- the same variables, in the same places, with the
+comments that explain them still attached.
+
+What is guarded here is mostly what must *not* happen. A rewritten
+``SECRET_KEY`` signs out every session; a rewritten ``SHORT_CODE_PEPPER``
+stops the codes already handed out from resolving, because the hash a
+code is derived from no longer matches. Neither may follow from a setup
+command being run twice.
+"""
+
+import pytest
+
+from link_shortener.infrastructure.cli.commands.security import write_secrets
+
+
+TEMPLATE = """\
+# Signs JWTs, sessions and cache entries
+SECRET_KEY=
+OTHER=untouched
+# Salts the short codes
+SHORT_CODE_PEPPER=
+"""
+
+
+@pytest.fixture
+def env_file(tmp_path):
+    """An env template with both secrets present and empty."""
+    path = tmp_path / ".env"
+    path.write_text(TEMPLATE, encoding="utf-8")
+    return path
+
+
+class TestFillingInAnEmptyTemplate:
+
+    def test_both_values_are_written(self, env_file):
+        written = write_secrets(env_file)
+        text = env_file.read_text(encoding="utf-8")
+
+        assert f"SECRET_KEY={written['SECRET_KEY']}" in text
+        assert f"SHORT_CODE_PEPPER={written['SHORT_CODE_PEPPER']}" in text
+
+    def test_the_two_values_differ(self, env_file):
+        """One value used twice would tie the codes to the session key."""
+        written = write_secrets(env_file)
+
+        assert written["SECRET_KEY"] != written["SHORT_CODE_PEPPER"]
+        # 32 random bytes, hex-encoded, as the printed form has always
+        # produced. A short value here would be a downgrade nothing else
+        # would notice.
+        assert len(written["SECRET_KEY"]) == 64
+
+    def test_everything_else_is_left_alone(self, env_file):
+        """
+        The file is a template full of comments explaining each variable.
+
+        Rewriting it from a dict of names and values would drop them, and
+        the reader would be left with a working file that no longer says
+        what anything in it is for.
+        """
+        write_secrets(env_file)
+        lines = env_file.read_text(encoding="utf-8").splitlines()
+
+        assert lines[0] == "# Signs JWTs, sessions and cache entries"
+        assert lines[2] == "OTHER=untouched"
+        assert lines[3] == "# Salts the short codes"
+        assert len(lines) == 5, "the file grew or lost a line"
+
+    def test_a_name_the_file_lacks_is_appended(self, tmp_path):
+        path = tmp_path / ".env"
+        path.write_text("OTHER=1\n", encoding="utf-8")
+
+        written = write_secrets(path)
+        text = path.read_text(encoding="utf-8")
+
+        assert text.startswith("OTHER=1\n")
+        assert f"SECRET_KEY={written['SECRET_KEY']}\n" in text
+        assert f"SHORT_CODE_PEPPER={written['SHORT_CODE_PEPPER']}\n" in text
+
+    def test_a_file_that_ends_without_a_newline_is_not_glued_together(
+        self, tmp_path
+    ):
+        """``OTHER=1SECRET_KEY=...`` is what the naive append produces."""
+        path = tmp_path / ".env"
+        path.write_text("OTHER=1", encoding="utf-8")
+
+        write_secrets(path)
+        lines = path.read_text(encoding="utf-8").splitlines()
+
+        assert lines[0] == "OTHER=1"
+
+
+class TestRefusingToOverwriteWhatIsAlreadyThere:
+
+    def test_a_second_run_is_refused(self, env_file):
+        write_secrets(env_file)
+        before = env_file.read_text(encoding="utf-8")
+
+        with pytest.raises(ValueError) as refusal:
+            write_secrets(env_file)
+
+        assert "SECRET_KEY" in str(refusal.value)
+        assert env_file.read_text(encoding="utf-8") == before, (
+            "the refusal still changed the file"
+        )
+
+    def test_force_replaces_them(self, env_file):
+        first = write_secrets(env_file)
+
+        second = write_secrets(env_file, force=True)
+
+        assert second["SECRET_KEY"] != first["SECRET_KEY"]
+        assert first["SECRET_KEY"] not in env_file.read_text(encoding="utf-8")
+
+    def test_one_value_set_and_one_empty_is_still_a_refusal(self, tmp_path):
+        """
+        Half a file is the case a "fill in what is missing" rule gets wrong.
+
+        Filling the empty one and leaving the other would hand back a file
+        whose two secrets came from different runs -- which is fine -- but
+        it would do it silently, on a file somebody had already edited.
+        """
+        path = tmp_path / ".env"
+        path.write_text("SECRET_KEY=already\nSHORT_CODE_PEPPER=\n",
+                        encoding="utf-8")
+
+        with pytest.raises(ValueError):
+            write_secrets(path)
+
+    def test_a_missing_file_says_so(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            write_secrets(tmp_path / "nothing-here")

@@ -534,6 +534,28 @@ class BaseConfig:
     Number of days within which a link is considered "recent".
     """
 
+    ## Visit statistics
+    VISIT_TRACKING_ENABLED: bool = env_bool("VISIT_TRACKING_ENABLED", True)
+    """
+    Whether an opened link is recorded as an event, not only counted.
+
+    Off, ``urls.clicks`` still counts and every chart with time on an axis
+    stays empty -- that is what the service did before the table existed.
+    On, one row is written per redirect, by the same background task that
+    moves the counter.
+    """
+
+    VISIT_RETENTION_DAYS: int = env_int("VISIT_RETENTION_DAYS", 90)
+    """
+    How long a raw visit row is kept before the sweep deletes it.
+
+    Days that have ended are folded into one row per link per day first,
+    so the long-range charts keep their shape after the rows behind them
+    are gone. Zero disables the sweep, and the table then grows without
+    limit -- which is a choice, not an accident, and has to be made
+    deliberately.
+    """
+
     BATCH_CREATE_LIMIT: int = env_int("BATCH_CREATE_LIMIT", 100)
     """
     Maximum number of URLs allowed in a single batch creation request.
@@ -1714,6 +1736,7 @@ class BaseConfig:
             ("CACHE_STATS_TTL", self.CACHE_STATS_TTL),
             ("POPULAR_THRESHOLD", self.POPULAR_THRESHOLD),
             ("RECENT_DAYS", self.RECENT_DAYS),
+            ("VISIT_RETENTION_DAYS", self.VISIT_RETENTION_DAYS),
         )
         for name, value in non_negative_settings:
             if value < 0:

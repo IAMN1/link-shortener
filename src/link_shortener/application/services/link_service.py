@@ -13,6 +13,7 @@ from link_shortener.application.use_cases.links.delete_link import DeleteLinkUse
 from link_shortener.application.use_cases.links.get_user_links import GetUserLinksUseCase
 from link_shortener.application.use_cases.links.redirect_link import RedirectLinkUseCase
 from link_shortener.application.use_cases.stats.get_service_stats import GetServiceStatsUseCase
+from link_shortener.application.use_cases.stats.get_visit_stats import GetVisitStatsUseCase
 
 
 @dataclass
@@ -32,6 +33,8 @@ class LinkService:
             original URL.
         batch_create_links_use_case: Use case for batch creation of short links.
         get_service_stats_use_case: Use case for aggregated service statistics.
+        get_visit_stats_use_case: Use case for the recorded visits behind
+            the charts -- when a link was opened, not only how often.
         get_user_links_use_case: Use case for retrieving a user's links.
     """
 
@@ -41,6 +44,7 @@ class LinkService:
     redirect_link_use_case: RedirectLinkUseCase
     batch_create_links_use_case: BatchCreateLinksUseCase
     get_service_stats_use_case: GetServiceStatsUseCase
+    get_visit_stats_use_case: GetVisitStatsUseCase
     get_user_links_use_case: GetUserLinksUseCase
     delete_link_use_case: DeleteLinkUseCase
 
@@ -158,6 +162,50 @@ class LinkService:
             and a list of popular links.
         """
         return self.get_service_stats_use_case.execute(context)
+
+    def get_visit_stats(
+        self,
+        context: RequestContext,
+        period: str = "7d",
+        short_code: Optional[str] = None,
+        owner_id: Optional[str] = None,
+    ):
+        """Retrieve the recorded visits behind the charts.
+
+        Args:
+            context: Request context.
+            period: One of ``24h``, ``7d``, ``30d``, ``90d``.
+            short_code: Restrict to one link.
+            owner_id: Restrict to the links of one account.
+
+        Returns:
+            A ``VisitSummary``; zero-filled when nothing was recorded.
+        """
+        return self.get_visit_stats_use_case.execute(
+            context, period=period, short_code=short_code, owner_id=owner_id
+        )
+
+    def get_daily_visits(
+        self,
+        context: RequestContext,
+        days: int = 90,
+        short_code: Optional[str] = None,
+        owner_id: Optional[str] = None,
+    ):
+        """Retrieve visits per day, reaching past the retention window.
+
+        Args:
+            context: Request context.
+            days: How many days back to go, at most 730.
+            short_code: Restrict to one link.
+            owner_id: Restrict to the links of one account.
+
+        Returns:
+            One bucket per day, oldest first.
+        """
+        return self.get_visit_stats_use_case.daily(
+            context, days=days, short_code=short_code, owner_id=owner_id
+        )
 
     # ------------------------------------------------------------------
     # Delete link
