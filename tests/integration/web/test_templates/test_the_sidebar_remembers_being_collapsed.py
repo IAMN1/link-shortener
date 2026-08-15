@@ -91,6 +91,9 @@ class TestTheSidebarIsDrawnInTheRememberedState:
         """
         markup = signed_in(COLLAPSED)
 
+        # "Log out", two words: the control is a verb, and the header beside
+        # it says "Log in". It read "Logout" while the page it sits on said
+        # "Login".
         for name in ("My Links", "Create Link", "Service Stats", "Users",
-                     "Roles", "Health Check", "Logout"):
+                     "Roles", "Health Check", "Log out"):
             assert name in markup, f"the rail dropped {name!r} from the markup"

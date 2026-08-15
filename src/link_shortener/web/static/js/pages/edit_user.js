@@ -1,7 +1,10 @@
 /**
  * edit_user.js – Admin: edit user roles form.
  */
-document.addEventListener('DOMContentLoaded', function() {
+// Wrapped, and not waiting for `DOMContentLoaded`: every page script is
+// shaped this way, and the reason is written out once beside
+// `{% block scripts %}` in templates/layout/base.html.
+(function() {
     var form = document.getElementById('edit-user-form');
     if (!form) return;
     // Extract user_id from URL: /dashboard/users/<user_id>/edit
@@ -26,4 +29,4 @@ document.addEventListener('DOMContentLoaded', function() {
             errEl.classList.remove('hidden');
         }
     });
-});
+})();

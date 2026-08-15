@@ -1,5 +1,5 @@
 {% extends "dashboard/base.html" %}
-{% block title %}My Stats – Linkr{% endblock %}
+{% block title %}My Stats — Linkr{% endblock %}
 {% block dashboard_content %}
 <h1 class="dash-title">My Stats</h1>
 
@@ -7,33 +7,35 @@
 
 <div class="stats-grid mb-2">
     <div class="stat-card">
-        <div class="stat-value" id="stat-total-links">-</div>
-        <div class="stat-label">Total Links</div>
+        <span class="stat-label">Total Links</span>
+        <span class="stat-value" id="stat-total-links">&mdash;</span>
     </div>
     <div class="stat-card">
-        <div class="stat-value" id="stat-total-clicks">-</div>
-        <div class="stat-label">Total Clicks</div>
+        <span class="stat-label">Total Clicks</span>
+        <span class="stat-value" id="stat-total-clicks">&mdash;</span>
     </div>
     <div class="stat-card">
-        <div class="stat-value" id="stat-avg">-</div>
-        <div class="stat-label">Avg Clicks/Link</div>
+        <span class="stat-label">Avg per Link</span>
+        <span class="stat-value" id="stat-avg">&mdash;</span>
     </div>
 </div>
 
-<div class="card">
+<div class="card card--flush">
     <div class="card-header">
         <span class="card-title">Recent Links</span>
     </div>
     <div class="table-wrap">
         <table class="table">
             <thead>
-                <tr><th>Short URL</th><th>Original</th><th>Clicks</th><th>Created</th></tr>
+                <tr><th>Code</th><th>Destination</th><th>Clicks</th><th>Created</th></tr>
             </thead>
-            <tbody id="recent-tbody"><tr><td colspan="4" class="text-muted text-center">Loading...</td></tr></tbody>
+            <tbody id="recent-tbody">
+                <tr><td colspan="4" class="loading">Loading&hellip;</td></tr>
+            </tbody>
         </table>
     </div>
 </div>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/my_stats.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/my_stats.js') }}" defer></script>
 {% endblock %}

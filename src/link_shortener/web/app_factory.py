@@ -19,6 +19,8 @@ from link_shortener.web.controllers.auth_controller import AuthController
 from link_shortener.web.controllers.dashboard_controller import DashboardController
 from link_shortener.web.controllers.frontend_controller import FrontendController
 from link_shortener.web.middleware.authentication import AuthenticationMiddleware
+from link_shortener.web.middleware.cache_control import PrivateCacheMiddleware
+from link_shortener.web.middleware.compression import CompressionMiddleware
 from link_shortener.web.middleware.csrf import CsrfProtectionMiddleware
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
 from link_shortener.web.middleware.rate_limit import (
@@ -166,6 +168,18 @@ def create_app(config=None) -> Flask:
     # ------------------------------------------------------------------
     # Register Middlewares (order matters)
     # ------------------------------------------------------------------
+    ## 0. Compression
+    #
+    # First, and that is deliberate: Flask runs `after_request` hooks in the
+    # reverse of the order they were registered, so the first one installed
+    # is the last one to touch the response. Compression has to see the body
+    # after every other middleware has finished writing it -- installed
+    # last, it would gzip a body that the error handler then replaced.
+    #
+    # Nothing in front of this application compresses anything: gunicorn
+    # serves it directly, with no nginx and no CDN, and whoever runs it may
+    # not put one there either.
+    CompressionMiddleware(app)
     ## 1. Request logging (generates request_id)
     RequestLoggingMiddleware(app, container.get_logger(RequestLoggingMiddleware.__module__))
     ## 2. Authentication (loads current_user into g)
@@ -203,6 +217,12 @@ def create_app(config=None) -> Flask:
     )
     ## 5. Error handling
     ErrorHandlerMiddleware(app, container.get_logger(ErrorHandlerMiddleware.__module__))
+    ## 6. Cache-Control on responses belonging to an account
+    #
+    # Position matters only in that it is after authentication, which is
+    # what puts the identity in `g` -- `after_request` order does not,
+    # since this adds a header nobody else reads.
+    PrivateCacheMiddleware(app)
 
     # ------------------------------------------------------------------
     # Register Controllers (Blueprints)

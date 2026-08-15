@@ -1,25 +1,34 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Health – Linkr{% endblock %}
+{% block title %}Health — Linkr{% endblock %}
 {% block dashboard_content %}
 <h1 class="dash-title">Service Health</h1>
 
 <div id="health-error" class="alert alert--error hidden mb-2"></div>
 
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-value" id="health-db">-</div>
-        <div class="stat-label">Database</div>
+{# These were three figure tiles: a word like "healthy" set in the 22-pixel
+   monospace meant for counts, with nothing in the markup to tell an
+   answering service from a failing one. A state is a state -- it gets a
+   shape and a colour, and the shape is what carries it if the colour is
+   lost to a screenshot or to colour blindness. #}
+<div class="card narrow">
+    <div class="status-row">
+        <span><span class="dot" id="dot-db"></span>Database</span>
+        <em id="health-db">&mdash;</em>
     </div>
-    <div class="stat-card">
-        <div class="stat-value" id="health-redis">-</div>
-        <div class="stat-label">Redis</div>
+    <div class="status-row">
+        <span><span class="dot" id="dot-redis"></span>Redis</span>
+        <em id="health-redis">&mdash;</em>
     </div>
-    <div class="stat-card">
-        <div class="stat-value" id="health-celery">-</div>
-        <div class="stat-label">Task Queue</div>
+    <div class="status-row">
+        <span><span class="dot" id="dot-celery"></span>Task queue</span>
+        <em id="health-celery">&mdash;</em>
     </div>
 </div>
+
+<p class="text-xs text-muted mt-2">
+    Reported by <code>GET /api/v1/admin/health</code>, read once when this page opens.
+</p>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/health.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/health.js') }}" defer></script>
 {% endblock %}

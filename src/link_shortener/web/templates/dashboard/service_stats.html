@@ -1,5 +1,5 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Service Stats – Linkr{% endblock %}
+{% block title %}Service Stats — Linkr{% endblock %}
 {% block dashboard_content %}
 <h1 class="dash-title">Service Statistics</h1>
 
@@ -7,44 +7,41 @@
 
 <div class="stats-grid mb-2">
     <div class="stat-card">
-        <div class="stat-value" id="stat-total-urls">-</div>
-        <div class="stat-label">Total URLs</div>
+        <span class="stat-label">Total URLs</span>
+        <span class="stat-value" id="stat-total-urls">&mdash;</span>
     </div>
     <div class="stat-card">
-        <div class="stat-value" id="stat-total-clicks">-</div>
-        <div class="stat-label">Total Clicks</div>
+        <span class="stat-label">Total Clicks</span>
+        <span class="stat-value" id="stat-total-clicks">&mdash;</span>
     </div>
 </div>
 
 {# The popular-links list comes with `stats:view_full`. Without it the
-   service sends nothing for this table, and the page used to show an
-   empty "Top Links" that read as "the service has no traffic". #}
+   service sends nothing for this table, and the page used to show an empty
+   "Top Links" that read as "the service has no traffic". #}
 {% if can('stats:view_full') %}
-<div class="card">
+<div class="card card--flush">
     <div class="card-header">
         <span class="card-title">Top Links</span>
     </div>
     <div class="table-wrap">
         <table class="table">
             <thead>
-                <tr><th>Short URL</th><th>Original</th><th>Clicks</th><th>Created</th></tr>
+                <tr><th>Code</th><th>Destination</th><th>Clicks</th><th>Created</th></tr>
             </thead>
-            <tbody id="popular-tbody"><tr><td colspan="4" class="text-muted text-center">Loading...</td></tr></tbody>
+            <tbody id="popular-tbody">
+                <tr><td colspan="4" class="loading">Loading&hellip;</td></tr>
+            </tbody>
         </table>
     </div>
 </div>
 {% else %}
-<div class="card">
-    <div class="empty">
-        <p>Totals only.</p>
-        <p class="text-sm text-muted">
-            The list of most-visited links needs the
-            <code>stats:view_full</code> permission.
-        </p>
-    </div>
+<div class="explain">
+    <b>Totals only.</b>
+    The list of most-visited links needs the <code>stats:view_full</code> permission.
 </div>
 {% endif %}
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/service_stats.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/service_stats.js') }}" defer></script>
 {% endblock %}

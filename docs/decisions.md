@@ -1,7 +1,7 @@
 # Decisions
 
-Thirty write-ups of why something is the way it is. Read this when the code
-does something that looks wrong until you know the reason.
+Thirty-one write-ups of why something is the way it is. Read this when the
+code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
 [Development](development.md)
@@ -16,6 +16,7 @@ when it was written down.
 | [Database and migrations](#database-and-migrations) | Backends, counters, normalisation |
 | [Security](#security) | Passwords, roles, what a refusal reveals |
 | [CLI](#cli) | Prompts, exit codes, output that does not lie |
+| [Frontend](#frontend) | Navigation, what is vendored, what is prefetched |
 | [Known limits](#known-limits) | Things that are wrong and deliberately not fixed |
 
 ---
@@ -200,6 +201,32 @@ mistake has been made in Kubernetes (`system:unauthenticated` as an ordinary
 RoleBinding subject) and in PostgreSQL (`PUBLIC`, CVE-2018-1058). Full
 reasoning: [Architecture](architecture.md#the-anonymous-request-and-the-ceiling-over-it).
 
+### An account's responses are not stored by the browser
+
+**Decided** (2026-08-15): `Cache-Control: no-store` on every response that
+belongs to a signed-in caller — `web/middleware/cache_control.py`.
+
+**Why.** Measured, before the header existed: sign in, open the dashboard,
+sign out, press Back — and the browser redrew the previous account's
+dashboard from its own cache, their address and their links on screen, with
+`transferSize` zero and no request reaching the service. The session was
+gone (reloading that same URL landed on `/login`), so it was a picture
+rather than live data. It was still their picture, on a machine they had
+just signed out of.
+
+Neither Turbo's page cache nor bfcache serves that: logging out does a full
+load, which discards both. It is the ordinary HTTP cache, and the only
+thing that speaks to it is a header on the response that put the page
+there. `no-store` rather than `no-cache`, because `no-cache` permits the
+browser to keep the entity and revalidate — and history navigation is
+exactly the case where it does not revalidate.
+
+Anonymous responses are left cacheable, and so are static files even for a
+signed-in visitor: the stylesheet, the font and the vendored navigation
+library are the same bytes for everyone and are asked for on every page.
+Marking them would re-fetch a quarter of a megabyte per navigation to
+protect files handed to anyone who asks.
+
 ### You cannot grant more than you hold
 
 **Decided**: every path that hands out permissions checks that the caller
@@ -251,6 +278,76 @@ code 1.
 **Why.** An empty string is not "no code given", it is a code that cannot
 exist. Treating it as absent silently generates a random one, and the
 operator believes they set it.
+
+---
+
+## Frontend
+
+### Navigation is Turbo's, and Turbo is vendored
+
+**Decided** (2026-08-15): `@hotwired/turbo` 8.0.23, copied into
+`static/vendor/` and loaded from `<head>`. htmx was the alternative.
+
+**Why.** Turbo merges the `<head>` across navigations; htmx's core replaces
+only the `title` and needs the `head-support` extension for the rest. The
+layout here is one stylesheet and one script per page, declared in the head
+by template blocks, so Turbo understands the pages as they already are.
+
+Vendored rather than served from a CDN because the service runs behind
+nothing — gunicorn direct, no nginx, no CDN — and a third-party origin is
+one more thing that can be down, be slow, or watch who reads the site. The
+package ships no minified build: 212 KB, 45 KB once the compression
+middleware has it. `tests/unit/web/test_static/test_vendored_turbo.py` holds
+the checksum, which is the only pin a vendored file gets.
+
+**What was left open.** Turbo Frames and Streams are not used. Nothing here
+needs to replace part of a page yet.
+
+### Hover prefetch is left on
+
+**Decided** (2026-08-15): Turbo's default prefetch-on-hover stays enabled.
+
+**Why.** Measured on an emulated remote server rather than on loopback,
+where the network is free and the question cannot be answered:
+
+| Round trip | Click to painted, prefetch on | off |
+|---|---|---|
+| 0 ms | 8 ms | 13 ms |
+| 60 ms | 8 ms | 75 ms |
+| 150 ms | 13 ms | 164 ms |
+
+Without it a navigation costs exactly one round trip; with it the page is
+already in hand when the click lands. The cost is smaller than it looks:
+Turbo waits 100 ms of hover before fetching and cancels on `mouseleave`, so
+a mouse crossing the sidebar on its way elsewhere sent **0** requests, while
+pausing on two entries sent 2. One of those costs the server 2.8 ms
+(median of 20), and it is a request the visitor was about to make anyway.
+
+The links whose fetch would mean something — the short URLs in the tables —
+carry `target="_blank"`, which takes them out of Turbo's hands entirely.
+Measured: hovering one sends no request, so the click counter stays honest.
+
+**What was left open.** Prefetches are logged like any other request, and
+log rotation does not exist yet. Turbo marks them `X-Sec-Purpose: prefetch`,
+so they can be filtered out of the request log if that becomes the reason
+the files grow.
+
+### The cached preview of a returning page is turned off
+
+**Decided** (2026-08-15): `<meta name="turbo-cache-control" content="no-preview">`
+in the layout.
+
+**Why.** Turbo paints a page you return to twice — the cached snapshot
+first, the fresh response second — and re-runs the body scripts on both
+renders. Measured on a second visit to `/dashboard/links`: two
+`turbo:before-render`/`turbo:render` pairs, one HTML request and **two**
+calls to `/api/v1/links/mine`. The visitor sees the previous visit's
+figures for a moment before they correct themselves.
+
+With the preview off the same navigation is one render and **one** API
+call. It costs little, because hovering a link already fetches the page
+before the click lands: the paint that the preview would have saved is a
+paint the prefetch has already made unnecessary.
 
 ---
 

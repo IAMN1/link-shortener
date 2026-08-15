@@ -1,0 +1,47 @@
+{# Permissions, grouped by the scope they act on.
+
+   A permission is two things joined by a colon -- a scope and an action --
+   and printed whole, in identical pills, a role with a dozen of them was a
+   wall no eye could read down. Split, the scope is said once for the group
+   and each pill carries only what differs.
+
+   `loop.changed` rather than a grouping filter: the names arrive sorted, so
+   equal scopes are already adjacent, and this needs no intermediate
+   structure built in the template. #}
+
+{% macro pills(names) -%}
+{% if names %}
+<div class="perms">
+    {%- for name in names|sort %}
+        {%- if loop.changed(name.split(':')[0]) %}
+            {%- if not loop.first %}</div>{% endif %}
+            <div class="perm-group"><span class="perm-scope">{{ name.split(':')[0] }}</span>
+        {%- endif %}
+        <span class="badge">{{ name.split(':')[1] if ':' in name else name }}</span>
+        {%- if loop.last %}</div>{% endif %}
+    {%- endfor %}
+</div>
+{% else %}
+<span class="text-muted text-sm">none</span>
+{% endif %}
+{%- endmacro %}
+
+
+{# The same grouping as a set of controls. Four templates used to write out
+   `style="display:block; margin-bottom:0.25rem"` on every row by hand, and
+   offered the whole list as one flat column of system checkboxes. #}
+{% macro checks(names, field, checked=[]) -%}
+{% for name in names|sort %}
+    {%- if loop.changed(name.split(':')[0]) %}
+        {%- if not loop.first %}</div>{% endif %}
+        <div class="lab mt-2 mb-1">{{ name.split(':')[0] }}</div>
+        <div class="check-list check-list--cols">
+    {%- endif %}
+    <label class="check">
+        <input type="checkbox" name="{{ field }}" value="{{ name }}"
+               {% if name in checked %}checked{% endif %}>
+        <code>{{ name.split(':')[1] if ':' in name else name }}</code>
+    </label>
+    {%- if loop.last %}</div>{% endif %}
+{% endfor %}
+{%- endmacro %}
