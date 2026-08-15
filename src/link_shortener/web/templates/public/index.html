@@ -1,102 +1,145 @@
 {% extends "layout/base.html" %}
-{% block title %}Link Shortener{% endblock %}
+{% block title %}Linkr — shorten a link{% endblock %}
 {% block content %}
-{# The page used to carry its own copy of the button, card and result
-   styles, in hard-coded blues that no theme could reach. Everything here
-   is now the shared system. #}
-<div class="container" style="max-width: 660px;">
-    <section class="hero">
-        <div class="hero-route">Long address in, route number out</div>
-        <h1>Give it a shorter name</h1>
-        <p>Paste an address and get a code you can say out loud.</p>
-    </section>
+{# Each mode is offered to a caller the service would actually answer.
+   Shortening needs `link:create`, which an analyst does not hold. Extended
+   info is for the link's owner or a holder of `stats:view_any`: a guest
+   link belongs to nobody, so a signed-out visitor could never read one and
+   was shown the button regardless. #}
+{% set may_create = can('link:create') %}
+{# Owning links is what makes this mode usable, and `link:view_own` is the
+   permission that says a caller has links of its own. Keyed on "is anybody
+   signed in" it was offered to an account holding only the guest role,
+   which can neither list its own codes nor read anyone else's. #}
+{% set may_read_extended = can('link:view_own') or can('stats:view_any') %}
 
-    {# Each mode is offered to a caller the service would actually answer.
-       Shortening needs `link:create`, which an analyst does not hold.
-       Extended info is for the link's owner or a holder of
-       `stats:view_any`: a guest link belongs to nobody, so a signed-out
-       visitor could never read one and was shown the button regardless. #}
-    {% set may_create = can('link:create') %}
-    {# Owning links is what makes this mode usable, and `link:view_own` is
-       the permission that says a caller has links of its own. Keyed on
-       "is anybody signed in" it was offered to an account holding only
-       the guest role, which can neither list its own codes nor read
-       anyone else's. #}
-    {% set may_read_extended = can('link:view_own') or can('stats:view_any') %}
-    <div class="modes">
+<div class="container hero">
+    {# The eyebrow is the call the button makes. In this design that is the
+       most accurate caption the page could carry, and it is true. #}
+    <div class="lab">POST /api/v1/shorten</div>
+    <h1>Shorten a link</h1>
+    <p>Paste an address. Get a code short enough to read out loud over a phone.</p>
+
+    {# `data-modes` sits on the section, not on an inner div: it marks the
+       whole block a control belongs to, and the answer slot at the bottom
+       has to be inside it. Shortening and looking up are two such blocks,
+       each with its own strip and its own answer.
+
+       Plain toggle buttons carrying `aria-pressed`, not a tablist: the tab
+       role promises a panel to move to and arrow-key navigation between
+       tabs, neither of which was implemented, and a promise a screen reader
+       cannot cash is worse than no role at all. #}
+    <section class="shorten" data-modes>
+        {% if not may_create %}
+        <div class="alert alert--info mb-2">
+            This account may look links up, but not create them.
+        </div>
+        {% endif %}
+
         {% if may_create %}
-        <button class="mode-btn active" data-mode="single">Single URL</button>
-        <button class="mode-btn" data-mode="batch">Batch</button>
+        <div>
+            <div class="modes" role="group" aria-label="How many links">
+                <button class="mode-btn active" data-mode="single" aria-pressed="true">One link</button>
+                <button class="mode-btn" data-mode="batch" aria-pressed="false">Many at once</button>
+            </div>
+
+            <div id="mode-single" class="mode-content active">
+                <form id="form-single">
+                    <div class="field">
+                        <label class="sr-only" for="url-single">Address to shorten</label>
+                        <input type="url" id="url-single" placeholder="https://example.com/very/long/url" required spellcheck="false">
+                        <span class="kbd">Enter</span>
+                        <button type="submit" class="btn btn--primary">Shorten</button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="mode-batch" class="mode-content">
+                <form id="form-batch">
+                    <label class="sr-only" for="urls-batch">Addresses, one per line</label>
+                    <textarea id="urls-batch" class="form-input" rows="4" placeholder="https://example.com/1&#10;https://example.com/2" spellcheck="false"></textarea>
+                    <button type="submit" class="btn btn--primary mt-1">Shorten All</button>
+                </form>
+            </div>
+        </div>
+
+        {# Said before the limit is reached, not after. The quota used to
+           announce itself only by refusing the eleventh link of the day,
+           and it was set in the smallest type on the page. #}
+        {% if not g.current_user and guest_link_limit %}
+        <div class="quota">
+            <span>Without an account: <b>{{ guest_link_limit }}</b> link{{ 's' if guest_link_limit != 1 }} a day</span>
+            <span>each expires after <b>{{ guest_ttl_days }}</b> day{{ 's' if guest_ttl_days != 1 }}</span>
+            <span><a href="{{ url_for('frontend.register_form') }}">Sign up</a> to keep them</span>
+        </div>
         {% endif %}
-        <button class="mode-btn{% if not may_create %} active{% endif %}" data-mode="info">Info</button>
-        {% if may_read_extended %}
-        <button class="mode-btn" data-mode="extended">Extended</button>
         {% endif %}
-    </div>
 
-    {% if not may_create %}
-    <div class="alert alert--info mb-2">
-        This account may look links up, but not create them.
-    </div>
-    {% elif not g.current_user and guest_link_limit %}
-    {# Said before the limit is reached, not after. The quota used to
-       announce itself only by refusing the eleventh link of the day. #}
-    <p class="text-xs text-muted mb-2">
-        Without an account you can shorten {{ guest_link_limit }}
-        link{{ 's' if guest_link_limit != 1 }} a day, and each one expires after
-        {{ guest_ttl_days }} day{{ 's' if guest_ttl_days != 1 }}.
-        <a href="{{ url_for('frontend.register_form') }}">Sign up</a> to keep them.
-    </p>
-    {% endif %}
+        {# The answer has a place before there is one, so the page says what
+           is about to happen instead of growing a card out of nothing. #}
+        <p data-result-hint class="text-sm text-muted mt-2">Your short link appears here.</p>
+        <div id="result" data-result style="display: none;"></div>
+    </section>
+</div>
 
-    {% if may_create %}
-    <div id="mode-single" class="mode-content active">
-        <form id="form-single" class="card">
-            <div class="form-group">
-                <label class="form-label" for="url-single">URL</label>
-                <input type="url" id="url-single" class="form-input" placeholder="https://example.com/very/long/url" required>
+<div class="container strip">
+    <div class="strip-grid">
+        <div data-modes>
+            <div class="lab">GET /api/v1/links/{code}</div>
+            <h2>Look up a code</h2>
+            <p>Where a short code leads, when it was made, how many times it has been followed.</p>
+
+            {% if may_read_extended %}
+            <div class="modes mt-1" role="group" aria-label="How much detail">
+                <button class="mode-btn active" data-mode="info" aria-pressed="true">Basic</button>
+                <button class="mode-btn" data-mode="extended" aria-pressed="false">Extended</button>
             </div>
-            <button type="submit" class="btn btn--primary btn--block">Shorten</button>
-        </form>
-    </div>
+            {% endif %}
 
-    <div id="mode-batch" class="mode-content">
-        <form id="form-batch" class="card">
-            <div class="form-group">
-                <label class="form-label" for="urls-batch">URLs (one per line)</label>
-                <textarea id="urls-batch" class="form-input" rows="5" placeholder="https://example.com/1&#10;https://example.com/2"></textarea>
+            <div id="mode-info" class="mode-content active">
+                <form id="form-info">
+                    <div class="field mt-1">
+                        <label class="sr-only" for="code-info">Short code</label>
+                        <input type="text" id="code-info" placeholder="k3nR7q" required pattern="[A-Za-z0-9_\-]{6,10}" spellcheck="false">
+                        <button type="submit" class="btn btn--ghost">Look up</button>
+                    </div>
+                </form>
             </div>
-            <button type="submit" class="btn btn--primary btn--block">Shorten All</button>
-        </form>
-    </div>
-    {% endif %}
 
-    <div id="mode-info" class="mode-content{% if not may_create %} active{% endif %}">
-        <form id="form-info" class="card">
-            <div class="form-group">
-                <label class="form-label" for="code-info">Short Code</label>
-                <input type="text" id="code-info" class="form-input" placeholder="abc123" required pattern="[A-Za-z0-9_\-]{6,10}">
+            {% if may_read_extended %}
+            <div id="mode-extended" class="mode-content">
+                <form id="form-extended">
+                    <div class="field mt-1">
+                        <label class="sr-only" for="code-extended">Short code</label>
+                        <input type="text" id="code-extended" placeholder="k3nR7q" required pattern="[A-Za-z0-9_\-]{6,10}" spellcheck="false">
+                        <button type="submit" class="btn btn--ghost">Look up</button>
+                    </div>
+                    <span class="form-hint">Extended figures are shown for your own links.</span>
+                </form>
             </div>
-            <button type="submit" class="btn btn--primary btn--block">Get Info</button>
-        </form>
-    </div>
+            {% endif %}
 
-    {% if may_read_extended %}
-    <div id="mode-extended" class="mode-content">
-        <form id="form-extended" class="card">
-            <div class="form-group">
-                <label class="form-label" for="code-extended">Short Code</label>
-                <input type="text" id="code-extended" class="form-input" placeholder="abc123" required pattern="[A-Za-z0-9_\-]{6,10}">
-            </div>
-            <p class="text-xs text-muted mb-1">Extended figures are shown for your own links.</p>
-            <button type="submit" class="btn btn--primary btn--block">Get Extended Info</button>
-        </form>
-    </div>
-    {% endif %}
+            {# This block's own answer slot. Sharing one with the section
+               above printed a looked-up link several hundred pixels higher
+               up the page, over whatever had just been shortened. #}
+            <div data-result style="display: none;" class="mt-1"></div>
+        </div>
 
-    <div id="result" style="display: none;"></div>
+        <div>
+            <div class="lab">The whole service is an API</div>
+            <h2>Everything on this page is one call</h2>
+            <p>No SDK and no key ceremony. The full description lives at
+               <a href="{{ url_for('frontend.api_docs') }}">/api/docs</a>.</p>
+            {# `white-space: pre` holds this block, so the line breaks and
+               the indentation below are the ones that reach the screen --
+               nothing here may be reflowed for tidiness. #}
+            <div class="code-block"><span class="c-dim">$</span> <span class="c-cmd">curl</span> <span class="c-flag">-X</span> <span class="c-cmd">POST</span> <span class="c-val">{{ request.url_root }}api/v1/shorten</span> <span class="c-dim">\</span>
+     <span class="c-flag">-H</span> <span class="c-val">'Content-Type: application/json'</span> <span class="c-dim">\</span>
+     <span class="c-flag">-d</span> <span class="c-val">'{"url": "https://example.com/…"}'</span></div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/pages/home.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/home.js') }}" defer></script>
 {% endblock %}

@@ -1,7 +1,10 @@
 /**
  * my_links.js – Fetch and display user's links with delete support.
  */
-document.addEventListener('DOMContentLoaded', async function() {
+// Wrapped, and not waiting for `DOMContentLoaded`: every page script is
+// shaped this way, and the reason is written out once beside
+// `{% block scripts %}` in templates/layout/base.html.
+(async function() {
     var tbody = document.getElementById('links-tbody');
     var emptyEl = document.getElementById('links-empty');
     // Deleting is a permission of its own: an analyst reads its links and
@@ -25,8 +28,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
         tbody.innerHTML = links.map(function(l) {
             return '<tr>'
-                + '<td class="table-mono"><a href="' + escapeHtml(l.short_url) + '" target="_blank">' + escapeHtml(l.short_code) + '</a></td>'
-                + '<td class="truncate" style="max-width:200px">' + escapeHtml(l.original_url) + '</td>'
+                + '<td class="table-mono"><a href="' + escapeHtml(l.short_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(l.short_code) + '</a></td>'
+                + '<td class="cell-fill"><span class="truncate">' + escapeHtml(l.original_url) + '</span></td>'
                 + '<td>' + l.clicks + '</td>'
                 + '<td>' + formatDate(l.created_at) + '</td>'
                 + '<td>' + (l.expires_at ? formatDate(l.expires_at) : '<span class="text-muted">never</span>') + '</td>'
@@ -51,4 +54,4 @@ document.addEventListener('DOMContentLoaded', async function() {
     } catch(e) {
         showLoadError('links-error', 'The service could not be reached.', 'links-tbody', columns);
     }
-});
+})();

@@ -2,7 +2,10 @@
  * verify.js – Spends the confirmation token, on a click rather than on a
  * page load, so a mail scanner following the link cannot spend it first.
  */
-document.addEventListener('DOMContentLoaded', function() {
+// Wrapped, and not waiting for `DOMContentLoaded`: every page script is
+// shaped this way, and the reason is written out once beside
+// `{% block scripts %}` in templates/layout/base.html.
+(function() {
     var card = document.getElementById('verify-card');
     var btn = document.getElementById('verify-btn');
     if (!card || !btn) return;
@@ -33,4 +36,4 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.textContent = 'Confirm this address';
         }
     });
-});
+})();

@@ -1,154 +1,191 @@
 /* ==========================================================================
-   Dashboard layout — the control room behind the signs.
+   Dashboard layout
 
    A fixed left rail carries the sections a caller may reach; what the rail
-   lists is decided by permission, in the markup. The rail is quiet on
-   purpose: the shields in the tables are the loud thing on these pages.
+   lists is decided by permission, in the markup. Everything here is the same
+   system as the public pages -- the same tokens, the same components -- set
+   to the second density. There is no rule below that redefines a colour or a
+   control; only the layout that holds them.
    ========================================================================== */
+
+/* The dashboard fills whatever the header and footer leave. It used to be
+   `calc(100vh - 60px - 69px)`: the two heights written in by hand, so any
+   change to the footer broke the layout silently. */
+.main--flush { padding: 0; display: flex; flex-direction: column; }
 
 .dash {
     display: grid;
-    grid-template-columns: 232px minmax(0, 1fr);
-    min-height: calc(100vh - 60px - 69px);
+    grid-template-columns: 214px minmax(0, 1fr);
+    flex: 1;
     transition: grid-template-columns .16s ease;
 }
 
 .dash-side {
-    border-right: 1px solid var(--c-border);
+    border-right: var(--edge);
     background: var(--c-surface);
-    padding: 1.25rem 0.85rem 1rem;
+    padding: 12px 10px;
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
+    gap: 1px;
 }
 
 .dash-side-header {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0 0.35rem 1rem;
-    margin-bottom: 0.6rem;
-    border-bottom: 1px solid var(--c-border);
+    gap: 8px;
+    padding: 4px 6px 12px;
+    margin-bottom: 6px;
+    border-bottom: var(--edge);
     min-width: 0;
 }
 .dash-side-user {
-    font-size: 0.8125rem;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 550;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 150px;
+    max-width: 140px;
 }
 .dash-side-role {
-    font-size: 0.6875rem;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
     color: var(--c-text-3);
 }
 
 .dash-side-section {
-    font-size: 0.625rem;
-    font-weight: 700;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
     color: var(--c-text-3);
-    padding: 0.85rem 0.6rem 0.3rem;
+    padding: 12px 6px 4px;
 }
 
+/* Sized from the density, not from a number typed here. The rail used to
+   be 28px whatever the density said, alongside a `--d-row` of 34px that
+   nothing in this file consulted. */
 .dash-side a {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0.45rem 0.6rem;
-    border-radius: var(--radius);
+    gap: 8px;
+    height: calc(var(--d-row) - 6px);
+    padding: 0 8px;
+    border-radius: var(--r);
     color: var(--c-text-2);
-    font-size: 0.875rem;
-    font-weight: 500;
-    border-left: 2px solid transparent;
+    font-size: var(--d-fs);
+    text-decoration: none;
 }
 /* The glyph never shrinks: it is the whole entry once the rail is closed,
    and a label long enough to squeeze it would leave a row of slivers. */
-.dash-side-glyph { flex: none; }
-.dash-side a:hover {
+.dash-side-glyph { flex: none; opacity: .8; }
+.dash-side a:hover { background: var(--c-wash); color: var(--c-text); text-decoration: none; }
+
+/* Which entry is current is decided by the server, which knows the endpoint
+   it is rendering. It used to be decided by a script comparing
+   `location.pathname` after the page had already been painted -- a flash on
+   every load, and the first thing that would break under Turbo. */
+.dash-side a[aria-current="page"] {
     background: var(--c-surface-2);
     color: var(--c-text);
-    text-decoration: none;
+    font-weight: 550;
+    /* An inset ring rather than a border: a border here would move the
+       entry by a pixel the moment it became current. Nothing floats -- it
+       is a hairline drawn inside the box. */
+    box-shadow: inset 0 0 0 1px var(--c-line);
 }
-/* The current page is marked the way a route is marked: a green edge. */
-.dash-side a.active {
-    background: var(--c-surface-2);
-    color: var(--c-text);
-    border-left-color: var(--c-sign);
-    font-weight: 600;
+/* Written after, and above the specificity of the rule above, which
+   otherwise won by being later: the current entry was the one entry in the
+   menu that gave no sign of being under the pointer.
+
+   Not `--c-wash`, though. The wash is a film laid over whatever is beneath
+   it, and beneath this entry is `--c-surface-2` rather than the plain
+   surface: the two land within three units of one another, so the entry
+   technically responded and visibly did not -- 1.02 against the 1.10 every
+   other entry gives. Mixed against the ink instead, the step is the same
+   size the others make. */
+.dash-side a[aria-current="page"]:hover {
+    background: color-mix(in srgb, var(--c-text) 7%, var(--c-surface-2));
 }
 
-.dash-side-bottom {
-    margin-top: auto;
-    padding-top: 1rem;
-    border-top: 1px solid var(--c-border);
-}
+.dash-side-bottom { margin-top: auto; padding-top: 12px; border-top: var(--edge); }
 .dash-side-logout,
 .dash-side-collapse {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: 8px;
     width: 100%;
+    height: 28px;
+    padding: 0 8px;
     text-align: left;
     font: inherit;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: 13px;
     background: none;
     border: none;
-    border-radius: var(--radius);
-    padding: 0.45rem 0.6rem;
+    border-radius: var(--r);
     cursor: pointer;
 }
 .dash-side-logout { color: var(--c-danger); }
 .dash-side-collapse { color: var(--c-text-3); }
-.dash-side-logout:hover,
-.dash-side-collapse:hover { background: var(--c-surface-2); }
-.dash-side-collapse:hover { color: var(--c-text-2); }
+.dash-side-logout:hover { background: var(--c-wash); }
+.dash-side-collapse:hover { background: var(--c-wash); color: var(--c-text-2); }
 
-.dash-main { padding: 1.75rem 1.75rem 3rem; min-width: 0; }
-
-.dash-title {
-    font-family: var(--font-display);
-    font-size: 1.4rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    margin-bottom: 1.25rem;
+/* A bound as well as a start: the content column used to have neither, so
+   three figures and a table spread across the whole width of a wide
+   monitor. */
+.dash-main {
+    padding: var(--d-pad) calc(var(--d-pad) + 8px) 40px;
+    min-width: 0;
+    max-width: 1180px;
 }
+
+/* Size, weight and tracking already come from `h1`, which every one of
+   these is; repeating them here was a rule that said "in the dashboard it
+   is different" while setting exactly the same values. All that is left is
+   the one thing that does differ. */
+.dash-title { margin-bottom: calc(var(--d-gap) + 4px); }
+/* A heading with something beside it -- a "New link" button, a pager -- is
+   a row, and the row owns the spacing. */
+.dash-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: calc(var(--d-gap) + 4px);
+}
+.dash-head .dash-title { margin-bottom: 0; }
 
 .dash-toggle {
     display: none;
     position: fixed;
-    left: 1rem;
-    bottom: 1rem;
+    left: 16px;
+    bottom: 16px;
     z-index: 150;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    border: 1px solid var(--c-border);
+    width: 42px;
+    height: 42px;
+    border-radius: var(--r-lg);
+    border: 1px solid var(--c-line-2);
     background: var(--c-surface);
     color: var(--c-text);
-    box-shadow: var(--shadow-lg);
     cursor: pointer;
-    font-size: 1.1rem;
+    font-size: 16px;
 }
 
 /* ===== The rail =====
 
    Collapsed, the sidebar gives up its words and keeps its glyphs, so every
    destination is still one click away -- which is the whole difference
-   between this and hiding the sidebar. Scoped to the wide layout: below
-   the breakpoint the sidebar is already an overlay that covers the page,
-   and a rail there would eat 56px of a screen that has none to spare.
+   between this and hiding the sidebar. Scoped to the wide layout: below the
+   breakpoint the sidebar is already an overlay that covers the page, and a
+   rail there would eat 56px of a screen that has none to spare.
    ========================================================================== */
 
 @media (min-width: 861px) {
-    .dash--rail { grid-template-columns: 56px minmax(0, 1fr); }
+    .dash--rail { grid-template-columns: 52px minmax(0, 1fr); }
 
-    .dash--rail .dash-side { padding-left: 0.5rem; padding-right: 0.5rem; }
+    .dash--rail .dash-side { padding-left: 8px; padding-right: 8px; }
 
     /* Clipped rather than `display: none`: a screen reader still reads the
        entry's name, and the rail is a visual economy rather than a smaller
@@ -162,19 +199,15 @@
         white-space: nowrap;
     }
 
-    .dash--rail .dash-side-header {
-        justify-content: center;
-        padding-left: 0;
-        padding-right: 0;
-    }
+    .dash--rail .dash-side-header { justify-content: center; padding-left: 0; padding-right: 0; }
 
     /* A heading with no room for its word becomes what it was underneath:
        the line between two groups. */
     .dash--rail .dash-side-section {
         height: 1px;
         padding: 0;
-        margin: 0.7rem 0.35rem 0.55rem;
-        background: var(--c-border);
+        margin: 10px 4px 8px;
+        background: var(--c-line);
         font-size: 0;
         overflow: hidden;
     }
@@ -200,18 +233,17 @@
     .dash--rail .dash-side-collapse::after {
         content: attr(data-title);
         position: absolute;
-        left: calc(100% + 0.5rem);
+        left: calc(100% + 8px);
         top: 50%;
         transform: translateY(-50%);
         z-index: 170;
-        padding: 0.25rem 0.5rem;
+        padding: 4px 8px;
         border: var(--edge);
-        border-radius: var(--radius);
+        border-radius: var(--r);
         background: var(--c-surface);
-        box-shadow: var(--shadow);
         color: var(--c-text);
-        font-size: 0.75rem;
-        font-weight: 500;
+        font-family: var(--mono);
+        font-size: 11px;
         white-space: nowrap;
         opacity: 0;
         pointer-events: none;
@@ -240,14 +272,13 @@
         top: 0;
         left: 0;
         bottom: 0;
-        width: 250px;
+        width: 240px;
         z-index: 160;
         transform: translateX(-100%);
         transition: transform .2s ease;
-        box-shadow: var(--shadow-lg);
         overflow-y: auto;
     }
     .dash-side.active { transform: translateX(0); }
     .dash-toggle { display: block; }
-    .dash-main { padding: 1.25rem 1rem 4rem; }
+    .dash-main { padding: 16px 16px 72px; }
 }

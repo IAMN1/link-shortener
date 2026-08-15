@@ -4,7 +4,10 @@
  * This used to be a script written into the template, which is why it was
  * the one page whose addresses reached innerHTML unescaped.
  */
-document.addEventListener('DOMContentLoaded', async function() {
+// Wrapped, and not waiting for `DOMContentLoaded`: every page script is
+// shaped this way, and the reason is written out once beside
+// `{% block scripts %}` in templates/layout/base.html.
+(async function() {
     var card = document.getElementById('user-stats-card');
     if (!card) return;
     var userId = card.dataset.userId;
@@ -35,7 +38,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         tbody.innerHTML = data.recent_links.map(function(l) {
             return '<tr>'
                 + '<td class="table-mono">' + escapeHtml(l.short_code || l.short_url) + '</td>'
-                + '<td class="truncate" style="max-width:250px">' + escapeHtml(l.original_url) + '</td>'
+                + '<td class="cell-fill"><span class="truncate">' + escapeHtml(l.original_url) + '</span></td>'
                 + '<td>' + l.clicks + '</td>'
                 + '<td>' + formatDate(l.created_at) + '</td>'
                 + (mayDelete
@@ -65,4 +68,4 @@ document.addEventListener('DOMContentLoaded', async function() {
     } catch (e) {
         showLoadError('user-stats-error', 'The service could not be reached.', 'recent-tbody', columns);
     }
-});
+})();

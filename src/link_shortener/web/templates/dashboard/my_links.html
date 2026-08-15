@@ -1,25 +1,25 @@
 {% extends "dashboard/base.html" %}
-{% block title %}My Links – Linkr{% endblock %}
+{% block title %}My Links — Linkr{% endblock %}
 {% block dashboard_content %}
-<div class="flex items-center justify-between mb-2">
-    <h1 class="dash-title" style="margin:0;">My Links</h1>
+<div class="dash-head">
+    <h1 class="dash-title">My Links</h1>
     {% if can('link:create') %}
-    <a href="{{ url_for('dashboard.create_link_form') }}" class="btn btn--primary btn--sm">+ New Link</a>
+    <a href="{{ url_for('dashboard.create_link_form') }}" class="btn btn--primary btn--sm">New link</a>
     {% endif %}
 </div>
 
 <div id="links-error" class="alert alert--error hidden mb-2"></div>
 
-{# The delete column is drawn by the script, so the permission has to
-   reach it. An analyst may read its own links and may not delete them:
-   the button used to be drawn for everyone and answered 403. #}
-<div class="card" data-can-delete="{{ 'yes' if can('link:delete_own') else 'no' }}" id="links-card">
+{# The delete column is drawn by the script, so the permission has to reach
+   it. An analyst may read its own links and may not delete them: the button
+   used to be drawn for everyone and answered 403. #}
+<div class="card card--flush" data-can-delete="{{ 'yes' if can('link:delete_own') else 'no' }}" id="links-card">
     <div class="table-wrap">
         <table class="table">
             <thead>
                 <tr>
-                    <th>Short URL</th>
-                    <th>Original</th>
+                    <th>Code</th>
+                    <th>Destination</th>
                     <th>Clicks</th>
                     <th>Created</th>
                     <th>Expires</th>
@@ -27,21 +27,22 @@
                 </tr>
             </thead>
             <tbody id="links-tbody">
-                <tr><td colspan="{{ 6 if can('link:delete_own') else 5 }}" class="text-muted text-center">Loading...</td></tr>
+                <tr><td colspan="{{ 6 if can('link:delete_own') else 5 }}" class="loading">Loading&hellip;</td></tr>
             </tbody>
         </table>
     </div>
     <div id="links-empty" class="empty hidden">
-        <div class="empty-icon">&#128279;</div>
+        <div class="empty-icon">No links</div>
         {% if can('link:create') %}
-        <p>No links yet. <a href="{{ url_for('dashboard.create_link_form') }}">Create your first link</a></p>
+        <p>Nothing here yet.</p>
+        <p><a href="{{ url_for('dashboard.create_link_form') }}">Create your first link</a></p>
         {% else %}
-        <p>No links yet.</p>
-        <p class="text-sm text-muted">This account may read links but not create them.</p>
+        <p>Nothing here yet.</p>
+        <p>This account may read links but not create them.</p>
         {% endif %}
     </div>
 </div>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/my_links.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/my_links.js') }}" defer></script>
 {% endblock %}

@@ -1,7 +1,10 @@
 /**
  * register.js – Registration form handler.
  */
-document.addEventListener('DOMContentLoaded', function() {
+// Wrapped, and not waiting for `DOMContentLoaded`: every page script is
+// shaped this way, and the reason is written out once beside
+// `{% block scripts %}` in templates/layout/base.html.
+(function() {
     var form = document.getElementById('register-form');
     if (!form) return;
     form.addEventListener('submit', async function(e) {
@@ -31,4 +34,4 @@ document.addEventListener('DOMContentLoaded', function() {
             errEl.classList.remove('hidden');
         }
     });
-});
+})();

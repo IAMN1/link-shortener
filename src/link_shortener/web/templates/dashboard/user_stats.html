@@ -1,29 +1,32 @@
 {% extends "dashboard/base.html" %}
-{% block title %}User Stats – Linkr{% endblock %}
+{% block title %}Stats for {{ user.email }} — Linkr{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">Stats for {{ user.email }}</h1>
+<div class="dash-head">
+    <h1 class="dash-title">{{ user.email }}</h1>
+    <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost btn--sm">All users</a>
+</div>
 
 <div id="user-stats-error" class="alert alert--error hidden mb-2"></div>
 
 <div class="stats-grid mb-2">
     <div class="stat-card">
-        <div class="stat-value" id="stat-links">-</div>
-        <div class="stat-label">Links</div>
+        <span class="stat-label">Links</span>
+        <span class="stat-value" id="stat-links">&mdash;</span>
     </div>
     <div class="stat-card">
-        <div class="stat-value" id="stat-clicks">-</div>
-        <div class="stat-label">Total Clicks</div>
+        <span class="stat-label">Total Clicks</span>
+        <span class="stat-value" id="stat-clicks">&mdash;</span>
     </div>
     <div class="stat-card">
-        <div class="stat-value" id="stat-avg">-</div>
-        <div class="stat-label">Avg Clicks</div>
+        <span class="stat-label">Avg Clicks</span>
+        <span class="stat-value" id="stat-avg">&mdash;</span>
     </div>
 </div>
 
 {# The identifier and the one permission the table's last column needs
    travel as data, so the script is a file like every other page's and is
    reached by the browser run. #}
-<div class="card"
+<div class="card card--flush"
      id="user-stats-card"
      data-user-id="{{ user.id }}"
      data-can-delete="{{ 'yes' if can('link:delete_any') else 'no' }}">
@@ -33,16 +36,16 @@
     <div class="table-wrap">
         <table class="table">
             <thead><tr>
-                <th>Short URL</th><th>Original</th><th>Clicks</th><th>Created</th>
+                <th>Code</th><th>Destination</th><th>Clicks</th><th>Created</th>
                 {% if can('link:delete_any') %}<th></th>{% endif %}
             </tr></thead>
             <tbody id="recent-tbody">
-                <tr><td colspan="{{ 5 if can('link:delete_any') else 4 }}" class="text-muted text-center">Loading...</td></tr>
+                <tr><td colspan="{{ 5 if can('link:delete_any') else 4 }}" class="loading">Loading&hellip;</td></tr>
             </tbody>
         </table>
     </div>
 </div>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/user_stats.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/user_stats.js') }}" defer></script>
 {% endblock %}

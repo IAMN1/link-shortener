@@ -1,7 +1,10 @@
 /**
  * roles_list.js – Admin: delete a role that is not a system one.
  */
-document.addEventListener('DOMContentLoaded', function() {
+// Wrapped, and not waiting for `DOMContentLoaded`: every page script is
+// shaped this way, and the reason is written out once beside
+// `{% block scripts %}` in templates/layout/base.html.
+(function() {
     document.querySelectorAll('tr[data-role-name] .js-delete-role').forEach(function(btn) {
         btn.addEventListener('click', async function() {
             var name = btn.closest('tr').dataset.roleName;
@@ -17,4 +20,4 @@ document.addEventListener('DOMContentLoaded', function() {
             window.location.reload();
         });
     });
-});
+})();

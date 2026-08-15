@@ -182,7 +182,12 @@ class TestTheUserListShowsWhatItHolds:
         # passed on the account's own address -- "pages-operator" is a
         # substring of "pages-operator@example.com" -- so the check went
         # on passing with the column blank, which is the defect itself.
-        assert 'class="badge badge--blue">pages-operator<' in markup, (
+        #
+        # `badge--name` was `badge--blue`, which set no blue: the rule gave
+        # a grey border and ordinary text, and roles, permissions and states
+        # all wore it. They are told apart by what they mean now, so the
+        # name of the class changed with it.
+        assert 'class="badge badge--name">pages-operator<' in markup, (
             "the role this account holds is not shown in the Roles column"
         )
 

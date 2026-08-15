@@ -1,7 +1,10 @@
 /**
  * edit_role.js – Admin: edit role permissions form.
  */
-document.addEventListener('DOMContentLoaded', function() {
+// Wrapped, and not waiting for `DOMContentLoaded`: every page script is
+// shaped this way, and the reason is written out once beside
+// `{% block scripts %}` in templates/layout/base.html.
+(function() {
     var form = document.getElementById('edit-role-form');
     if (!form) return;
     // Extract role_name from URL: /dashboard/roles/<role_name>/edit
@@ -26,4 +29,4 @@ document.addEventListener('DOMContentLoaded', function() {
             errEl.classList.remove('hidden');
         }
     });
-});
+})();

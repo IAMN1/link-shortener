@@ -1,66 +1,64 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Dashboard – Linkr{% endblock %}
+{% block title %}Dashboard — Linkr{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">Welcome back, {{ g.current_user.email.split('@')[0] }}</h1>
+<h1 class="dash-title">{{ g.current_user.email.split('@')[0] }}</h1>
 
 {# The figures below are the caller's own links, which `link:view_own`
    guards. A role without it used to land here on three dashes and a table
    that said "Loading..." for as long as the page stayed open. #}
 {% if can('link:view_own') %}
-<div class="stats-grid" id="home-stats">
+<div class="stats-grid mb-2">
     <div class="stat-card">
-        <div class="stat-value" id="stat-links">-</div>
-        <div class="stat-label">My Links</div>
+        <span class="stat-label">My Links</span>
+        <span class="stat-value" id="stat-links">&mdash;</span>
     </div>
     <div class="stat-card">
-        <div class="stat-value" id="stat-clicks">-</div>
-        <div class="stat-label">Total Clicks</div>
+        <span class="stat-label">Total Clicks</span>
+        <span class="stat-value" id="stat-clicks">&mdash;</span>
     </div>
     <div class="stat-card">
-        <div class="stat-value" id="stat-avg">-</div>
-        <div class="stat-label">Avg Clicks</div>
+        <span class="stat-label">Avg Clicks</span>
+        <span class="stat-value" id="stat-avg">&mdash;</span>
     </div>
 </div>
 
-<div class="card mt-2">
+<div id="home-error" class="alert alert--error hidden mb-2"></div>
+
+<div class="card card--flush">
     <div class="card-header">
         <span class="card-title">Recent Links</span>
         {% if can('link:create') %}
-        <a href="{{ url_for('dashboard.create_link_form') }}" class="btn btn--primary btn--sm">+ New Link</a>
+        <a href="{{ url_for('dashboard.create_link_form') }}" class="btn btn--primary btn--sm">New link</a>
         {% endif %}
     </div>
-    <div id="home-error" class="alert alert--error hidden"></div>
     <div class="table-wrap">
         <table class="table">
-            <thead><tr><th>Short URL</th><th>Original</th><th>Clicks</th><th>Created</th></tr></thead>
-            <tbody id="recent-links"><tr><td colspan="4" class="text-muted text-center">Loading...</td></tr></tbody>
+            <thead><tr><th>Code</th><th>Destination</th><th>Clicks</th><th>Created</th></tr></thead>
+            <tbody id="recent-links">
+                <tr><td colspan="4" class="loading">Loading&hellip;</td></tr>
+            </tbody>
         </table>
     </div>
 </div>
 {% else %}
-<div class="card mt-2">
-    <div class="empty">
-        {# States the permission, not a fact about the account. Worded as
-           "holds no links of its own" it was a claim, and a false one:
-           an account can create links it is then not allowed to list, and
-           this screen told it they did not exist. #}
-        <p>This account cannot list links.</p>
-        <p class="text-sm text-muted">
-            Listing links needs the <code>link:view_own</code> permission.
-            {% if can('link:create') %}
-            Links it creates are still made; it just cannot see them here.
-            {% endif %}
-            {% if can('stats:view_basic') %}
-            The <a href="{{ url_for('dashboard.service_stats') }}">service statistics</a>
-            are open to it.
-            {% endif %}
-        </p>
-    </div>
+<div class="explain">
+    {# States the permission, not a fact about the account. Worded as "holds
+       no links of its own" it was a claim, and a false one: an account can
+       create links it is then not allowed to list, and this screen told it
+       they did not exist. #}
+    <b>This account cannot list links.</b>
+    Listing needs the <code>link:view_own</code> permission.
+    {% if can('link:create') %}
+    Links it creates are still made; it just cannot see them here.
+    {% endif %}
+    {% if can('stats:view_basic') %}
+    The <a href="{{ url_for('dashboard.service_stats') }}">service statistics</a> are open to it.
+    {% endif %}
 </div>
 {% endif %}
 {% endblock %}
 {% block page_scripts %}
 {% if can('link:view_own') %}
-<script src="{{ url_for('static', filename='js/pages/home_dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/home_dashboard.js') }}" defer></script>
 {% endif %}
 {% endblock %}

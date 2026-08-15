@@ -312,7 +312,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 17
+    expected = 18
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -335,9 +335,19 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
     """
     console_errors = []
 
-    def page_for(path: str):
-        """Open a page and collect its console errors."""
-        page = browser.new_page()
+    def page_for(path: str, viewport: dict | None = None):
+        """
+        Open a page and collect its console errors.
+
+        Args:
+            path: Where to go, relative to the base address.
+            viewport: Size to open at. The default is Playwright's, which
+                is a desktop; the sidebar's own toggle is drawn only under
+                a media query, so the check on it has to ask for a narrow
+                one or it clicks a control that is `display: none`.
+        """
+        page = browser.new_page(viewport=viewport) if viewport \
+            else browser.new_page()
         page.on("console", lambda message: (
             console_errors.append(f"{path}: {message.text}")
             if message.type == "error" and not is_a_server_answer(message.text)
@@ -516,6 +526,45 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         page.goto(f"{base}/dashboard/")
         assert "dash--rail" not in page.get_attribute("#dash", "class"), (
             "expanding it again did not survive the next page"
+        )
+
+    @check("the menu button on a narrow screen says whether it is open")
+    def _():
+        # `aria-expanded` is the only thing this control tells a screen
+        # reader about its state -- the sidebar sliding into view is not
+        # something that can be heard. It said nothing at all until the
+        # attribute was added, so "Menu, button" was the announcement both
+        # before the press and after it.
+        #
+        # Driven at 420px because `.dash-toggle` is `display: none` until
+        # the media query, and a click on an invisible control measures
+        # nothing. The assertions pair the attribute with the class the
+        # stylesheet actually acts on, so an attribute that flips while
+        # the menu stays shut is a failure too.
+        page = page_for("/login", viewport={"width": 420, "height": 900})
+        sign_in(page, base)
+
+        assert page.is_visible("#dash-toggle"), "no menu button at 420px"
+        assert page.get_attribute("#dash-toggle", "aria-controls") == "dash-side", (
+            "the button does not say which element it opens"
+        )
+        assert page.get_attribute("#dash-toggle", "aria-expanded") == "false", (
+            "the button starts out claiming the menu is open"
+        )
+
+        page.click("#dash-toggle")
+        page.wait_for_selector("#dash-side.active", timeout=5000)
+        assert page.get_attribute("#dash-toggle", "aria-expanded") == "true", (
+            "the menu opened and the button still says it is closed"
+        )
+
+        # The way back is a press outside: at this width the open sidebar
+        # covers the button, so pressing it again is not something a
+        # visitor can do.
+        page.mouse.click(400, 700)
+        page.wait_for_selector("#dash-side:not(.active)", timeout=5000)
+        assert page.get_attribute("#dash-toggle", "aria-expanded") == "false", (
+            "the menu closed and the button still says it is open"
         )
 
     @check("the dashboard creates a link through its own form")

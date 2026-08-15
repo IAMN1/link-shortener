@@ -13,41 +13,61 @@ function rememberSidebar(state) {
         + ';path=/;max-age=31536000;samesite=Lax';
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+// One listener on `document`, bound the moment this file runs -- the same
+// arrangement as `main.js`, and for the same reason: Turbo replaces the
+// whole `<body>` on navigation, so a listener bound to the sidebar itself
+// would stop working the first time the visitor goes anywhere. `pressed` is
+// defined in `main.js`, which is loaded ahead of this file.
+//
+// This file is loaded from `<head>` as well, so it runs once per tab rather
+// than once per navigation.
+document.addEventListener('click', function(e) {
     // Collapse the sidebar to a rail of icons, and back
-    var collapse = document.getElementById('dash-collapse');
-    var dash = document.getElementById('dash');
-    if (collapse && dash) {
-        collapse.addEventListener('click', function() {
-            var railed = dash.classList.toggle('dash--rail');
-            // The class is what the eye reads; this is what a screen
-            // reader reads, and the two have to say the same thing.
-            collapse.setAttribute('aria-expanded', railed ? 'false' : 'true');
-            rememberSidebar(railed ? 'rail' : 'full');
-        });
-    }
-
-    // Sidebar mobile toggle
-    var sideToggle = document.getElementById('dash-toggle');
-    var side = document.getElementById('dash-side');
-    if (sideToggle && side) {
-        sideToggle.addEventListener('click', function() { side.classList.toggle('active'); });
-        document.addEventListener('click', function(e) {
-            if (side.classList.contains('active') && !side.contains(e.target) && e.target !== sideToggle) {
-                side.classList.remove('active');
-            }
-        });
+    var collapse = pressed(e, '#dash-collapse');
+    if (collapse) {
+        var dash = document.getElementById('dash');
+        if (!dash) return;
+        var railed = dash.classList.toggle('dash--rail');
+        // The class is what the eye reads; this is what a screen reader
+        // reads, and the two have to say the same thing.
+        collapse.setAttribute('aria-expanded', railed ? 'false' : 'true');
+        rememberSidebar(railed ? 'rail' : 'full');
+        return;
     }
 
     // Logout button in sidebar
-    var logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', function() { logoutUser(); });
+    if (pressed(e, '#logout-btn')) {
+        logoutUser();
+        return;
     }
 
-    // Mark active sidebar link
-    var path = window.location.pathname;
-    document.querySelectorAll('.dash-side a').forEach(function(a) {
-        if (a.getAttribute('href') === path) a.classList.add('active');
-    });
+    // Sidebar mobile toggle
+    var side = document.getElementById('dash-side');
+    if (!side) return;
+
+    // `saysExpanded` comes from `main.js`, and it is the same call the
+    // account menu makes -- both are "a thing that opens", both mark it
+    // open with the `active` class, and both have to say so out loud. The
+    // class is what the eye reads; without this the button announced
+    // "Menu, button" before the press and after it alike.
+    var toggle = pressed(e, '#dash-toggle');
+    if (toggle) {
+        side.classList.toggle('active');
+        saysExpanded(toggle, side);
+        return;
+    }
+
+    // A press anywhere else puts it away again. The press on the toggle
+    // returned above, so this cannot close what that press just opened.
+    if (side.classList.contains('active') && !side.contains(e.target)) {
+        side.classList.remove('active');
+        saysExpanded(document.getElementById('dash-toggle'), side);
+    }
 });
+
+// Which entry is current is no longer decided here. It used to be found
+// by comparing `location.pathname` against every link once the page had
+// been painted, which marked the menu a frame late on every load and
+// would stop happening altogether once navigation no longer reloads the
+// document. The server renders `aria-current="page"`, because the server
+// is the one that knows which endpoint it is answering.

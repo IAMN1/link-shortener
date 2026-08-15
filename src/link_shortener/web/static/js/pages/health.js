@@ -1,7 +1,10 @@
 /**
  * health.js – Infrastructure health check page.
  */
-document.addEventListener('DOMContentLoaded', async function() {
+// Wrapped, and not waiting for `DOMContentLoaded`: every page script is
+// shaped this way, and the reason is written out once beside
+// `{% block scripts %}` in templates/layout/base.html.
+(async function() {
     try {
         var resp = await apiFetch('/api/v1/admin/health');
         if (!resp) return;
@@ -10,27 +13,28 @@ document.addEventListener('DOMContentLoaded', async function() {
             // leave three dashes on screen, which reads as "unmeasured"
             // when the truthful answer is "the check itself failed".
             showLoadError('health-error', await apiErrorText(resp));
-            render('health-db', null);
-            render('health-redis', null);
-            render('health-celery', null);
+            render('db', null);
+            render('redis', null);
+            render('celery', null);
             return;
         }
         var data = await resp.json();
-        render('health-db', data.database);
-        render('health-redis', data.cache);
-        render('health-celery', data.task_queue);
+        render('db', data.database);
+        render('redis', data.cache);
+        render('celery', data.task_queue);
     } catch(e) {
         showLoadError('health-error', 'The service could not be reached.');
     }
-    function render(id, ok) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        if (ok === null) {
-            el.textContent = 'UNKNOWN';
-            el.style.color = 'var(--c-text-2)';
-            return;
-        }
-        el.textContent = ok ? 'OK' : 'DOWN';
-        el.style.color = ok ? 'var(--c-success)' : 'var(--c-danger)';
+
+    // State is written as a class rather than as a colour in a style
+    // attribute. A literal colour cannot follow the theme, and it said
+    // nothing to anyone reading the page without seeing it; a dot is a
+    // shape, and it survives being printed in grey.
+    function render(name, ok) {
+        var word = document.getElementById('health-' + name);
+        var dot = document.getElementById('dot-' + name);
+        if (word) word.textContent = ok === null ? 'unknown' : (ok ? 'answering' : 'not answering');
+        if (!dot) return;
+        dot.className = 'dot' + (ok === null ? '' : (ok ? ' dot--ok' : ' dot--danger'));
     }
-});
+})();

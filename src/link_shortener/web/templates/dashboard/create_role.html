@@ -1,31 +1,32 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Create Role – Linkr{% endblock %}
+{% import "dashboard/_perms.html" as perms %}
+{% block title %}Create Role — Linkr{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">Create Role</h1>
+<div class="dash-head">
+    <h1 class="dash-title">Create Role</h1>
+    <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost btn--sm">Cancel</a>
+</div>
 
-<div class="card" style="max-width:480px;">
+<div class="card">
     <form id="create-role-form">
-        <div class="form-group">
+        <div class="form-group narrow">
             <label class="form-label" for="name">Name</label>
-            <input type="text" id="name" class="form-input" required minlength="2" placeholder="e.g. editor">
+            <input type="text" id="name" class="form-input" required minlength="2" placeholder="editor" spellcheck="false">
         </div>
-        <div class="form-group">
+        <div class="form-group narrow">
             <label class="form-label" for="description">Description</label>
-            <input type="text" id="description" class="form-input" placeholder="Optional description">
+            <input type="text" id="description" class="form-input" placeholder="What this role is for">
         </div>
-        <div class="form-group">
-            <label class="form-label">Permissions</label>
-            {% for perm in permissions %}
-            <label style="display:block; margin-bottom:0.25rem;">
-                <input type="checkbox" name="permissions" value="{{ perm }}"> {{ perm }}
-            </label>
-            {% endfor %}
-        </div>
-        <div id="create-role-error" class="form-error hidden"></div>
-        <button type="submit" class="btn btn--primary btn--block mt-1">Create Role</button>
+
+        <span class="form-label">Permissions</span>
+        <span class="form-hint mb-1">Grouped by what they act on. The whole set used to be one flat column of ticks.</span>
+        {{ perms.checks(permissions, 'permissions') }}
+
+        <div id="create-role-error" class="form-error hidden mt-2"></div>
+        <button type="submit" class="btn btn--primary mt-2">Create role</button>
     </form>
 </div>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/create_role.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/create_role.js') }}" defer></script>
 {% endblock %}

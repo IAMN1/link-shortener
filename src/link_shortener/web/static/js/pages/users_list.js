@@ -4,7 +4,10 @@
  * The table is rendered by the server; this file only carries out the
  * three actions the service has always offered and the page never did.
  */
-document.addEventListener('DOMContentLoaded', function() {
+// Wrapped, and not waiting for `DOMContentLoaded`: every page script is
+// shaped this way, and the reason is written out once beside
+// `{% block scripts %}` in templates/layout/base.html.
+(function() {
 
     // One refusal is shown the same way wherever it comes from, so a
     // guard like "the last administrator may not be removed" reaches the
@@ -79,4 +82,4 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
-});
+})();

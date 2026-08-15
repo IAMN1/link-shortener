@@ -1,34 +1,44 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Edit User – Linkr{% endblock %}
+{% block title %}Edit {{ user.email }} — Linkr{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">Edit User</h1>
+<div class="dash-head">
+    <h1 class="dash-title">Edit User</h1>
+    <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost btn--sm">Cancel</a>
+</div>
 
-<div class="card" style="max-width:480px;">
-    <p class="text-sm text-muted mb-2">Editing: <strong>{{ user.email }}</strong></p>
+<div class="card narrow">
+    <p class="lab mb-1">Editing</p>
+    <p class="mono mb-2">{{ user.email }}</p>
+
     <form id="edit-user-form">
         <div class="form-group">
-            <label class="form-label">Roles</label>
-            {% for role in all_roles %}
-            <label style="display:block; margin-bottom:0.25rem;">
-                {# ``user.roles`` holds names. Mapping ``name`` over strings
-                   matched nothing, so the form opened with every box clear
-                   whatever the account actually held -- and saving it sent
-                   whichever boxes the operator ticked as the whole truth. #}
-                <input type="checkbox" name="roles" value="{{ role.name }}"
-                    {% if role.name in user.roles %}checked{% endif %}>
-                {{ role.name }}
-            </label>
-            {% endfor %}
+            <span class="form-label">Roles</span>
+            <div class="check-list">
+                {% for role in all_roles %}
+                <label class="check">
+                    {# ``user.roles`` holds names. Mapping ``name`` over
+                       strings matched nothing, so the form opened with every
+                       box clear whatever the account actually held -- and
+                       saving it sent whichever boxes the operator ticked as
+                       the whole truth. #}
+                    <input type="checkbox" name="roles" value="{{ role.name }}"
+                        {% if role.name in user.roles %}checked{% endif %}>
+                    <code>{{ role.name }}</code>
+                </label>
+                {% endfor %}
+            </div>
         </div>
+
         {% if unassignable_held %}
-        <p class="text-sm text-muted mb-1">
+        <div class="explain mb-2">
             This account also holds
             {% for name in unassignable_held %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %},
-            which is not an assignable role. Saving removes it.
-        </p>
+            which is not an assignable role. <b>Saving removes it.</b>
+        </div>
         {% endif %}
+
         <div id="edit-user-error" class="form-error hidden"></div>
-        <div class="flex gap-1 mt-1">
+        <div class="flex gap-1">
             <button type="submit" class="btn btn--primary">Save</button>
             <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost">Cancel</a>
         </div>
@@ -36,5 +46,5 @@
 </div>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/edit_user.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/edit_user.js') }}" defer></script>
 {% endblock %}

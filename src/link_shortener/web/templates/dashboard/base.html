@@ -1,16 +1,53 @@
 {% extends "layout/base.html" %}
 {% import "dashboard/_icons.html" as icons %}
+
+{# One place decides what a menu entry looks like, including which one is
+   current. That used to be a script comparing `location.pathname` against
+   every link after the page had already been painted -- a flash on each
+   load, and the first thing that breaks once navigation stops reloading
+   the page. The server is rendering the endpoint; it can simply say so.
+
+   `also` names the pages that belong to an entry without being it: editing
+   a user is still the Users section. #}
+{% macro nav(endpoint, icon, label, also=[]) -%}
+<a href="{{ url_for(endpoint) }}" data-title="{{ label }}"
+   {% if request.endpoint == endpoint or request.endpoint in also %}aria-current="page"{% endif %}>
+    {{ icons.nav(icon) }}<span class="dash-side-label">{{ label }}</span>
+</a>
+{%- endmacro %}
+
 {% block extra_head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    {# In `<head>`, beside `main.js` and for the same reason: it binds to
+       `document`, which outlives the body swap, so it has to run once per
+       tab rather than once per navigation. Here rather than in the public
+       layout because only these pages have a sidebar to bind to. #}
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
 {% endblock %}
+
+{# The sidebar already carries every destination. The public header used to
+   repeat them -- a "Dashboard" button plus a menu with My Links and Create
+   Link -- so one address was reachable by two controls on one screen. #}
+{% block header_nav %}
+<div class="header-right">
+    {% include "layout/_theme_button.html" %}
+    {# Not `.header-link`: that class lights up on hover, and this is a
+       label, not a destination -- it behaved like a button that does
+       nothing. #}
+    <span class="header-who mono">{{ g.current_user.email if g.current_user }}</span>
+</div>
+{% endblock %}
+
+{% block main_class %} main--flush{% endblock %}
+
 {% block content %}
 {% if g.current_user %}
 {# The collapsed state is read here rather than applied by a script after
    the page loads. A cookie is on the request, so the rail is drawn narrow
-   from the first paint; the same state restored from localStorage draws
-   the full sidebar and snaps it shut a moment later, on every page. #}
+   from the first paint; the same state restored from localStorage draws the
+   full sidebar and snaps it shut a moment later, on every page. #}
 {% set rail = request.cookies.get('dash_sidebar') == 'rail' %}
-<div class="dash{% if rail %} dash--rail{% endif %}" id="dash">
+<div class="dash{% if rail %} dash--rail{% endif %}" id="dash" data-density="panel">
     <nav class="dash-side" id="dash-side">
         <div class="dash-side-header">
             <span class="avatar avatar--sm">{{ g.current_user.email[0]|upper }}</span>
@@ -20,35 +57,35 @@
             </div>
         </div>
 
+        {# The dashboard's own front page. It had no entry anywhere: the
+           header used to carry a "Dashboard" link, that header is gone as a
+           duplicate of this menu, and nothing replaced it -- so once inside
+           the dashboard there was no way back to its home but the browser's
+           back button. No permission guards it; every signed-in account can
+           open it, and it says what that account may not do. #}
+        {{ nav('dashboard.home', 'overview', 'Overview') }}
+
         {# Every entry asks the permission its page asks for. Named roles
-           used to decide this, which offered an analyst a "Create Link"
-           it may not use and hid the service statistics a plain user may
+           used to decide this, which offered an analyst a "Create Link" it
+           may not use and hid the service statistics a plain user may
            read. #}
         {% if can('link:view_own') or can('link:create') %}
             <div class="dash-side-section">Links</div>
             {% if can('link:view_own') %}
-                <a href="{{ url_for('dashboard.my_links') }}" data-title="My Links">
-                    {{ icons.nav('links') }}<span class="dash-side-label">My Links</span>
-                </a>
+                {{ nav('dashboard.my_links', 'links', 'My Links') }}
             {% endif %}
             {% if can('link:create') %}
-                <a href="{{ url_for('dashboard.create_link_form') }}" data-title="Create Link">
-                    {{ icons.nav('create') }}<span class="dash-side-label">Create Link</span>
-                </a>
+                {{ nav('dashboard.create_link_form', 'create', 'Create Link') }}
             {% endif %}
         {% endif %}
 
         {% if can('link:view_own') or can('stats:view_basic') %}
             <div class="dash-side-section">Analytics</div>
             {% if can('link:view_own') %}
-                <a href="{{ url_for('dashboard.my_stats') }}" data-title="My Stats">
-                    {{ icons.nav('my-stats') }}<span class="dash-side-label">My Stats</span>
-                </a>
+                {{ nav('dashboard.my_stats', 'my-stats', 'My Stats') }}
             {% endif %}
             {% if can('stats:view_basic') %}
-                <a href="{{ url_for('dashboard.service_stats') }}" data-title="Service Stats">
-                    {{ icons.nav('service-stats') }}<span class="dash-side-label">Service Stats</span>
-                </a>
+                {{ nav('dashboard.service_stats', 'service-stats', 'Service Stats') }}
             {% endif %}
         {% endif %}
 
@@ -56,28 +93,23 @@
               or can('admin:view_system_health') %}
             <div class="dash-side-section">Administration</div>
             {% if can('admin:view_users') %}
-                <a href="{{ url_for('dashboard.users_list') }}" data-title="Users">
-                    {{ icons.nav('users') }}<span class="dash-side-label">Users</span>
-                </a>
+                {{ nav('dashboard.users_list', 'users', 'Users',
+                       ['dashboard.create_user_form', 'dashboard.edit_user',
+                        'dashboard.user_stats']) }}
             {% endif %}
             {% if can('admin:view_roles') %}
-                <a href="{{ url_for('dashboard.roles_list') }}" data-title="Roles">
-                    {{ icons.nav('roles') }}<span class="dash-side-label">Roles</span>
-                </a>
+                {{ nav('dashboard.roles_list', 'roles', 'Roles',
+                       ['dashboard.create_role_form', 'dashboard.edit_role']) }}
             {% endif %}
             {% if can('admin:view_system_health') %}
-                <a href="{{ url_for('dashboard.service_health') }}" data-title="Health Check">
-                    {{ icons.nav('health') }}<span class="dash-side-label">Health Check</span>
-                </a>
+                {{ nav('dashboard.service_health', 'health', 'Health Check') }}
             {% endif %}
         {% endif %}
 
         <div class="dash-side-bottom">
-            <a href="{{ url_for('frontend.index') }}" data-title="Back to Home">
-                {{ icons.nav('home') }}<span class="dash-side-label">Back to Home</span>
-            </a>
-            <button class="dash-side-logout" id="logout-btn" data-title="Logout">
-                {{ icons.nav('logout') }}<span class="dash-side-label">Logout</span>
+            {{ nav('frontend.index', 'home', 'Back to Home') }}
+            <button class="dash-side-logout" id="logout-btn" data-title="Log out">
+                {{ icons.nav('logout') }}<span class="dash-side-label">Log out</span>
             </button>
             {# The control the rail is worked with. `aria-expanded` carries
                the state the class carries, because a screen reader has no
@@ -96,22 +128,32 @@
     </div>
 </div>
 
-<button class="dash-toggle" id="dash-toggle" aria-label="Menu">&#9776;</button>
+{# Says which element it opens and whether it is open, the same way the
+   collapse control above does -- they operate the same sidebar, and this
+   one used to announce nothing but its label, so a screen reader read
+   "Menu, button" before the press and "Menu, button" after it.
+
+   `false` unconditionally, unlike the collapse control, which reads a
+   cookie: this button is drawn only on a narrow screen (`.dash-toggle` is
+   `display: none` until the media query), and the sidebar always starts
+   closed there. #}
+<button class="dash-toggle" id="dash-toggle" aria-label="Menu"
+        aria-controls="dash-side" aria-expanded="false">&#9776;</button>
 {% else %}
     <div class="container mt-3">
-        <p class="text-muted">You are not logged in. <a href="{{ url_for('frontend.login_page') }}">Login</a></p>
+        <p class="text-muted">You are not logged in.
+           <a href="{{ url_for('frontend.login_page') }}">Log in</a></p>
     </div>
 {% endif %}
 {% endblock %}
 
-{# dashboard.js drives the sidebar toggle and the logout button, so every
-   page under this layout needs it. Pages used to add their own script by
-   overriding `scripts`, this very block, and an override replaces what it
-   overrides: dashboard.js reached two pages out of twelve, and on the other
-   ten both controls were dead. A page now overrides `page_scripts`, which
-   is nested inside this one, so its script is added rather than swapped in
-   and a new page has nothing to remember. #}
+{# dashboard.js used to be included here, and pages added their own script
+   by overriding `scripts` -- this very block -- and an override replaces
+   what it overrides: dashboard.js reached two pages out of twelve, and on
+   the other ten both controls were dead. It now loads from `extra_head`
+   above, which no page overrides without calling `super()`, so the nesting
+   below is no longer what keeps it alive. `page_scripts` stays: it is the
+   block a page overrides, and it leaves this one free for the layout. #}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% block page_scripts %}{% endblock %}
 {% endblock %}

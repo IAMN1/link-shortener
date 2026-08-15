@@ -4,9 +4,9 @@
    the only place they appear, and both alternatives buy their reuse with
    a second request that must arrive before the menu is legible.
 
-   Drawn to match the signage the rest of the design borrows from -- one
-   stroke weight, no fill, square canvas, `currentColor` so a menu entry's
-   own state colours its icon along with its label. #}
+   Drawn to match the rest of the system -- one stroke weight, no fill,
+   square canvas, and `currentColor`, so a menu entry's own state colours
+   its icon along with its label and neither theme needs a second set. #}
 
 {% macro nav(name) -%}
 <svg class="dash-side-glyph" width="16" height="16" viewBox="0 0 16 16" fill="none"
@@ -33,6 +33,14 @@
     <path d="M7.5 8.5 13 3M10.9 5.1l1.6 1.6"/>
 {%- elif name == 'health' -%}
     <path d="M2.2 8h2.9l1.5-3.4 2.6 6.8 1.5-3.4h2.9"/>
+{%- elif name == 'overview' -%}
+    {# Panes: the dashboard's own front page, which is several readings laid
+       side by side. Distinct from `home`, which leaves for the public site
+       -- the two entries sit in one menu and cannot wear one glyph. #}
+    <rect x="2.6" y="2.6" width="4.6" height="4.6" rx="1"/>
+    <rect x="8.8" y="2.6" width="4.6" height="4.6" rx="1"/>
+    <rect x="2.6" y="8.8" width="4.6" height="4.6" rx="1"/>
+    <rect x="8.8" y="8.8" width="4.6" height="4.6" rx="1"/>
 {%- elif name == 'home' -%}
     <path d="M2.8 7.2 8 2.8l5.2 4.4V13H2.8z"/>
 {%- elif name == 'logout' -%}

@@ -1,6 +1,6 @@
 # Testing
 
-**2582 tests**, 94.92% coverage against a floor of 88%, plus two live runs
+**2664 tests**, 94.94% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -33,7 +33,7 @@ tests/
 │   ├── domain/              # Entities, value objects, policies
 │   ├── application/         # Use cases, services, ports
 │   ├── infrastructure/      # Config, cache, task queue, auth, logging
-│   └── web/                 # Controllers, middleware, security, schemas
+│   └── web/                 # Controllers, middleware, security, schemas, static
 │
 ├── integration/             # Real in-memory SQLite
 │   ├── application/         # Cache against the database, deletion, custom codes
@@ -101,7 +101,7 @@ the throttle instead of what it is named after.
 
 </details>
 
-### browser_test.py — 17 checks in a real browser
+### browser_test.py — 18 checks in a real browser
 
 ```bash
 uv sync --group browser
@@ -249,8 +249,8 @@ catch tests that read configuration nobody gave them.
 flowchart TD
     subgraph clean["clean"]
         C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
-        C2 --> C3[count collected tests<br/>minimum 2574] --> C4[pytest --error-for-skips]
-        C4 --> C5[smoke_test.py<br/>123 checks] --> C6[browser_test.py<br/>17 checks]
+        C2 --> C3[count collected tests<br/>minimum 2656] --> C4[pytest --error-for-skips]
+        C4 --> C5[smoke_test.py<br/>123 checks] --> C6[browser_test.py<br/>18 checks]
     end
     subgraph hostile["hostile"]
         H1[the same, plus a polluted .env<br/>and exported variables] --> H2[pytest --error-for-skips]
@@ -272,5 +272,5 @@ The browser run is on the clean half only: it reads nothing from the
 environment, and Chromium is a hundred megabytes to download.
 
 Linters are a separate job, one pass, with a step each so the summary says
-which tool objected: `flake8`, `pylint` (floor 9.0, currently 9.21),
+which tool objected: `flake8`, `pylint` (floor 9.0, currently 9.20),
 `bandit`, `mypy` (floor: zero errors).

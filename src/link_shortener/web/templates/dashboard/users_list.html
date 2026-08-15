@@ -1,34 +1,34 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Users – Linkr{% endblock %}
+{% block title %}Users — Linkr{% endblock %}
 {% block dashboard_content %}
-<div class="flex items-center justify-between mb-2">
-    <h1 class="dash-title" style="margin:0;">Users</h1>
+<div class="dash-head">
+    <h1 class="dash-title">Users</h1>
     {% if can('admin:manage_users') %}
-    <a href="{{ url_for('dashboard.create_user_form') }}" class="btn btn--primary btn--sm">+ New User</a>
+    <a href="{{ url_for('dashboard.create_user_form') }}" class="btn btn--primary btn--sm">New user</a>
     {% endif %}
 </div>
 
 <div id="users-error" class="alert alert--error hidden mb-2"></div>
 
-<div class="card">
+<div class="card card--flush">
     <div class="table-wrap">
         <table class="table">
             <thead>
                 <tr>
-                    <th>Email</th><th>Roles</th><th>Status</th><th class="table-actions">Actions</th>
+                    <th>Email</th><th>Roles</th><th>State</th><th class="table-actions">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for user in users %}
                 <tr data-user-id="{{ user.id }}" data-user-email="{{ user.email }}">
-                    <td>{{ user.email }}</td>
+                    <td class="text-muted">{{ user.email }}</td>
                     <td>
                         {# ``roles`` is a list of names, not of objects.
                            Reading ``.name`` off a string yields Undefined,
                            which Jinja prints as nothing: every account in
                            this table showed a blank Roles column. #}
                         {% for role in user.roles %}
-                            <span class="badge badge--blue">{{ role }}</span>
+                            <span class="badge badge--name">{{ role }}</span>
                         {% else %}
                             <span class="text-muted text-sm">none</span>
                         {% endfor %}
@@ -39,14 +39,14 @@
                        nobody had confirmed its address. #}
                     <td>
                         {% if user.is_active %}
-                            <span class="badge badge--green">Active</span>
+                            <span class="badge badge--ok">Active</span>
                         {% else %}
-                            <span class="badge badge--red">Inactive</span>
+                            <span class="badge badge--danger">Inactive</span>
                         {% endif %}
                         {% if user.email_verified %}
-                            <span class="badge badge--green">Verified</span>
+                            <span class="badge badge--ok">Verified</span>
                         {% else %}
-                            <span class="badge badge--amber" title="The address has not been confirmed, so this account cannot sign in">Not verified</span>
+                            <span class="badge badge--warn" title="The address has not been confirmed, so this account cannot sign in">Not verified</span>
                         {% endif %}
                     </td>
                     <td class="table-actions">
@@ -89,14 +89,15 @@
     </div>
     {% if not users %}
     <div class="empty">
-        <p>{% if page > 1 %}Nothing on this page.{% else %}No users found.{% endif %}</p>
+        <div class="empty-icon">No users</div>
+        <p>{% if page > 1 %}Nothing on this page.{% else %}Nothing to show.{% endif %}</p>
     </div>
     {% endif %}
 </div>
 
-{# Without this the page showed the first hundred accounts and said
-   nothing about the rest, which on a service with more than that is a
-   list that quietly lies. #}
+{# Without this the page showed the first hundred accounts and said nothing
+   about the rest, which on a service with more than that is a list that
+   quietly lies. #}
 {% if has_next or page > 1 %}
 <div class="pager">
     {% if page > 1 %}
@@ -110,5 +111,5 @@
 {% endif %}
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/users_list.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/users_list.js') }}" defer></script>
 {% endblock %}

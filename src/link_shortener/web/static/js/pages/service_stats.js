@@ -1,7 +1,10 @@
 /**
  * service_stats.js – Service-wide statistics page.
  */
-document.addEventListener('DOMContentLoaded', async function() {
+// Wrapped, and not waiting for `DOMContentLoaded`: every page script is
+// shaped this way, and the reason is written out once beside
+// `{% block scripts %}` in templates/layout/base.html.
+(async function() {
     try {
         var resp = await apiFetch('/api/v1/stats');
         if (!resp) return;
@@ -19,7 +22,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (data.popular_links && data.popular_links.length) {
             tbody.innerHTML = data.popular_links.map(function(l) {
                 return '<tr><td class="table-mono">' + escapeHtml(l.short_code) + '</td>'
-                    + '<td class="truncate" style="max-width:250px">' + escapeHtml(l.original_url) + '</td>'
+                    + '<td class="cell-fill"><span class="truncate">' + escapeHtml(l.original_url) + '</span></td>'
                     + '<td>' + l.clicks + '</td>'
                     + '<td>' + formatDate(l.created_at) + '</td></tr>';
             }).join('');
@@ -29,4 +32,4 @@ document.addEventListener('DOMContentLoaded', async function() {
     } catch(e) {
         showLoadError('service-error', 'The service could not be reached.', 'popular-tbody', 4);
     }
-});
+})();
