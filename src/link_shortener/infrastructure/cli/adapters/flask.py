@@ -241,6 +241,25 @@ def clean_expired():
     deleted = clean_expired_logic(use_case, context)
     click.echo(f"Deleted {deleted} expired links.")
 
+@maintenance_group.command("roll-up-visits")
+@with_appcontext
+def roll_up_visits():
+    """Fold finished days of visits, then sweep what is past retention.
+
+    Both steps, in that order: folding first means the day totals exist
+    before the rows behind them are deleted. Run it daily -- the sweep
+    is what keeps the visit table from being the reason the service
+    eventually stops.
+
+    The retention window is `VISIT_RETENTION_DAYS`, not a flag here: a
+    cron line and a running service disagreeing about how long history
+    is kept is not a disagreement anybody notices in time.
+    """
+    container = _container()
+    context = RequestContext(request_id="cli-roll-up-visits")
+    folded, swept = container.get_roll_up_visits_use_case().execute(context)
+    click.echo(f"Folded {folded} link-days; deleted {swept} raw visits.")
+
 @maintenance_group.command("clean-sessions")
 @with_appcontext
 def clean_sessions():

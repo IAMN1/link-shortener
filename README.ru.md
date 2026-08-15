@@ -9,7 +9,7 @@
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![тестов: 2518](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-2518-0b5d3b)](docs/testing.md)
+[![тестов: 2582](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-2582-0b5d3b)](docs/testing.md)
 [![покрытие: 95%](https://img.shields.io/badge/%D0%BF%D0%BE%D0%BA%D1%80%D1%8B%D1%82%D0%B8%D0%B5-95%25-0b5d3b)](docs/testing.md)
 [![mypy: 0](https://img.shields.io/badge/mypy-0%20%D0%BE%D1%88%D0%B8%D0%B1%D0%BE%D0%BA-0b5d3b)](docs/testing.md)
 [![лицензия: Apache 2.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-Apache%202.0-blue)](LICENSE)
@@ -149,6 +149,8 @@ flowchart LR
 | `GET` | `/api/v1/links/{code}/extended` | владение, `admin:all` или `stats:view_any` | Производная аналитика |
 | `DELETE` | `/api/v1/links/{code}` | `link:delete_own` / `link:delete_any` / токен удаления | Удалить |
 | `GET` | `/api/v1/stats` | `stats:view_basic` — есть у `guest` | Итоги по сервису |
+| `GET` | `/api/v1/stats/visits` | `stats:view_basic` | Когда открывали ссылки, по интервалам; `scope=mine` — только свои |
+| `GET` | `/api/v1/stats/visits/daily` | `stats:view_basic` | Переходы по дням, дальше срока хранения сырых событий |
 | `GET` | `/api/v1/stats/mine` | `link:view_own` | Свои |
 
 <details>
@@ -196,9 +198,9 @@ flowchart LR
 ## Тестирование
 
 ```bash
-uv run pytest tests/                      # 2518 тестов
-uv run python tests/live/smoke_test.py    # 119 проверок по HTTP
-uv run python tests/live/browser_test.py  # 16 проверок настоящим браузером
+uv run pytest tests/                      # 2582 тестов
+uv run python tests/live/smoke_test.py    # 123 проверок по HTTP
+uv run python tests/live/browser_test.py  # 17 проверок настоящим браузером
 ```
 
 Четыре уровня — unit, интеграционные на SQLite, интеграционные на настоящих

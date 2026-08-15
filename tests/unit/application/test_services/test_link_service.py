@@ -37,6 +37,12 @@ def mock_delete_link_use_case():
     return Mock()
 
 @pytest.fixture
+def mock_get_visit_stats_use_case():
+    """The use case behind the charts: when links were opened."""
+    return Mock()
+
+
+@pytest.fixture
 def link_service(
     mock_create_use_case,
     mock_get_info_use_case,
@@ -44,6 +50,7 @@ def link_service(
     mock_redirect_use_case,
     mock_batch_create_use_case,
     mock_get_stats_use_case,
+    mock_get_visit_stats_use_case,
     mock_get_user_links_use_case,
     mock_delete_link_use_case,
 ):
@@ -54,6 +61,7 @@ def link_service(
         redirect_link_use_case=mock_redirect_use_case,
         batch_create_links_use_case=mock_batch_create_use_case,
         get_service_stats_use_case=mock_get_stats_use_case,
+        get_visit_stats_use_case=mock_get_visit_stats_use_case,
         get_user_links_use_case=mock_get_user_links_use_case,
         delete_link_use_case=mock_delete_link_use_case,
     )

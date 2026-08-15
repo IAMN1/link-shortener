@@ -9,7 +9,7 @@ suite that fails when the documentation starts lying.
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests: 2518](https://img.shields.io/badge/tests-2518-0b5d3b)](docs/testing.md)
+[![tests: 2582](https://img.shields.io/badge/tests-2582-0b5d3b)](docs/testing.md)
 [![coverage: 95%](https://img.shields.io/badge/coverage-95%25-0b5d3b)](docs/testing.md)
 [![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
 [![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -150,6 +150,8 @@ Thirty-one operations. Full description: `/api/openapi.json`, rendered at
 | `GET` | `/api/v1/links/{code}/extended` | ownership, `admin:all` or `stats:view_any` | Derived analytics |
 | `DELETE` | `/api/v1/links/{code}` | `link:delete_own` / `link:delete_any` / deletion token | Remove it |
 | `GET` | `/api/v1/stats` | `stats:view_basic` — held by `guest` | Service totals |
+| `GET` | `/api/v1/stats/visits` | `stats:view_basic` | When links were opened, bucketed; `scope=mine` for your own |
+| `GET` | `/api/v1/stats/visits/daily` | `stats:view_basic` | Visits per day, reaching past the retention window |
 | `GET` | `/api/v1/stats/mine` | `link:view_own` | Your own |
 
 <details>
@@ -198,9 +200,9 @@ Thirty-one operations. Full description: `/api/openapi.json`, rendered at
 ## Testing
 
 ```bash
-uv run pytest tests/                      # 2518 tests
-uv run python tests/live/smoke_test.py    # 119 checks over HTTP
-uv run python tests/live/browser_test.py  # 16 checks in a real browser
+uv run pytest tests/                      # 2582 tests
+uv run python tests/live/smoke_test.py    # 123 checks over HTTP
+uv run python tests/live/browser_test.py  # 17 checks in a real browser
 ```
 
 Four levels — unit, integration on SQLite, integration on real PostgreSQL and

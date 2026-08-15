@@ -2,8 +2,9 @@ from typing import Protocol
 from abc import ABC, abstractmethod
 
 from link_shortener.domain import (
-    EmailVerificationRepository, LinkRepository, PermissionRepository,
-    RefreshSessionRepository, RoleRepository, UserRepository
+    EmailVerificationRepository, LinkRepository, LinkVisitRepository,
+    PermissionRepository, RefreshSessionRepository, RoleRepository,
+    UserRepository
 )
 
 class UnitOfWork(ABC):
@@ -59,6 +60,12 @@ class UnitOfWork(ABC):
     @abstractmethod
     def email_verifications(self) -> EmailVerificationRepository:
         """Return an EmailVerificationRepository bound to the current session."""
+        ...
+
+    @property
+    @abstractmethod
+    def link_visits(self) -> LinkVisitRepository:
+        """Return a LinkVisitRepository bound to the current session."""
         ...
 
     # ----- Transaction management -----

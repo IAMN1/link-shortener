@@ -103,6 +103,8 @@ without a word about it.
 | `SESSION_COOKIE_HTTPONLY` | `true` | |
 | `CORS_ORIGINS` | `http://localhost:5000,http://127.0.0.1:5000` | Origins allowed to send credentials |
 | `TRUSTED_PROXIES` | empty | Only from these is `X-Forwarded-For` believed |
+| `VISIT_TRACKING_ENABLED` | `true` | Record each redirect as an event, not only count it. Off, `urls.clicks` still counts and every chart with time on an axis stays empty |
+| `VISIT_RETENTION_DAYS` | `90` | How long a raw visit row is kept. Finished days are folded into one row per link per day first, so the long-range charts keep their shape after the rows behind them go. `0` disables the sweep and the table grows without limit |
 | `AUTO_SEED_ROLES` | `true`; `false` in `staging` and `production` | Ensure the four system roles on every startup. Where it is off, `flask db load-base-roles` has to be run once — an anonymous caller acts as `guest`, and that role is what carries `link:create` |
 
 > [!WARNING]

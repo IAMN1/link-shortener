@@ -50,7 +50,7 @@ import re
 import sys
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -1079,6 +1079,37 @@ def _():
     assert r.status_code == 200
     assert r.get_json()["total_clicks"] == 3
 
+@test("GET /api/v1/stats/visits (the redirects of this run are in it)")
+def _():
+    # The counter and the chart are written in one transaction, so they
+    # have to agree: this run has redirected three times by now, and both
+    # `/stats/mine` above and this endpoint must say so.
+    r = api.get("/api/v1/stats/visits?period=24h")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["total"] >= 3, body
+    assert len(body["buckets"]) == 24
+    assert sum(bucket["total"] for bucket in body["buckets"]) == body["total"]
+    # A short code is somebody's link: naming one needs stats:view_full,
+    # which the guest role does not carry.
+    assert body["top_links"] == []
+
+@test("GET /api/v1/stats/visits/daily (one entry per day, ending today)")
+def _():
+    r = api.get("/api/v1/stats/visits/daily?days=7")
+    assert r.status_code == 200
+    days = r.get_json()["days"]
+    assert len(days) == 7, days
+    # Today, not tomorrow: the span runs to midnight tonight.
+    today = datetime.now(timezone.utc).date().isoformat()
+    assert days[-1]["at"].startswith(today), days[-1]
+
+@test("GET /api/v1/stats/visits (a period nobody offers)")
+def _():
+    r = api.get("/api/v1/stats/visits?period=forever")
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "VALIDATION_ERROR"
+
 
 # ─── 13. Delete link ───────────────────────────────────────────────────
 print("\n=== DELETE LINK ===")
@@ -1369,6 +1400,12 @@ def _():
     assert admin.get(
         "/api/v1/admin/roles/admin", headers=admin_headers
     ).status_code == 200
+
+@test("GET /api/v1/stats/visits (an admin sees which links they were)")
+def _():
+    r = admin.get("/api/v1/stats/visits?period=24h", headers=admin_headers)
+    assert r.status_code == 200
+    assert r.get_json()["top_links"], "the breakdown is withheld from an admin too"
 
 @test("GET /api/v1/stats (an admin sees the breakdown)")
 def _():
@@ -1733,7 +1770,7 @@ success = result.summary()
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 119
+EXPECTED_CHECKS = 123
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")

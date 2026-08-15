@@ -23,13 +23,16 @@ Access rules:
 from flask import Blueprint, current_app, g, jsonify, request
 
 from link_shortener.domain import (
-    LinkNotFoundError, SystemPermissions, ValidationError
+    DomainError, LinkNotFoundError, SystemPermissions, ValidationError
 )
 from link_shortener.application import LinkService, AdminService, AuthorizationService
 from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.link import ExtendedLinkInfoResponse, ShortLinkResponse
 from link_shortener.web.schemas.requests import BatchCreateLinkRequest, CreateShortLinkRequest
 from link_shortener.web.schemas.stats import ServiceStatsResponse
+from link_shortener.web.schemas.visit_stats import (
+    DailyVisitsResponse, VisitStatsResponse,
+)
 from link_shortener.web.security.authorization import (
     can_view_link_details,
     require_can_view_link_details,
@@ -100,6 +103,8 @@ class ApiController:
         self.bp.add_url_rule('/links/mine', view_func=self.get_my_links, methods=['GET'])
         self.bp.add_url_rule('/links/<short_code>', view_func=self.delete_link, methods=['DELETE'])
         self.bp.add_url_rule('/stats/mine', view_func=self.get_my_stats, methods=['GET'])
+        self.bp.add_url_rule('/stats/visits', view_func=self.get_visit_stats, methods=['GET'])
+        self.bp.add_url_rule('/stats/visits/daily', view_func=self.get_daily_visits, methods=['GET'])
 
     # ------------------------------------------------------------------
     # POST /api/v1/shorten
@@ -235,6 +240,86 @@ class ApiController:
         ):
             response_data.popular_links = []
         return jsonify(response_data.model_dump())
+
+    # ------------------------------------------------------------------
+    # GET /api/v1/stats/visits
+    # ------------------------------------------------------------------
+    @require_permission(SystemPermissions.STATS_VIEW_BASIC.value)
+    def get_visit_stats(self):
+        """
+        Recorded visits over a span, for the service or for the caller.
+
+        ``scope=mine`` narrows the answer to the caller's own links and
+        needs nothing further -- an account may always see its own. The
+        service-wide answer needs ``stats:view_basic``, and the top-links
+        table on top of it needs ``stats:view_full``: a short code is
+        somebody's link, which is a different disclosure than a count.
+        """
+        context = create_request_context()
+        scope = request.args.get("scope", "service")
+        period = request.args.get("period", "7d")
+
+        owner_id = None
+        if scope == "mine":
+            if not g.get("current_user"):
+                raise DomainError(
+                    "Sign in to see your own statistics", code="UNAUTHENTICATED"
+                )
+            owner_id = g.current_user.id
+
+        summary = self.link_service.get_visit_stats(
+            context,
+            period=period,
+            short_code=request.args.get("code"),
+            owner_id=owner_id,
+        )
+        response = VisitStatsResponse.from_domain(summary)
+        if owner_id is None and not self.authorization_service.is_allowed(
+            g.get('_domain_user'), SystemPermissions.STATS_VIEW_FULL.value
+        ):
+            response.top_links = []
+        return jsonify(response.model_dump(mode="json"))
+
+    # ------------------------------------------------------------------
+    # GET /api/v1/stats/visits/daily
+    # ------------------------------------------------------------------
+    @require_permission(SystemPermissions.STATS_VIEW_BASIC.value)
+    def get_daily_visits(self):
+        """
+        Visits per day, reaching past the raw rows into the roll-up.
+
+        Same scoping as ``/stats/visits``. Separate endpoint rather than a
+        ``granularity`` parameter because it answers from a different pair
+        of tables and takes a different bound: a year of days is a fine
+        question, a year of hours is not.
+        """
+        context = create_request_context()
+        scope = request.args.get("scope", "service")
+
+        owner_id = None
+        if scope == "mine":
+            if not g.get("current_user"):
+                raise DomainError(
+                    "Sign in to see your own statistics", code="UNAUTHENTICATED"
+                )
+            owner_id = g.current_user.id
+
+        try:
+            days = int(request.args.get("days", 90))
+        except ValueError as invalid:
+            raise DomainError(
+                "days must be a whole number", code="VALIDATION_ERROR"
+            ) from invalid
+
+        buckets = self.link_service.get_daily_visits(
+            context,
+            days=days,
+            short_code=request.args.get("code"),
+            owner_id=owner_id,
+        )
+        return jsonify(
+            DailyVisitsResponse.from_domain(buckets).model_dump(mode="json")
+        )
 
     # ------------------------------------------------------------------
     # DELETE /api/v1/links/<short_code>
