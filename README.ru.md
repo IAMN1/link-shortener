@@ -231,6 +231,13 @@ Issues и pull request'ы приветствуются — [CONTRIBUTING.md](CON
 описывает настройку, что должна пройти правка и подпись одним флагом
 (`git commit -s`), которую проект использует вместо CLA.
 
+## Безопасность
+
+Нашли дыру? Сообщите приватно через
+[вкладку Security](https://github.com/IAMN1/link-shortener/security/advisories/new),
+а не публичным issue — [SECURITY.md](SECURITY.md) говорит, чего ждать,
+что уже известно и за что вас точно не будут преследовать.
+
 ## Лицензия
 
 [Apache License 2.0](LICENSE). Пользуйтесь, форкайте, поставляйте —

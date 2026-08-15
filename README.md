@@ -229,6 +229,13 @@ Issues and pull requests are welcome — [CONTRIBUTING.md](CONTRIBUTING.md)
 covers the setup, what a change has to pass, and the one-flag sign-off
 (`git commit -s`) the project uses instead of a CLA.
 
+## Security
+
+Found a hole? Please report it privately through the
+[Security tab](https://github.com/IAMN1/link-shortener/security/advisories/new)
+rather than a public issue — [SECURITY.md](SECURITY.md) says what to
+expect, what is already known, and what I will not pursue you for.
+
 ## License
 
 [Apache License 2.0](LICENSE). Use it, fork it, ship it — commercially
