@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import click
 from flask import current_app
 from flask.cli import with_appcontext
@@ -642,9 +644,28 @@ def security_group():
     pass
 
 @security_group.command("generate-secrets")
-def security_generate_secrets():
+@click.option("--write", "target", type=click.Path(path_type=Path),
+              help="Fill the secrets into this env file instead of printing them.")
+@click.option("--force", is_flag=True,
+              help="With --write: replace values the file already sets.")
+def security_generate_secrets(target, force):
     """Generate new SECRET_KEY and SHORT_CODE_PEPPER."""
-    from link_shortener.infrastructure.cli.commands.security import generate_secrets as gen_secrets
+    from link_shortener.infrastructure.cli.commands.security import (
+        generate_secrets as gen_secrets, write_secrets,
+    )
+
+    if target is not None:
+        # Written rather than printed: this is the one step of the setup
+        # that otherwise asks for a text editor in the middle of a run of
+        # commands. The values are not echoed back -- a secret that goes
+        # to a file has no reason to also go to the scrollback.
+        try:
+            write_secrets(target, force=force)
+        except (FileNotFoundError, ValueError) as failure:
+            raise click.ClickException(str(failure)) from failure
+        click.echo(f"SECRET_KEY and SHORT_CODE_PEPPER written to {target}.")
+        return
+
     secrets = gen_secrets()
     click.echo("=" * 80)
     click.echo("Generated secrets (add to .env file):")

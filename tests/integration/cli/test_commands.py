@@ -136,6 +136,44 @@ class TestSecurityCommands:
         assert result.exit_code == 0
         assert "MISSING" not in result.output
 
+    def test_generate_secrets_writes_the_file_without_echoing_it(
+        self, runner, app, tmp_path
+    ):
+        """
+        `--write` puts the values in the file and nowhere else.
+
+        Printing them as well would undo the reason the flag exists: the
+        setup guide can be a run of commands only if the secrets never
+        need to be read off the screen, and a secret in the scrollback
+        outlives the terminal it was printed in.
+        """
+        target = tmp_path / ".env"
+        target.write_text("SECRET_KEY=\nSHORT_CODE_PEPPER=\n", encoding="utf-8")
+
+        result = runner.invoke(
+            app.cli, ["security", "generate-secrets", "--write", str(target)]
+        )
+
+        assert result.exit_code == 0, result.output
+        written = target.read_text(encoding="utf-8")
+        value = written.split("SECRET_KEY=", 1)[1].split("\n", 1)[0]
+        assert len(value) == 64, written
+        assert value not in result.output
+
+    def test_generate_secrets_refuses_a_file_it_would_overwrite(
+        self, runner, app, tmp_path
+    ):
+        """Non-zero, so a setup script stops rather than carrying on."""
+        target = tmp_path / ".env"
+        target.write_text("SECRET_KEY=already\n", encoding="utf-8")
+
+        result = runner.invoke(
+            app.cli, ["security", "generate-secrets", "--write", str(target)]
+        )
+
+        assert result.exit_code != 0
+        assert "already" in target.read_text(encoding="utf-8")
+
     def test_validate_token_names_the_token_type(self, runner, app):
         """The verdict must say which kind of token was validated.
 

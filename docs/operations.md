@@ -88,7 +88,7 @@ group.
 | Command | |
 |---|---|
 | `security check-secrets` | Are the secrets set properly |
-| `security generate-secrets` | Print a fresh `SECRET_KEY` and `SHORT_CODE_PEPPER` |
+| `security generate-secrets` | Print a fresh `SECRET_KEY` and `SHORT_CODE_PEPPER`; `--write <file>` fills them into an env file instead, `--force` replaces values already set |
 | `security list-users` · `security list-roles` | What exists |
 | `security validate-token <token>` | Verdict plus claims |
 | `security reset-password` | Set a new password |

@@ -9,7 +9,7 @@ suite that fails when the documentation starts lying.
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests: 2497](https://img.shields.io/badge/tests-2497-0b5d3b)](docs/testing.md)
+[![tests: 2518](https://img.shields.io/badge/tests-2518-0b5d3b)](docs/testing.md)
 [![coverage: 95%](https://img.shields.io/badge/coverage-95%25-0b5d3b)](docs/testing.md)
 [![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
 [![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -78,8 +78,9 @@ weekend project leaves out.
 ```bash
 uv sync
 cp .env.example .env
+uv run flask security \
+    generate-secrets --write .env
 uv run flask alembic upgrade head
-uv run flask db load-base-roles
 uv run flask create-admin \
     --email admin@example.com \
     --password 'your-password'
@@ -92,20 +93,22 @@ uv run flask run
 
 ```bash
 cp .env.example .env.docker
-# set SECRET_KEY and SHORT_CODE_PEPPER
+uv run flask security \
+    generate-secrets --write .env.docker
+# then ten values -- see the guide
 docker compose --env-file .env.docker \
     up -d --build
-docker compose --env-file .env.docker \
-    exec app flask db load-base-roles
 ```
 
 </td></tr>
 </table>
 
 > [!TIP]
-> `flask security generate-secrets` prints the two secrets the deployed
-> profiles refuse to start without. Step-by-step, with the expected output
-> of every command: [Getting started](docs/getting-started.md).
+> `--write` fills the two secrets into the file in place; without them the
+> deployed profiles refuse to start. Roles seed themselves on startup in
+> `development`, which is why neither block runs `db load-base-roles`.
+> Step-by-step, with the expected output of every command:
+> [Getting started](docs/getting-started.md).
 
 ## What it does
 
@@ -136,7 +139,7 @@ flowchart LR
 
 ## API
 
-Twenty-nine operations. Full description: `/api/openapi.json`, rendered at
+Thirty-one operations. Full description: `/api/openapi.json`, rendered at
 `/api/docs`.
 
 | Method | Endpoint | Permission | |
@@ -163,6 +166,8 @@ Twenty-nine operations. Full description: `/api/openapi.json`, rendered at
 | `GET`, `POST` | `/api/v1/admin/users` | `admin:view_users` / `admin:manage_users` | List, create |
 | `PUT` | `/api/v1/admin/users/{id}/roles` | `admin:manage_users` | Replace roles |
 | `POST` | `/api/v1/admin/users/{id}/deactivate` | `admin:manage_users` | Suspend; refused for the last administrator |
+| `POST` | `/api/v1/admin/users/{id}/verify-email` | `admin:manage_users` | Confirm an address the mailed link cannot reach; spends any outstanding token |
+| `POST` | `/api/v1/admin/users/{id}/resend-verification` | `admin:manage_users` | Send the confirmation message again, addressed by account id |
 | `GET`, `POST` | `/api/v1/admin/roles` | `admin:view_roles` / `admin:manage_roles` | List, create |
 | `PUT` | `/api/v1/admin/roles/{name}/permissions` | `admin:manage_roles` | Replace permissions; system roles are protected |
 | `GET` | `/api/v1/admin/health` | `admin:view_system_health` | What each dependency answered |
@@ -193,9 +198,9 @@ Twenty-nine operations. Full description: `/api/openapi.json`, rendered at
 ## Testing
 
 ```bash
-uv run pytest tests/                      # 2497 tests
-uv run python tests/live/smoke_test.py    # 115 checks over HTTP
-uv run python tests/live/browser_test.py  # 15 checks in a real browser
+uv run pytest tests/                      # 2518 tests
+uv run python tests/live/smoke_test.py    # 119 checks over HTTP
+uv run python tests/live/browser_test.py  # 16 checks in a real browser
 ```
 
 Four levels — unit, integration on SQLite, integration on real PostgreSQL and

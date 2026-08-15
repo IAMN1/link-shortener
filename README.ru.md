@@ -9,7 +9,7 @@
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![тестов: 2497](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-2497-0b5d3b)](docs/testing.md)
+[![тестов: 2518](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-2518-0b5d3b)](docs/testing.md)
 [![покрытие: 95%](https://img.shields.io/badge/%D0%BF%D0%BE%D0%BA%D1%80%D1%8B%D1%82%D0%B8%D0%B5-95%25-0b5d3b)](docs/testing.md)
 [![mypy: 0](https://img.shields.io/badge/mypy-0%20%D0%BE%D1%88%D0%B8%D0%B1%D0%BE%D0%BA-0b5d3b)](docs/testing.md)
 [![лицензия: Apache 2.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-Apache%202.0-blue)](LICENSE)
@@ -78,8 +78,9 @@ $ curl -X POST localhost:5000/api/v1/shorten -H 'Content-Type: application/json'
 ```bash
 uv sync
 cp .env.example .env
+uv run flask security \
+    generate-secrets --write .env
 uv run flask alembic upgrade head
-uv run flask db load-base-roles
 uv run flask create-admin \
     --email admin@example.com \
     --password 'ваш-пароль'
@@ -92,20 +93,21 @@ uv run flask run
 
 ```bash
 cp .env.example .env.docker
-# задайте SECRET_KEY и SHORT_CODE_PEPPER
+uv run flask security \
+    generate-secrets --write .env.docker
+# дальше десять значений — см. руководство
 docker compose --env-file .env.docker \
     up -d --build
-docker compose --env-file .env.docker \
-    exec app flask db load-base-roles
 ```
 
 </td></tr>
 </table>
 
 > [!TIP]
-> `flask security generate-secrets` печатает две строки, без которых
-> развёрнутые профили не стартуют. По шагам, с ожидаемым выводом каждой
-> команды: [Быстрый старт](docs/getting-started.ru.md).
+> `--write` вписывает оба секрета прямо в файл; без них развёрнутые
+> профили не стартуют. Роли в `development` засеваются при старте сами —
+> поэтому `db load-base-roles` нет ни в одном блоке. По шагам, с ожидаемым
+> выводом каждой команды: [Быстрый старт](docs/getting-started.ru.md).
 
 ## Что умеет
 
@@ -136,7 +138,7 @@ flowchart LR
 
 ## API
 
-Двадцать девять операций. Полное описание — `/api/openapi.json`, страницей —
+Тридцать одна операция. Полное описание — `/api/openapi.json`, страницей —
 `/api/docs`.
 
 | Метод | Эндпоинт | Право | |
@@ -163,6 +165,8 @@ flowchart LR
 | `GET`, `POST` | `/api/v1/admin/users` | `admin:view_users` / `admin:manage_users` | Список, создание |
 | `PUT` | `/api/v1/admin/users/{id}/roles` | `admin:manage_users` | Заменить роли |
 | `POST` | `/api/v1/admin/users/{id}/deactivate` | `admin:manage_users` | Приостановить; последнему администратору отказано |
+| `POST` | `/api/v1/admin/users/{id}/verify-email` | `admin:manage_users` | Подтвердить адрес, до которого не доходит письмо; выданные токены при этом гасятся |
+| `POST` | `/api/v1/admin/users/{id}/resend-verification` | `admin:manage_users` | Выслать письмо заново, по идентификатору учётной записи |
 | `GET`, `POST` | `/api/v1/admin/roles` | `admin:view_roles` / `admin:manage_roles` | Список, создание |
 | `PUT` | `/api/v1/admin/roles/{name}/permissions` | `admin:manage_roles` | Заменить права; системные роли защищены |
 | `GET` | `/api/v1/admin/health` | `admin:view_system_health` | Что ответила каждая зависимость |
@@ -192,9 +196,9 @@ flowchart LR
 ## Тестирование
 
 ```bash
-uv run pytest tests/                      # 2497 тестов
-uv run python tests/live/smoke_test.py    # 115 проверок по HTTP
-uv run python tests/live/browser_test.py  # 15 проверок настоящим браузером
+uv run pytest tests/                      # 2518 тестов
+uv run python tests/live/smoke_test.py    # 119 проверок по HTTP
+uv run python tests/live/browser_test.py  # 16 проверок настоящим браузером
 ```
 
 Четыре уровня — unit, интеграционные на SQLite, интеграционные на настоящих
