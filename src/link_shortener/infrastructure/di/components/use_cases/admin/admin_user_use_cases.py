@@ -4,6 +4,7 @@ from link_shortener.application import (
     UnitOfWorkFactory, CreateUserUseCase,
     UpdateUserRolesUseCase, DeactivateUserUseCase, ActivateUserUseCase,
     ListUsersUseCase, GetUserUseCase, DeleteUserUseCase,
+    ConfirmUserEmailUseCase,
     UserManagementService, AuditLogger, LinkCache, Logger, RedirectCache,
     StatsCache
 )
@@ -45,6 +46,13 @@ class AdminUserUseCasesComponent:
         """Return a configured ``DeactivateUserUseCase``."""
         return DeactivateUserUseCase(
             user_service=self.user_service,
+            logger=self.logger,
+            uow_factory=self.uow_factory,
+        )
+
+    def get_confirm_user_email_use_case(self) -> ConfirmUserEmailUseCase:
+        """Return a configured ``ConfirmUserEmailUseCase``."""
+        return ConfirmUserEmailUseCase(
             logger=self.logger,
             uow_factory=self.uow_factory,
         )

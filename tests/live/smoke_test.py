@@ -1216,6 +1216,74 @@ def _():
     assert r.status_code == 200
     assert sorted(r.get_json()["roles"]) == ["analyst", "user"]
 
+# The two endpoints below act on an account that is stuck: registered,
+# never confirmed, and therefore refused at the login form. The account
+# made through the admin API cannot stand in for it -- that one is
+# confirmed at creation, on the grounds that an administrator typed the
+# address -- and against a confirmed account both endpoints are no-ops
+# that still answer as if they had worked.
+STUCK = "never-confirmed@example.com"
+stuck_id = None
+
+@test("An account that registered and never confirmed reads as unverified")
+def _():
+    global stuck_id
+    r = new_client("127.0.0.7").post("/api/v1/auth/register", json={
+        "email": STUCK, "password": "Test1234!"
+    })
+    assert r.status_code == 202, r.get_json()
+
+    listing = admin.get("/api/v1/admin/users", headers=admin_headers)
+    assert listing.status_code == 200
+    rows = [u for u in listing.get_json() if u["email"] == STUCK]
+    assert len(rows) == 1, listing.get_json()
+    # Both states, which is the distinction the column was missing: an
+    # account can be enabled and still unable to sign in.
+    assert rows[0]["is_active"] is True
+    assert rows[0]["email_verified"] is False
+    stuck_id = rows[0]["id"]
+
+@test("POST /api/v1/admin/users/<id>/resend-verification (as an admin)")
+def _():
+    # Counted before and after rather than looked for once: the catcher
+    # keeps everything this run delivered, so "a message is there" would
+    # also be true of the one registration itself sent.
+    before = len(mail.messages_to(STUCK))
+    r = admin.post(
+        f"/api/v1/admin/users/{stuck_id}/resend-verification",
+        headers=admin_headers,
+    )
+    assert r.status_code == 202, r.get_json()
+    assert STUCK in r.get_json()["message"]
+    assert len(mail.messages_to(STUCK)) == before + 1, (
+        "the endpoint answered but no message left the service"
+    )
+
+@test("POST /api/v1/admin/users/<id>/verify-email (as an admin)")
+def _():
+    r = admin.post(
+        f"/api/v1/admin/users/{stuck_id}/verify-email", headers=admin_headers
+    )
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["email_verified"] is True
+
+    # Pressing it again is not an error: two operators reaching for the
+    # same account both want the state it already has.
+    again = admin.post(
+        f"/api/v1/admin/users/{stuck_id}/verify-email", headers=admin_headers
+    )
+    assert again.status_code == 200, again.get_json()
+
+@test("An account confirmed by an administrator can log in")
+def _():
+    # What the button is for, rather than the field it wrote: until it ran,
+    # this same request answered 401 EMAIL_NOT_VERIFIED -- the refusal
+    # checked further up, on an account nobody had confirmed either.
+    r = new_client("127.0.0.7").post("/api/v1/auth/login", json={
+        "email": STUCK, "password": "Test1234!"
+    })
+    assert r.status_code == 200, r.get_json()
+
 @test("POST /api/v1/admin/users/<id>/deactivate (as an admin)")
 def _():
     r = admin.post(
@@ -1665,7 +1733,7 @@ success = result.summary()
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 115
+EXPECTED_CHECKS = 119
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")

@@ -20,7 +20,8 @@ from link_shortener.application import (
     ActivateUserUseCase, AuditLogger, BatchCreateLinksUseCase,
     CleanExpiredLinksUseCase, CleanUnverifiedAccountsUseCase,
     CreateRoleUseCase, CreateShortLinkUseCase, CreateUserUseCase,
-    DeactivateUserUseCase, DeleteLinkUseCase, DeleteRoleUseCase,
+    ConfirmUserEmailUseCase, DeactivateUserUseCase, DeleteLinkUseCase,
+    DeleteRoleUseCase,
     DeleteUserUseCase, GetExtendedLinkInfoUseCase, GetLinkInfoUseCase,
     GetRecentLinksUseCase, GetRoleUseCase, GetServiceHealthUseCase,
     GetServiceStatsUseCase, GetUserActivityStatsUseCase, GetUserLinksUseCase,
@@ -269,6 +270,8 @@ class Container:
         self._admin_service = AdminService(
             create_user_uc=self.get_create_user_use_case(),
             update_user_roles_uc=self.get_update_user_roles_use_case(),
+            confirm_user_email_uc=self.get_confirm_user_email_use_case(),
+            resend_verification_uc=self.get_resend_verification_use_case(),
             deactivate_user_uc=self.get_deactivate_user_use_case(),
             activate_user_uc=self.get_activate_user_use_case(),
             list_users_uc=self.get_list_users_use_case(),
@@ -512,6 +515,10 @@ class Container:
     def get_deactivate_user_use_case(self) -> DeactivateUserUseCase:
         """Return fully configured ``DeactivateUserUseCase``."""
         return self._init_admin_user_use_cases().get_deactivate_user_use_case()
+
+    def get_confirm_user_email_use_case(self) -> ConfirmUserEmailUseCase:
+        """Return fully configured ``ConfirmUserEmailUseCase``."""
+        return self._init_admin_user_use_cases().get_confirm_user_email_use_case()
 
     def get_activate_user_use_case(self) -> ActivateUserUseCase:
         """Return fully configured ``ActivateUserUseCase``."""

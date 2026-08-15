@@ -65,6 +65,8 @@ ROUTES_OF = {
         ("POST", "/api/v1/admin/users",
          {"email": "made@example.test", "password": "Irrelevant1!"}),
         ("PUT", f"/api/v1/admin/users/{VICTIM}/roles", {"roles": ["user"]}),
+        ("POST", f"/api/v1/admin/users/{VICTIM}/verify-email", None),
+        ("POST", f"/api/v1/admin/users/{VICTIM}/resend-verification", None),
         ("POST", f"/api/v1/admin/users/{VICTIM}/deactivate", None),
         ("POST", f"/api/v1/admin/users/{VICTIM}/activate", None),
         ("DELETE", f"/api/v1/admin/users/{VICTIM}", None),

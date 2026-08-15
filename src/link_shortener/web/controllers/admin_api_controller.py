@@ -40,6 +40,8 @@ class AdminApiController:
         self.bp.add_url_rule("/users", view_func=self.list_users, methods=["GET"])
         self.bp.add_url_rule("/users/<user_id>", view_func=self.get_user, methods=["GET"])
         self.bp.add_url_rule("/users/<user_id>/roles", view_func=self.update_user_roles, methods=["PUT"])
+        self.bp.add_url_rule("/users/<user_id>/verify-email", view_func=self.confirm_user_email, methods=["POST"])
+        self.bp.add_url_rule("/users/<user_id>/resend-verification", view_func=self.resend_verification, methods=["POST"])
         self.bp.add_url_rule("/users/<user_id>/deactivate", view_func=self.deactivate_user, methods=["POST"])
         self.bp.add_url_rule("/users/<user_id>/activate", view_func=self.activate_user, methods=["POST"])
         self.bp.add_url_rule("/users/<user_id>", view_func=self.delete_user, methods=["DELETE"])
@@ -116,6 +118,37 @@ class AdminApiController:
         context = create_request_context()
         result = self.admin_service.update_user_roles(user_id, validated.roles, context)
         return jsonify(UserResponseSchema.from_dto(result).model_dump())
+
+    @require_permission(SystemPermissions.ADMIN_MANAGE_USERS.value)
+    def confirm_user_email(self, user_id):
+        """
+        Handle ``POST /api/v1/admin/users/<user_id>/verify-email``.
+
+        Marks the address as confirmed on the operator's word, for the
+        cases the mailed link cannot cover: the message never arrived,
+        the address is a list nobody reads, the deployment sends no mail.
+        Behind ``admin:manage_users``, recorded in the log, and idempotent
+        -- pressing it on an already confirmed account is not an error.
+        """
+        context = create_request_context()
+        result = self.admin_service.confirm_user_email(user_id, context)
+        return jsonify(UserResponseSchema.from_dto(result).model_dump())
+
+    @require_permission(SystemPermissions.ADMIN_MANAGE_USERS.value)
+    def resend_verification(self, user_id):
+        """
+        Handle ``POST /api/v1/admin/users/<user_id>/resend-verification``.
+
+        The same use case the public endpoint runs, addressed by account
+        id instead of by email: an operator acts on the account in front
+        of them, and retyping the address is how mail goes to a typo.
+
+        Answers with the address it went to. That is not a disclosure --
+        the caller already reads the whole account list.
+        """
+        context = create_request_context()
+        address = self.admin_service.resend_verification(user_id, context)
+        return jsonify({"message": f"Confirmation message sent to {address}"}), 202
 
     @require_permission(SystemPermissions.ADMIN_MANAGE_USERS.value)
     def deactivate_user(self, user_id):

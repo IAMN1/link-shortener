@@ -3,6 +3,7 @@ from typing import List, Optional
 
 
 from link_shortener.application.context import RequestContext
+from link_shortener.domain import DomainError
 from link_shortener.application.dtos.admin.role import RoleResponse
 from link_shortener.application.dtos.user import UserResponse
 from link_shortener.application.dtos.user_activity import UserActivityResponse
@@ -13,6 +14,8 @@ from link_shortener.application.use_cases.admin.roles.list_roles import ListRole
 from link_shortener.application.use_cases.admin.roles.update_role_permissions import UpdateRolePermissionsUseCase
 from link_shortener.application.use_cases.admin.users.activate_user import ActivateUserUseCase
 from link_shortener.application.use_cases.admin.users.create_user import CreateUserUseCase
+from link_shortener.application.use_cases.admin.users.confirm_user_email import ConfirmUserEmailUseCase
+from link_shortener.application.use_cases.auth.resend_verification import ResendVerificationUseCase
 from link_shortener.application.use_cases.admin.users.deactivate_user import DeactivateUserUseCase
 from link_shortener.application.use_cases.admin.users.delete_user import DeleteUserUseCase
 from link_shortener.application.use_cases.admin.users.get_user import GetUserUseCase
@@ -34,6 +37,11 @@ class AdminService:
     Attributes:
         create_user_uc: Use case for creating a new user.
         update_user_roles_uc: Use case for updating a user's roles.
+        confirm_user_email_uc: Use case for confirming an address on an
+            operator's word.
+        resend_verification_uc: Use case for sending the confirmation
+            message again. Shared with the public endpoint: one way to
+            issue a token means one way for it to be retired.
         deactivate_user_uc: Use case for deactivating a user.
         activate_user_uc: Use case for reactivating a user.
         list_users_uc: Use case for listing users.
@@ -50,6 +58,8 @@ class AdminService:
 
     create_user_uc: CreateUserUseCase
     update_user_roles_uc: UpdateUserRolesUseCase
+    confirm_user_email_uc: ConfirmUserEmailUseCase
+    resend_verification_uc: ResendVerificationUseCase
     deactivate_user_uc: DeactivateUserUseCase
     activate_user_uc: ActivateUserUseCase
     list_users_uc: ListUsersUseCase
@@ -167,6 +177,47 @@ class AdminService:
             UserResponse with ``is_active`` set to ``False``.
         """
         return self.deactivate_user_uc.execute(user_id, context)
+
+    def confirm_user_email(
+        self, user_id: str, context: RequestContext
+    ) -> UserResponse:
+        """Mark an account's address as confirmed without a mailed link.
+
+        Args:
+            user_id: UUID of the account.
+            context: Request context carrying the operator's identity.
+
+        Returns:
+            UserResponse with ``email_verified`` set to ``True``.
+        """
+        return self.confirm_user_email_uc.execute(user_id, context)
+
+    def resend_verification(self, user_id: str, context: RequestContext) -> str:
+        """Send the confirmation message again, to a known account.
+
+        Takes an id rather than an address, unlike the public endpoint:
+        an operator acts on an account they are looking at, and asking
+        them to retype the address invites sending mail to a typo.
+
+        Args:
+            user_id: UUID of the account.
+            context: Request context.
+
+        Returns:
+            The address the message went to, for the answer.
+
+        Raises:
+            DomainError: With code ``USER_NOT_FOUND`` when no account
+                carries that id.
+        """
+        user = self.get_user(user_id, context)
+        if user is None:
+            raise DomainError(
+                f"User with id {user_id} not found", code="USER_NOT_FOUND"
+            )
+
+        self.resend_verification_uc.execute(user.email, context)
+        return user.email
 
     def activate_user(self, user_id: str, context: RequestContext) -> UserResponse:
         """Reactivate a previously deactivated user account.

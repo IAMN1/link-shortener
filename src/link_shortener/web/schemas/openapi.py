@@ -740,6 +740,47 @@ PATHS: Dict[str, Any] = {
             },
         }
     },
+    "/api/v1/admin/users/{user_id}/verify-email": {
+        "post": {
+            "summary": "Confirm an address without a mailed link",
+            "description": (
+                "Needs admin:manage_users. Marks the address as confirmed "
+                "on the operator's word, for the cases the mailed link "
+                "cannot cover -- the message never arrived, the address is "
+                "a list nobody reads, the deployment sends no mail. Any "
+                "outstanding confirmation tokens are spent along with it, "
+                "so a link still sitting in a mailbox stops working. "
+                "Idempotent: an already confirmed account answers 200."
+            ),
+            "tags": ["admin"],
+            "parameters": [USER_PARAMETER],
+            "responses": {
+                "200": {"description": "The account", **_json("UserResponseSchema")},
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:manage_users"),
+                "404": _error("No account carries that id"),
+            },
+        }
+    },
+    "/api/v1/admin/users/{user_id}/resend-verification": {
+        "post": {
+            "summary": "Send the confirmation message again",
+            "description": (
+                "Needs admin:manage_users. Runs the same use case as the "
+                "public endpoint, addressed by account id rather than by "
+                "email, and answers with the address it went to. Issuing a "
+                "new token retires the ones outstanding."
+            ),
+            "tags": ["admin"],
+            "parameters": [USER_PARAMETER],
+            "responses": {
+                "202": {"description": "Accepted", **_json("MessageResponse")},
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold admin:manage_users"),
+                "404": _error("No account carries that id"),
+            },
+        }
+    },
     "/api/v1/admin/users/{user_id}/deactivate": {
         "post": {
             "summary": "Suspend an account",

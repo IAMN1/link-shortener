@@ -71,6 +71,7 @@ from .use_cases.admin.roles.get_role import GetRoleUseCase
 
 from .use_cases.admin.users.create_user import CreateUserUseCase
 from .use_cases.admin.users.update_user_role import UpdateUserRolesUseCase
+from .use_cases.admin.users.confirm_user_email import ConfirmUserEmailUseCase
 from .use_cases.admin.users.deactivate_user import DeactivateUserUseCase
 from .use_cases.admin.users.activate_user import ActivateUserUseCase
 from .use_cases.admin.users.list_user import ListUsersUseCase
@@ -170,6 +171,7 @@ __all__ = [
     "GetRoleUseCase",
     "CreateUserUseCase",
     "UpdateUserRolesUseCase",
+    "ConfirmUserEmailUseCase",
     "DeactivateUserUseCase",
     "ActivateUserUseCase",
     "ListUsersUseCase",
