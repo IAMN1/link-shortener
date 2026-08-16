@@ -1,6 +1,6 @@
 # Testing
 
-**2827 tests**, 94.99% coverage against a floor of 88%, plus two live runs
+**2830 tests**, 94.99% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -326,6 +326,21 @@ checks that none reaches the test.
 chain against a real database file. Every other test builds the schema with
 `create_all` from the models and executes no revisions — which is how a
 broken migration stayed unnoticed for a long time.
+
+**And against PostgreSQL, which is a different question.** That file uses
+SQLite, because that is what a clone gets out of the box; deployments run
+on PostgreSQL, and the two disagree about what a migration may say.
+`integration/docker/test_migrations_on_postgresql.py` builds a database of
+its own on the real server and runs `alembic upgrade head` into it.
+
+It exists because of what SQLite accepted: `link_visits.is_bot` was
+declared `server_default=sa.text('0')`, an integer default on a boolean
+column. SQLite took it and the whole suite was green. PostgreSQL refuses
+it — *column "is_bot" is of type boolean but default expression is of type
+integer* — and since a revision runs in one transaction, the refusal left
+a deployment with **no schema at all**: the migration container exited 1
+and the application came up against nothing. Measured by bringing the
+stack up on empty volumes, which is the one thing no test did.
 
 ### Documentation that has drifted
 
