@@ -1,6 +1,6 @@
 # Testing
 
-**2664 tests**, 94.94% coverage against a floor of 88%, plus two live runs
+**2806 tests**, 95.00% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -74,6 +74,17 @@ Route coverage is not claimed but counted: the run records which rule
 answered each request and goes red if one was never touched. Exactly one is
 never touched — `/static` — and the file names it.
 
+Counted per **(path, method)**, not per path. Six paths carry two methods
+each — `GET` and `DELETE` on a link, `GET` and `POST` on the confirmation
+endpoint, four more under `/admin/` — so counting paths alone made those
+two answers one entry, and a method added to a path some check already
+reached raised no denominator at all. It could ship unchecked with the run
+still printing full coverage; measured by registering a `PUT` on a path the
+run already drives, the old counter stayed at 48/49 and the current one
+names it. `HEAD` and `OPTIONS` are excluded: Flask adds both to every rule
+on its own, and demanding a check for each would ask this run to prove
+Werkzeug works.
+
 <details>
 <summary>Why the run needs five separate clients</summary>
 
@@ -101,7 +112,7 @@ the throttle instead of what it is named after.
 
 </details>
 
-### browser_test.py — 18 checks in a real browser
+### browser_test.py — 25 checks in a real browser
 
 ```bash
 uv sync --group browser
@@ -121,9 +132,47 @@ What it holds:
   the suite and the HTTP run stay green.
 - **A refusal is shown rather than swallowed.** The page scripts used to
   answer `403` with `if (!resp.ok) return;`, leaving a table on "Loading…"
-  for good. One check replaces `fetch` with a 403 and demands a sentence.
+  for good. One check answers `/links/mine` with a 403 through `page.route`
+  and demands a sentence: measured, the silent return puts it back on
+  "Loading…" and the check times out, and showing `data.error` instead of
+  `data.message` fails it with `FORBIDDEN`.
+
+  It arranged that 403 by assigning `window.fetch` until 2026-08-16, and
+  **passed over both defects for as long as it did**. The assignment was
+  followed by `page.reload()`, and a reload builds a new document — so the
+  script ran against the live service, the table filled in with real rows,
+  and "Loading…" went away because the data had arrived. A check that
+  fakes a network answer has to do it with `route`, which belongs to the
+  page rather than to the document.
 - **The confirmation link is inert until clicked**, so a mail scanner that
   follows links cannot spend somebody's token.
+- **The language control is alive, and stays alive.** Three checks, and they
+  fail for three different reasons: a browser that asks for Russian is
+  answered in Russian (measured — Playwright's Chromium sends no
+  `Accept-Language` at all unless the context is given a locale, so every
+  other check here takes the "declared nothing" branch); pressing a language
+  redraws the page and the choice survives a navigation; and the control
+  still works **after a Turbo visit**. The last one is the reason the
+  handler is delegated to `document`: bound to the buttons instead, it
+  passes the middle check and fails that one, which is exactly what was
+  measured.
+- **What a script *writes* is in the language of the page.** Three more, and
+  they fail apart because they reach different strings: a refusal the script
+  words itself (the network is cut with `route`, not by replacing `fetch` —
+  a replaced `fetch` belongs to the document, and the reload after it builds
+  a new one), a table the script draws, and the question a `confirm()` asks,
+  which is also the only check that the substitution in `%(code)s` survives
+  the trip. Measured: putting any one of the three strings back as an
+  English literal reddens its own check and leaves the other two green.
+- **A date is written in the language of the page, not the browser's.** The
+  same fault arriving through a format rather than through words, and the
+  one no scan can find — there is no text in it to look for.
+  `toLocaleDateString()` with no argument formats for the browser's locale,
+  so a reader who chose Russian on an en-US browser was shown `8/16/2026`
+  under a column headed "Создана". The check opens a context with
+  `locale="en-US"` and sets the cookie `lang=ru`, so browser and page
+  cannot agree by accident. Measured: `'ru'` writes 16.08.2026, `'zh'` writes
+  2026/8/16, and dropping the argument again reddens this check alone.
 
 Playwright is declared in its own `browser` dependency group rather than in
 `dev`: `requirements.txt` is exported from the lock file without filtering
@@ -144,13 +193,13 @@ Both now raise `tests/live/mail_catcher.py`, an SMTP server on the loopback,
 point the mailer at it, and take the link out of the delivered message.
 
 Measured by pointing `VERIFY_PATH` at a path nothing answers: the HTTP run
-gives 81/123, the browser run 7/17.
+gives 81/123, the browser run 10/25.
 
 The link has to be **opened**, not parsed. The message now leads to a page
 whose button posts the token, which tempted the HTTP run into extracting the
 token and posting it to a path written inside the run. That is what was done
-first — and the broken `VERIFY_PATH` still gave 114 of the 115 checks the
-run held at the time, because every account was confirmed anyway.
+first — and the broken `VERIFY_PATH` still passed all but one of the checks
+the run held at the time, because every account was confirmed anyway.
 `confirm_email` follows the address from the message first and spends the
 token second.
 
@@ -165,6 +214,32 @@ it is meant to check.
 </details>
 
 ## What the suite is protected from
+
+### A page in the wrong language
+
+Six separate faults produce one symptom, and none of them raises anything:
+the page renders, returns 200, and is written in English on a Russian
+screen. Each has its own check in
+`tests/unit/web/test_translations.py`.
+
+| Fault | Why nothing complains | What catches it |
+|---|---|---|
+| A string written straight into a template | It is in no catalogue, so there is no empty entry to find | Every readable text node in every template is scanned; anything not marked has to be in a named allow-list of things that are deliberately not prose — API paths, `curl`, the product name |
+| An empty `msgstr` | gettext answers the msgid, which **is** the English text | Every entry in every catalogue is checked for a translation |
+| An entry marked `fuzzy` | gettext skips fuzzy entries silently; the catalogue looks complete in an editor | No entry may carry the flag |
+| A `.po` translated but never compiled | gettext reads `.mo` and never looks at the `.po` beside it | Every translated source entry must be present in the compiled one |
+| A string marked but never extracted | It is in no catalogue at all, so the three checks above have nothing to find | Extraction is run again and compared against the `.pot` on disk |
+| A sentence written into a page script | It runs in the browser, where the catalogues are not — and nothing but `browser_test.py` executes `web/static/js` at all | Every `.js` under `web/static/js` is scanned the way the templates are, for quoted sentences **and** for text nodes inside the markup a script concatenates; the keys the scripts ask `t()` for are compared with `web/i18n.py:script_strings` in both directions |
+
+The other half — that the wiring between a request and those files holds —
+is `tests/integration/web/test_templates/test_pages_come_out_in_the_chosen_language.py`,
+which renders pages and reads the words back. The two halves fail apart: a
+catalogue can be perfect and unreachable, which is what a wrong
+`BABEL_TRANSLATION_DIRECTORIES` produces.
+
+Russian plurals are the reason gettext was chosen over a dictionary of
+strings, and they get their own check: three forms, and ten takes the third
+— the one a naive `if n == 1` never reaches.
 
 ### The machine
 
@@ -249,8 +324,8 @@ catch tests that read configuration nobody gave them.
 flowchart TD
     subgraph clean["clean"]
         C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
-        C2 --> C3[count collected tests<br/>minimum 2656] --> C4[pytest --error-for-skips]
-        C4 --> C5[smoke_test.py<br/>123 checks] --> C6[browser_test.py<br/>18 checks]
+        C2 --> C3[count collected tests<br/>minimum 2793] --> C4[pytest --error-for-skips]
+        C4 --> C5[smoke_test.py<br/>123 checks] --> C6[browser_test.py<br/>25 checks]
     end
     subgraph hostile["hostile"]
         H1[the same, plus a polluted .env<br/>and exported variables] --> H2[pytest --error-for-skips]

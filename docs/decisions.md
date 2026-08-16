@@ -1,6 +1,6 @@
 # Decisions
 
-Thirty-one write-ups of why something is the way it is. Read this when the
+Thirty-four write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -348,6 +348,111 @@ With the preview off the same navigation is one render and **one** API
 call. It costs little, because hovering a link already fetches the page
 before the click lands: the paint that the preview would have saved is a
 paint the prefetch has already made unnecessary.
+
+### The domain marks its sentences; the boundary translates them
+
+**Decided** (2026-08-16): a domain error carries three things — the finished
+English `message`, a `template` with named placeholders, and the `params`
+that fill it. `domain/i18n.py` holds `N_`, which returns its argument and
+exists only so `pybabel extract` can see the string. Translation happens in
+`web/i18n.py:translate_error`, at the boundary.
+
+**Why.** The sentences are written where the failure is understood, which is
+the domain — and the domain must not import Flask-Babel: the CLI and the
+Celery worker raise the same errors with no request anywhere near them.
+
+Marking rather than a table of `code → sentence` in the web layer, because
+`VALIDATION_ERROR` is one code covering 51 different sentences. A table
+answers all 51 with one, and "Password must be at least 8 characters" is
+exactly the sentence a person needs.
+
+`template` beside `message` rather than instead of it, because an f-string
+is finished before anybody can translate it: by the time the boundary sees
+`"Link with code (abc123) not found"`, no catalogue entry matches, `gettext`
+hands the string straight back, and the page renders in English with nothing
+reporting a fault. The English `message` stays because `application.log` and
+the CLI read it, and neither has a reader to negotiate a language with.
+
+Placeholders are named, not positional: Russian and Chinese both move the
+value inside the sentence, and `%s` cannot be moved past another `%s`.
+
+`N_` needs no extraction flag — it is already in Babel's default keywords.
+
+**What was left open.** `details[].message` stays English: those sentences
+are built inside Pydantic from a rule name, so there is no msgid to mark.
+Sentences behind a 5xx are deliberately unmarked — the handler answers the
+generic one, so marking them would put the service's internals in front of
+a translator with no way to see where they appear.
+
+### A refusal page decides by code, never by its own wording
+
+**Decided** (2026-08-16): `error.html` is reached through one function,
+`web/responses.py:error_page`, which is given the error code and decides
+from `CODES_OFFERING_LOOKUP` whether the page offers a lookup form.
+
+**Why.** The page used to test `'link' in error|lower` — twice, once for the
+form and once for its script. That works only while the sentence is English:
+"Ссылка не найдена" does not contain `link`, so the first translated 404
+would have dropped the recovery form from the one page that most needs it,
+silently, on a page that still renders perfectly. Nothing measured it —
+before this change no test looked at that form at all.
+
+One function rather than the twelve `render_template("error.html", ...)`
+calls it replaced: a thirteenth caller forgetting the code costs exactly the
+same silent loss, and there is now one place to forget it in.
+
+**What was left open.** The list is two codes, `LINK_NOT_FOUND` and
+`LINK_EXPIRED`, which is what the prose test matched in practice.
+
+### A page script is handed its sentences; it never carries them
+
+**Decided** (2026-08-16): the sentences the page scripts write onto a page
+live in `web/i18n.py:script_strings`, are translated on the server, and
+reach the browser as a `<script type="application/json">` block that
+`layout/base.html` prints. A script asks for one by key — `t('no_links_yet')`
+— and never holds English of its own. Where the sentence belongs to a control
+the server already drew, it goes on that control instead, in `data-confirm`,
+already translated and already filled in.
+
+**Why.** A script runs in the browser, where `gettext` has long since had its
+turn. A string typed into a `.js` file is therefore in the language it was
+typed in, on every page, in every language — the page arrived in Russian and
+the script wrote English into it. There were about forty-five such strings,
+and sixteen of them were not even quoted sentences: they were text nodes
+inside markup being concatenated, `'<span>Clicks</span>'`, which a search for
+quoted prose does not find.
+
+In the page rather than fetched from a route of its own: a second request
+would arrive after the first "Working…" was already on screen, and it would
+need a cache keyed on the language cookie to be worth making.
+
+`application/json` rather than `window.I18N = {...}`. The browser does not
+execute the block, so a translated sentence is data and never code — and a
+`.po` file is something an operator edits, where a stray quote should cost a
+sentence rather than the page.
+
+The keys sit in one Python function rather than in the layout, because the
+scripts and the dictionary have to be checked against each other and there is
+one list to read. `t()` answers an unknown key with the key itself, so a
+rename puts `no_links_yet` on the page where a sentence belongs — ugly on
+purpose, an empty string being a page that looks finished and says nothing.
+
+Substitutions are named, `%(code)s`, for the reason the domain's are: a
+translator moving the value across the sentence has to know which value it
+is.
+
+**What was left open.** The whole dictionary travels with every page, so a
+page pays for sentences its own script never asks for. Measured: 1404 bytes
+in English, 4257 in Russian — Flask's `tojson` escapes non-ASCII, so every
+Cyrillic letter travels as `\uXXXX` — and 594 and 915 bytes respectively once
+`web/middleware/compression.py` has had it. Splitting the dictionary per page
+would mean each template naming the keys its own script uses, which is the
+second list this arrangement exists to avoid.
+
+The strings a script shows are also reachable a second way, from the service
+itself: `data.message` on a refusal is already translated by the API, which
+answers in the language of the same cookie. The two are not fallbacks for
+each other, and `apiErrorText` says so where it picks between them.
 
 ---
 

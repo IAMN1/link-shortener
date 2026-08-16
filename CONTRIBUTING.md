@@ -29,7 +29,7 @@ expected output of every step.
 ## What a change has to pass
 
 ```bash
-uv run pytest tests/                      # 2664 tests, 88% coverage floor
+uv run pytest tests/                      # 2806 tests, 88% coverage floor
 uv run flake8 src tests
 uv run pylint src                         # floor 9.0
 uv run bandit -r src -q
@@ -40,11 +40,86 @@ Plus the two live runs, if your change touches HTTP or the frontend:
 
 ```bash
 uv run python tests/live/smoke_test.py    # 123 checks
-uv run python tests/live/browser_test.py  # 18 checks, needs --group browser
+uv run python tests/live/browser_test.py  # 25 checks, needs --group browser
 ```
 
 CI runs all of it, twice — once in a clean environment and once in a
 polluted one. [Testing](docs/testing.md) explains what each level is for.
+
+## If you touched a string a visitor reads
+
+The interface is offered in English, Russian and Chinese. Text on a page
+goes through `gettext`, and so do the sentences the service itself writes —
+the `message` in an error envelope, and the messages it mails. A new or
+edited string means the catalogues have to be brought along with it:
+
+```bash
+D=src/link_shortener/web/translations
+uv run pybabel extract -F babel.cfg -o $D/messages.pot \
+    --project=link-shortener --version=0.1.0 .
+uv run pybabel update -i $D/messages.pot -d $D          # merge, keeping what exists
+# …fill in the new msgstr in $D/ru/LC_MESSAGES/messages.po and zh/…
+uv run pybabel compile -d $D                            # .mo is what gettext reads
+```
+
+`update`, never `init` — `init` starts an empty catalogue and throws away
+every translation already made. `init` is only for a language that has none.
+
+Six things go wrong here and **none of them raises anything**: the page
+just comes out in the wrong language. A string written straight into a
+template, an empty `msgstr`, an entry marked `fuzzy` (gettext skips those
+silently), a `.po` translated but never compiled, a marked string that
+extraction never reached, and a sentence typed into a page script all look
+identical from outside. `tests/unit/web/test_translations.py` catches all
+six, and it is the reason each of them is a test rather than a note here.
+
+Marking is `{{ _('…') }}` for a plain string, `{% trans %}` for a sentence
+with a link or a number in it, and `pgettext('context', '…')` where one
+English word needs two translations — "Sign up" is a button in the header
+and a verb inside a sentence, and Russian will not use one word for both.
+
+**A sentence the service raises is marked, not translated, where it is
+written.** The domain does not import Flask-Babel — the CLI and the Celery
+worker raise the same errors with no request to negotiate with — so it
+marks with `N_` from `domain/i18n.py` and `web/i18n.py:translate_error`
+does the lookup at the boundary. A sentence with a value in it carries a
+`template` and `params` beside the finished English one:
+
+```python
+raise ValidationError(
+    f"ttl_seconds must not exceed {self.max_ttl_seconds}",   # logs read this
+    field="ttl_seconds",
+    template=N_("ttl_seconds must not exceed %(max)s"),      # the catalogue reads this
+    params={"max": self.max_ttl_seconds},
+)
+```
+
+An f-string alone is one more silent way to lose a translation, alongside
+the six above: it is finished before anyone can look it up, `gettext`
+hands it straight back, and the answer comes out English with nothing
+reporting a fault. Placeholders are named, never `%s` — a translator moves
+them.
+
+Sentences behind a 5xx are deliberately **not** marked. The handler answers
+one generic sentence for all of them, so marking would only put the
+service's internals in front of a translator.
+
+**A sentence a page script writes is not written in the script.** It runs in
+the browser, where the catalogues are not, so a string typed into a `.js`
+file stays in that language on every page. Add it to
+`web/i18n.py:script_strings`, which `layout/base.html` prints into the page,
+and ask for it by key:
+
+```javascript
+tbody.innerHTML = '<tr><td colspan="4">' + escapeHtml(t('no_links_yet')) + '</td></tr>';
+if (!confirm(t('confirm_delete_link', { code: code }))) return;
+```
+
+The key has to be a literal directly inside the call — `t(ok ? 'a' : 'b')`
+runs perfectly and is invisible to the test that checks the scripts against
+the dictionary. Where the sentence belongs to a control the server drew, put
+it on the control in `data-confirm` instead, translated and filled in there;
+`dashboard/users_list.html` does that with an account's address.
 
 ## House style
 

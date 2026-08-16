@@ -9,7 +9,7 @@ suite that fails when the documentation starts lying.
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests: 2664](https://img.shields.io/badge/tests-2664-0b5d3b)](docs/testing.md)
+[![tests: 2806](https://img.shields.io/badge/tests-2806-0b5d3b)](docs/testing.md)
 [![coverage: 95%](https://img.shields.io/badge/coverage-95%25-0b5d3b)](docs/testing.md)
 [![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
 [![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -200,9 +200,9 @@ Thirty-one operations. Full description: `/api/openapi.json`, rendered at
 ## Testing
 
 ```bash
-uv run pytest tests/                      # 2664 tests
+uv run pytest tests/                      # 2806 tests
 uv run python tests/live/smoke_test.py    # 123 checks over HTTP
-uv run python tests/live/browser_test.py  # 18 checks in a real browser
+uv run python tests/live/browser_test.py  # 25 checks in a real browser
 ```
 
 Four levels — unit, integration on SQLite, integration on real PostgreSQL and

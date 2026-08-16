@@ -91,6 +91,56 @@ without a word about it.
 | `GUEST_LINK_WINDOW_DAYS` | 1 | The window |
 | `DEFAULT_GUEST_TTL_SECONDS` | 604800 | Seven days |
 
+## Interface language
+
+| Variable | Default | |
+|---|---|---|
+| `SUPPORTED_LANGUAGES` | `en,ru,zh` | Languages the interface is offered in, best first. The order is what `Accept-Language` is matched against, so a browser that accepts several of them equally gets the first one named |
+| `DEFAULT_LANGUAGE` | `en` | For a caller who asked for none. Must be one of the above, or the service refuses to start |
+
+A request is answered in the first of these that yields a language on offer:
+the `lang` cookie, then `Accept-Language`, then `DEFAULT_LANGUAGE`. The
+cookie outranks the header because it is the only one of the two the visitor
+chose; the header is what their browser was installed with.
+
+> [!NOTE]
+> Most callers reach the default rather than the negotiation. Measured:
+> neither a Flask test client nor the Chromium the browser run drives sends
+> `Accept-Language` at all, so `DEFAULT_LANGUAGE` is what a program sees —
+> which is the point. A script reading `message` out of an error envelope
+> gets English without configuring anything.
+
+Because a page is built from both the cookie and the header, every rendered
+page says `Vary: Cookie, Accept-Language`. Every JSON answer says it too,
+for the same reason and since the same change: `message` is translated now,
+so one address gives different bytes to different callers. Removing either
+would let a shared cache answer one visitor out of what it stored for
+another — see `web/middleware/cache_control.py`.
+
+### What the language reaches
+
+The interface, the API's `message`, and the messages the service mails.
+
+`message` in the error envelope is **language-dependent**. `error` is not:
+it is the machine-readable code, it is the same string in every language,
+and it is what a client should branch on. A client that matched on the
+sentence was already relying on wording that could be reworded; it now
+breaks against a browser's cookie as well.
+
+| | Language | Why |
+|---|---|---|
+| `error` | never translated | A code, not a sentence |
+| `message` | cookie, then `Accept-Language`, then default | What a person reads |
+| `details[].message` | English | Written inside Pydantic from a rule name, not a sentence this project owns |
+| A 5xx `message` | English, and always the same one | It says only "An internal error occurred", on the page as in the envelope; what actually failed is in `application.log` |
+| `application.log` | English | The operator reading it did not choose the visitor's language |
+| Mail | the language of the request that triggered it | Carried on `RequestContext.language`, because the worker rendering it has no request to ask |
+| What a page script writes | the language the page was built in | The script runs in the browser, where the catalogues are not, so it is handed its sentences translated — see [decisions](decisions.md#a-page-script-is-handed-its-sentences-it-never-carries-them) |
+
+A programmatic client carries no cookie and sends no `Accept-Language`, so
+it keeps getting English without configuring anything. A browser calling
+the same endpoint sends its own cookie and gets the language on screen.
+
 ## Security
 
 | Variable | Default | |
