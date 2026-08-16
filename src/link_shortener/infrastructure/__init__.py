@@ -34,7 +34,9 @@ from .logging.handlers.audit.standard import StandardAuditLogger
 from .logging.handlers.audit.structlog import StructlogAuditLogger
 from .logging.managers.logger_manager import LoggerManager
 from .logging.managers.audit_manager import AuditManager
-from .logging.logging_settings import LoggingSettings
+from .logging.logging_settings import (
+    LoggingSettings, attribute_reader, logging_settings_from,
+)
 from .logging.bootstrap import setup_logging
 
 from .cli import register_flask_commands
@@ -90,6 +92,8 @@ __all__ = [
     "StandardAuditLogger",
     "StructlogAuditLogger",
     "LoggingSettings",
+    "attribute_reader",
+    "logging_settings_from",
     "NullLogger",
     "StandardLogger",
     "StructLogger",

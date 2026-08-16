@@ -4,7 +4,7 @@ from flask import Flask, redirect
 from flask_cors import CORS
 
 from link_shortener.infrastructure import (
-    LoggingSettings,
+    logging_settings_from,
     Container,
     ConfigFactory,
     get_config,
@@ -113,21 +113,10 @@ def create_app(config=None) -> Flask:
     # ------------------------------------------------------------------
     # Setup logging
     # ------------------------------------------------------------------
-    logging_settings = LoggingSettings(
-        log_dir=app.config.get("LOG_DIR", "logs"),
-        log_file_name=app.config.get("LOG_FILENAME", "link_shortener"),
-        audit_log_filename=app.config.get("AUDIT_LOG_FILENAME", "audit"),
-        error_log_filename=app.config.get("ERROR_LOG_FILENAME", "error"),
-        log_date_format=app.config.get("LOG_DATE_FORMAT", "%Y-%m-%d %H:%M:%S"),
-        log_to_console=app.config.get("LOG_TO_CONSOLE", True),
-        log_to_file=app.config.get("LOG_TO_FILE", False),
-        log_level_str=app.config.get("LOG_LEVEL", "DEBUG"), 
-        debug=app.config.get("DEBUG", False),
-        sqlalchemy_log_level=app.config.get("SQLALCHEMY_LOG_LEVEL", "WARNING"),
-        werkzeug_log_level=app.config.get("WERKZEUG_LOG_LEVEL", "WARNING"),
-        logger_type=app.config.get("LOGGER_TYPE", "auto"),
-        audit_enabled=app.config.get("AUDIT_ENABLED", True)
-    )
+    # The same list of names the Celery worker builds its settings from --
+    # see `logging_settings_from`. Failed writes raise here, because this
+    # is the process that has `FailoverService` behind them.
+    logging_settings = logging_settings_from(app.config.get)
     setup_logging(
         logging_settings, 
         logging_enabled=app.config.get("LOGGING_ENABLED", True), 

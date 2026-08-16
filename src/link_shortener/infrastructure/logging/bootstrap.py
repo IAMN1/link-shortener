@@ -13,6 +13,42 @@ from link_shortener.infrastructure.logging.formatters.console_formatter import C
 from link_shortener.infrastructure.logging.formatters.json_formatter import JSONFormatter
 
 
+def _stream_handler_class(settings: LoggingSettings) -> type:
+    """
+    The console handler this process writes through.
+
+    Args:
+        settings: LoggingSettings object.
+
+    Returns:
+        The raising handler, or the standard library's own.
+    """
+    if settings.raise_on_write_failure:
+        return RaisingStreamHandler
+
+    return logging.StreamHandler
+
+
+def _file_handler_class(settings: LoggingSettings) -> type:
+    """
+    The file handler this process writes through.
+
+    Watched either way -- rotation is done from outside and the file has to
+    be followed whoever is writing. What the setting decides is only
+    whether a failed write reaches the caller.
+
+    Args:
+        settings: LoggingSettings object.
+
+    Returns:
+        The raising handler, or the standard library's own.
+    """
+    if settings.raise_on_write_failure:
+        return RaisingWatchedFileHandler
+
+    return logging.handlers.WatchedFileHandler
+
+
 def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logger):
     """
     Add a console handler to the root logger.
@@ -36,7 +72,7 @@ def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logge
     formatter: logging.Formatter
 
     if settings.logger_type == "standard":
-        handler = RaisingStreamHandler()
+        handler = _stream_handler_class(settings)()
         handler.setLevel(settings.get_log_level_int())
         formatter = ConsoleFormatter()
         handler.setFormatter(formatter)
@@ -44,7 +80,7 @@ def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logge
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
         formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
-        handler = RaisingStreamHandler()
+        handler = _stream_handler_class(settings)()
         handler.setLevel(settings.get_log_level_int())
         handler.setFormatter(formatter)
         root_logger.addHandler(handler)
@@ -79,7 +115,7 @@ def _setup_file_handler(settings: LoggingSettings, root_logger: logging.Logger):
         renderer = structlog.processors.JSONRenderer()
         formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
 
-    handler = RaisingWatchedFileHandler(
+    handler = _file_handler_class(settings)(
         filename=settings.log_file_path,
         encoding="utf-8",
     )
@@ -117,7 +153,7 @@ def _setup_audit_handler(settings: LoggingSettings):
     # Console handler
     if settings.log_to_console:
         if settings.logger_type == "standard":
-            handler = RaisingStreamHandler()
+            handler = _stream_handler_class(settings)()
             handler.setLevel(logging.INFO)
             formatter = ConsoleFormatter()
             handler.setFormatter(formatter)
@@ -125,7 +161,7 @@ def _setup_audit_handler(settings: LoggingSettings):
         else:
             renderer = structlog.dev.ConsoleRenderer(colors=True)
             formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
-            handler = RaisingStreamHandler()
+            handler = _stream_handler_class(settings)()
             handler.setLevel(logging.INFO)
             handler.setFormatter(formatter)
             audit_logger.addHandler(handler)
@@ -142,7 +178,7 @@ def _setup_audit_handler(settings: LoggingSettings):
 
         audit_file = os.path.join(settings.log_dir, f"{settings.audit_log_filename}.log")
         
-        handler = RaisingWatchedFileHandler(audit_file, encoding="utf-8")
+        handler = _file_handler_class(settings)(audit_file, encoding="utf-8")
         handler.setLevel(logging.INFO)
         handler.setFormatter(formatter)
         audit_logger.addHandler(handler)
@@ -177,7 +213,7 @@ def _setup_error_handler(settings: LoggingSettings, root_logger: logging.Logger)
     
     error_file = os.path.join(settings.log_dir, f"{settings.error_log_filename}.log")
     
-    handler = RaisingWatchedFileHandler(error_file, encoding="utf-8")
+    handler = _file_handler_class(settings)(error_file, encoding="utf-8")
     handler.setLevel(logging.ERROR)
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)

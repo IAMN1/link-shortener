@@ -169,7 +169,12 @@ def upgrade() -> None:
     sa.Column('visitor_network', sa.String(length=45), nullable=True),
     sa.Column('device', sa.String(length=16), nullable=False, server_default='unknown'),
     sa.Column('browser', sa.String(length=16), nullable=False, server_default='unknown'),
-    sa.Column('is_bot', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+    # `sa.false()`, not `sa.text('0')`: the literal is rendered per dialect,
+    # and PostgreSQL refuses an integer default on a boolean column outright
+    # -- "column is_bot is of type boolean but default expression is of type
+    # integer", which failed the whole revision and left a deployment with no
+    # schema at all. SQLite took it, which is why the suite did not.
+    sa.Column('is_bot', sa.Boolean(), nullable=False, server_default=sa.false()),
     sa.ForeignKeyConstraint(['link_id'], ['urls.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
