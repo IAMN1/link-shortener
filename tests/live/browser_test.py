@@ -682,20 +682,29 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
     def _():
         # The defect the page scripts all shared: `if (!resp.ok) return;`
         # left the table on "Loading..." for good, so a refusal and a slow
-        # network looked identical to the person waiting. Measured by
-        # asking for a page whose data this account may not have: the
-        # account below holds no administrative permission, so the users
-        # page answers 403 to the markup and the script has to say it.
+        # network looked identical to the person waiting.
         #
-        # Restoring the silent return in any page script turns this red,
-        # which is what the run above could not do.
+        # The refusal is arranged with `route`, which belongs to the page
+        # and outlives a navigation. This check used to assign
+        # `window.fetch` and then reload -- and a reload builds a new
+        # document, so the assignment went with the old one. The script ran
+        # against the live service, the table filled in with this account's
+        # own links, "Loading" disappeared because the data arrived, and
+        # every assertion below held. Measured: with the silent
+        # `if (!resp.ok) return;` put back in `my_links.js`, the check
+        # stayed green -- it was passing over the exact defect it names.
         page = page_for("/login")
         sign_in(page, base)
+        page.route("**/api/v1/links/mine", lambda route: route.fulfill(
+            status=403,
+            content_type="application/json",
+            # `message` beside `error`, because the sentence is half of
+            # what this check is about: the scripts put `data.message`
+            # first, and a page that shows `FORBIDDEN` fails the last
+            # assertion below.
+            body='{"error": "FORBIDDEN", "message": "Not authorized"}',
+        ))
         page.goto(f"{base}/dashboard/links")
-        page.wait_for_selector("#links-tbody tr", timeout=5000)
-        page.evaluate("() => { window.fetch = async () => new Response("
-                      "JSON.stringify({message: 'Not authorized'}), {status: 403}); }")
-        page.reload()
         page.wait_for_function(
             "document.getElementById('links-tbody').textContent.indexOf('Loading') === -1",
             timeout=5000,
