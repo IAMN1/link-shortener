@@ -18,6 +18,7 @@ from pathlib import Path
 from link_shortener.infrastructure.configs.app import base as base_module
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 from link_shortener.infrastructure.configs.app.staging import StagingConfig
+from link_shortener.infrastructure.configs.app.testing import TestingConfig
 
 
 def detached(**overrides):
@@ -128,6 +129,25 @@ class TestWhatIsLeftAlone:
 
         assert detached().LOG_DIR != "/var/log/from-the-machine"
         assert Path(detached().LOG_DIR).name == "logs"
+
+    def test_the_testing_profile_is_the_one_that_is_detached(self, monkeypatch):
+        """
+        The check above builds its own detached subclass, so it holds for
+        `IGNORE_ENV` and says nothing about who sets it. `TestingConfig`
+        is where it is set, and it is the profile the whole suite runs
+        under: flipped there, every test starts reading the machine it
+        runs on and this file stays green.
+
+        Asked through the journal directory because that is what it costs
+        -- a suite that reads `LOG_DIR` from the environment writes its
+        logs into whatever the developer or the CI job happens to export.
+        """
+        monkeypatch.setenv("LOG_DIR", "/var/log/from-the-machine")
+
+        log_dir = TestingConfig().LOG_DIR
+
+        assert log_dir != "/var/log/from-the-machine"
+        assert Path(log_dir).name == "logs"
 
     def test_outside_a_source_tree_nothing_is_invented(self, monkeypatch):
         """An installed copy has no project directory to anchor to.

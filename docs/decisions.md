@@ -385,6 +385,18 @@ Sentences behind a 5xx are deliberately unmarked — the handler answers the
 generic one, so marking them would put the service's internals in front of
 a translator with no way to see where they appear.
 
+And a refusal Werkzeug words itself keeps its English. The statuses a
+visitor here actually meets have sentences of this project's own — 400,
+403, 409, 413, 415 and 503 in `_sentence_for`, 404 and 405 in handlers of
+their own, 410 and 401 and the guest ceiling as domain errors, and the
+throttle's 429 through `ngettext` — and the web layer calls `abort()`
+nowhere, so nothing else is raised from inside it. What is left is the set
+this service does not answer with at all: 408, 422, 451, 501, 502, 504 and
+their neighbours, which arrive from Werkzeug or a proxy. Their descriptions
+are written for a developer rather than for a reader, and translating a
+status nobody here raises would mean marking sentences no one can see in
+place to check.
+
 ### A refusal page decides by code, never by its own wording
 
 **Decided** (2026-08-16): `error.html` is reached through one function,
