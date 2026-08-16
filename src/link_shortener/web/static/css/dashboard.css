@@ -173,6 +173,195 @@
     font-size: 16px;
 }
 
+/* ==========================================================================
+   Charts
+
+   Drawn by `static/js/charts.js` as plain SVG -- no library, and none of
+   the rules below styles anything a library would need. The shapes carry
+   the data; everything around them is the same components the rest of the
+   dashboard is built from, at the same density.
+
+   The one rule the marks follow: white does the separating. A 2px gap in
+   the surface colour parts the two halves of a stacked column and the
+   slices of a ring, instead of a stroke drawn around each -- a stroke is
+   ink that is not data, and at this size it doubles the weight of a small
+   segment.
+   ========================================================================== */
+
+/* The row of controls above a chart: what span, how often, and how fresh
+   what you are looking at is. Wraps, because five intervals and four spans
+   do not fit a narrow panel in one line. */
+.chart-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: var(--d-gap);
+}
+.chart-bar-label {
+    font-size: calc(var(--d-fs) - 2px);
+    color: var(--c-text-3);
+}
+/* Pushes the freshness note to the far end of the row, so it sits away
+   from the controls and reads as a status rather than another button. */
+.chart-bar-gap { flex: 1 1 auto; }
+.chart-fresh {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: calc(var(--d-fs) - 2px);
+    color: var(--c-text-3);
+    font-variant-numeric: tabular-nums;
+}
+/* Lit while the page is polling, unlit when it is not. The word beside it
+   says the same thing -- the dot is the glance, not the message. */
+.chart-fresh-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--c-ok);
+    flex: none;
+}
+.chart-fresh-dot--off { background: var(--c-line-2); }
+
+/* The frame a chart is drawn into. Positioned, because the tooltip is an
+   absolutely placed element inside it. */
+.chart-figure { position: relative; }
+.chart-figure svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    /* The axis labels sit just outside the viewBox on the left. */
+    overflow: visible;
+}
+.chart-grid { stroke: var(--c-line); stroke-width: 1; }
+.chart-axis {
+    fill: var(--c-text-3);
+    font-family: var(--sans);
+    font-size: 11px;
+}
+.chart-axis--num { font-variant-numeric: tabular-nums; }
+/* The target the pointer is tested against: the whole column of the plot,
+   not the mark, so a one-visit column is as easy to hit as a tall one. */
+.chart-hit { fill: transparent; cursor: crosshair; }
+.chart-empty-text {
+    fill: var(--c-text-2);
+    font-family: var(--sans);
+    font-size: 13px;
+}
+.chart-empty-hint {
+    fill: var(--c-text-3);
+    font-family: var(--sans);
+    font-size: 11px;
+}
+/* A chart that could not be loaded keeps its frame and steps back, so the
+   panel reads as "no answer" rather than as an empty box. */
+.chart-figure--failed svg { opacity: .45; }
+
+.chart-tip {
+    position: absolute;
+    z-index: 5;
+    /* Never the thing under the pointer: the tooltip follows the pointer,
+       and a tooltip that can be hovered flickers against its own trigger. */
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+    padding: 6px 8px;
+    border: 1px solid var(--c-line-2);
+    border-radius: var(--r);
+    background: var(--c-surface);
+    color: var(--c-text);
+    font-size: calc(var(--d-fs) - 1px);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity .08s;
+}
+.chart-tip.active { opacity: 1; }
+.chart-tip-head { font-weight: 600; margin-bottom: 3px; }
+.chart-tip-row { display: flex; justify-content: space-between; gap: 10px; }
+.chart-tip-key { color: var(--c-text-2); }
+.chart-tip-val { font-family: var(--mono); font-weight: 600; }
+
+/* Two series need a legend; one does not, and the ring does not either --
+   its own list of rows is the legend. */
+.chart-legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    font-size: calc(var(--d-fs) - 2px);
+    color: var(--c-text-2);
+}
+.chart-key { display: inline-flex; align-items: center; gap: 6px; }
+.chart-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex: none;
+}
+
+/* Bars: label, track, value. A grid rather than three floats, so the
+   tracks line up whatever the labels are -- and the labels come from the
+   data, so their width is not ours to decide. */
+.chart-bars {
+    display: grid;
+    grid-template-columns: minmax(64px, auto) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 10px;
+}
+.chart-bars-label { font-size: calc(var(--d-fs) - 1px); color: var(--c-text); }
+.chart-bars-track {
+    height: 14px;
+    border-radius: 3px;
+    background: var(--c-wash);
+}
+.chart-bars-fill { height: 100%; border-radius: 3px 4px 4px 3px; }
+.chart-bars-val {
+    font-family: var(--mono);
+    font-size: calc(var(--d-fs) - 1px);
+    color: var(--c-text-2);
+}
+
+/* The two breakdowns stand side by side while there is room and stack when
+   there is not. Its own rule rather than `.stats-grid`, which caps a tile
+   at 260px -- a ring plus its rows needs more than that. */
+.chart-pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--d-gap);
+}
+
+/* Ring and its rows, side by side while there is room. */
+.chart-ring {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+.chart-ring svg { width: 148px; flex: none; }
+.chart-ring-total {
+    fill: var(--c-text);
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 600;
+}
+.chart-ring-rows {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 10px;
+    font-size: calc(var(--d-fs) - 1px);
+    min-width: 0;
+}
+/* A browser family can be any string the data carries; it wraps rather
+   than pushing the ring off the panel. */
+.chart-ring-name { overflow-wrap: anywhere; }
+.chart-ring-val {
+    font-family: var(--mono);
+    color: var(--c-text-2);
+    white-space: nowrap;
+}
+
 /* ===== The rail =====
 
    Collapsed, the sidebar gives up its words and keeps its glyphs, so every

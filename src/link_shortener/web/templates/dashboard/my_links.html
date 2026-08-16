@@ -10,9 +10,13 @@
 
 <div id="links-error" class="alert alert--error hidden mb-2"></div>
 
-{# The delete column is drawn by the script, so the permission has to reach
-   it. An analyst may read its own links and may not delete them: the button
-   used to be drawn for everyone and answered 403. #}
+{# The last column is drawn by the script and holds two controls with
+   different rules: a link to the row's own statistics, which anyone who
+   sees the row may open, and Delete, which is a permission of its own --
+   an analyst reads its links and may not remove them. The button used to
+   be drawn for everyone and answered 403, so the permission reaches the
+   script through the attribute below. The column itself is now always
+   there, because the statistics link always is. #}
 <div class="card card--flush" data-can-delete="{{ 'yes' if can('link:delete_own') else 'no' }}" id="links-card">
     <div class="table-wrap">
         <table class="table">
@@ -23,11 +27,11 @@
                     <th>{{ _('Clicks') }}</th>
                     <th>{{ _('Created') }}</th>
                     <th>{{ _('Expires') }}</th>
-                    {% if can('link:delete_own') %}<th></th>{% endif %}
+                    <th></th>
                 </tr>
             </thead>
             <tbody id="links-tbody">
-                <tr><td colspan="{{ 6 if can('link:delete_own') else 5 }}" class="loading">{{ _('Loading…') }}</td></tr>
+                <tr><td colspan="6" class="loading">{{ _('Loading…') }}</td></tr>
             </tbody>
         </table>
     </div>

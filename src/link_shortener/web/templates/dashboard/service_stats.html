@@ -1,4 +1,5 @@
 {% extends "dashboard/base.html" %}
+{% import "dashboard/_visit_charts.html" as charts %}
 {% block title %}{{ _('Service Stats — Linkr') }}{% endblock %}
 {% block dashboard_content %}
 <h1 class="dash-title">{{ _('Service Statistics') }}</h1>
@@ -15,6 +16,12 @@
         <span class="stat-value" id="stat-total-clicks">&mdash;</span>
     </div>
 </div>
+
+{# The charts are service-wide and need `stats:view_basic`, which is what
+   this page already needs to exist -- the sidebar entry asks for it. The
+   top-links table below is the part that needs more, and it is guarded
+   separately: a count is not the same disclosure as a short code. #}
+{{ charts.visit_charts('service') }}
 
 {# The popular-links list comes with `stats:view_full`. Without it the
    service sends nothing for this table, and the page used to show an empty
@@ -42,6 +49,12 @@
     {% trans name=permission %}The list of most-visited links needs the {{ name }} permission.{% endtrans %}
 </div>
 {% endif %}
+{% endblock %}
+{# In the head for the reason written out in `my_stats.html`: this file
+   owns a timer, and a timer's owner has to run once per tab. #}
+{% block extra_head %}
+    {{ super() }}
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
 {% endblock %}
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/pages/service_stats.js') }}" defer></script>

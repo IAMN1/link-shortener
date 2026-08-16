@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-16 13:48+0300\n"
+"POT-Creation-Date: 2026-08-16 17:41+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -156,17 +156,17 @@ msgstr "Пароль должен быть не короче %(count)s симв�
 #: src/link_shortener/domain/policies/password_policy.py:131
 #, python-format
 msgid ""
-"Password must not exceed %(count)s characters, and fewer for alphabets that "
-"need more room per character"
+"Password must not exceed %(count)s characters, and fewer for alphabets "
+"that need more room per character"
 msgstr ""
-"Пароль не должен превышать %(count)s символов — и меньше для письменностей, "
-"которым нужно больше места на символ"
+"Пароль не должен превышать %(count)s символов — и меньше для "
+"письменностей, которым нужно больше места на символ"
 
 #: src/link_shortener/domain/policies/password_policy.py:142
 msgid "Password is too common -- choose one that is not on every attacker's list"
 msgstr ""
-"Пароль слишком распространён — выберите тот, которого нет в списке у каждого"
-" злоумышленника"
+"Пароль слишком распространён — выберите тот, которого нет в списке у "
+"каждого злоумышленника"
 
 #: src/link_shortener/domain/policies/privilege_policy.py:95
 #, python-format
@@ -284,11 +284,11 @@ msgstr ""
 #: src/link_shortener/domain/value_objects/short_code.py:59
 #, python-format
 msgid ""
-"Invalid short code format: %(value)s. Must be %(min)s-%(max)s alphanumeric "
-"characters, underscore, or hyphen."
+"Invalid short code format: %(value)s. Must be %(min)s-%(max)s "
+"alphanumeric characters, underscore, or hyphen."
 msgstr ""
-"Неверный формат короткого кода: %(value)s. Нужно %(min)s–%(max)s букв, цифр,"
-" подчёркиваний или дефисов."
+"Неверный формат короткого кода: %(value)s. Нужно %(min)s–%(max)s букв, "
+"цифр, подчёркиваний или дефисов."
 
 #: src/link_shortener/domain/value_objects/url_hash.py:38
 #, python-format
@@ -363,7 +363,7 @@ msgid "Delete link %(code)s? It belongs to this account."
 msgstr "Удалить ссылку %(code)s? Она принадлежит этой учётной записи."
 
 #: src/link_shortener/web/i18n.py:251
-#: src/link_shortener/web/templates/dashboard/my_links.html:35
+#: src/link_shortener/web/templates/dashboard/my_links.html:39
 msgid "No links"
 msgstr "Ссылок нет"
 
@@ -384,6 +384,7 @@ msgid "Results"
 msgstr "Результаты"
 
 #: src/link_shortener/web/i18n.py:256
+#: src/link_shortener/web/templates/dashboard/link_stats.html:9
 msgid "Link"
 msgstr "Ссылка"
 
@@ -426,23 +427,25 @@ msgstr "Переходы по ссылке видит тот, кто её соз
 
 #: src/link_shortener/web/i18n.py:274
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:23
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/my_links.html:27
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Clicks"
 msgstr "Переходы"
 
 #: src/link_shortener/web/i18n.py:279
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:24
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/link_stats.html:36
+#: src/link_shortener/web/templates/dashboard/my_links.html:28
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Created"
 msgstr "Создана"
 
 #: src/link_shortener/web/i18n.py:280
+#: src/link_shortener/web/templates/dashboard/link_stats.html:40
 msgid "Last Access"
 msgstr "Последний переход"
 
@@ -455,6 +458,7 @@ msgid "Days Old"
 msgstr "Дней с создания"
 
 #: src/link_shortener/web/i18n.py:283
+#: src/link_shortener/web/templates/dashboard/link_stats.html:32
 msgid "Clicks/Day"
 msgstr "Переходов в день"
 
@@ -466,15 +470,81 @@ msgstr "Популярная"
 msgid "Recent"
 msgstr "Свежая"
 
-#: src/link_shortener/web/i18n.py:286
+#: src/link_shortener/web/i18n.py:288
+msgid "Total"
+msgstr "Всего"
+
+#: src/link_shortener/web/i18n.py:289
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:72
+msgid "People"
+msgstr "Люди"
+
+#: src/link_shortener/web/i18n.py:290
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:75
+msgid "Robots"
+msgstr "Роботы"
+
+#: src/link_shortener/web/i18n.py:291
+msgid "No visits in this span"
+msgstr "За этот промежуток переходов не было"
+
+#: src/link_shortener/web/i18n.py:292
+msgid "Try a wider span"
+msgstr "Попробуйте промежуток шире"
+
+#: src/link_shortener/web/i18n.py:293
+msgid "The figures could not be loaded"
+msgstr "Не удалось загрузить данные"
+
+#: src/link_shortener/web/i18n.py:298
+msgid "Others"
+msgstr "Другие"
+
+#: src/link_shortener/web/i18n.py:301
+msgid "As bars"
+msgstr "Полосами"
+
+#: src/link_shortener/web/i18n.py:302
+msgid "As a ring"
+msgstr "Кольцом"
+
+#: src/link_shortener/web/i18n.py:307
+msgid "updated just now"
+msgstr "обновлено только что"
+
+#: src/link_shortener/web/i18n.py:308
+#, python-format
+msgid "updated %(count)s s ago"
+msgstr "обновлено %(count)s с назад"
+
+#: src/link_shortener/web/i18n.py:309
+#, python-format
+msgid "updated %(count)s min ago"
+msgstr "обновлено %(count)s мин назад"
+
+#: src/link_shortener/web/i18n.py:310
+#, python-format
+msgid "every %(interval)s"
+msgstr "каждые %(interval)s"
+
+#: src/link_shortener/web/i18n.py:311
+msgid "auto-refresh off"
+msgstr "автообновление выключено"
+
+#: src/link_shortener/web/i18n.py:314
+#: src/link_shortener/web/templates/dashboard/users_list.html:56
+msgid "Stats"
+msgstr "Статистика"
+
+#: src/link_shortener/web/i18n.py:315
 msgid "answering"
 msgstr "отвечает"
 
-#: src/link_shortener/web/i18n.py:287
+#: src/link_shortener/web/i18n.py:316
 msgid "not answering"
 msgstr "не отвечает"
 
-#: src/link_shortener/web/i18n.py:288
+#: src/link_shortener/web/i18n.py:317
 msgid "unknown"
 msgstr "неизвестно"
 
@@ -518,16 +588,16 @@ msgstr "Нет токена обновления"
 msgid "Invalid or expired refresh token"
 msgstr "Токен обновления неверен или истёк"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:87
-#: src/link_shortener/web/controllers/dashboard_controller.py:151
+#: src/link_shortener/web/controllers/dashboard_controller.py:118
+#: src/link_shortener/web/controllers/dashboard_controller.py:182
 msgid "User not found"
 msgstr "Учётная запись не найдена"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:182
+#: src/link_shortener/web/controllers/dashboard_controller.py:213
 msgid "Role not found"
 msgstr "Роль не найдена"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:190
+#: src/link_shortener/web/controllers/dashboard_controller.py:221
 #, python-format
 msgid "The role %(name)s is a system role and cannot be modified"
 msgstr "Роль %(name)s — системная, изменить её нельзя"
@@ -617,11 +687,11 @@ msgstr "Что-то пошло не так"
 
 #: src/link_shortener/web/templates/error.html:25
 msgid ""
-"The code may have expired, or it may never have existed. Codes made without "
-"an account stop working after a few days."
+"The code may have expired, or it may never have existed. Codes made "
+"without an account stop working after a few days."
 msgstr ""
-"Код мог истечь, а мог и не существовать никогда. Коды, созданные без учётной"
-" записи, перестают работать через несколько дней."
+"Код мог истечь, а мог и не существовать никогда. Коды, созданные без "
+"учётной записи, перестают работать через несколько дней."
 
 #: src/link_shortener/web/templates/error.html:28
 #: src/link_shortener/web/templates/public/index.html:109
@@ -652,6 +722,76 @@ msgstr "На главную"
 msgid "none"
 msgstr "нет"
 
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:31
+msgid "Visits"
+msgstr "Переходы"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:41
+msgid "Span"
+msgstr "Промежуток"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:46
+msgid "24 hours"
+msgstr "24 часа"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:47
+#: src/link_shortener/web/templates/dashboard/create_link.html:18
+msgid "7 days"
+msgstr "7 дней"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:48
+#: src/link_shortener/web/templates/dashboard/create_link.html:19
+msgid "30 days"
+msgstr "30 дней"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:49
+msgid "90 days"
+msgstr "90 дней"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:51
+msgid "Refresh"
+msgstr "Обновлять"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:57
+msgid "5 s"
+msgstr "5 с"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:58
+msgid "10 s"
+msgstr "10 с"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:59
+msgid "30 s"
+msgstr "30 с"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:60
+msgid "1 min"
+msgstr "1 мин"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:61
+msgid "5 min"
+msgstr "5 мин"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:62
+msgid "Off"
+msgstr "Выкл"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:63
+msgid "Refresh now"
+msgstr "Обновить"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:83
+msgid "Devices"
+msgstr "Устройства"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:93
+msgid "Browsers"
+msgstr "Браузеры"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:110
+msgid "The last 90 days"
+msgstr "Последние 90 дней"
+
 #: src/link_shortener/web/templates/dashboard/base.html:67
 msgid "Overview"
 msgstr "Обзор"
@@ -677,7 +817,7 @@ msgid "Analytics"
 msgstr "Аналитика"
 
 #: src/link_shortener/web/templates/dashboard/base.html:86
-#: src/link_shortener/web/templates/dashboard/my_stats.html:4
+#: src/link_shortener/web/templates/dashboard/my_stats.html:5
 msgid "My Stats"
 msgstr "Моя статистика"
 
@@ -766,14 +906,6 @@ msgstr "1 час"
 msgid "1 day"
 msgstr "1 день"
 
-#: src/link_shortener/web/templates/dashboard/create_link.html:18
-msgid "7 days"
-msgstr "7 дней"
-
-#: src/link_shortener/web/templates/dashboard/create_link.html:19
-msgid "30 days"
-msgstr "30 дней"
-
 #: src/link_shortener/web/templates/dashboard/create_link.html:21
 msgid "Links made without an account expire after 7 days."
 msgstr "Ссылки без учётной записи живут 7 дней."
@@ -824,8 +956,8 @@ msgid ""
 "Grouped by what they act on. The whole set used to be one flat column of "
 "ticks."
 msgstr ""
-"Сгруппированы по тому, на что действуют. Раньше весь набор был одним плоским"
-" столбцом галочек."
+"Сгруппированы по тому, на что действуют. Раньше весь набор был одним "
+"плоским столбцом галочек."
 
 #: src/link_shortener/web/templates/dashboard/create_role.html:26
 msgid "Create role"
@@ -891,7 +1023,9 @@ msgstr "Правка пользователя"
 #: src/link_shortener/web/templates/dashboard/edit_user.html:35
 #, python-format
 msgid "This account also holds %(names)s, which is not an assignable role."
-msgstr "У этой учётной записи есть также %(names)s — роль, которую нельзя назначить."
+msgstr ""
+"У этой учётной записи есть также %(names)s — роль, которую нельзя "
+"назначить."
 
 #: src/link_shortener/web/templates/dashboard/edit_user.html:36
 msgid "Saving removes it."
@@ -923,8 +1057,9 @@ msgid "Dashboard — Linkr"
 msgstr "Кабинет — Linkr"
 
 #: src/link_shortener/web/templates/dashboard/home.html:16
-#: src/link_shortener/web/templates/dashboard/my_stats.html:14
-#: src/link_shortener/web/templates/dashboard/service_stats.html:14
+#: src/link_shortener/web/templates/dashboard/link_stats.html:28
+#: src/link_shortener/web/templates/dashboard/my_stats.html:15
+#: src/link_shortener/web/templates/dashboard/service_stats.html:15
 #: src/link_shortener/web/templates/dashboard/user_stats.html:17
 msgid "Total Clicks"
 msgstr "Всего переходов"
@@ -935,7 +1070,7 @@ msgid "Avg Clicks"
 msgstr "В среднем переходов"
 
 #: src/link_shortener/web/templates/dashboard/home.html:29
-#: src/link_shortener/web/templates/dashboard/my_stats.html:25
+#: src/link_shortener/web/templates/dashboard/my_stats.html:32
 #: src/link_shortener/web/templates/dashboard/user_stats.html:34
 msgid "Recent Links"
 msgstr "Недавние ссылки"
@@ -946,25 +1081,26 @@ msgid "New link"
 msgstr "Новая ссылка"
 
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:21
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/my_links.html:25
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Code"
 msgstr "Код"
 
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:22
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/link_stats.html:21
+#: src/link_shortener/web/templates/dashboard/my_links.html:26
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Destination"
 msgstr "Куда ведёт"
 
 #: src/link_shortener/web/templates/dashboard/home.html:38
-#: src/link_shortener/web/templates/dashboard/my_links.html:30
-#: src/link_shortener/web/templates/dashboard/my_stats.html:33
-#: src/link_shortener/web/templates/dashboard/service_stats.html:33
+#: src/link_shortener/web/templates/dashboard/my_links.html:34
+#: src/link_shortener/web/templates/dashboard/my_stats.html:40
+#: src/link_shortener/web/templates/dashboard/service_stats.html:40
 #: src/link_shortener/web/templates/dashboard/user_stats.html:43
 msgid "Loading…"
 msgstr "Загрузка…"
@@ -991,36 +1127,45 @@ msgstr "статистика службы"
 msgid "The %(link)s are open to it."
 msgstr "%(link)s ей доступна."
 
+#: src/link_shortener/web/templates/dashboard/link_stats.html:3
+#, python-format
+msgid "Link %(code)s — Linkr"
+msgstr "Ссылка %(code)s — Linkr"
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:10
+msgid "All links"
+msgstr "Все ссылки"
+
 #: src/link_shortener/web/templates/dashboard/my_links.html:2
 msgid "My Links — Linkr"
 msgstr "Мои ссылки — Linkr"
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:25
+#: src/link_shortener/web/templates/dashboard/my_links.html:29
 msgid "Expires"
 msgstr "Истекает"
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:37
-#: src/link_shortener/web/templates/dashboard/my_links.html:40
+#: src/link_shortener/web/templates/dashboard/my_links.html:41
+#: src/link_shortener/web/templates/dashboard/my_links.html:44
 msgid "Nothing here yet."
 msgstr "Здесь пока пусто."
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:38
+#: src/link_shortener/web/templates/dashboard/my_links.html:42
 msgid "Create your first link"
 msgstr "Создайте первую ссылку"
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:41
+#: src/link_shortener/web/templates/dashboard/my_links.html:45
 msgid "This account may read links but not create them."
 msgstr "Эта учётная запись может читать ссылки, но не создавать их."
 
-#: src/link_shortener/web/templates/dashboard/my_stats.html:2
+#: src/link_shortener/web/templates/dashboard/my_stats.html:3
 msgid "My Stats — Linkr"
 msgstr "Моя статистика — Linkr"
 
-#: src/link_shortener/web/templates/dashboard/my_stats.html:10
+#: src/link_shortener/web/templates/dashboard/my_stats.html:11
 msgid "Total Links"
 msgstr "Всего ссылок"
 
-#: src/link_shortener/web/templates/dashboard/my_stats.html:18
+#: src/link_shortener/web/templates/dashboard/my_stats.html:19
 msgid "Avg per Link"
 msgstr "В среднем на ссылку"
 
@@ -1064,27 +1209,27 @@ msgstr "Ролей нет"
 msgid "Nothing to show."
 msgstr "Показывать нечего."
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:2
+#: src/link_shortener/web/templates/dashboard/service_stats.html:3
 msgid "Service Stats — Linkr"
 msgstr "Статистика службы — Linkr"
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:4
+#: src/link_shortener/web/templates/dashboard/service_stats.html:5
 msgid "Service Statistics"
 msgstr "Статистика службы"
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:10
+#: src/link_shortener/web/templates/dashboard/service_stats.html:11
 msgid "Total URLs"
 msgstr "Всего ссылок"
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:25
+#: src/link_shortener/web/templates/dashboard/service_stats.html:32
 msgid "Top Links"
 msgstr "Самые популярные"
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:41
+#: src/link_shortener/web/templates/dashboard/service_stats.html:48
 msgid "Totals only."
 msgstr "Только итоги."
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:42
+#: src/link_shortener/web/templates/dashboard/service_stats.html:49
 #, python-format
 msgid "The list of most-visited links needs the %(name)s permission."
 msgstr "Для списка самых посещаемых ссылок нужно разрешение %(name)s."
@@ -1130,10 +1275,6 @@ msgstr "Адрес не подтверждён, поэтому войти не �
 msgid "Not verified"
 msgstr "Не подтверждена"
 
-#: src/link_shortener/web/templates/dashboard/users_list.html:56
-msgid "Stats"
-msgstr "Статистика"
-
 #: src/link_shortener/web/templates/dashboard/users_list.html:60
 msgid "Send link again"
 msgstr "Выслать ссылку снова"
@@ -1141,11 +1282,11 @@ msgstr "Выслать ссылку снова"
 #: src/link_shortener/web/templates/dashboard/users_list.html:68
 #, python-format
 msgid ""
-"Confirm the address of %(email)s without a mailed link? Do this only if you "
-"know the address is theirs."
+"Confirm the address of %(email)s without a mailed link? Do this only if "
+"you know the address is theirs."
 msgstr ""
-"Подтвердить адрес %(email)s без письма? Делайте так, только если знаете, что"
-" адрес принадлежит им."
+"Подтвердить адрес %(email)s без письма? Делайте так, только если знаете, "
+"что адрес принадлежит им."
 
 #: src/link_shortener/web/templates/dashboard/users_list.html:68
 msgid "Confirm manually"
@@ -1210,7 +1351,8 @@ msgstr ""
 
 #: src/link_shortener/web/templates/email/account_exists_body.txt:9
 msgid ""
-"If it was not you, there is nothing you need to do. Whoever tried learned\n"
+"If it was not you, there is nothing you need to do. Whoever tried learned"
+"\n"
 "nothing about this address: they were given the same answer an address\n"
 "nobody has registered would have got."
 msgstr ""
@@ -1224,7 +1366,8 @@ msgstr "Кто-то попытался зарегистрировать ваш �
 
 #: src/link_shortener/web/templates/email/verification_body.txt:1
 msgid ""
-"Someone -- we hope you -- registered this address with the link shortener.\n"
+"Someone -- we hope you -- registered this address with the link "
+"shortener.\n"
 "\n"
 "Open this link to confirm the address and finish signing up:"
 msgstr ""
@@ -1244,7 +1387,8 @@ msgstr[2] "Ссылка перестанет работать через %(count
 #: src/link_shortener/web/templates/email/verification_body.txt:9
 msgid ""
 "If it was not you, ignore this message. The account cannot be used until\n"
-"the address is confirmed, and it is removed on its own if nobody confirms it."
+"the address is confirmed, and it is removed on its own if nobody confirms"
+" it."
 msgstr ""
 "Если это были не вы, не обращайте внимания на это письмо. Учётной\n"
 "записью нельзя пользоваться, пока адрес не подтверждён, и она\n"
@@ -1290,14 +1434,14 @@ msgstr "Разделы"
 #, python-format
 msgid ""
 "The machine-readable document is at %(link)s — point Swagger UI, Redoc, "
-"Postman or a client generator at it. Nothing is bundled here: a megabyte and"
-" a half of vendored viewer, or a script tag pointing at somebody else's CDN,"
-" is not something a redirect service needs to carry."
+"Postman or a client generator at it. Nothing is bundled here: a megabyte "
+"and a half of vendored viewer, or a script tag pointing at somebody "
+"else's CDN, is not something a redirect service needs to carry."
 msgstr ""
 "Машиночитаемый документ — %(link)s: направьте на него Swagger UI, Redoc, "
 "Postman или генератор клиента. Ничего не вложено: полтора мегабайта "
-"вендоренного просмотрщика или тег скрипта, указывающий на чужой CDN, — не "
-"то, что служба редиректов обязана возить с собой."
+"вендоренного просмотрщика или тег скрипта, указывающий на чужой CDN, — не"
+" то, что служба редиректов обязана возить с собой."
 
 #: src/link_shortener/web/templates/public/api_docs.html:52
 msgid "Parameters"
@@ -1469,11 +1613,11 @@ msgstr "Подтвердите адрес"
 
 #: src/link_shortener/web/templates/public/verify.html:9
 msgid ""
-"One press finishes signing up. The link expires, so do it now rather than "
-"later."
+"One press finishes signing up. The link expires, so do it now rather than"
+" later."
 msgstr ""
-"Одно нажатие завершает регистрацию. Ссылка истекает, так что лучше сейчас, "
-"чем потом."
+"Одно нажатие завершает регистрацию. Ссылка истекает, так что лучше "
+"сейчас, чем потом."
 
 #: src/link_shortener/web/templates/public/verify.html:12
 msgid "Confirm this address"

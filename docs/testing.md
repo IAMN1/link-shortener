@@ -1,6 +1,6 @@
 # Testing
 
-**2806 tests**, 95.00% coverage against a floor of 88%, plus two live runs
+**2827 tests**, 94.99% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -60,14 +60,14 @@ tests/
 Neither is collected by pytest — `python_files = "test_*.py"` does not match
 their names.
 
-### smoke_test.py — 123 checks over HTTP
+### smoke_test.py — 124 checks over HTTP
 
 ```bash
 uv run python tests/live/smoke_test.py
 ```
 
 The exit code is non-zero if any check failed **or if the number of checks
-is not 123**: "everything passed" is a statement about the checks that ran,
+is not 124**: "everything passed" is a statement about the checks that ran,
 and says nothing about the ones that stopped running.
 
 Route coverage is not claimed but counted: the run records which rule
@@ -112,7 +112,7 @@ the throttle instead of what it is named after.
 
 </details>
 
-### browser_test.py — 25 checks in a real browser
+### browser_test.py — 37 checks in a real browser
 
 ```bash
 uv sync --group browser
@@ -173,6 +173,50 @@ What it holds:
   `locale="en-US"` and sets the cookie `lang=ru`, so browser and page
   cannot agree by accident. Measured: `'ru'` writes 16.08.2026, `'zh'` writes
   2026/8/16, and dropping the argument again reddens this check alone.
+- **The charts are drawn, not merely mounted.** Eight checks, added
+  2026-08-16 with `static/js/charts.js`. No run that reads markup can tell a
+  chart from an empty panel: the frame, the legend and the controls are in
+  the page whether or not a single column was ever painted. These count the
+  marks instead — one column per bucket the service sent, against a bucket
+  count taken from the answer rather than written into the check — and read
+  the axis, hover a column for the breakdown behind it, switch a ring to
+  bars and back, and confirm the choice survives a navigation.
+
+  Two of them fake the answer with `route`: an empty span has to put a
+  sentence on the plot rather than leave a blank rectangle, and a refused
+  one has to say so instead of staying blank.
+
+  The one that pays for itself is **the poll timer does not outlive the page
+  that started it**. A page script is re-executed on every Turbo navigation
+  and a `setInterval` it started is not stopped by the body being swapped:
+  ten navigations leave ten timers polling for statistics nobody is looking
+  at. The check sets the interval to 5 s, leaves through the sidebar — a
+  Turbo visit, not a load, since a load would discard the timers by itself
+  and prove nothing — and counts requests for six seconds. Measured:
+  deleting the `turbo:before-cache` listener from `charts.js` lets one poll
+  through and reddens this check alone.
+
+  What they do **not** cover: whether the drawing is any good. Nothing here
+  would notice a chart that is legible but ugly, or a colour pair that
+  fails at a glance. That was decided by measurement elsewhere — the
+  palette is validated for lightness, separation and contrast in both
+  themes — and by looking at the pages, which is how the interval control
+  was found opening in the "off" position on a first visit.
+- **One link's own page keeps to that link, and to this account.** Four
+  checks. Its address carries a short code, and short codes are guessable
+  by construction, so the interesting one asks for a link belonging to
+  somebody else and demands two things at once: zero through `scope=mine`,
+  and a non-zero total for the same code service-wide, where this account
+  is an administrator and may look. Without the second half, "zero" would
+  also be the answer for a link nobody has ever opened, and the check
+  would pass while proving nothing.
+
+  Measured: changing the page's macro call from `mine` to `service` — the
+  one edit that would hand a stranger's traffic to whoever guessed the
+  code — reddens that check and only it. A third check watches the code
+  reach **both** requests, since the daily chart fetches separately and a
+  code threaded into one query and not the other draws one chart about
+  this link and one about everything, side by side and unlabelled.
 
 Playwright is declared in its own `browser` dependency group rather than in
 `dev`: `requirements.txt` is exported from the lock file without filtering
@@ -193,7 +237,7 @@ Both now raise `tests/live/mail_catcher.py`, an SMTP server on the loopback,
 point the mailer at it, and take the link out of the delivered message.
 
 Measured by pointing `VERIFY_PATH` at a path nothing answers: the HTTP run
-gives 81/123, the browser run 10/25.
+gives 81/124, the browser run 10/37.
 
 The link has to be **opened**, not parsed. The message now leads to a page
 whose button posts the token, which tempted the HTTP run into extracting the
@@ -325,7 +369,7 @@ flowchart TD
     subgraph clean["clean"]
         C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
         C2 --> C3[count collected tests<br/>minimum 2793] --> C4[pytest --error-for-skips]
-        C4 --> C5[smoke_test.py<br/>123 checks] --> C6[browser_test.py<br/>25 checks]
+        C4 --> C5[smoke_test.py<br/>124 checks] --> C6[browser_test.py<br/>37 checks]
     end
     subgraph hostile["hostile"]
         H1[the same, plus a polluted .env<br/>and exported variables] --> H2[pytest --error-for-skips]

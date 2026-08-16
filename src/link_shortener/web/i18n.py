@@ -283,6 +283,35 @@ def script_strings() -> Dict[str, str]:
         "stat_clicks_per_day": gettext("Clicks/Day"),
         "popular": gettext("Popular"),
         "recent": gettext("Recent"),
+        # The charts. `charts.js` draws every one of these after the page
+        # has arrived, so none of them can come from a template.
+        "chart_total": gettext("Total"),
+        "chart_humans": gettext("People"),
+        "chart_bots": gettext("Robots"),
+        "chart_no_visits": gettext("No visits in this span"),
+        "chart_no_visits_hint": gettext("Try a wider span"),
+        "chart_failed": gettext("The figures could not be loaded"),
+        # What the smaller categories are collapsed into when a ring runs
+        # out of colours. Its own entry rather than the existing "other"
+        # anything, because this one is a row in a legend and has to read
+        # as a group of things.
+        "chart_other": gettext("Others"),
+        # Both faces of one control, named for where it goes rather than
+        # for what is on screen.
+        "chart_show_bars": gettext("As bars"),
+        "chart_show_ring": gettext("As a ring"),
+        # How fresh the figures are. Abbreviated units, which is why there
+        # is no plural machinery here: "5 s" and "1 s" are spelled the same
+        # in all three catalogues, and a translator who needs the full word
+        # can write it -- the substitution carries the number either way.
+        "chart_updated_now": gettext("updated just now"),
+        "chart_updated_seconds": gettext("updated %(count)s s ago"),
+        "chart_updated_minutes": gettext("updated %(count)s min ago"),
+        "chart_every": gettext("every %(interval)s"),
+        "chart_polling_off": gettext("auto-refresh off"),
+        # The way from the table of links to one link's own page. Drawn by
+        # `my_links.js` per row, so it cannot come from the template.
+        "chart_link_stats": gettext("Stats"),
         "answering": gettext("answering"),
         "not_answering": gettext("not answering"),
         "unknown": gettext("unknown"),

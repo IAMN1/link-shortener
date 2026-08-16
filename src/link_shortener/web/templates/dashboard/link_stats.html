@@ -1,0 +1,61 @@
+{% extends "dashboard/base.html" %}
+{% import "dashboard/_visit_charts.html" as charts %}
+{% block title %}{{ _('Link %(code)s — Linkr', code=short_code) }}{% endblock %}
+{% block dashboard_content %}
+
+{# The code is the name of this page, so it is set in the face the rest of
+   the interface uses for data: a short code is a string compared by eye. #}
+<div class="dash-head">
+    <h1 class="dash-title">{{ _('Link') }} <span class="mono">{{ short_code }}</span></h1>
+    <a href="{{ url_for('dashboard.my_links') }}" class="btn btn--sm btn--ghost">{{ _('All links') }}</a>
+</div>
+
+<div class="alert alert--error hidden mb-2" id="link-error"></div>
+
+{# Where it goes, filled in by the page. Not rendered by the server: the
+   address belongs to the link rather than to the request, and this page is
+   a shell like the ones around it -- one place decides who may see a
+   link's figures, and it is the endpoint. #}
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">{{ _('Destination') }}</span>
+    </div>
+    <p class="mono truncate" id="link-destination">&mdash;</p>
+</div>
+
+<div class="stats-grid stats-grid--four mb-2">
+    <div class="stat-card">
+        <span class="stat-label">{{ _('Total Clicks') }}</span>
+        <span class="stat-value" id="link-clicks">&mdash;</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">{{ _('Clicks/Day') }}</span>
+        <span class="stat-value" id="link-per-day">&mdash;</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">{{ _('Created') }}</span>
+        <span class="stat-value" id="link-created">&mdash;</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">{{ _('Last Access') }}</span>
+        <span class="stat-value" id="link-last">&mdash;</span>
+    </div>
+</div>
+
+{# `mine` together with the code, never the code alone: the service applies
+   the owner and the code as one condition, so this address answers with
+   zeroes for a link belonging to somebody else. That matters here more
+   than on the other two pages, because this address carries a short code
+   and short codes are guessable by construction. #}
+{{ charts.visit_charts('mine', short_code) }}
+
+{% endblock %}
+{% block extra_head %}
+    {{ super() }}
+    {# In the head, for the reason written out in `my_stats.html`: this
+       file owns the polling timer. #}
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+{% endblock %}
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/pages/link_stats.js') }}" defer></script>
+{% endblock %}

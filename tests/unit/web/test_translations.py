@@ -437,19 +437,27 @@ def readable_script_text(script):
         # A literal holding markup is examined by the second pass below;
         # taken whole it is a wall of tags and classes.
         if "<" in value or ">" in value:
+            # The second pass, applied to this literal rather than to the
+            # file. Over the whole file it also matched between two
+            # *operators* -- `index >= LIMIT` on one line and
+            # `rows.length <` on the next put a `>` before a `<` with
+            # ordinary code in between, and the code was reported as a
+            # sentence a translator must handle. Markup only ever lives
+            # inside a literal, so narrowing the pass to literals loses no
+            # text node and drops that whole class of false report.
+            for node in JS_TEXT_IN_HTML.finditer(value):
+                piece = node.group(1).strip()
+                # `+` means the fragment was cut here by a concatenation,
+                # so this is not a text node -- it is the seam between two
+                # of them.
+                if piece and "+" not in piece and re.search(r"[A-Za-z]{2}", piece):
+                    yield piece
             continue
         if not re.search(r"[A-Za-z]{2}", value):
             continue
         if JS_CODE_ONLY.match(value):
             continue
         yield value
-
-    for match in JS_TEXT_IN_HTML.finditer(text):
-        piece = match.group(1).strip()
-        # `+` means the fragment was cut here by a concatenation, so this
-        # is not a text node -- it is the seam between two of them.
-        if piece and "+" not in piece and re.search(r"[A-Za-z]{2}", piece):
-            yield piece
 
 
 class TestNoScriptCarriesUnmarkedText:

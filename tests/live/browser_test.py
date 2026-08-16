@@ -263,6 +263,102 @@ def promote_to_admin(app, email: str) -> None:
             session.commit()
 
 
+def record_visits(app, email: str) -> int:
+    """
+    Give an account a link with a week of traffic behind it.
+
+    Written straight into the tables, the way ``promote_to_admin`` writes a
+    role, and for a related reason: the charts are about a *span*, and
+    every redirect this run could serve would be stamped "now" -- a week of
+    them would draw one column and prove nothing about the other
+    twenty-seven.
+
+    The shape is deliberate rather than uniform: robots are a minority,
+    device classes are uneven, and the browsers run past three families so
+    that the ring has a tail to fold into "Others".
+
+    Args:
+        app: The running application.
+        email: Owner of the link the visits belong to.
+
+    Returns:
+        How many visit rows were written.
+    """
+    import hashlib
+    import random
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import text
+
+    rnd = random.Random(11)
+    now = datetime.now(timezone.utc)
+    devices = ["desktop", "desktop", "desktop", "mobile", "mobile", "tablet", "unknown"]
+    browsers = ["chrome", "chrome", "safari", "firefox", "edge", "opera"]
+    url = "https://example.com/charted"
+
+    with app.app_context():
+        with app.container.get_db_manager().session() as session:
+            owner = session.execute(
+                text("SELECT id FROM users WHERE email = :email"), {"email": email}
+            ).fetchone()
+            assert owner is not None, f"no account for {email}"
+
+            # A second link owned by somebody else, with traffic of its
+            # own. Without it, "a stranger's link reports zero" is a check
+            # that would also pass against a link nobody ever opened --
+            # and that is the reading it must not have.
+            stranger_id = str(uuid.uuid4())
+            session.execute(text(
+                "INSERT INTO users (id, email, password_hash, is_active, "
+                "email_verified, created_at) "
+                "VALUES (:id, :email, :hash, 1, 1, :now)"
+            ), {"id": stranger_id, "email": "browser-owner@example.test",
+                "hash": "not-a-usable-hash", "now": now})
+
+            links = {}
+            for code, owner_id in (("charted01", owner[0]),
+                                   ("foreign01", stranger_id)):
+                link_id = str(uuid.uuid4())
+                links[code] = link_id
+                session.execute(text(
+                    "INSERT INTO urls (id, url_hash, original_url, short_code, "
+                    "owner_id, clicks, created_at) "
+                    "VALUES (:id, :hash, :url, :code, :owner, :clicks, :made)"
+                ), {
+                    "id": link_id,
+                    "hash": hashlib.sha256(f"{url}/{code}".encode()).hexdigest(),
+                    "url": f"{url}/{code}",
+                    "code": code,
+                    "owner": owner_id,
+                    "clicks": 0,
+                    "made": now - timedelta(days=30),
+                })
+
+            written = 0
+            for hours_back in range(24 * 7):
+                moment = now - timedelta(hours=hours_back)
+                for code, link_id in links.items():
+                    for _ in range(rnd.randint(0, 3)):
+                        is_bot = rnd.random() < 0.2
+                        session.execute(text(
+                            "INSERT INTO link_visits (id, link_id, occurred_at, "
+                            "visitor_network, device, browser, is_bot) "
+                            "VALUES (:id, :link, :at, :net, :device, :browser, :bot)"
+                        ), {
+                            "id": str(uuid.uuid4()),
+                            "link": link_id,
+                            "at": moment,
+                            "net": "203.0.113.0",
+                            "device": rnd.choice(devices),
+                            "browser": "bot" if is_bot else rnd.choice(browsers),
+                            "bot": is_bot,
+                        })
+                        written += 1
+            session.commit()
+    return written
+
+
 def sign_in(page, base: str) -> None:
     """
     Sign the browser in through the login form.
@@ -313,7 +409,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 25
+    expected = 37
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -716,6 +812,342 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         assert shown, "the table went blank instead of saying what happened"
         assert not is_a_code(shown), (
             f"the page shows a machine-readable code: {shown!r}"
+        )
+
+    # ------------------------------------------------------------------
+    # The charts
+    #
+    # Nothing but a browser draws them, and no run that reads markup can
+    # tell a chart from an empty box: the panel, the legend and the
+    # controls are all in the page whether or not a single column was
+    # ever painted. What is measured here is the drawing itself -- how
+    # many marks, at what coordinates, in which language.
+    # ------------------------------------------------------------------
+
+    visits_written = record_visits(app, "browser-user@example.test")
+
+    def open_stats(path="/dashboard/stats", language=None):
+        """
+        Sign in and open a statistics page with the charts drawn.
+
+        Args:
+            path: Which of the two statistics pages to open.
+            language: Language cookie to set before loading, or ``None``
+                to let the negotiation decide.
+
+        Returns:
+            The page, once the first chart has marks on it.
+        """
+        page = page_for("/login")
+        sign_in(page, base)
+        if language:
+            page.context.add_cookies([{
+                "name": "lang", "value": language,
+                "domain": "127.0.0.1", "path": "/",
+            }])
+        page.goto(f"{base}{path}")
+        page.wait_for_selector("[data-visit-columns] svg path", timeout=8000)
+        return page
+
+    @check("the visits chart draws one column per bucket the service sent")
+    def _():
+        assert visits_written > 0, "no visits were recorded to chart"
+        page = open_stats()
+        # The service decides how many buckets a span is cut into, so the
+        # count is taken from the answer rather than written here: a chart
+        # that quietly drops the last bucket would otherwise pass.
+        buckets = page.evaluate(
+            "async () => (await (await fetch("
+            "'/api/v1/stats/visits?scope=mine&period=7d',"
+            " {credentials: 'same-origin'})).json()).buckets.length"
+        )
+        marks = page.eval_on_selector_all(
+            "[data-visit-columns] svg path", "nodes => nodes.length"
+        )
+        box = page.get_attribute("[data-visit-columns] svg", "viewBox")
+
+        assert box, "the chart has no viewBox -- nothing was drawn"
+        assert buckets == 28, f"the service cut 7d into {buckets} buckets"
+        # One mark per non-empty bucket, and a stacked one adds a second:
+        # between one and two per bucket, never zero and never more.
+        assert 0 < marks <= buckets * 2, f"{marks} marks over {buckets} buckets"
+
+    @check("choosing a span redraws the chart against that span")
+    def _():
+        page = open_stats()
+        before = page.eval_on_selector_all(
+            "[data-visit-columns] svg path", "nodes => nodes.length"
+        )
+        page.click("[data-visit-period='24h']")
+        # Waiting for the *new* axis, not for an axis: the old one is
+        # still on screen while the request is in flight, and a wait for
+        # "some text exists" is satisfied by the chart that was already
+        # there. Written the loose way first, and it failed against a
+        # working page -- the drawing was right and the check was early.
+        page.wait_for_function(
+            "Array.from(document.querySelectorAll('[data-visit-columns] svg text'))"
+            ".some(node => node.textContent.indexOf(':') !== -1)",
+            timeout=8000,
+        )
+        # The axis is the honest witness here: 24 hourly buckets are
+        # labelled with clock times, and a chart that ignored the press
+        # would still be showing dates.
+        labels = page.eval_on_selector_all(
+            "[data-visit-columns] svg text",
+            "nodes => nodes.map(n => n.textContent)"
+        )
+        pressed = page.get_attribute("[data-visit-period='24h']", "aria-pressed")
+
+        assert pressed == "true", "the pressed span is not marked as pressed"
+        assert before > 0, "there was nothing on the chart to begin with"
+        assert any(":" in text for text in labels), (
+            f"no clock time on the axis of a 24-hour span: {labels}"
+        )
+
+    @check("a breakdown switches between a ring and bars and remembers it")
+    def _():
+        page = open_stats()
+        page.wait_for_selector("[data-visit-share=devices] svg path", timeout=5000)
+        page.click("[data-visit-shape=devices]")
+        page.wait_for_selector("[data-visit-share=devices] .chart-bars-fill", timeout=5000)
+
+        bars = page.eval_on_selector_all(
+            "[data-visit-share=devices] .chart-bars-fill", "nodes => nodes.length"
+        )
+        assert bars > 0, "the switch left the panel empty"
+        # Colour follows the category, not the shape: the first row is the
+        # same hue in both, or switching the shape repaints the data.
+        first = page.eval_on_selector(
+            "[data-visit-share=devices] .chart-bars-fill",
+            "node => getComputedStyle(node).backgroundColor"
+        )
+
+        # And the browsers panel is untouched, because the choice is per
+        # breakdown rather than per page.
+        assert page.query_selector("[data-visit-share=browsers] svg path"), (
+            "switching devices also switched browsers"
+        )
+
+        # The choice survives leaving the page and coming back, which is
+        # the whole point of remembering it.
+        page.goto(f"{base}/dashboard/service/stats")
+        page.wait_for_selector("[data-visit-share=devices] .chart-bars-fill", timeout=8000)
+        again = page.eval_on_selector(
+            "[data-visit-share=devices] .chart-bars-fill",
+            "node => getComputedStyle(node).backgroundColor"
+        )
+
+        assert again == first, f"the row changed colour: {first} then {again}"
+
+    @check("hovering a column says what it is made of")
+    def _():
+        page = open_stats()
+        page.hover("[data-visit-columns] .chart-hit >> nth=20")
+        page.wait_for_selector("[data-visit-columns] .chart-tip.active", timeout=5000)
+        shown = page.inner_text("[data-visit-columns] .chart-tip").strip()
+
+        assert shown, "the tooltip appeared empty"
+        # Three rows: the total and the two parts it is made of. A
+        # tooltip naming only the total would hide the half of the answer
+        # the stack exists to show.
+        assert len(shown.splitlines()) >= 4, f"the tooltip says too little: {shown!r}"
+
+    @check("a span with no visits says so instead of drawing an empty box")
+    def _():
+        page = page_for("/login")
+        sign_in(page, base)
+        # Through `route`, which belongs to the page and outlives a
+        # navigation -- the lesson the refusal check above paid for.
+        page.route("**/api/v1/stats/visits?*", lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body='{"since": "2026-08-01T00:00:00+00:00",'
+                 ' "until": "2026-08-08T00:00:00+00:00",'
+                 ' "total": 0, "bots": 0, "buckets": [],'
+                 ' "devices": [], "browsers": [], "top_links": []}',
+        ))
+        page.goto(f"{base}/dashboard/stats")
+        page.wait_for_selector("[data-visit-columns] svg text", timeout=8000)
+        drawn = page.eval_on_selector_all(
+            "[data-visit-columns] svg text", "nodes => nodes.map(n => n.textContent)"
+        )
+        marks = page.eval_on_selector_all(
+            "[data-visit-columns] svg path", "nodes => nodes.length"
+        )
+
+        assert marks == 0, "an empty span drew columns"
+        # A sentence, not just an axis: the frame alone is the empty box
+        # this check exists to forbid.
+        assert any(len(text.split()) > 2 for text in drawn), (
+            f"nothing on the chart says the span was empty: {drawn}"
+        )
+
+    @check("a chart refused its figures says so rather than staying blank")
+    def _():
+        page = page_for("/login")
+        sign_in(page, base)
+        page.route("**/api/v1/stats/visits?*", lambda route: route.fulfill(
+            status=403,
+            content_type="application/json",
+            body='{"error": "FORBIDDEN", "message": "Not authorized"}',
+        ))
+        page.goto(f"{base}/dashboard/stats")
+        page.wait_for_selector("[data-visit-error]:not(.hidden)", timeout=8000)
+        message = page.inner_text("[data-visit-error]").strip()
+        figure = page.get_attribute("[data-visit-columns]", "class") or ""
+
+        assert message, "the error area stayed empty"
+        assert not is_a_code(message), (
+            f"the page shows a machine-readable code: {message!r}"
+        )
+        assert "chart-figure--failed" in figure, (
+            "the chart does not show that its figures are missing"
+        )
+
+    @check("the poll timer does not outlive the page that started it")
+    def _():
+        # The most expensive mistake available on this page, and one no
+        # markup can show: a page script is re-executed on every Turbo
+        # navigation, and a `setInterval` it started is not stopped by the
+        # body being swapped. Ten navigations would leave ten timers
+        # polling for statistics nobody is looking at.
+        page = page_for("/login")
+        sign_in(page, base)
+        polls = []
+        page.on("request", lambda request: (
+            polls.append(request.url)
+            if "/api/v1/stats/visits" in request.url else None
+        ))
+        page.goto(f"{base}/dashboard/stats")
+        page.wait_for_selector("[data-visit-columns] svg", timeout=8000)
+        page.click("[data-visit-every='5']")
+
+        # Away through the sidebar, which is a Turbo navigation rather
+        # than a load: a load would discard every timer by itself and the
+        # check would prove nothing.
+        page.click(".dash-side a[href='/dashboard/links']")
+        page.wait_for_selector("#links-tbody", timeout=8000)
+        before = len(polls)
+        page.wait_for_timeout(6000)
+        after = len(polls)
+
+        assert after == before, (
+            f"{after - before} poll(s) arrived after leaving the page"
+        )
+
+    @check("a link's own page charts that link and says where it goes")
+    def _():
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/links/charted01/stats")
+        page.wait_for_selector("[data-visit-columns] svg path", timeout=8000)
+        # The narrowing has to reach the request, not just the markup: a
+        # page that drew the whole account's traffic under one link's code
+        # would look right and say something false.
+        asked = page.evaluate(
+            "async () => (await (await fetch("
+            "'/api/v1/stats/visits?scope=mine&period=7d&code=charted01',"
+            " {credentials: 'same-origin'})).json()).total"
+        )
+        whole = page.evaluate(
+            "async () => (await (await fetch("
+            "'/api/v1/stats/visits?scope=mine&period=7d',"
+            " {credentials: 'same-origin'})).json()).total"
+        )
+        destination = page.inner_text("#link-destination").strip()
+        clicks = page.inner_text("#link-clicks").strip()
+
+        assert asked > 0, "the link has no recorded traffic to chart"
+        assert asked <= whole, (
+            f"one link reports {asked} of the account's {whole}"
+        )
+        assert "charted" in destination, f"the destination is {destination!r}"
+        assert clicks and clicks != "—", "the click counter stayed empty"
+
+    @check("a link's page carries the code into every request it makes")
+    def _():
+        page = page_for("/login")
+        sign_in(page, base)
+        asked = []
+        page.on("request", lambda request: (
+            asked.append(request.url)
+            if "/api/v1/stats/visits" in request.url else None
+        ))
+        page.goto(f"{base}/dashboard/links/charted01/stats")
+        page.wait_for_selector("[data-visit-daily] svg", timeout=8000)
+
+        assert len(asked) >= 2, f"expected both charts to fetch, saw {asked}"
+        # Including the daily one, which is a second call: a code threaded
+        # into one query and not the other draws one chart about this link
+        # and one about everything, side by side and unlabelled.
+        assert all("code=charted01" in url for url in asked), asked
+
+    @check("a stranger's code on that page shows nothing rather than their traffic")
+    def _():
+        # The address carries a short code and short codes are guessable,
+        # so this page is reachable with somebody else's. What keeps it
+        # honest is that the code is always sent with `scope=mine`, which
+        # the service applies as one condition with the owner.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/links/foreign01/stats")
+        page.wait_for_selector("[data-visit-columns] svg", timeout=8000)
+        narrowed = page.evaluate(
+            "async () => (await (await fetch("
+            "'/api/v1/stats/visits?scope=mine&period=7d&code=foreign01',"
+            " {credentials: 'same-origin'})).json()).total"
+        )
+        # The same link asked for service-wide, where this account is an
+        # administrator and may look. Both halves are needed: without this
+        # one, "zero" would also be the answer for a link nobody has ever
+        # opened, and the check would pass while proving nothing.
+        service_wide = page.evaluate(
+            "async () => (await (await fetch("
+            "'/api/v1/stats/visits?scope=service&period=7d&code=foreign01',"
+            " {credentials: 'same-origin'})).json()).total"
+        )
+        marks = page.eval_on_selector_all(
+            "[data-visit-columns] svg path", "nodes => nodes.length"
+        )
+
+        assert service_wide > 0, "the stranger's link has no traffic to withhold"
+        assert narrowed == 0, (
+            f"another account's link reported {narrowed} of its "
+            f"{service_wide} visits to a stranger"
+        )
+        assert marks == 0, "the page drew columns for a link that is not this account's"
+
+    @check("the links table offers a way to one link's own page")
+    def _():
+        # Without this the page exists and nothing leads to it: its address
+        # is only reachable by typing a code into the bar.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/links")
+        page.wait_for_selector(".js-link-stats", timeout=8000)
+        page.click(".js-link-stats >> nth=0")
+        page.wait_for_selector("[data-visit-code]", timeout=8000)
+        code = page.get_attribute("[data-visit-code]", "data-visit-code")
+
+        assert "/stats" in page.url, f"the link went to {page.url}"
+        assert code, "the page it opened is not narrowed to any link"
+
+    @check("the chart's axis is written in the language of the page")
+    def _():
+        # The defect that only a pair of eyes found last time: dates come
+        # from `toLocaleDateString`, which formats for the *browser* unless
+        # it is handed the page's language. The browser here is en-US, so
+        # a chart on a Russian page must not be dotted with slashes.
+        page = open_stats(language="ru")
+        labels = page.eval_on_selector_all(
+            "[data-visit-columns] svg text",
+            "nodes => nodes.map(n => n.textContent)"
+        )
+        dates = [text for text in labels if "." in text or "/" in text]
+
+        assert dates, f"no dates on the axis at all: {labels}"
+        assert not any("/" in text for text in dates), (
+            f"the axis is written in the browser's locale, not the page's: {dates}"
         )
 
     @check("a browser that asks for Russian is answered in Russian")

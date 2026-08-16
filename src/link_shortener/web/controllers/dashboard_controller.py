@@ -32,6 +32,9 @@ class DashboardController:
         self.bp.add_url_rule("/", view_func=self.home, methods=["GET"])
         self.bp.add_url_rule("/links", view_func=self.my_links, methods=["GET"])
         self.bp.add_url_rule("/stats", view_func=self.my_stats, methods=["GET"])
+        self.bp.add_url_rule(
+            "/links/<short_code>/stats", view_func=self.link_stats, methods=["GET"]
+        )
         self.bp.add_url_rule("/create-link", view_func=self.create_link_form, methods=["GET"])
         self.bp.add_url_rule("/service/stats", view_func=self.service_stats, methods=["GET"])
         self.bp.add_url_rule("/service/health", view_func=self.service_health, methods=["GET"])
@@ -62,6 +65,34 @@ class DashboardController:
     @require_permission(SystemPermissions.LINK_VIEW_OWN.value)
     def my_stats(self):
         return render_template("dashboard/my_stats.html")
+
+    @login_required
+    @require_permission(SystemPermissions.LINK_VIEW_OWN.value)
+    def link_stats(self, short_code):
+        """
+        One link's own traffic.
+
+        A shell like the pages around it: the code is handed to the
+        template, and everything on screen is fetched by the page against
+        the same endpoints the other statistics pages use, narrowed with
+        ``code``.
+
+        The narrowing is always applied together with ``scope=mine``, and
+        that pairing is what keeps this page from becoming a way to read
+        somebody else's traffic: ``get_visit_stats`` applies the owner and
+        the code as one condition, so a code belonging to another account
+        answers with zeroes rather than with its figures. The page is
+        therefore safe for any signed-in caller to open with any code in
+        the address, which is a property worth having on a page whose
+        address is guessable by construction -- the codes are short.
+
+        Args:
+            short_code: The link to report on, from the address.
+
+        Returns:
+            The rendered page.
+        """
+        return render_template("dashboard/link_stats.html", short_code=short_code)
 
     @login_required
     @require_permission(SystemPermissions.LINK_CREATE.value)

@@ -181,6 +181,32 @@ function formatDate(iso) {
     return new Date(iso).toLocaleDateString(pageLanguage());
 }
 
+// The clock time of a moment, in the language of the page.
+//
+// Here rather than in `charts.js` because it is the same fault `formatDate`
+// exists to close, one field over: a chart of the last twenty-four hours
+// labels its axis with hours, and `toLocaleTimeString()` without an
+// argument writes them the way the *browser* is set -- `2:00 PM` under a
+// Russian heading. Seconds are left out deliberately; an axis label is a
+// position in the day, not a timestamp.
+function formatTime(iso) {
+    if (!iso) return '-';
+    return new Date(iso).toLocaleTimeString(pageLanguage(), {
+        hour: '2-digit', minute: '2-digit'
+    });
+}
+
+// A number, grouped the way the language of the page groups them.
+//
+// The same argument as the dates: `1284` is written `1,284` in English,
+// `1 284` in Russian and `1,284` in Chinese, and `toLocaleString()` with
+// nothing passed asks the browser rather than the page. Charts print
+// numbers on every axis, so this is not a detail that shows up once.
+function formatNumber(value) {
+    if (value === null || value === undefined) return '-';
+    return Number(value).toLocaleString(pageLanguage());
+}
+
 // `pressed` and `saysExpanded` are on the list because `dashboard.js` and
 // the page scripts use them. The others are here because a page may call
 // them directly.
@@ -191,6 +217,8 @@ window.csrfHeaders = csrfHeaders;
 window.logoutUser = logoutUser;
 window.escapeHtml = escapeHtml;
 window.formatDate = formatDate;
+window.formatTime = formatTime;
+window.formatNumber = formatNumber;
 window.apiErrorText = apiErrorText;
 window.showLoadError = showLoadError;
 window.t = t;

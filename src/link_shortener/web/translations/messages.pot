@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-16 13:48+0300\n"
+"POT-Creation-Date: 2026-08-16 17:41+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -352,7 +352,7 @@ msgid "Delete link %(code)s? It belongs to this account."
 msgstr ""
 
 #: src/link_shortener/web/i18n.py:251
-#: src/link_shortener/web/templates/dashboard/my_links.html:35
+#: src/link_shortener/web/templates/dashboard/my_links.html:39
 msgid "No links"
 msgstr ""
 
@@ -373,6 +373,7 @@ msgid "Results"
 msgstr ""
 
 #: src/link_shortener/web/i18n.py:256
+#: src/link_shortener/web/templates/dashboard/link_stats.html:9
 msgid "Link"
 msgstr ""
 
@@ -415,23 +416,25 @@ msgstr ""
 
 #: src/link_shortener/web/i18n.py:274
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:23
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/my_links.html:27
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Clicks"
 msgstr ""
 
 #: src/link_shortener/web/i18n.py:279
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:24
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/link_stats.html:36
+#: src/link_shortener/web/templates/dashboard/my_links.html:28
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Created"
 msgstr ""
 
 #: src/link_shortener/web/i18n.py:280
+#: src/link_shortener/web/templates/dashboard/link_stats.html:40
 msgid "Last Access"
 msgstr ""
 
@@ -444,6 +447,7 @@ msgid "Days Old"
 msgstr ""
 
 #: src/link_shortener/web/i18n.py:283
+#: src/link_shortener/web/templates/dashboard/link_stats.html:32
 msgid "Clicks/Day"
 msgstr ""
 
@@ -455,15 +459,81 @@ msgstr ""
 msgid "Recent"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:286
+#: src/link_shortener/web/i18n.py:288
+msgid "Total"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:289
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:72
+msgid "People"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:290
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:75
+msgid "Robots"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:291
+msgid "No visits in this span"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:292
+msgid "Try a wider span"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:293
+msgid "The figures could not be loaded"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:298
+msgid "Others"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:301
+msgid "As bars"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:302
+msgid "As a ring"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:307
+msgid "updated just now"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:308
+#, python-format
+msgid "updated %(count)s s ago"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:309
+#, python-format
+msgid "updated %(count)s min ago"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:310
+#, python-format
+msgid "every %(interval)s"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:311
+msgid "auto-refresh off"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:314
+#: src/link_shortener/web/templates/dashboard/users_list.html:56
+msgid "Stats"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:315
 msgid "answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:287
+#: src/link_shortener/web/i18n.py:316
 msgid "not answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:288
+#: src/link_shortener/web/i18n.py:317
 msgid "unknown"
 msgstr ""
 
@@ -507,16 +577,16 @@ msgstr ""
 msgid "Invalid or expired refresh token"
 msgstr ""
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:87
-#: src/link_shortener/web/controllers/dashboard_controller.py:151
+#: src/link_shortener/web/controllers/dashboard_controller.py:118
+#: src/link_shortener/web/controllers/dashboard_controller.py:182
 msgid "User not found"
 msgstr ""
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:182
+#: src/link_shortener/web/controllers/dashboard_controller.py:213
 msgid "Role not found"
 msgstr ""
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:190
+#: src/link_shortener/web/controllers/dashboard_controller.py:221
 #, python-format
 msgid "The role %(name)s is a system role and cannot be modified"
 msgstr ""
@@ -638,6 +708,76 @@ msgstr ""
 msgid "none"
 msgstr ""
 
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:31
+msgid "Visits"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:41
+msgid "Span"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:46
+msgid "24 hours"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:47
+#: src/link_shortener/web/templates/dashboard/create_link.html:18
+msgid "7 days"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:48
+#: src/link_shortener/web/templates/dashboard/create_link.html:19
+msgid "30 days"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:49
+msgid "90 days"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:51
+msgid "Refresh"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:57
+msgid "5 s"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:58
+msgid "10 s"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:59
+msgid "30 s"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:60
+msgid "1 min"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:61
+msgid "5 min"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:62
+msgid "Off"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:63
+msgid "Refresh now"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:83
+msgid "Devices"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:93
+msgid "Browsers"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:110
+msgid "The last 90 days"
+msgstr ""
+
 #: src/link_shortener/web/templates/dashboard/base.html:67
 msgid "Overview"
 msgstr ""
@@ -663,7 +803,7 @@ msgid "Analytics"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/base.html:86
-#: src/link_shortener/web/templates/dashboard/my_stats.html:4
+#: src/link_shortener/web/templates/dashboard/my_stats.html:5
 msgid "My Stats"
 msgstr ""
 
@@ -750,14 +890,6 @@ msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/create_link.html:17
 msgid "1 day"
-msgstr ""
-
-#: src/link_shortener/web/templates/dashboard/create_link.html:18
-msgid "7 days"
-msgstr ""
-
-#: src/link_shortener/web/templates/dashboard/create_link.html:19
-msgid "30 days"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/create_link.html:21
@@ -907,8 +1039,9 @@ msgid "Dashboard — Linkr"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:16
-#: src/link_shortener/web/templates/dashboard/my_stats.html:14
-#: src/link_shortener/web/templates/dashboard/service_stats.html:14
+#: src/link_shortener/web/templates/dashboard/link_stats.html:28
+#: src/link_shortener/web/templates/dashboard/my_stats.html:15
+#: src/link_shortener/web/templates/dashboard/service_stats.html:15
 #: src/link_shortener/web/templates/dashboard/user_stats.html:17
 msgid "Total Clicks"
 msgstr ""
@@ -919,7 +1052,7 @@ msgid "Avg Clicks"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:29
-#: src/link_shortener/web/templates/dashboard/my_stats.html:25
+#: src/link_shortener/web/templates/dashboard/my_stats.html:32
 #: src/link_shortener/web/templates/dashboard/user_stats.html:34
 msgid "Recent Links"
 msgstr ""
@@ -930,25 +1063,26 @@ msgid "New link"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:21
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/my_links.html:25
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Code"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:22
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/link_stats.html:21
+#: src/link_shortener/web/templates/dashboard/my_links.html:26
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Destination"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:38
-#: src/link_shortener/web/templates/dashboard/my_links.html:30
-#: src/link_shortener/web/templates/dashboard/my_stats.html:33
-#: src/link_shortener/web/templates/dashboard/service_stats.html:33
+#: src/link_shortener/web/templates/dashboard/my_links.html:34
+#: src/link_shortener/web/templates/dashboard/my_stats.html:40
+#: src/link_shortener/web/templates/dashboard/service_stats.html:40
 #: src/link_shortener/web/templates/dashboard/user_stats.html:43
 msgid "Loading…"
 msgstr ""
@@ -975,36 +1109,45 @@ msgstr ""
 msgid "The %(link)s are open to it."
 msgstr ""
 
+#: src/link_shortener/web/templates/dashboard/link_stats.html:3
+#, python-format
+msgid "Link %(code)s — Linkr"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:10
+msgid "All links"
+msgstr ""
+
 #: src/link_shortener/web/templates/dashboard/my_links.html:2
 msgid "My Links — Linkr"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:25
+#: src/link_shortener/web/templates/dashboard/my_links.html:29
 msgid "Expires"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:37
-#: src/link_shortener/web/templates/dashboard/my_links.html:40
+#: src/link_shortener/web/templates/dashboard/my_links.html:41
+#: src/link_shortener/web/templates/dashboard/my_links.html:44
 msgid "Nothing here yet."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:38
+#: src/link_shortener/web/templates/dashboard/my_links.html:42
 msgid "Create your first link"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:41
+#: src/link_shortener/web/templates/dashboard/my_links.html:45
 msgid "This account may read links but not create them."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/my_stats.html:2
+#: src/link_shortener/web/templates/dashboard/my_stats.html:3
 msgid "My Stats — Linkr"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/my_stats.html:10
+#: src/link_shortener/web/templates/dashboard/my_stats.html:11
 msgid "Total Links"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/my_stats.html:18
+#: src/link_shortener/web/templates/dashboard/my_stats.html:19
 msgid "Avg per Link"
 msgstr ""
 
@@ -1048,27 +1191,27 @@ msgstr ""
 msgid "Nothing to show."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:2
+#: src/link_shortener/web/templates/dashboard/service_stats.html:3
 msgid "Service Stats — Linkr"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:4
+#: src/link_shortener/web/templates/dashboard/service_stats.html:5
 msgid "Service Statistics"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:10
+#: src/link_shortener/web/templates/dashboard/service_stats.html:11
 msgid "Total URLs"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:25
+#: src/link_shortener/web/templates/dashboard/service_stats.html:32
 msgid "Top Links"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:41
+#: src/link_shortener/web/templates/dashboard/service_stats.html:48
 msgid "Totals only."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:42
+#: src/link_shortener/web/templates/dashboard/service_stats.html:49
 #, python-format
 msgid "The list of most-visited links needs the %(name)s permission."
 msgstr ""
@@ -1112,10 +1255,6 @@ msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/users_list.html:49
 msgid "Not verified"
-msgstr ""
-
-#: src/link_shortener/web/templates/dashboard/users_list.html:56
-msgid "Stats"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/users_list.html:60

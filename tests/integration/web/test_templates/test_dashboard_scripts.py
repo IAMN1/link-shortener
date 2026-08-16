@@ -39,6 +39,9 @@ PAGES = [
     ("dashboard/home.html", {}),
     ("dashboard/my_links.html", {"user": None}),
     ("dashboard/my_stats.html", {}),
+    # The code is what the view passes; it names the page and is carried
+    # into the charts' requests.
+    ("dashboard/link_stats.html", {"short_code": "abc123"}),
     ("dashboard/create_link.html", {}),
     ("dashboard/service_stats.html", {}),
     ("dashboard/health.html", {}),

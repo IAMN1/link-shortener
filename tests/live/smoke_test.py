@@ -1496,6 +1496,11 @@ DASHBOARD_PAGES = (
     ("/dashboard/", 200),
     ("/dashboard/links", 200),
     ("/dashboard/stats", 200),
+    # The page about one link. `200` for the plain role and any code:
+    # the page is a shell, and the figures on it are narrowed to the
+    # caller's own links by the endpoint it fetches -- a code belonging
+    # to somebody else answers with zeroes rather than with a refusal.
+    ("/dashboard/links/<short_code>/stats", 200),
     ("/dashboard/create-link", 200),
     ("/dashboard/service/stats", 200),
     ("/dashboard/service/health", 403),
@@ -1514,18 +1519,20 @@ Listed in full rather than sampled: a partial transcription leaves out the
 parameterised rules, which are exactly the ones a new page is most likely
 to be added beside.
 
-The second column is what makes these thirteen checks thirteen checks.
+The second column is what makes these fourteen checks fourteen checks.
 ``@login_required`` is the outer decorator, so asking as an anonymous
 caller measures one thing over and over -- that nobody is logged in -- and
 every ``@require_permission`` behind it could be deleted with this file
-still green. Five of these pages are the plain role's to open and eight are
+still green. Six of these pages are the plain role's to open and eight are
 not, and that difference is the only evidence those decorators are there.
 """
 
 for _page, _signed_in in DASHBOARD_PAGES:
     @test(f"GET {_page}")
     def _(page=_page, expected=_signed_in):
-        path = page.replace("<user_id>", stranger_id)
+        path = page.replace("<user_id>", stranger_id).replace(
+            "<short_code>", "smokeCode1"
+        )
         # Nobody home: a page answers that with a trip to the login form,
         # not with the 401 an API endpoint would give.
         r = guest.get(path, follow_redirects=False)
@@ -1778,11 +1785,11 @@ success = result.summary()
 
 # The same guard the suite has in CI, for the same reason: "all passed" is
 # a statement about the checks that ran, and says nothing about the ones
-# that stopped running. Emptying DASHBOARD_PAGES removed thirteen checks
+# that stopped running. Emptying DASHBOARD_PAGES removed fourteen checks
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 123
+EXPECTED_CHECKS = 124
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")

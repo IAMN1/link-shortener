@@ -12,7 +12,9 @@
     // rather than have the button drawn and refused.
     var card = document.getElementById('links-card');
     var mayDelete = card && card.dataset.canDelete === 'yes';
-    var columns = mayDelete ? 6 : 5;
+    // Six either way: the last column holds the statistics link for
+    // everyone and adds Delete for those who may.
+    var columns = 6;
     try {
         var resp = await apiFetch('/api/v1/links/mine');
         if (!resp) return;
@@ -33,9 +35,15 @@
                 + '<td>' + l.clicks + '</td>'
                 + '<td>' + formatDate(l.created_at) + '</td>'
                 + '<td>' + (l.expires_at ? formatDate(l.expires_at) : '<span class="text-muted">' + escapeHtml(t('never')) + '</span>') + '</td>'
+                // The way to a link's own page. Built here rather than
+                // linked from the code in the first column, which already
+                // means something else: that one opens the link.
+                + '<td class="table-actions"><a class="btn btn--ghost btn--sm js-link-stats" href="/dashboard/links/'
+                + encodeURIComponent(l.short_code) + '/stats">' + escapeHtml(t('chart_link_stats')) + '</a>'
                 + (mayDelete
-                    ? '<td><button class="btn btn--ghost btn--sm del-btn" data-code="' + escapeHtml(l.short_code) + '">' + escapeHtml(t('delete')) + '</button></td>'
+                    ? ' <button class="btn btn--ghost btn--sm del-btn" data-code="' + escapeHtml(l.short_code) + '">' + escapeHtml(t('delete')) + '</button>'
                     : '')
+                + '</td>'
                 + '</tr>';
         }).join('');
         tbody.querySelectorAll('.del-btn').forEach(function(btn) {

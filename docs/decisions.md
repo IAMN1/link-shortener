@@ -1,6 +1,6 @@
 # Decisions
 
-Thirty-four write-ups of why something is the way it is. Read this when the
+Thirty-five write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -453,6 +453,53 @@ The strings a script shows are also reachable a second way, from the service
 itself: `data.message` on a refusal is already translated by the API, which
 answers in the language of the same cookie. The two are not fallbacks for
 each other, and `apiErrorText` says so where it picks between them.
+
+### The charts are drawn by hand, and are polled rather than pushed
+
+**Decided** (2026-08-16): `static/js/charts.js`, plain SVG through
+`createElementNS`, no charting library. The figures refresh on a timer the
+reader chooses — 5 s, 10 s, 30 s, 1 min, 5 min or not at all — and never
+over a connection the service holds open.
+
+**Why.** The pushed version is the one to want and the one this deployment
+cannot have: production is `gunicorn --worker-class sync --workers 4`, where
+every held-open connection occupies a worker for its whole life. Four open
+dashboards would be the entire service, and the pages that are not charts
+would stop answering. SSE and WebSocket are therefore not a tuning question
+here but a change of worker class, which is a decision about the whole
+service rather than about a chart.
+
+Polling costs a request per interval and nothing else, and the reader is
+given the interval because only the reader knows whether they are watching
+a launch or glancing at a week. The off switch is a real position, not a
+placebo: it stops the redraw under the pointer as well as the query behind
+it, and it is a different control from "Refresh now" beside it, which
+fetches once. The two were one control at first and the difference was
+invisible — the button said "manual", which promised a field to type an
+interval into that does not exist.
+
+The timer is owned by `charts.js`, which is loaded from `<head>`. That is
+the whole reason it is not a page script: Turbo re-executes page scripts on
+every navigation, so a `setInterval` started by one would outlive the page
+that started it — ten navigations, ten timers, all polling for statistics
+nobody is looking at. `turbo:before-cache` clears them, and the listener
+that does it is registered once per tab because the head is merged rather
+than re-run.
+
+**Colour is measured, not chosen.** People and robots are two steps of one
+hue, because a robot visit is part of the same count rather than a
+neighbouring category. Device classes and browser families get three hues
+and a grey "Others", and three is a limit rather than a preference: on the
+dark surface every candidate fourth hue collapses into one of the first
+three under colour blindness — blue against violet is OKLab ΔE 2.3 where 8
+is the floor — and two slices nobody can tell apart are worse than an
+honest tail. Red and yellow are excluded on top of that, since in this
+system they mean refused and warning.
+
+**What was left open.** Five fixed intervals rather than a field, so the
+shortest possible interval stays a decision made here rather than in a text
+box. The daily chart is refreshed with the page and by the button, never by
+the timer — it answers from a roll-up that gains one row a day.
 
 ---
 

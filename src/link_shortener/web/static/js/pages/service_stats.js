@@ -5,6 +5,10 @@
 // shaped this way, and the reason is written out once beside
 // `{% block scripts %}` in templates/layout/base.html.
 (async function() {
+    // As on the personal page: the charts fetch for themselves, so they
+    // are started before the totals rather than after them.
+    mountVisitCharts(document.querySelector('[data-visit-scope]'));
+
     try {
         var resp = await apiFetch('/api/v1/stats');
         if (!resp) return;

@@ -1,4 +1,5 @@
 {% extends "dashboard/base.html" %}
+{% import "dashboard/_visit_charts.html" as charts %}
 {% block title %}{{ _('My Stats — Linkr') }}{% endblock %}
 {% block dashboard_content %}
 <h1 class="dash-title">{{ _('My Stats') }}</h1>
@@ -20,6 +21,12 @@
     </div>
 </div>
 
+{# The counters above are lifetime totals; the charts below are a span the
+   reader chooses. `mine` narrows every figure to this account's own links,
+   which needs no permission beyond being signed in -- an account may
+   always see its own traffic. #}
+{{ charts.visit_charts('mine') }}
+
 <div class="card card--flush">
     <div class="card-header">
         <span class="card-title">{{ _('Recent Links') }}</span>
@@ -35,6 +42,16 @@
         </table>
     </div>
 </div>
+{% endblock %}
+{# `charts.js` goes in the head rather than here, and this is not a
+   preference. It owns the polling timer and the `turbo:before-cache`
+   listener that stops it; the head is merged across navigations, so a
+   script in it runs once per tab, while a page script is re-executed on
+   every navigation -- which would register another listener each time and
+   cause the very pile-up the listener exists to prevent. #}
+{% block extra_head %}
+    {{ super() }}
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
 {% endblock %}
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/pages/my_stats.js') }}" defer></script>

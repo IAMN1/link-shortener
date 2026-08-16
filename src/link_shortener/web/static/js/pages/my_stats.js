@@ -5,6 +5,12 @@
 // shaped this way, and the reason is written out once beside
 // `{% block scripts %}` in templates/layout/base.html.
 (async function() {
+    // The charts, first: they own their own fetches and their own timer,
+    // and they are drawn into the block `dashboard/_visit_charts.html`
+    // left. Called before the counters below rather than after, so a slow
+    // answer to `/stats/mine` does not hold the charts back.
+    mountVisitCharts(document.querySelector('[data-visit-scope]'));
+
     try {
         var resp = await apiFetch('/api/v1/stats/mine');
         if (!resp) return;

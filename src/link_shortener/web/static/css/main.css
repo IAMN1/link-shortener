@@ -99,6 +99,35 @@
     /* A wash used for hover and for the faint fill under a chart. Given as
        a colour rather than an opacity so it can invert with the theme. */
     --c-wash: rgba(13, 15, 17, .045);
+
+    /* ===== The charts =====
+
+       People and robots are two steps of one hue rather than two hues: a
+       robot visit is part of the same count, not a neighbouring category,
+       and a stacked column reads that way round. Both steps were run
+       through a validator rather than picked by eye -- monotone lightness,
+       a step of at least 0.06 between them, and a pale end that still
+       clears the surface it sits on (2.38:1 here, 2.48:1 on the dark one).
+
+       The categories -- device classes, browser families -- get three hues
+       and a grey tail, and the count is a measurement, not a taste. A
+       fourth hue cannot be added: on the dark surface every candidate for
+       it collapses into one of the first three under colour blindness
+       (blue against violet: OKLab ΔE 2.3, where 8 is the floor), and two
+       indistinguishable slices are worse than an honest "Other". Red and
+       yellow are excluded on top of that -- in this system they mean
+       refused and warning, so a browser drawn in red would read as a
+       fault. Whatever does not fit goes into `--c-cat-other`.
+
+       Colour belongs to the category, not to its rank, so the same row is
+       the same colour in the ring and in the bars: switching the shape
+       must not repaint the data. */
+    --c-humans: #12796a;
+    --c-bots: #5ab8a6;
+    --c-cat-1: #12796a;
+    --c-cat-2: #4a3aa7;
+    --c-cat-3: #c25a1e;
+    --c-cat-other: #5c636b;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -123,6 +152,17 @@
         --c-write: #7fb0f0;
 
         --c-wash: rgba(255, 255, 255, .045);
+
+        /* Stepped for this surface, not flipped from the light values:
+           the pale end of a ramp has to be the *dark* one here, or the
+           robots' share would glow brighter than the visits it is part
+           of. Validated against #121417, the panel colour. */
+        --c-humans: #3fb8a0;
+        --c-bots: #1c5f57;
+        --c-cat-1: #3fb8a0;
+        --c-cat-2: #9085e9;
+        --c-cat-3: #e0803f;
+        --c-cat-other: #8d959e;
     }
 }
 
@@ -147,6 +187,13 @@
     --c-write: #7fb0f0;
 
     --c-wash: rgba(255, 255, 255, .045);
+
+    --c-humans: #3fb8a0;
+    --c-bots: #1c5f57;
+    --c-cat-1: #3fb8a0;
+    --c-cat-2: #9085e9;
+    --c-cat-3: #e0803f;
+    --c-cat-other: #8d959e;
 }
 
 /* ===== Density =====
@@ -459,6 +506,25 @@ code {
 }
 .btn--block { width: 100%; }
 
+/* A button that holds a choice rather than performing an action -- which
+   span a chart shows, how often it refreshes. Pressed, it takes the same
+   inversion the primary action takes, because there is no accent colour to
+   mark it with and rule 1 says there will not be one.
+
+   Keyed on `aria-pressed`, so the state a screen reader is told is the
+   state the eye is shown; a class here could drift from the attribute, and
+   the attribute is the one that has to be right. */
+.btn[aria-pressed="true"] {
+    background: var(--c-action);
+    color: var(--c-action-ink);
+    border-color: var(--c-action);
+}
+.btn[aria-pressed="true"]:hover:not(:disabled) { opacity: .86; }
+/* Unpressed, it still has to look like a control: without an edge a row of
+   them reads as a line of text with one dark chip in it. */
+.btn[aria-pressed="false"] { border-color: var(--c-line); }
+.btn[aria-pressed="false"]:hover:not(:disabled) { background: var(--c-wash); }
+
 .kbd {
     font-family: var(--mono);
     font-size: 10px;
@@ -766,6 +832,12 @@ select.form-input {
     text-transform: uppercase;
     color: var(--c-text-3);
 }
+/* Four tiles rather than three. The cap above is what keeps three tiles
+   from spreading across a wide monitor, and with a fourth it is what
+   pushes that one onto a row of its own -- 4×260 plus the gaps is wider
+   than the dashboard's content column. Here the tiles share the row
+   instead, and still wrap in pairs when there is no room for four. */
+.stats-grid--four { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 
 /* State as a shape, not only as a word: a dot is legible before the label
    is read, and it survives being printed in grey. */

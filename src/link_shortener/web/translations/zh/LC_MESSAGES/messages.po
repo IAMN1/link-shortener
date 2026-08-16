@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-16 13:48+0300\n"
+"POT-Creation-Date: 2026-08-16 17:41+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -155,8 +155,8 @@ msgstr "密码至少需要 %(count)s 个字符"
 #: src/link_shortener/domain/policies/password_policy.py:131
 #, python-format
 msgid ""
-"Password must not exceed %(count)s characters, and fewer for alphabets that "
-"need more room per character"
+"Password must not exceed %(count)s characters, and fewer for alphabets "
+"that need more room per character"
 msgstr "密码不得超过 %(count)s 个字符；每字符占用更多空间的文字则更少"
 
 #: src/link_shortener/domain/policies/password_policy.py:142
@@ -277,8 +277,8 @@ msgstr "所有者 id 不能为空。没有所有者的链接使用 owner=None。
 #: src/link_shortener/domain/value_objects/short_code.py:59
 #, python-format
 msgid ""
-"Invalid short code format: %(value)s. Must be %(min)s-%(max)s alphanumeric "
-"characters, underscore, or hyphen."
+"Invalid short code format: %(value)s. Must be %(min)s-%(max)s "
+"alphanumeric characters, underscore, or hyphen."
 msgstr "短代码格式无效：%(value)s。需为 %(min)s-%(max)s 个字母、数字、下划线或连字符。"
 
 #: src/link_shortener/domain/value_objects/url_hash.py:38
@@ -354,7 +354,7 @@ msgid "Delete link %(code)s? It belongs to this account."
 msgstr "删除链接 %(code)s？它属于此账户。"
 
 #: src/link_shortener/web/i18n.py:251
-#: src/link_shortener/web/templates/dashboard/my_links.html:35
+#: src/link_shortener/web/templates/dashboard/my_links.html:39
 msgid "No links"
 msgstr "没有链接"
 
@@ -375,6 +375,7 @@ msgid "Results"
 msgstr "结果"
 
 #: src/link_shortener/web/i18n.py:256
+#: src/link_shortener/web/templates/dashboard/link_stats.html:9
 msgid "Link"
 msgstr "链接"
 
@@ -417,23 +418,25 @@ msgstr "该链接的访问数据只向创建它的人显示。"
 
 #: src/link_shortener/web/i18n.py:274
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:23
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/my_links.html:27
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Clicks"
 msgstr "访问次数"
 
 #: src/link_shortener/web/i18n.py:279
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:24
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/link_stats.html:36
+#: src/link_shortener/web/templates/dashboard/my_links.html:28
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Created"
 msgstr "创建时间"
 
 #: src/link_shortener/web/i18n.py:280
+#: src/link_shortener/web/templates/dashboard/link_stats.html:40
 msgid "Last Access"
 msgstr "最近访问"
 
@@ -446,6 +449,7 @@ msgid "Days Old"
 msgstr "存在天数"
 
 #: src/link_shortener/web/i18n.py:283
+#: src/link_shortener/web/templates/dashboard/link_stats.html:32
 msgid "Clicks/Day"
 msgstr "每日访问"
 
@@ -457,15 +461,81 @@ msgstr "热门"
 msgid "Recent"
 msgstr "最新"
 
-#: src/link_shortener/web/i18n.py:286
+#: src/link_shortener/web/i18n.py:288
+msgid "Total"
+msgstr "总计"
+
+#: src/link_shortener/web/i18n.py:289
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:72
+msgid "People"
+msgstr "真人"
+
+#: src/link_shortener/web/i18n.py:290
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:75
+msgid "Robots"
+msgstr "机器人"
+
+#: src/link_shortener/web/i18n.py:291
+msgid "No visits in this span"
+msgstr "此时间段内没有访问"
+
+#: src/link_shortener/web/i18n.py:292
+msgid "Try a wider span"
+msgstr "试试更长的时间段"
+
+#: src/link_shortener/web/i18n.py:293
+msgid "The figures could not be loaded"
+msgstr "无法加载统计数据"
+
+#: src/link_shortener/web/i18n.py:298
+msgid "Others"
+msgstr "其他"
+
+#: src/link_shortener/web/i18n.py:301
+msgid "As bars"
+msgstr "条形图"
+
+#: src/link_shortener/web/i18n.py:302
+msgid "As a ring"
+msgstr "环形图"
+
+#: src/link_shortener/web/i18n.py:307
+msgid "updated just now"
+msgstr "刚刚更新"
+
+#: src/link_shortener/web/i18n.py:308
+#, python-format
+msgid "updated %(count)s s ago"
+msgstr "%(count)s 秒前更新"
+
+#: src/link_shortener/web/i18n.py:309
+#, python-format
+msgid "updated %(count)s min ago"
+msgstr "%(count)s 分钟前更新"
+
+#: src/link_shortener/web/i18n.py:310
+#, python-format
+msgid "every %(interval)s"
+msgstr "每 %(interval)s"
+
+#: src/link_shortener/web/i18n.py:311
+msgid "auto-refresh off"
+msgstr "自动刷新已关闭"
+
+#: src/link_shortener/web/i18n.py:314
+#: src/link_shortener/web/templates/dashboard/users_list.html:56
+msgid "Stats"
+msgstr "统计"
+
+#: src/link_shortener/web/i18n.py:315
 msgid "answering"
 msgstr "正常响应"
 
-#: src/link_shortener/web/i18n.py:287
+#: src/link_shortener/web/i18n.py:316
 msgid "not answering"
 msgstr "无响应"
 
-#: src/link_shortener/web/i18n.py:288
+#: src/link_shortener/web/i18n.py:317
 msgid "unknown"
 msgstr "未知"
 
@@ -509,16 +579,16 @@ msgstr "没有刷新令牌"
 msgid "Invalid or expired refresh token"
 msgstr "刷新令牌无效或已过期"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:87
-#: src/link_shortener/web/controllers/dashboard_controller.py:151
+#: src/link_shortener/web/controllers/dashboard_controller.py:118
+#: src/link_shortener/web/controllers/dashboard_controller.py:182
 msgid "User not found"
 msgstr "找不到该账户"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:182
+#: src/link_shortener/web/controllers/dashboard_controller.py:213
 msgid "Role not found"
 msgstr "找不到该角色"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:190
+#: src/link_shortener/web/controllers/dashboard_controller.py:221
 #, python-format
 msgid "The role %(name)s is a system role and cannot be modified"
 msgstr "角色 %(name)s 是系统角色，无法修改"
@@ -606,8 +676,8 @@ msgstr "出了点问题"
 
 #: src/link_shortener/web/templates/error.html:25
 msgid ""
-"The code may have expired, or it may never have existed. Codes made without "
-"an account stop working after a few days."
+"The code may have expired, or it may never have existed. Codes made "
+"without an account stop working after a few days."
 msgstr "该代码可能已过期，也可能从未存在过。未注册创建的代码几天后即失效。"
 
 #: src/link_shortener/web/templates/error.html:28
@@ -639,6 +709,76 @@ msgstr "首页"
 msgid "none"
 msgstr "无"
 
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:31
+msgid "Visits"
+msgstr "访问次数"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:41
+msgid "Span"
+msgstr "时间段"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:46
+msgid "24 hours"
+msgstr "24 小时"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:47
+#: src/link_shortener/web/templates/dashboard/create_link.html:18
+msgid "7 days"
+msgstr "7 天"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:48
+#: src/link_shortener/web/templates/dashboard/create_link.html:19
+msgid "30 days"
+msgstr "30 天"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:49
+msgid "90 days"
+msgstr "90 天"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:51
+msgid "Refresh"
+msgstr "刷新"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:57
+msgid "5 s"
+msgstr "5 秒"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:58
+msgid "10 s"
+msgstr "10 秒"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:59
+msgid "30 s"
+msgstr "30 秒"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:60
+msgid "1 min"
+msgstr "1 分钟"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:61
+msgid "5 min"
+msgstr "5 分钟"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:62
+msgid "Off"
+msgstr "关闭"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:63
+msgid "Refresh now"
+msgstr "立即刷新"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:83
+msgid "Devices"
+msgstr "设备"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:93
+msgid "Browsers"
+msgstr "浏览器"
+
+#: src/link_shortener/web/templates/dashboard/_visit_charts.html:110
+msgid "The last 90 days"
+msgstr "最近 90 天"
+
 #: src/link_shortener/web/templates/dashboard/base.html:67
 msgid "Overview"
 msgstr "概览"
@@ -664,7 +804,7 @@ msgid "Analytics"
 msgstr "统计"
 
 #: src/link_shortener/web/templates/dashboard/base.html:86
-#: src/link_shortener/web/templates/dashboard/my_stats.html:4
+#: src/link_shortener/web/templates/dashboard/my_stats.html:5
 msgid "My Stats"
 msgstr "我的统计"
 
@@ -752,14 +892,6 @@ msgstr "1 小时"
 #: src/link_shortener/web/templates/dashboard/create_link.html:17
 msgid "1 day"
 msgstr "1 天"
-
-#: src/link_shortener/web/templates/dashboard/create_link.html:18
-msgid "7 days"
-msgstr "7 天"
-
-#: src/link_shortener/web/templates/dashboard/create_link.html:19
-msgid "30 days"
-msgstr "30 天"
 
 #: src/link_shortener/web/templates/dashboard/create_link.html:21
 msgid "Links made without an account expire after 7 days."
@@ -908,8 +1040,9 @@ msgid "Dashboard — Linkr"
 msgstr "控制台 — Linkr"
 
 #: src/link_shortener/web/templates/dashboard/home.html:16
-#: src/link_shortener/web/templates/dashboard/my_stats.html:14
-#: src/link_shortener/web/templates/dashboard/service_stats.html:14
+#: src/link_shortener/web/templates/dashboard/link_stats.html:28
+#: src/link_shortener/web/templates/dashboard/my_stats.html:15
+#: src/link_shortener/web/templates/dashboard/service_stats.html:15
 #: src/link_shortener/web/templates/dashboard/user_stats.html:17
 msgid "Total Clicks"
 msgstr "总访问次数"
@@ -920,7 +1053,7 @@ msgid "Avg Clicks"
 msgstr "平均访问次数"
 
 #: src/link_shortener/web/templates/dashboard/home.html:29
-#: src/link_shortener/web/templates/dashboard/my_stats.html:25
+#: src/link_shortener/web/templates/dashboard/my_stats.html:32
 #: src/link_shortener/web/templates/dashboard/user_stats.html:34
 msgid "Recent Links"
 msgstr "最近的链接"
@@ -931,25 +1064,26 @@ msgid "New link"
 msgstr "新建链接"
 
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:21
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/my_links.html:25
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Code"
 msgstr "代码"
 
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/my_links.html:22
-#: src/link_shortener/web/templates/dashboard/my_stats.html:30
-#: src/link_shortener/web/templates/dashboard/service_stats.html:30
+#: src/link_shortener/web/templates/dashboard/link_stats.html:21
+#: src/link_shortener/web/templates/dashboard/my_links.html:26
+#: src/link_shortener/web/templates/dashboard/my_stats.html:37
+#: src/link_shortener/web/templates/dashboard/service_stats.html:37
 #: src/link_shortener/web/templates/dashboard/user_stats.html:39
 msgid "Destination"
 msgstr "目标地址"
 
 #: src/link_shortener/web/templates/dashboard/home.html:38
-#: src/link_shortener/web/templates/dashboard/my_links.html:30
-#: src/link_shortener/web/templates/dashboard/my_stats.html:33
-#: src/link_shortener/web/templates/dashboard/service_stats.html:33
+#: src/link_shortener/web/templates/dashboard/my_links.html:34
+#: src/link_shortener/web/templates/dashboard/my_stats.html:40
+#: src/link_shortener/web/templates/dashboard/service_stats.html:40
 #: src/link_shortener/web/templates/dashboard/user_stats.html:43
 msgid "Loading…"
 msgstr "加载中…"
@@ -976,36 +1110,45 @@ msgstr "服务统计"
 msgid "The %(link)s are open to it."
 msgstr "%(link)s 对它是开放的。"
 
+#: src/link_shortener/web/templates/dashboard/link_stats.html:3
+#, python-format
+msgid "Link %(code)s — Linkr"
+msgstr "链接 %(code)s — Linkr"
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:10
+msgid "All links"
+msgstr "全部链接"
+
 #: src/link_shortener/web/templates/dashboard/my_links.html:2
 msgid "My Links — Linkr"
 msgstr "我的链接 — Linkr"
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:25
+#: src/link_shortener/web/templates/dashboard/my_links.html:29
 msgid "Expires"
 msgstr "过期时间"
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:37
-#: src/link_shortener/web/templates/dashboard/my_links.html:40
+#: src/link_shortener/web/templates/dashboard/my_links.html:41
+#: src/link_shortener/web/templates/dashboard/my_links.html:44
 msgid "Nothing here yet."
 msgstr "这里还是空的。"
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:38
+#: src/link_shortener/web/templates/dashboard/my_links.html:42
 msgid "Create your first link"
 msgstr "创建第一条链接"
 
-#: src/link_shortener/web/templates/dashboard/my_links.html:41
+#: src/link_shortener/web/templates/dashboard/my_links.html:45
 msgid "This account may read links but not create them."
 msgstr "该账号可以查看链接，但不能创建链接。"
 
-#: src/link_shortener/web/templates/dashboard/my_stats.html:2
+#: src/link_shortener/web/templates/dashboard/my_stats.html:3
 msgid "My Stats — Linkr"
 msgstr "我的统计 — Linkr"
 
-#: src/link_shortener/web/templates/dashboard/my_stats.html:10
+#: src/link_shortener/web/templates/dashboard/my_stats.html:11
 msgid "Total Links"
 msgstr "链接总数"
 
-#: src/link_shortener/web/templates/dashboard/my_stats.html:18
+#: src/link_shortener/web/templates/dashboard/my_stats.html:19
 msgid "Avg per Link"
 msgstr "每条链接平均"
 
@@ -1049,27 +1192,27 @@ msgstr "没有角色"
 msgid "Nothing to show."
 msgstr "没有可显示的内容。"
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:2
+#: src/link_shortener/web/templates/dashboard/service_stats.html:3
 msgid "Service Stats — Linkr"
 msgstr "服务统计 — Linkr"
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:4
+#: src/link_shortener/web/templates/dashboard/service_stats.html:5
 msgid "Service Statistics"
 msgstr "服务统计"
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:10
+#: src/link_shortener/web/templates/dashboard/service_stats.html:11
 msgid "Total URLs"
 msgstr "链接总数"
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:25
+#: src/link_shortener/web/templates/dashboard/service_stats.html:32
 msgid "Top Links"
 msgstr "最热门链接"
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:41
+#: src/link_shortener/web/templates/dashboard/service_stats.html:48
 msgid "Totals only."
 msgstr "仅显示总计。"
 
-#: src/link_shortener/web/templates/dashboard/service_stats.html:42
+#: src/link_shortener/web/templates/dashboard/service_stats.html:49
 #, python-format
 msgid "The list of most-visited links needs the %(name)s permission."
 msgstr "查看访问量最高的链接列表需要 %(name)s 权限。"
@@ -1115,10 +1258,6 @@ msgstr "邮箱尚未确认，该账号无法登录"
 msgid "Not verified"
 msgstr "未验证"
 
-#: src/link_shortener/web/templates/dashboard/users_list.html:56
-msgid "Stats"
-msgstr "统计"
-
 #: src/link_shortener/web/templates/dashboard/users_list.html:60
 msgid "Send link again"
 msgstr "重新发送链接"
@@ -1126,8 +1265,8 @@ msgstr "重新发送链接"
 #: src/link_shortener/web/templates/dashboard/users_list.html:68
 #, python-format
 msgid ""
-"Confirm the address of %(email)s without a mailed link? Do this only if you "
-"know the address is theirs."
+"Confirm the address of %(email)s without a mailed link? Do this only if "
+"you know the address is theirs."
 msgstr "不通过邮件链接直接确认 %(email)s 的地址？只有在确定该地址属于本人时才这样做。"
 
 #: src/link_shortener/web/templates/dashboard/users_list.html:68
@@ -1192,7 +1331,8 @@ msgstr ""
 
 #: src/link_shortener/web/templates/email/account_exists_body.txt:9
 msgid ""
-"If it was not you, there is nothing you need to do. Whoever tried learned\n"
+"If it was not you, there is nothing you need to do. Whoever tried learned"
+"\n"
 "nothing about this address: they were given the same answer an address\n"
 "nobody has registered would have got."
 msgstr ""
@@ -1205,7 +1345,8 @@ msgstr "有人尝试注册您的地址"
 
 #: src/link_shortener/web/templates/email/verification_body.txt:1
 msgid ""
-"Someone -- we hope you -- registered this address with the link shortener.\n"
+"Someone -- we hope you -- registered this address with the link "
+"shortener.\n"
 "\n"
 "Open this link to confirm the address and finish signing up:"
 msgstr ""
@@ -1222,7 +1363,8 @@ msgstr[0] "该链接将在 %(count)s 小时后失效。"
 #: src/link_shortener/web/templates/email/verification_body.txt:9
 msgid ""
 "If it was not you, ignore this message. The account cannot be used until\n"
-"the address is confirmed, and it is removed on its own if nobody confirms it."
+"the address is confirmed, and it is removed on its own if nobody confirms"
+" it."
 msgstr ""
 "如果不是您，请忽略此邮件。在地址确认之前该账户无法使用，若无人确认，\n"
 "它会自行删除。"
@@ -1267,9 +1409,9 @@ msgstr "章节"
 #, python-format
 msgid ""
 "The machine-readable document is at %(link)s — point Swagger UI, Redoc, "
-"Postman or a client generator at it. Nothing is bundled here: a megabyte and"
-" a half of vendored viewer, or a script tag pointing at somebody else's CDN,"
-" is not something a redirect service needs to carry."
+"Postman or a client generator at it. Nothing is bundled here: a megabyte "
+"and a half of vendored viewer, or a script tag pointing at somebody "
+"else's CDN, is not something a redirect service needs to carry."
 msgstr ""
 "机器可读的文档位于 %(link)s —— 可以让 Swagger UI、Redoc、Postman "
 "或客户端生成器指向它。这里没有内置任何东西：一个一点五兆的内嵌查看器，或者一个指向别人 CDN 的脚本标签，都不是一个跳转服务需要背负的。"
@@ -1440,8 +1582,8 @@ msgstr "确认您的邮箱"
 
 #: src/link_shortener/web/templates/public/verify.html:9
 msgid ""
-"One press finishes signing up. The link expires, so do it now rather than "
-"later."
+"One press finishes signing up. The link expires, so do it now rather than"
+" later."
 msgstr "点一下就完成注册。链接会过期，所以最好现在就点。"
 
 #: src/link_shortener/web/templates/public/verify.html:12
