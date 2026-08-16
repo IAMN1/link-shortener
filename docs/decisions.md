@@ -1,6 +1,6 @@
 # Decisions
 
-Thirty-five write-ups of why something is the way it is. Read this when the
+Thirty-six write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -17,6 +17,7 @@ when it was written down.
 | [Security](#security) | Passwords, roles, what a refusal reveals |
 | [CLI](#cli) | Prompts, exit codes, output that does not lie |
 | [Frontend](#frontend) | Navigation, what is vendored, what is prefetched |
+| [Logging](#logging) | Who rotates the journals, and what the choice costs |
 | [Known limits](#known-limits) | Things that are wrong and deliberately not fixed |
 
 ---
@@ -500,6 +501,66 @@ system they mean refused and warning.
 shortest possible interval stays a decision made here rather than in a text
 box. The daily chart is refreshed with the page and by the button, never by
 the timer — it answers from a roll-up that gains one row a day.
+
+---
+
+## Logging
+
+### Rotation is somebody else's job
+
+**Decided** (2026-08-16): nothing in `infrastructure/logging` rotates. The
+application writes through `RaisingWatchedFileHandler`, which reopens the
+file when it is moved aside; the moving is done by logrotate, shipped as
+`dockers/logrotate.conf` and run either by the `logrotate` service under
+the `logs` profile or by the host's own logrotate.
+
+**Why.** Production is `gunicorn --workers 4 --worker-class sync`, and each
+worker builds the application for itself: four processes hold four
+descriptors on one `application.log`. A handler that rotates for itself
+rotates four times over, and `doRollover` opens the base file in `w` mode —
+it truncates a file the other three are writing into.
+
+Measured, four processes writing 20 000 records of 265 bytes each into one
+file, rotating every megabyte, with retention off so that a missing record
+means a lost one and not a deleted one:
+
+| | records lost of 80 000 | writes that raised |
+|---|---|---|
+| `RotatingFileHandler` in each process | 8 420 / 8 420 / 12 609 | 12 / 12 / 5 |
+| `WatchedFileHandler`, rotation outside | 0 / 0 / 0 | 0 / 0 / 0 |
+
+Three runs each. That is 10.5 to 15.8 per cent of the journal destroyed,
+about 470 records per rotation, and the errors are not the quiet kind: this
+application re-raises failed writes for its own records, so each one
+reaches `FailoverService`, moves the work to the other logger and is
+counted in `dropped_calls`. `TimedRotatingFileHandler` is the same race
+with four clocks added.
+
+The cost of the arrangement chosen is one `stat` before every write:
+`FileHandler` 3.58 µs per record against `WatchedFileHandler` 5.16 µs,
+measured over 200 000 records. At three records per request that is five
+microseconds a request, against a request measured in milliseconds.
+
+**Retention differs by journal because the journals differ.**
+`application.log` and `error.log` are written by traffic — 796 bytes per
+request, so 690 MB a day at ten requests a second — and are kept for 14
+generations. `audit.log` is written by events, 750 bytes each, and is kept
+for 52 weeks: it is what an incident is reconstructed from, and an incident
+is not noticed the same day. Compression is worth having: JSON records
+compress about 23 times on the traffic measured here, which is an upper
+bound — real traffic with varied addresses will do less.
+
+**What was left open.** Two things the choice does not cover. The rotation
+depends on the profile being named: `.env.example` ships `logs` in
+`COMPOSE_PROFILES`, and a deployment that trims that list, or copies an
+older file, loses rotation without a word — the service goes on answering
+and the files go on growing. Nothing checks that the profile is on, because
+a deployment rotating from the host is entitled to have it off. And the
+second stream is untouched by any of it: gunicorn's access log and
+everything Celery writes go to stdout, where the Docker `json-file` driver
+keeps them with no limit unless `DOCKER_LOG_MAX_SIZE` and
+`DOCKER_LOG_MAX_FILE` set one, which they now do for `app` and
+`celery_worker` and for nothing else in the stack.
 
 ---
 

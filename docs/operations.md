@@ -230,9 +230,76 @@ backup first.
 ## Logs
 
 With `LOG_TO_FILE=true` the journals go to `LOG_DIR` (`datas/logs` by
-default): `application.log`, `error.log`, `audit.log`. Rotation is not the
-application's job — a logrotate configuration is provided in
-[`docs/utils/logrotate/`](utils/logrotate/logrotate_setup.md).
+default): `application.log`, `error.log`, `audit.log`.
 
 The audit journal is separate on purpose: it records what was done to
 links and accounts, and it is the one an incident is reconstructed from.
+
+### How fast they grow
+
+Measured on this tree, driving ordinary traffic through the application
+with file logging on: **796 bytes per request**, three records each, and
+**750 bytes per audited event**. `error.log` stays empty while nothing is
+wrong.
+
+| Traffic | `application.log` per day | per month |
+|---|---|---|
+| 1 request/s | 69 MB | 2 GB |
+| 10 requests/s | 690 MB | 20 GB |
+| 100 requests/s | 6.9 GB | 200 GB |
+
+### Rotating them
+
+Rotation is not the application's job, and that is a decision rather than
+an omission — see [Decisions](decisions.md), *Rotation is somebody else's
+job*. The application writes through `WatchedFileHandler`, which notices
+that the file it holds has been moved aside and opens the new one; the
+moving is done from outside.
+
+The configuration that does it ships with the project, in
+[`dockers/logrotate.conf`](../dockers/logrotate.conf): `application.log`
+and `error.log` daily, or at 100 MB, keeping 14 compressed generations;
+`audit.log` weekly, keeping 52. Two ways to run it, one file:
+
+**In the stack.** A `logrotate` service under the `logs` profile mounts
+the same journals and runs logrotate hourly — hourly so that the 100 MB
+ceiling is noticed, not so that the file rotates hourly.
+
+```bash
+COMPOSE_PROFILES=db,cache,broker,logs \
+  docker compose -f dockers/docker-compose.yml --env-file .env.docker up -d
+```
+
+Leave `logs` out of the profiles and nothing rotates: the files grow until
+the disk ends. `LOG_ROTATE_INTERVAL` changes how often logrotate is
+called.
+
+**On the host, without Docker.** Copy the same file to
+`/etc/logrotate.d/link_shortener` and change the paths in the two block
+headers from `/logs/...` to the absolute path of your `LOG_DIR`. Nothing
+else in it is container-specific. Check it before trusting it:
+
+```bash
+logrotate -d /etc/logrotate.d/link_shortener   # says what it would do
+logrotate -vf /etc/logrotate.d/link_shortener  # does it, once, now
+```
+
+`create` in that file deliberately names a mode and no owner, so the new
+journal is created owned by whoever owned the old one — the account the
+application runs under. Naming an owner that cannot write there is the one
+way to break this quietly: the writes fail, `FailoverService` counts them,
+and the only place it shows is `dropped_calls` in
+`/api/v1/admin/health`.
+
+### The other stream
+
+The journals are not everything the deployment writes. gunicorn's own
+access log goes to stdout (`--access-logfile -`), and so does everything
+Celery logs, and Docker's `json-file` driver keeps that with **no limit at
+all** unless one is set. `DOCKER_LOG_MAX_SIZE` and `DOCKER_LOG_MAX_FILE`
+set it for `app` and `celery_worker`; the default is 10 MB across 5 files
+each. Rotating the journals does nothing for this stream, and vice versa.
+
+The Celery worker writes no journal files: `setup_logging` runs inside
+`create_app`, and `celery ... worker` never goes through it. What the
+worker logs is in `docker logs`, not in `error.log`.
