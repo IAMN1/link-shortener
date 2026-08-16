@@ -169,7 +169,11 @@
                 // clicks is null unless the viewer is entitled to the link's
                 // traffic, so the stats a signed-out visitor gets are the
                 // ones that say nothing about its owner.
-                var stats = '<div class="stat-item"><strong>' + new Date(data.created_at).toLocaleDateString() + '</strong><span>' + escapeHtml(t('stat_created')) + '</span></div>';
+                // `formatDate` from `main.js` rather than a `Date` built
+                // here: it writes the date in the language of the page,
+                // and a second copy of that decision is a second place to
+                // forget it.
+                var stats = '<div class="stat-item"><strong>' + formatDate(data.created_at) + '</strong><span>' + escapeHtml(t('stat_created')) + '</span></div>';
                 // Withheld, not absent. Saying nothing made a link whose
                 // traffic the viewer may not see look like a link nobody has
                 // ever followed.
@@ -177,7 +181,7 @@
                 if (data.clicks !== null && data.clicks !== undefined) {
                     stats = '<div class="stat-item"><strong>' + data.clicks + '</strong><span>' + escapeHtml(t('stat_clicks')) + '</span></div>'
                         + stats
-                        + '<div class="stat-item"><strong>' + (data.last_accessed ? new Date(data.last_accessed).toLocaleDateString() : escapeHtml(t('stat_never'))) + '</strong><span>' + escapeHtml(t('stat_last_access')) + '</span></div>';
+                        + '<div class="stat-item"><strong>' + (data.last_accessed ? formatDate(data.last_accessed) : escapeHtml(t('stat_never'))) + '</strong><span>' + escapeHtml(t('stat_last_access')) + '</span></div>';
                 } else {
                     withheld = '<p class="text-xs text-muted mt-1">'
                         + escapeHtml(t('traffic_withheld')) + '</p>';

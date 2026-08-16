@@ -154,9 +154,31 @@ function escapeHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// The language the page was built in, taken from `<html lang>` -- which
+// `layout/base.html` fills from the same function that chose the
+// catalogue, so this cannot name a different language from the words
+// around it.
+//
+// `undefined` rather than the empty string when the attribute is missing:
+// `toLocaleDateString('')` raises RangeError, while `undefined` is the
+// documented way to say "whatever the browser is set to", which is the
+// right answer when the page did not say.
+function pageLanguage() {
+    return document.documentElement.lang || undefined;
+}
+
+// A date, written the way the language of the page writes dates.
+//
+// The argument is not optional decoration. Left off, `toLocaleDateString`
+// formats for the *browser's* locale, so a reader who set the interface to
+// Russian on an en-US browser was shown `8/16/2026` in a column headed
+// "Создана" -- the same fault the strings had, arriving through the format
+// instead of through the words. No scan can see it: there is no text to
+// find. Measured: `'ru'` gives 16.08.2026 and `'zh'` gives 2026/8/16,
+// against 8/16/2026 from the browser's own setting.
 function formatDate(iso) {
     if (!iso) return '-';
-    return new Date(iso).toLocaleDateString();
+    return new Date(iso).toLocaleDateString(pageLanguage());
 }
 
 // `pressed` and `saysExpanded` are on the list because `dashboard.js` and

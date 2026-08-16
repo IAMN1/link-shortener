@@ -25,6 +25,7 @@ threads, and an in-memory SQLite database is not shared between the
 connections they take from the pool.
 """
 
+import re
 import socket
 import sys
 import tempfile
@@ -312,7 +313,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 24
+    expected = 25
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -918,6 +919,39 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         assert asked, "the delete button asked nothing before deleting"
         assert asked[0] == f"Удалить ссылку {code}?", (
             f"the page is Russian and the question was {asked[0]!r}"
+        )
+
+    @check("a date is written in the language of the page, not the browser's")
+    def _():
+        # The fault no scan can find, because it produces no text: a script
+        # calling `toLocaleDateString()` with no argument formats for the
+        # browser's locale. A reader who picked Russian on an en-US browser
+        # got `8/16/2026` under a column headed "Создана".
+        #
+        # The context is given `locale="en-US"` on purpose, so the two
+        # cannot agree by accident: the browser is English, the cookie says
+        # Russian, and the date has to follow the cookie.
+        context = browser.new_context(locale="en-US")
+        try:
+            page = context.new_page()
+            page.on("console", lambda message: (
+                console_errors.append(f"/dashboard/links (en-US): {message.text}")
+                if message.type == "error" and not is_a_server_answer(message.text)
+                else None
+            ))
+            page.goto(f"{base}/login")
+            sign_in(page, base)
+            context.add_cookies([{"name": "lang", "value": "ru", "url": base}])
+            page.goto(f"{base}/dashboard/links")
+            page.wait_for_selector("#links-tbody tr td", timeout=5000)
+            # Fourth column is "Создана"; the row is drawn by the script.
+            written = page.inner_text("#links-tbody tr td:nth-child(4)").strip()
+        finally:
+            context.close()
+
+        assert re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", written), (
+            f"the page is Russian and the date reads {written!r} -- "
+            "Russian writes 16.08.2026, en-US writes 8/16/2026"
         )
 
     @check("no page reported a script error to the console")
