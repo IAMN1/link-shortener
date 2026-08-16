@@ -294,12 +294,15 @@ and the only place it shows is `dropped_calls` in
 ### The other stream
 
 The journals are not everything the deployment writes. gunicorn's own
-access log goes to stdout (`--access-logfile -`), and so does everything
-Celery logs, and Docker's `json-file` driver keeps that with **no limit at
-all** unless one is set. `DOCKER_LOG_MAX_SIZE` and `DOCKER_LOG_MAX_FILE`
-set it for `app` and `celery_worker`; the default is 10 MB across 5 files
-each. Rotating the journals does nothing for this stream, and vice versa.
+access log goes to stdout (`--access-logfile -`) and nowhere else, and
+Docker's `json-file` driver keeps that with **no limit at all** unless one
+is set. `DOCKER_LOG_MAX_SIZE` and `DOCKER_LOG_MAX_FILE` set it for `app`
+and `celery_worker`; the default is 10 MB across 5 files each. Rotating the
+journals does nothing for this stream, and vice versa.
 
-The Celery worker writes no journal files: `setup_logging` runs inside
-`create_app`, and `celery ... worker` never goes through it. What the
-worker logs is in `docker logs`, not in `error.log`.
+The Celery worker writes the same three journals the web processes do — it
+configures logging from `celery.signals.setup_logging`, since it never goes
+through `create_app`. One difference: a failed write does not raise there.
+Raising exists to feed `FailoverService`, which is behind the web
+application's loggers and not behind a task's, so a raised write in a
+worker would turn a lost log line into failed work.

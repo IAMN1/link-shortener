@@ -377,10 +377,9 @@ services:
       command: celery -A link_shortener.infrastructure.task_queue.celery_app worker --loglevel=info
       volumes:
         - ${LOG_HOST_PATH}:/app/${LOG_DIR}
-      # Свой журнал воркер пишет в stdout: setup_logging вызывается только
-      # из create_app, а `celery ... worker` через фабрику не проходит.
-      # Том выше нужен ему не для записи, а чтобы каталог был тем же
-      # самым, если это когда-нибудь изменится.
+      # Том обязателен: воркер пишет те же три файла, что и приложение.
+      # Через create_app он не проходит, поэтому логирование настраивает
+      # себе сам, по сигналу celery — см. task_queue/celery_app.py.
       logging:
         driver: json-file
         options:

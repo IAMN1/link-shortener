@@ -1,6 +1,6 @@
 # Decisions
 
-Thirty-six write-ups of why something is the way it is. Read this when the
+Thirty-seven write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -556,11 +556,43 @@ depends on the profile being named: `.env.example` ships `logs` in
 older file, loses rotation without a word — the service goes on answering
 and the files go on growing. Nothing checks that the profile is on, because
 a deployment rotating from the host is entitled to have it off. And the
-second stream is untouched by any of it: gunicorn's access log and
-everything Celery writes go to stdout, where the Docker `json-file` driver
-keeps them with no limit unless `DOCKER_LOG_MAX_SIZE` and
-`DOCKER_LOG_MAX_FILE` set one, which they now do for `app` and
-`celery_worker` and for nothing else in the stack.
+second stream is untouched by any of it: gunicorn's access log goes to
+stdout and nowhere else, where the Docker `json-file` driver keeps it with
+no limit unless `DOCKER_LOG_MAX_SIZE` and `DOCKER_LOG_MAX_FILE` set one,
+which they now do for `app` and `celery_worker` and for nothing else in the
+stack.
+
+### The worker logs where the application logs, and does not raise
+
+**Decided** (2026-08-17): the Celery worker configures logging from
+`celery.signals.setup_logging`, with the same settings the web process
+builds, except that a failed write does not reach the caller.
+
+**Why.** `setup_logging` had one caller, `create_app`, and a worker never
+goes through it. Measured before the change, by starting a real worker
+against a dead broker with a log directory of its own: three connection
+failures reported on stdout, and not one file created. Everything a task
+logged — the sending of a message, the failure of one — was outside the
+journals entirely, which is where an incident is reconstructed from and
+what a journal viewer would read.
+
+Raising is what the two processes cannot share. It exists to feed
+`FailoverService`: the service decides to move work by catching an
+exception from the call, so a swallowed write failure means no switch and a
+silent loss. Nothing plays that part behind the module loggers a task uses,
+so the same handler there would turn a full disk into failed work — an
+email not sent because a log line could not be written. The setting is on
+`LoggingSettings` rather than at the call site, since it is a property of
+the process rather than of the deployment.
+
+Connecting a receiver to that signal is also what stops Celery configuring
+the root logger its own way; that is the documented meaning of having one,
+and it is why this does not fight the worker for the handlers.
+
+**What this costs.** More writers on the same three files: four gunicorn
+workers, the worker itself, and its prefork children — ten of them by
+default, one per core. That is what the rotation above is built for, and
+the reason nothing in either process rotates anything itself.
 
 ---
 
