@@ -133,6 +133,17 @@ def _record_the_rule_that_answered(response):
     not notice a check being deleted, renamed, or quietly pointed somewhere
     else.
 
+    The path *and* the method, because six of these paths carry two of
+    them -- `GET` and `DELETE` on `/api/v1/links/<short_code>`, `GET` and
+    `POST` on `/api/v1/auth/verify`, and four more under `/admin/`.
+    Counting paths alone, those two answers were one entry: a `DELETE`
+    added to a path some `GET` already reached raised no denominator and
+    could go unchecked with the run still printing full coverage.
+
+    `HEAD` is recorded as the `GET` it mirrors. Flask serves it off the
+    `GET` rule and never registers one of its own, so leaving it as sent
+    would add a pair no denominator below has.
+
     Args:
         response: The response about to be returned.
 
@@ -140,7 +151,8 @@ def _record_the_rule_that_answered(response):
         The response, untouched.
     """
     if request.url_rule is not None:
-        touched_rules.add(str(request.url_rule))
+        method = "GET" if request.method == "HEAD" else request.method
+        touched_rules.add((str(request.url_rule), method))
     return response
 
 with app.app_context():
@@ -1780,14 +1792,30 @@ if counted != EXPECTED_CHECKS:
 # Flask's own rule, and this run drives the API rather than the pages that
 # load assets -- `tests/live/browser_test.py` is what exercises those, in a
 # real browser. Nothing else may go unreached without being named here.
-NOT_REACHED_ON_PURPOSE = {"/static/<path:filename>"}
-all_rules = {str(rule) for rule in app.url_map.iter_rules()}
+NOT_REACHED_ON_PURPOSE = {("/static/<path:filename>", "GET")}
+
+# One entry per (path, method), which is what a caller can actually ask
+# for. Counted over paths alone this was 49, and six of them carried two
+# methods each: `GET` and `DELETE` on a link, `GET` and `POST` on the
+# confirmation endpoint, and four under `/admin/`. A method added to a
+# path already reached moved nothing, so it could ship unchecked with the
+# run still printing full coverage.
+#
+# `HEAD` and `OPTIONS` are dropped rather than counted: Flask adds both to
+# every rule on its own, nobody wrote them, and requiring a check for each
+# would ask this run to prove Werkzeug works.
+all_rules = {
+    (str(rule), method)
+    for rule in app.url_map.iter_rules()
+    for method in (rule.methods or set())
+    if method not in {"HEAD", "OPTIONS"}
+}
 unreached = sorted(all_rules - touched_rules - NOT_REACHED_ON_PURPOSE)
 print(f"\nRoute rules reached: {len(touched_rules)}/{len(all_rules)}")
 if unreached:
     print("Never reached by this run:")
-    for rule in unreached:
-        print(f"  - {rule}")
+    for path, method in unreached:
+        print(f"  - {method} {path}")
     success = False
 
 mail.stop()
