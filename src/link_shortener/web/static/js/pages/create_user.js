@@ -21,7 +21,7 @@
             });
             if (!resp) return;
             var data = await resp.json();
-            if (!resp.ok) throw new Error(data.message || data.error || 'Failed');
+            if (!resp.ok) throw new Error(data.message || data.error || t('failed'));
             window.location.href = '/dashboard/users';
         } catch(err) {
             errEl.textContent = err.message;

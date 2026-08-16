@@ -99,6 +99,10 @@ class CeleryTaskQueue(TaskQueue):
             'user_agent': context.user_agent,
             'request_path': context.request_path,
             'request_method': context.request_method,
+            # The worker renders the message, and by then the request that
+            # chose this language is over. Dropped here, the confirmation
+            # for a visitor reading Russian arrives in English.
+            'language': context.language,
         }
         # Dispatch the task asynchronously.
         try:
@@ -148,6 +152,10 @@ class CeleryTaskQueue(TaskQueue):
             'user_agent': context.user_agent,
             'request_path': context.request_path,
             'request_method': context.request_method,
+            # The worker renders the message, and by then the request that
+            # chose this language is over. Dropped here, the confirmation
+            # for a visitor reading Russian arrives in English.
+            'language': context.language,
         }
         try:
             send_verification_email.delay(email, token, context_dict)
@@ -190,6 +198,10 @@ class CeleryTaskQueue(TaskQueue):
             'user_agent': context.user_agent,
             'request_path': context.request_path,
             'request_method': context.request_method,
+            # The worker renders the message, and by then the request that
+            # chose this language is over. Dropped here, the confirmation
+            # for a visitor reading Russian arrives in English.
+            'language': context.language,
         }
         try:
             send_account_exists_email.delay(email, context_dict)

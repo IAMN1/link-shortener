@@ -1,10 +1,10 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Users — Linkr{% endblock %}
+{% block title %}{{ _('Users — Linkr') }}{% endblock %}
 {% block dashboard_content %}
 <div class="dash-head">
-    <h1 class="dash-title">Users</h1>
+    <h1 class="dash-title">{{ _('Users') }}</h1>
     {% if can('admin:manage_users') %}
-    <a href="{{ url_for('dashboard.create_user_form') }}" class="btn btn--primary btn--sm">New user</a>
+    <a href="{{ url_for('dashboard.create_user_form') }}" class="btn btn--primary btn--sm">{{ _('New user') }}</a>
     {% endif %}
 </div>
 
@@ -15,7 +15,7 @@
         <table class="table">
             <thead>
                 <tr>
-                    <th>Email</th><th>Roles</th><th>State</th><th class="table-actions">Actions</th>
+                    <th>{{ _('Email') }}</th><th>{{ _('Roles') }}</th><th>{{ _('State') }}</th><th class="table-actions">{{ _('Actions') }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -30,7 +30,7 @@
                         {% for role in user.roles %}
                             <span class="badge badge--name">{{ role }}</span>
                         {% else %}
-                            <span class="text-muted text-sm">none</span>
+                            <span class="text-muted text-sm">{{ _('none') }}</span>
                         {% endfor %}
                     </td>
                     {# Two states, not one. Signing in needs both, and this
@@ -39,26 +39,33 @@
                        nobody had confirmed its address. #}
                     <td>
                         {% if user.is_active %}
-                            <span class="badge badge--ok">Active</span>
+                            <span class="badge badge--ok">{{ _('Active') }}</span>
                         {% else %}
-                            <span class="badge badge--danger">Inactive</span>
+                            <span class="badge badge--danger">{{ _('Inactive') }}</span>
                         {% endif %}
                         {% if user.email_verified %}
-                            <span class="badge badge--ok">Verified</span>
+                            <span class="badge badge--ok">{{ _('Verified') }}</span>
                         {% else %}
-                            <span class="badge badge--warn" title="The address has not been confirmed, so this account cannot sign in">Not verified</span>
+                            <span class="badge badge--warn" title="{{ _('The address has not been confirmed, so this account cannot sign in') }}">{{ _('Not verified') }}</span>
                         {% endif %}
                     </td>
                     <td class="table-actions">
                         {% if can('admin:manage_users') %}
-                        <a href="{{ url_for('dashboard.edit_user', user_id=user.id) }}" class="btn btn--ghost btn--sm">Edit</a>
+                        <a href="{{ url_for('dashboard.edit_user', user_id=user.id) }}" class="btn btn--ghost btn--sm">{{ _('Edit') }}</a>
                         {% endif %}
-                        <a href="{{ url_for('dashboard.user_stats', user_id=user.id) }}" class="btn btn--ghost btn--sm">Stats</a>
+                        <a href="{{ url_for('dashboard.user_stats', user_id=user.id) }}" class="btn btn--ghost btn--sm">{{ _('Stats') }}</a>
                         {# Offered only where there is something to do: on a
                            confirmed account both buttons would be no-ops. #}
                         {% if can('admin:manage_users') and not user.email_verified %}
-                            <button class="btn btn--ghost btn--sm js-resend-verification">Send link again</button>
-                            <button class="btn btn--ghost btn--sm js-confirm-email">Confirm manually</button>
+                            <button class="btn btn--ghost btn--sm js-resend-verification">{{ _('Send link again') }}</button>
+                            {# The question the button asks before it acts,
+                               translated here and with the address already
+                               in it. The script only reads it: a sentence
+                               built in the browser would be built out of an
+                               English string, since no catalogue reaches a
+                               `.js` file. #}
+                            <button class="btn btn--ghost btn--sm js-confirm-email"
+                                    data-confirm="{{ _('Confirm the address of %(email)s without a mailed link? Do this only if you know the address is theirs.', email=user.email) }}">{{ _('Confirm manually') }}</button>
                         {% endif %}
                         {% if can('admin:manage_users') %}
                             {# Deactivation, reactivation and deletion exist in
@@ -72,13 +79,17 @@
                                administrator" every time they were pressed. #}
                             {% if user.id != g.current_user.id %}
                                 {% if user.is_active %}
-                                <button class="btn btn--ghost btn--sm js-deactivate">Deactivate</button>
+                                <button class="btn btn--ghost btn--sm js-deactivate"
+                                        data-confirm="{{ _('Deactivate %(email)s? They will not be able to sign in.', email=user.email) }}">{{ _('Deactivate') }}</button>
                                 {% else %}
-                                <button class="btn btn--ghost btn--sm js-activate">Activate</button>
+                                {# No `data-confirm`: restoring an account
+                                   takes nothing away, so it does not ask. #}
+                                <button class="btn btn--ghost btn--sm js-activate">{{ _('Activate') }}</button>
                                 {% endif %}
-                                <button class="btn btn--ghost btn--sm btn--danger js-delete-user">Delete</button>
+                                <button class="btn btn--ghost btn--sm btn--danger js-delete-user"
+                                        data-confirm="{{ _('Delete %(email)s permanently? This cannot be undone.', email=user.email) }}">{{ _('Delete') }}</button>
                             {% else %}
-                                <span class="text-muted text-sm">this is you</span>
+                                <span class="text-muted text-sm">{{ _('this is you') }}</span>
                             {% endif %}
                         {% endif %}
                     </td>
@@ -89,8 +100,8 @@
     </div>
     {% if not users %}
     <div class="empty">
-        <div class="empty-icon">No users</div>
-        <p>{% if page > 1 %}Nothing on this page.{% else %}Nothing to show.{% endif %}</p>
+        <div class="empty-icon">{{ _('No users') }}</div>
+        <p>{% if page > 1 %}{{ _('Nothing on this page.') }}{% else %}{{ _('Nothing to show.') }}{% endif %}</p>
     </div>
     {% endif %}
 </div>
@@ -101,11 +112,11 @@
 {% if has_next or page > 1 %}
 <div class="pager">
     {% if page > 1 %}
-    <a class="btn btn--ghost btn--sm" href="{{ url_for('dashboard.users_list', page=page - 1) }}">&larr; Previous</a>
+    <a class="btn btn--ghost btn--sm" href="{{ url_for('dashboard.users_list', page=page - 1) }}">&larr; {{ _('Previous') }}</a>
     {% endif %}
-    <span class="pager-page">Page {{ page }}</span>
+    <span class="pager-page">{% trans number=page %}Page {{ number }}{% endtrans %}</span>
     {% if has_next %}
-    <a class="btn btn--ghost btn--sm" href="{{ url_for('dashboard.users_list', page=page + 1) }}">Next &rarr;</a>
+    <a class="btn btn--ghost btn--sm" href="{{ url_for('dashboard.users_list', page=page + 1) }}">{{ _('Next') }} &rarr;</a>
     {% endif %}
 </div>
 {% endif %}

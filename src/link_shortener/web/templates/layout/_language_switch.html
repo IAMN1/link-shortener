@@ -1,0 +1,32 @@
+{# One control, included wherever a header is drawn, beside the theme
+   switch and for the same reason: two copies would drift apart.
+
+   Every language is on screen at once rather than behind a menu. There are
+   three of them, each label is two or three characters, and the whole
+   control is narrower than the account menu beside it -- while a menu would
+   cost a press to open, a press to choose, and a state to keep in step with
+   `aria-expanded`. It also makes the cycling button impossible to get
+   wrong: with three states, cycling means a visitor who overshoots pays for
+   a whole page load to come back.
+
+   The label a visitor reads is the tag in capitals -- EN, RU, ZH -- because
+   that is what language pickers use everywhere and it is legible in any
+   script. The name a screen reader reads is the language's own name for
+   itself, which is what somebody looking for their language actually
+   recognises: `русский`, not `Russian`. Both come from Babel, so a language
+   added to `SUPPORTED_LANGUAGES` needs no second edit here.
+
+   `aria-current="true"` and not `disabled` on the one in force: disabling it
+   would take it out of the tab order, and a person moving by keyboard would
+   have no way to tell which language they are already in. #}
+<div class="lang-switch" role="group" aria-label="{{ _('Interface language') }}">
+    {% for option in language_options() %}
+        <button type="button"
+                class="lang-btn{% if option.current %} lang-btn--on{% endif %}"
+                data-lang="{{ option.tag }}"
+                lang="{{ option.tag }}"
+                title="{{ option.name }}"
+                aria-label="{{ option.name }}"
+                {% if option.current %}aria-current="true"{% endif %}>{{ option.code }}</button>
+    {% endfor %}
+</div>

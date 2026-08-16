@@ -22,6 +22,7 @@ from link_shortener.domain import (
     LinkConflictError, GuestLinkLimitExceededError
 )
 from link_shortener.domain.policies.reserved_codes import is_reserved
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -226,10 +227,15 @@ class CreateShortLinkUseCase(BaseUseCase):
             # Not a hijack -- the router prefers its own static rule -- but
             # a link that never resolves, handed over as if it worked.
             raise ValidationError(
-                f"'{code.value}' is reserved by the service and cannot be "
-                f"used as a short code",
-                field="code",
-            )
+                      f"'{code.value}' is reserved by the service and cannot be "
+                      f"used as a short code",
+                      field="code",
+                      template=N_(
+                          "'%(code)s' is reserved by the service and cannot be used "
+                          "as a short code"
+                      ),
+                      params={"code": code.value},
+                  )
         return code
 
     def _validate_ttl(self, ttl_seconds: int) -> None:
@@ -250,9 +256,11 @@ class CreateShortLinkUseCase(BaseUseCase):
         """
         if ttl_seconds > self.max_ttl_seconds:
             raise ValidationError(
-                f"ttl_seconds must not exceed {self.max_ttl_seconds}",
-                field="ttl_seconds",
-            )
+                      f"ttl_seconds must not exceed {self.max_ttl_seconds}",
+                      field="ttl_seconds",
+                      template=N_("ttl_seconds must not exceed %(max)s"),
+                      params={"max": self.max_ttl_seconds},
+                  )
 
     def _find_or_create(
         self,
@@ -342,11 +350,13 @@ class CreateShortLinkUseCase(BaseUseCase):
                 )
                 if count >= self.guest_link_limit:
                     raise GuestLinkLimitExceededError(
-                        f"Guest link limit of {self.guest_link_limit} exceeded.",
-                        retry_after_seconds=(
-                            self.guest_link_window_days * 24 * 3600
-                        ),
-                    )
+                              f"Guest link limit of {self.guest_link_limit} exceeded.",
+                              retry_after_seconds=(
+                                  self.guest_link_window_days * 24 * 3600
+                              ),
+                              template=N_("Guest link limit of %(limit)s exceeded."),
+                              params={"limit": self.guest_link_limit},
+                          )
 
             # ---- Pick a code and store -----------------------
             if chosen_code is not None:

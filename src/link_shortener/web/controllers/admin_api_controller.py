@@ -19,6 +19,7 @@ from link_shortener.web.schemas.admin.admin_responses import RoleResponseSchema,
 from link_shortener.web.schemas.link import ShortLinkResponse
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.decorators import require_permission
+from link_shortener.domain.i18n import N_
 
 
 class AdminApiController:
@@ -102,8 +103,11 @@ class AdminApiController:
         user = self.admin_service.get_user(user_id, context)
         if not user:
             raise DomainError(
-                f"User with id {user_id} not found", code="USER_NOT_FOUND"
-            )
+                      f"User with id {user_id} not found",
+                      code="USER_NOT_FOUND",
+                      template=N_("User with id %(id)s not found"),
+                      params={"id": user_id},
+                  )
         return jsonify(UserResponseSchema.from_dto(user).model_dump())
 
     @require_permission(SystemPermissions.ADMIN_MANAGE_USERS.value)
@@ -173,8 +177,11 @@ class AdminApiController:
         deleted = self.admin_service.delete_user(user_id, context)
         if not deleted:
             raise DomainError(
-                f"User with id {user_id} not found", code="USER_NOT_FOUND"
-            )
+                      f"User with id {user_id} not found",
+                      code="USER_NOT_FOUND",
+                      template=N_("User with id %(id)s not found"),
+                      params={"id": user_id},
+                  )
         return jsonify({"message": "User deleted"})
 
     @require_permission(SystemPermissions.ADMIN_VIEW_USERS.value)
@@ -229,8 +236,11 @@ class AdminApiController:
         role = self.admin_service.get_role(role_name, context)
         if not role:
             raise DomainError(
-                f"Role {role_name} not found", code="ROLE_NOT_FOUND"
-            )
+                      f"Role {role_name} not found",
+                      code="ROLE_NOT_FOUND",
+                      template=N_("Role %(name)s not found"),
+                      params={"name": role_name},
+                  )
         return jsonify(RoleResponseSchema.from_dto(role).model_dump())
 
     @require_permission(SystemPermissions.ADMIN_MANAGE_ROLES.value)
@@ -264,8 +274,11 @@ class AdminApiController:
         deleted = self.admin_service.delete_role(role_name, context)
         if not deleted:
             raise DomainError(
-                f"Role {role_name} not found", code="ROLE_NOT_FOUND"
-            )
+                      f"Role {role_name} not found",
+                      code="ROLE_NOT_FOUND",
+                      template=N_("Role %(name)s not found"),
+                      params={"name": role_name},
+                  )
         return jsonify({"message": "Role deleted"})
 
     # ------------------------------------------------------------------

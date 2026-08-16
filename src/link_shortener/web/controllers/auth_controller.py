@@ -7,6 +7,7 @@ Handles login, registration, token refresh, and logout.
 from typing import Optional
 
 from flask import Blueprint, current_app, g, jsonify, make_response, request
+from flask_babel import gettext
 
 from link_shortener.application import (
     AuthenticationService,
@@ -19,8 +20,10 @@ from link_shortener.domain import DomainError, ValidationError
 from link_shortener.web.middleware.csrf import (
     CSRF_COOKIE_NAME, build_csrf_token, set_csrf_cookie
 )
+from link_shortener.web.i18n import translate_error
 from link_shortener.web.responses import error_response
 from link_shortener.web.security.context import create_request_context
+from link_shortener.domain.i18n import N_
 
 
 def _decoded_body():
@@ -176,7 +179,7 @@ class AuthController:
         """
         email, password = _read_credentials()
         if not email or not password:
-            raise ValidationError("Email and password are required")
+            raise ValidationError(N_("Email and password are required"))
 
         context = create_request_context()
         try:
@@ -202,7 +205,7 @@ class AuthController:
             # answers INVALID_CREDENTIALS for a deactivated account -- and
             # it would catch EMAIL_NOT_VERIFIED the same way. The envelope
             # is the handler's all the same.
-            return error_response(e.code, e.message, 401)
+            return error_response(e.code, translate_error(e), 401)
 
         # Build the response with access token in body and refresh token in HttpOnly cookie.
         resp = make_response(jsonify({
@@ -274,7 +277,7 @@ class AuthController:
         """
         email, password = _read_credentials()
         if not email or not password:
-            raise ValidationError("Email and password are required")
+            raise ValidationError(N_("Email and password are required"))
 
         context = create_request_context()
         try:
@@ -289,7 +292,7 @@ class AuthController:
             # Same rule as login: internal failures must not reach the
             # client, and the status is the endpoint's rather than the
             # code's.
-            return error_response(e.code, e.message, 400)
+            return error_response(e.code, translate_error(e), 400)
 
     # ------------------------------------------------------------------
     # GET, POST /api/v1/auth/verify
@@ -314,7 +317,7 @@ class AuthController:
             token = body.get("token") if isinstance(body, dict) else None
         if not isinstance(token, str) or not token:
             raise ValidationError(
-                "This confirmation link is not valid", field="token"
+                N_("This confirmation link is not valid"), field="token"
             )
 
         context = create_request_context()
@@ -342,7 +345,7 @@ class AuthController:
         data = _decoded_body()
         email = data.get("email") if isinstance(data, dict) else None
         if not isinstance(email, str) or not email:
-            raise ValidationError("Email is required", field="email")
+            raise ValidationError(N_("Email is required"), field="email")
 
         context = create_request_context()
         self.resend_verification_use_case.execute(email, context)
@@ -402,13 +405,13 @@ class AuthController:
         refresh_token = _read_refresh_token()
         if not refresh_token:
             return error_response(
-                "UNAUTHENTICATED", "No refresh token", 401
+                "UNAUTHENTICATED", gettext("No refresh token"), 401
             )
 
         tokens = self.authentication_service.refresh_access_token(refresh_token)
         if not tokens:
             resp, status = error_response(
-                "UNAUTHENTICATED", "Invalid or expired refresh token", 401
+                "UNAUTHENTICATED", gettext("Invalid or expired refresh token"), 401
             )
             resp.delete_cookie("refresh_token", path="/")
             resp.delete_cookie("access_token", path="/")

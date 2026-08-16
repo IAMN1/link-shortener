@@ -15,6 +15,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import DomainError, ShortCode, VisitSummary
+from link_shortener.domain.i18n import N_
 
 
 # What a caller may ask for, and how finely each span is drawn. A free
@@ -79,10 +80,14 @@ class GetVisitStatsUseCase(BaseUseCase):
 
         if period not in PERIODS:
             raise DomainError(
-                f"Unknown period '{period}'. Choose one of: "
-                f"{', '.join(PERIODS)}",
-                code="VALIDATION_ERROR",
-            )
+                      f"Unknown period '{period}'. Choose one of: "
+                      f"{', '.join(PERIODS)}",
+                      code="VALIDATION_ERROR",
+                      template=N_(
+                          "Unknown period '%(period)s'. Choose one of: %(choices)s"
+                      ),
+                      params={"period": period, "choices": ", ".join(PERIODS)},
+                  )
         span, buckets = PERIODS[period]
 
         link_id = None
@@ -91,8 +96,11 @@ class GetVisitStatsUseCase(BaseUseCase):
                 code = ShortCode(short_code)
             except ValueError as invalid:
                 raise DomainError(
-                    f"Invalid short code: {short_code}", code="VALIDATION_ERROR"
-                ) from invalid
+                          f"Invalid short code: {short_code}",
+                          code="VALIDATION_ERROR",
+                          template=N_("Invalid short code: %(code)s"),
+                          params={"code": short_code},
+                      ) from invalid
             with self.uow_factory(read_only=True) as uow:
                 link = uow.links.find_by_code(code)
             if link is None:
@@ -157,9 +165,11 @@ class GetVisitStatsUseCase(BaseUseCase):
         """
         if not 1 <= days <= 730:
             raise DomainError(
-                f"days must be between 1 and 730, got {days}",
-                code="VALIDATION_ERROR",
-            )
+                      f"days must be between 1 and 730, got {days}",
+                      code="VALIDATION_ERROR",
+                      template=N_("days must be between 1 and 730, got %(days)s"),
+                      params={"days": days},
+                  )
 
         link_id = None
         if short_code is not None:
@@ -167,8 +177,11 @@ class GetVisitStatsUseCase(BaseUseCase):
                 code = ShortCode(short_code)
             except ValueError as invalid:
                 raise DomainError(
-                    f"Invalid short code: {short_code}", code="VALIDATION_ERROR"
-                ) from invalid
+                          f"Invalid short code: {short_code}",
+                          code="VALIDATION_ERROR",
+                          template=N_("Invalid short code: %(code)s"),
+                          params={"code": short_code},
+                      ) from invalid
             with self.uow_factory(read_only=True) as uow:
                 link = uow.links.find_by_code(code)
             link_id = link.id if link is not None else "no-such-link"

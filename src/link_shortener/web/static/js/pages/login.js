@@ -21,7 +21,7 @@
                 body: JSON.stringify({ email: email, password: password })
             });
             var data = await resp.json();
-            if (!resp.ok) throw new Error(data.message || data.error || 'Login failed');
+            if (!resp.ok) throw new Error(data.message || data.error || t('login_failed'));
             // The session arrives as HttpOnly cookies; nothing to store here.
             window.location.href = '/dashboard/';
         } catch(err) {
@@ -43,7 +43,7 @@
             errEl.classList.add('hidden');
             doneEl.classList.add('hidden');
             if (!email) {
-                errEl.textContent = 'Type the address first, then ask again.';
+                errEl.textContent = t('type_address_first');
                 errEl.classList.remove('hidden');
                 return;
             }
@@ -55,7 +55,7 @@
                     body: JSON.stringify({ email: email })
                 });
                 var data = await resp.json();
-                if (!resp.ok) throw new Error(data.message || data.error || 'Could not send');
+                if (!resp.ok) throw new Error(data.message || data.error || t('could_not_send'));
                 doneEl.textContent = data.message;
                 doneEl.classList.remove('hidden');
             } catch(err) {

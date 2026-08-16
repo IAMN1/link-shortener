@@ -1,18 +1,18 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Edit {{ user.email }} — Linkr{% endblock %}
+{% block title %}{% trans email=user.email %}Edit {{ email }} — Linkr{% endtrans %}{% endblock %}
 {% block dashboard_content %}
 <div class="dash-head">
-    <h1 class="dash-title">Edit User</h1>
-    <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost btn--sm">Cancel</a>
+    <h1 class="dash-title">{{ _('Edit User') }}</h1>
+    <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost btn--sm">{{ _('Cancel') }}</a>
 </div>
 
 <div class="card narrow">
-    <p class="lab mb-1">Editing</p>
+    <p class="lab mb-1">{{ _('Editing') }}</p>
     <p class="mono mb-2">{{ user.email }}</p>
 
     <form id="edit-user-form">
         <div class="form-group">
-            <span class="form-label">Roles</span>
+            <span class="form-label">{{ _('Roles') }}</span>
             <div class="check-list">
                 {% for role in all_roles %}
                 <label class="check">
@@ -31,16 +31,16 @@
 
         {% if unassignable_held %}
         <div class="explain mb-2">
-            This account also holds
-            {% for name in unassignable_held %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %},
-            which is not an assignable role. <b>Saving removes it.</b>
+            {%- set held %}{% for name in unassignable_held %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endset -%}
+            {% trans names=held %}This account also holds {{ names }}, which is not an assignable role.{% endtrans %}
+            <b>{{ _('Saving removes it.') }}</b>
         </div>
         {% endif %}
 
         <div id="edit-user-error" class="form-error hidden"></div>
         <div class="flex gap-1">
-            <button type="submit" class="btn btn--primary">Save</button>
-            <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost">Cancel</a>
+            <button type="submit" class="btn btn--primary">{{ _('Save') }}</button>
+            <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost">{{ _('Cancel') }}</a>
         </div>
     </form>
 </div>

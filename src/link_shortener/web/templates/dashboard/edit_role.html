@@ -1,26 +1,26 @@
 {% extends "dashboard/base.html" %}
 {% import "dashboard/_perms.html" as perms %}
-{% block title %}Edit role {{ role.name }} — Linkr{% endblock %}
+{% block title %}{% trans name=role.name %}Edit role {{ name }} — Linkr{% endtrans %}{% endblock %}
 {% block dashboard_content %}
 <div class="dash-head">
-    <h1 class="dash-title">Edit Role</h1>
-    <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost btn--sm">Cancel</a>
+    <h1 class="dash-title">{{ _('Edit Role') }}</h1>
+    <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost btn--sm">{{ _('Cancel') }}</a>
 </div>
 
 <div class="card">
-    <p class="lab mb-1">Editing</p>
+    <p class="lab mb-1">{{ _('Editing') }}</p>
     <p class="mono mb-2">{{ role.name }}</p>
 
     <form id="edit-role-form">
-        <span class="form-label">Permissions</span>
-        <span class="form-hint mb-1">Grouped by what they act on.</span>
+        <span class="form-label">{{ _('Permissions') }}</span>
+        <span class="form-hint mb-1">{{ _('Grouped by what they act on.') }}</span>
         {{ perms.checks(available_permissions, 'permissions',
                         role.permissions|map(attribute='name')|list) }}
 
         <div id="edit-role-error" class="form-error hidden mt-2"></div>
         <div class="flex gap-1 mt-2">
-            <button type="submit" class="btn btn--primary">Save</button>
-            <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost">Cancel</a>
+            <button type="submit" class="btn btn--primary">{{ _('Save') }}</button>
+            <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost">{{ _('Cancel') }}</a>
         </div>
     </form>
 </div>

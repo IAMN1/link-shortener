@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.i18n import N_
 
 
 @dataclass(frozen=True)
@@ -29,8 +30,8 @@ class OwnerID:
         """
         if not self.value:
             raise ValidationError(
-                "Owner id must not be empty. An owner-less link carries "
-                "owner=None.",
+                N_("Owner id must not be empty. An owner-less link carries "
+                "owner=None."),
                 field="owner_id",
             )
 

@@ -15,11 +15,23 @@ an exception -- ones that also set or clear cookies, and so need the
 response object in hand.
 """
 
-from typing import Tuple
+from typing import FrozenSet, Tuple
 
-from flask import Response, jsonify, request
+from flask import Response, jsonify, render_template, request
 
 from link_shortener.web.schemas.error import ErrorResponse
+
+CODES_OFFERING_LOOKUP: FrozenSet[str] = frozenset(
+    {"LINK_NOT_FOUND", "LINK_EXPIRED"}
+)
+"""Refusals after which another short code is worth offering.
+
+A code that leads nowhere is the ordinary business of a link shortener, so
+``error.html`` puts a lookup form under those two and plain text under
+everything else. Which refusals those are is decided here, by code, and not
+in the page by reading the sentence: the sentence is translated, and
+"Ссылка не найдена" does not contain the word ``link``.
+"""
 
 
 def error_response(code: str, message: str, status: int) -> Tuple[Response, int]:
@@ -39,6 +51,35 @@ def error_response(code: str, message: str, status: int) -> Tuple[Response, int]
     """
     body = ErrorResponse(error=code, message=message).model_dump()
     return jsonify(body), status
+
+
+def error_page(code: str, message: str, status: int) -> Tuple[str, int]:
+    """
+    Draw a refusal as a page, telling the page which refusal it is.
+
+    The one door to ``error.html``. Rendering it by hand elsewhere works
+    until the day a caller forgets ``code``, and what a missing code costs
+    is silent: the page still draws, still says the right sentence, and the
+    lookup form under a dead short code simply is not there any more.
+
+    Args:
+        code: Machine-readable code, the same one the API answers in
+            ``error``. What the page branches on.
+        message: The sentence for a human, already translated.
+        status: HTTP status to answer with.
+
+    Returns:
+        Tuple of ``(rendered page, status)``, ready to return from a view
+        or an error handler.
+    """
+    # The page is handed the decision, not the code to decide from. It has
+    # no other use for the code, and a template that branches on a string
+    # is a second place where the list of those codes lives.
+    return render_template(
+        "error.html",
+        error=message,
+        offers_lookup=code in CODES_OFFERING_LOOKUP,
+    ), status
 
 
 def wants_html() -> bool:

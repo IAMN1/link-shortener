@@ -64,7 +64,7 @@ class SendAccountExistsEmailUseCase(BaseUseCase):
 
         sign_in_url = f"{self.base_url.rstrip('/')}{SIGN_IN_PATH}"
         subject, body = self.templates.account_exists_email(
-            sign_in_url=sign_in_url
+            sign_in_url=sign_in_url, language=context.language
         )
 
         try:

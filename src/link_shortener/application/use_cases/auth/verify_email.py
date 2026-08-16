@@ -6,6 +6,7 @@ from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import ValidationError
 from link_shortener.domain.value_objects.verification_token import token_digest
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -48,7 +49,7 @@ class VerifyEmailUseCase(BaseUseCase):
             if user_id is None:
                 log.warning("Email confirmation refused")
                 raise ValidationError(
-                    "This confirmation link is not valid", field="token"
+                    N_("This confirmation link is not valid"), field="token"
                 )
 
             user = uow.users.find_by_id(user_id)
@@ -67,7 +68,7 @@ class VerifyEmailUseCase(BaseUseCase):
                 # this is the branch that decides it.
                 log.warning("Email confirmation names a missing account")
                 raise ValidationError(
-                    "This confirmation link is not valid", field="token"
+                    N_("This confirmation link is not valid"), field="token"
                 )
 
             user.confirm_email()

@@ -12,9 +12,17 @@
     // One refusal is shown the same way wherever it comes from, so a
     // guard like "the last administrator may not be removed" reaches the
     // operator in the service's own words.
-    async function act(row, method, path, confirmation) {
-        var email = row.dataset.userEmail;
-        if (confirmation && !confirm(confirmation.replace('%s', email))) return;
+    //
+    // The question each control asks is written on the control, in
+    // `data-confirm`, rather than passed in from here. The server draws
+    // this table and knows both the sentence and the address it names, so
+    // the sentence arrives translated and already filled in -- no
+    // substitution happens in the browser at all. A control with no
+    // `data-confirm` is one that does not ask, which is how restoring an
+    // account is meant to behave.
+    async function act(control, method, path) {
+        var question = control.dataset.confirm;
+        if (question && !confirm(question)) return;
         var resp = await apiFetch(path, { method: method });
         if (!resp) return;
         if (!resp.ok) {
@@ -30,34 +38,31 @@
         var deactivate = row.querySelector('.js-deactivate');
         if (deactivate) {
             deactivate.addEventListener('click', function() {
-                act(row, 'POST', '/api/v1/admin/users/' + id + '/deactivate',
-                    'Deactivate %s? They will not be able to sign in.');
+                act(deactivate, 'POST', '/api/v1/admin/users/' + id + '/deactivate');
             });
         }
 
         var activate = row.querySelector('.js-activate');
         if (activate) {
             activate.addEventListener('click', function() {
-                act(row, 'POST', '/api/v1/admin/users/' + id + '/activate', null);
+                act(activate, 'POST', '/api/v1/admin/users/' + id + '/activate');
             });
         }
 
         var remove = row.querySelector('.js-delete-user');
         if (remove) {
             remove.addEventListener('click', function() {
-                act(row, 'DELETE', '/api/v1/admin/users/' + id,
-                    'Delete %s permanently? This cannot be undone.');
+                act(remove, 'DELETE', '/api/v1/admin/users/' + id);
             });
         }
 
         // Confirming by hand skips the proof that the address is readable,
-        // so it asks first and says what it is skipping.
+        // so it asks first and says what it is skipping. The sentence that
+        // says so is on the button, in `data-confirm`.
         var confirmEmail = row.querySelector('.js-confirm-email');
         if (confirmEmail) {
             confirmEmail.addEventListener('click', function() {
-                act(row, 'POST', '/api/v1/admin/users/' + id + '/verify-email',
-                    'Confirm the address of %s without a mailed link? '
-                    + 'Do this only if you know the address is theirs.');
+                act(confirmEmail, 'POST', '/api/v1/admin/users/' + id + '/verify-email');
             });
         }
 

@@ -2,6 +2,7 @@ import re
 from dataclasses import dataclass
 
 from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.i18n import N_
 
 
 @dataclass(frozen=True)
@@ -31,9 +32,13 @@ class UrlHash:
 
         if not re.match(r"^[a-f0-9]{64}$", self.value):
             raise ValidationError(
-                f"Invalid hash format: {self.value}. Must be 64 hex characters.",
-                field="url_hash",
-            )
+                      f"Invalid hash format: {self.value}. Must be 64 hex characters.",
+                      field="url_hash",
+                      template=N_(
+                          "Invalid hash format: %(value)s. Must be 64 hex characters."
+                      ),
+                      params={"value": self.value},
+                  )
 
     def __str__(self) -> str:
         return self.value

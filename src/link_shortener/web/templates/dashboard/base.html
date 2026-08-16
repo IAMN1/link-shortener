@@ -30,6 +30,7 @@
    Link -- so one address was reachable by two controls on one screen. #}
 {% block header_nav %}
 <div class="header-right">
+    {% include "layout/_language_switch.html" %}
     {% include "layout/_theme_button.html" %}
     {# Not `.header-link`: that class lights up on hover, and this is a
        label, not a destination -- it behaved like a button that does
@@ -63,53 +64,53 @@
            the dashboard there was no way back to its home but the browser's
            back button. No permission guards it; every signed-in account can
            open it, and it says what that account may not do. #}
-        {{ nav('dashboard.home', 'overview', 'Overview') }}
+        {{ nav('dashboard.home', 'overview', _('Overview')) }}
 
         {# Every entry asks the permission its page asks for. Named roles
            used to decide this, which offered an analyst a "Create Link" it
            may not use and hid the service statistics a plain user may
            read. #}
         {% if can('link:view_own') or can('link:create') %}
-            <div class="dash-side-section">Links</div>
+            <div class="dash-side-section">{{ _('Links') }}</div>
             {% if can('link:view_own') %}
-                {{ nav('dashboard.my_links', 'links', 'My Links') }}
+                {{ nav('dashboard.my_links', 'links', _('My Links')) }}
             {% endif %}
             {% if can('link:create') %}
-                {{ nav('dashboard.create_link_form', 'create', 'Create Link') }}
+                {{ nav('dashboard.create_link_form', 'create', _('Create Link')) }}
             {% endif %}
         {% endif %}
 
         {% if can('link:view_own') or can('stats:view_basic') %}
-            <div class="dash-side-section">Analytics</div>
+            <div class="dash-side-section">{{ _('Analytics') }}</div>
             {% if can('link:view_own') %}
-                {{ nav('dashboard.my_stats', 'my-stats', 'My Stats') }}
+                {{ nav('dashboard.my_stats', 'my-stats', _('My Stats')) }}
             {% endif %}
             {% if can('stats:view_basic') %}
-                {{ nav('dashboard.service_stats', 'service-stats', 'Service Stats') }}
+                {{ nav('dashboard.service_stats', 'service-stats', _('Service Stats')) }}
             {% endif %}
         {% endif %}
 
         {% if can('admin:view_users') or can('admin:view_roles')
               or can('admin:view_system_health') %}
-            <div class="dash-side-section">Administration</div>
+            <div class="dash-side-section">{{ _('Administration') }}</div>
             {% if can('admin:view_users') %}
-                {{ nav('dashboard.users_list', 'users', 'Users',
+                {{ nav('dashboard.users_list', 'users', _('Users'),
                        ['dashboard.create_user_form', 'dashboard.edit_user',
                         'dashboard.user_stats']) }}
             {% endif %}
             {% if can('admin:view_roles') %}
-                {{ nav('dashboard.roles_list', 'roles', 'Roles',
+                {{ nav('dashboard.roles_list', 'roles', _('Roles'),
                        ['dashboard.create_role_form', 'dashboard.edit_role']) }}
             {% endif %}
             {% if can('admin:view_system_health') %}
-                {{ nav('dashboard.service_health', 'health', 'Health Check') }}
+                {{ nav('dashboard.service_health', 'health', _('Health Check')) }}
             {% endif %}
         {% endif %}
 
         <div class="dash-side-bottom">
-            {{ nav('frontend.index', 'home', 'Back to Home') }}
-            <button class="dash-side-logout" id="logout-btn" data-title="Log out">
-                {{ icons.nav('logout') }}<span class="dash-side-label">Log out</span>
+            {{ nav('frontend.index', 'home', _('Back to Home')) }}
+            <button class="dash-side-logout" id="logout-btn" data-title="{{ _('Log out') }}">
+                {{ icons.nav('logout') }}<span class="dash-side-label">{{ _('Log out') }}</span>
             </button>
             {# The control the rail is worked with. `aria-expanded` carries
                the state the class carries, because a screen reader has no
@@ -117,8 +118,8 @@
             <button class="dash-side-collapse" id="dash-collapse"
                     aria-controls="dash-side"
                     aria-expanded="{{ 'false' if rail else 'true' }}"
-                    data-title="Expand the menu">
-                {{ icons.nav('collapse') }}<span class="dash-side-label">Collapse</span>
+                    data-title="{{ _('Expand the menu') }}">
+                {{ icons.nav('collapse') }}<span class="dash-side-label">{{ _('Collapse') }}</span>
             </button>
         </div>
     </nav>
@@ -137,12 +138,12 @@
    cookie: this button is drawn only on a narrow screen (`.dash-toggle` is
    `display: none` until the media query), and the sidebar always starts
    closed there. #}
-<button class="dash-toggle" id="dash-toggle" aria-label="Menu"
+<button class="dash-toggle" id="dash-toggle" aria-label="{{ _('Menu') }}"
         aria-controls="dash-side" aria-expanded="false">&#9776;</button>
 {% else %}
     <div class="container mt-3">
-        <p class="text-muted">You are not logged in.
-           <a href="{{ url_for('frontend.login_page') }}">Log in</a></p>
+        {%- set login %}<a href="{{ url_for('frontend.login_page') }}">{{ _('Log in') }}</a>{% endset -%}
+        <p class="text-muted">{% trans link=login %}You are not logged in. {{ link }}{% endtrans %}</p>
     </div>
 {% endif %}
 {% endblock %}

@@ -9,6 +9,7 @@ from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.owner_id import OwnerID
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -84,7 +85,7 @@ class Link:
                 # ValueError, so every handler on the way out missed it and
                 # an unauthenticated request body of two fields returned 500.
                 raise ValidationError(
-                    "ttl_seconds is too large to be a date",
+                    N_("ttl_seconds is too large to be a date"),
                     field="ttl_seconds",
                 ) from exc
 

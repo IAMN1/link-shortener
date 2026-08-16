@@ -8,8 +8,14 @@
    `prefers-color-scheme` -- which is the third state, and the one most
    visitors are in. #}
 {% set theme = request.cookies.get('theme') %}
+{# `current_language` comes from the same function that chose the catalogue
+   -- see web/i18n.py. Not read from the cookie here the way the theme is:
+   the language is negotiated from `Accept-Language` when no cookie was
+   sent, so the cookie is one of three answers rather than the answer, and
+   a second reading of it here would name a different language from the one
+   the page is actually written in. #}
 <!DOCTYPE html>
-<html lang="en"{% if theme in ('light', 'dark') %} data-theme="{{ theme }}"{% endif %}>
+<html lang="{{ current_language }}"{% if theme in ('light', 'dark') %} data-theme="{{ theme }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -67,9 +73,10 @@
             {% block header_nav %}
             <div class="header-right">
                 <a href="{{ url_for('frontend.api_docs') }}" class="header-link">API</a>
+                {% include "layout/_language_switch.html" %}
                 {% include "layout/_theme_button.html" %}
                 {% if g.current_user %}
-                    <a href="{{ url_for('dashboard.home') }}" class="header-link">Dashboard</a>
+                    <a href="{{ url_for('dashboard.home') }}" class="header-link">{{ _('Dashboard') }}</a>
                     <div class="dropdown">
                         <button class="dropdown-trigger" id="dropdown-toggle" aria-expanded="false" aria-haspopup="true">
                             <span class="avatar">{{ g.current_user.email[0]|upper }}</span>
@@ -79,7 +86,7 @@
                             <div class="dropdown-label">{{ g.current_user.email }}</div>
                             <div class="dropdown-label mono">{{ g.current_user.roles|join(', ') }}</div>
                             <hr class="dropdown-divider">
-                            <a href="{{ url_for('dashboard.home') }}" class="dropdown-item">Dashboard</a>
+                            <a href="{{ url_for('dashboard.home') }}" class="dropdown-item">{{ _('Dashboard') }}</a>
                             <hr class="dropdown-divider">
                             {# `href="#"` because this is a control drawn as a
                                menu entry, not a destination. It needs no
@@ -92,15 +99,15 @@
                                with the attribute and without it, the press
                                logs out, nothing navigates, and hovering
                                sends no request. #}
-                            <a href="#" id="logout-link" class="dropdown-item dropdown-item--danger">Log out</a>
+                            <a href="#" id="logout-link" class="dropdown-item dropdown-item--danger">{{ _('Log out') }}</a>
                         </div>
                     </div>
                 {% else %}
-                    <a href="{{ url_for('frontend.login_page') }}" class="header-link">Log in</a>
+                    <a href="{{ url_for('frontend.login_page') }}" class="header-link">{{ _('Log in') }}</a>
                     {# Outlined, not filled. The filled control on a page is
                        the page's own job, and this page's job is shortening
                        a link -- the two used to be the same green slab. #}
-                    <a href="{{ url_for('frontend.register_form') }}" class="btn btn--ghost btn--sm">Sign up</a>
+                    <a href="{{ url_for('frontend.register_form') }}" class="btn btn--ghost btn--sm">{{ _('Sign up') }}</a>
                 {% endif %}
                 {# The hamburger that stood here was drawn `display: none`
                    with no media query anywhere to show it, and its handler
@@ -127,13 +134,15 @@
                page that opens can reach back through `window.opener`. #}
             <a href="https://github.com/IAMN1" target="_blank" rel="noopener noreferrer">GitHub</a>
 
+            {# One sentence, not three fragments. Split into "powered by",
+               the name, "with" and the heart, a translator can only fill in
+               the pieces in the order English puts them -- and the order is
+               the part that changes between languages. As one string with
+               two substitutions, the whole line can be rearranged. #}
+            {%- set author %}<a href="https://github.com/IAMN1" target="_blank" rel="noopener noreferrer">Maizekeen</a>{% endset -%}
+            {%- set heart %}<svg class="heart" viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="{{ _('love') }}"><path d="M8 13.9 2.9 8.7a3.2 3.2 0 0 1 4.5-4.5L8 4.8l.6-.6a3.2 3.2 0 0 1 4.5 4.5Z"/></svg>{% endset -%}
             <span class="footer-sign">
-                powered by
-                <a href="https://github.com/IAMN1" target="_blank" rel="noopener noreferrer">Maizekeen</a>
-                with
-                <svg class="heart" viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="love">
-                    <path d="M8 13.9 2.9 8.7a3.2 3.2 0 0 1 4.5-4.5L8 4.8l.6-.6a3.2 3.2 0 0 1 4.5 4.5Z"/>
-                </svg>
+                {% trans author=author, heart=heart %}powered by {{ author }} with {{ heart }}{% endtrans %}
             </span>
         </div>
     </footer>
@@ -162,6 +171,30 @@
        page. The wrapper is also what keeps an early `return` legal and
        keeps the variables off `window`, which seventeen page scripts
        otherwise share. #}
+    {# The sentences a script writes onto the page after it arrives.
+
+       A page script runs in the browser, where `gettext` has long since
+       had its turn, so a string typed into a `.js` file is in the language
+       it was typed in and no catalogue can reach it. The page came in
+       Russian and the script wrote English into it -- and every run stayed
+       green, because nothing but a browser executes these files at all.
+
+       Translated on the server, where the language is known, and carried
+       in with the page rather than fetched: a second request would arrive
+       after the first "Working…" was already on screen, and would need a
+       cache keyed on the language cookie to be worth making.
+
+       `application/json` rather than a `window.I18N = {...}` literal. The
+       browser does not execute this block, so a translated sentence is
+       data here and never code -- and a `.po` file is something an
+       operator edits, so a stray quote in one should spoil a sentence
+       rather than the page. `tojson` escapes `<` as well, so no
+       translation can close this tag early.
+
+       The list lives in `web/i18n.py:script_strings`, not here: the
+       scripts ask for keys, and a second copy of the keys in this file is
+       a second thing to keep in step. #}
+    <script id="script-strings" type="application/json">{{ script_strings()|tojson }}</script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

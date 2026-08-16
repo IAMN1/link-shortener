@@ -329,6 +329,54 @@ code {
    a byline is not going to be read as a failure by anybody. */
 .heart { width: 11px; height: 11px; color: var(--c-danger); flex: none; }
 
+/* ===== Language switch =====
+
+   One segment per language rather than a menu: there are three of them and
+   each label is two characters, so the whole control is narrower than the
+   account menu beside it and needs no open state to keep in step with
+   `aria-expanded`.
+
+   Set in the mono face, like the short codes and the logo: these are tags,
+   not words, and reading them as tags is what tells a visitor they are
+   picking a language rather than following a link. */
+.lang-switch {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    border: var(--edge);
+    border-radius: var(--r);
+    overflow: hidden;
+}
+
+.lang-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1;
+    padding: 0 7px;
+    height: 30px;
+    border: none;
+    /* Only between segments, so the group keeps the one outer border the
+       theme button beside it has. */
+    border-left: var(--edge);
+    background: none;
+    color: var(--c-text-3);
+    cursor: pointer;
+}
+
+.lang-btn:first-child { border-left: none; }
+.lang-btn:hover { background: var(--c-wash); color: var(--c-text); }
+
+/* The one in force. It stays focusable and stays pressable -- a disabled
+   segment leaves the tab order, and then a person moving by keyboard has no
+   way to find out which language they are already in. The press is refused
+   in the handler instead, where refusing costs nothing; refusing here would
+   cost a full page load to end up where you started. */
+.lang-btn--on {
+    background: var(--c-wash);
+    color: var(--c-text);
+    font-weight: 600;
+}
+
 /* ===== Theme switch =====
 
    The state rides on a cookie the server reads at render time, the way the

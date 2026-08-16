@@ -32,16 +32,16 @@
                 + '<td class="cell-fill"><span class="truncate">' + escapeHtml(l.original_url) + '</span></td>'
                 + '<td>' + l.clicks + '</td>'
                 + '<td>' + formatDate(l.created_at) + '</td>'
-                + '<td>' + (l.expires_at ? formatDate(l.expires_at) : '<span class="text-muted">never</span>') + '</td>'
+                + '<td>' + (l.expires_at ? formatDate(l.expires_at) : '<span class="text-muted">' + escapeHtml(t('never')) + '</span>') + '</td>'
                 + (mayDelete
-                    ? '<td><button class="btn btn--ghost btn--sm del-btn" data-code="' + escapeHtml(l.short_code) + '">Delete</button></td>'
+                    ? '<td><button class="btn btn--ghost btn--sm del-btn" data-code="' + escapeHtml(l.short_code) + '">' + escapeHtml(t('delete')) + '</button></td>'
                     : '')
                 + '</tr>';
         }).join('');
         tbody.querySelectorAll('.del-btn').forEach(function(btn) {
             btn.addEventListener('click', async function() {
                 var code = this.dataset.code;
-                if (!confirm('Delete link ' + code + '?')) return;
+                if (!confirm(t('confirm_delete_link', { code: code }))) return;
                 var r = await apiFetch('/api/v1/links/' + encodeURIComponent(code), { method: 'DELETE' });
                 if (!r) return;
                 if (!r.ok) {
@@ -52,6 +52,6 @@
             });
         });
     } catch(e) {
-        showLoadError('links-error', 'The service could not be reached.', 'links-tbody', columns);
+        showLoadError('links-error', t('unreachable'), 'links-tbody', columns);
     }
 })();

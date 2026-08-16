@@ -14,6 +14,8 @@ attrs==26.1.0
     #   jsonschema-path
     #   referencing
 autopep8==2.3.2
+babel==2.18.0
+    # via flask-babel
 bandit==1.9.2
 bcrypt==5.0.0
     # via link-shortener
@@ -51,8 +53,11 @@ dill==0.4.0
 flake8==7.3.0
 flask==3.1.2
     # via
+    #   flask-babel
     #   flask-cors
     #   link-shortener
+flask-babel==4.0.0
+    # via link-shortener
 flask-cors==6.0.2
     # via link-shortener
 greenlet==3.3.0
@@ -72,6 +77,7 @@ itsdangerous==2.2.0
 jinja2==3.1.6
     # via
     #   flask
+    #   flask-babel
     #   link-shortener
 jsonschema==4.26.0
     # via
@@ -180,6 +186,8 @@ python-dotenv==1.2.1
     #   pydantic-settings
 pytokens==0.4.1
     # via black
+pytz==2026.3.post1
+    # via flask-babel
 pyyaml==6.0.3
     # via
     #   bandit

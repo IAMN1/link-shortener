@@ -1,10 +1,10 @@
 {% extends "dashboard/base.html" %}
-{% block title %}My Links — Linkr{% endblock %}
+{% block title %}{{ _('My Links — Linkr') }}{% endblock %}
 {% block dashboard_content %}
 <div class="dash-head">
-    <h1 class="dash-title">My Links</h1>
+    <h1 class="dash-title">{{ _('My Links') }}</h1>
     {% if can('link:create') %}
-    <a href="{{ url_for('dashboard.create_link_form') }}" class="btn btn--primary btn--sm">New link</a>
+    <a href="{{ url_for('dashboard.create_link_form') }}" class="btn btn--primary btn--sm">{{ _('New link') }}</a>
     {% endif %}
 </div>
 
@@ -18,27 +18,27 @@
         <table class="table">
             <thead>
                 <tr>
-                    <th>Code</th>
-                    <th>Destination</th>
-                    <th>Clicks</th>
-                    <th>Created</th>
-                    <th>Expires</th>
+                    <th>{{ _('Code') }}</th>
+                    <th>{{ _('Destination') }}</th>
+                    <th>{{ _('Clicks') }}</th>
+                    <th>{{ _('Created') }}</th>
+                    <th>{{ _('Expires') }}</th>
                     {% if can('link:delete_own') %}<th></th>{% endif %}
                 </tr>
             </thead>
             <tbody id="links-tbody">
-                <tr><td colspan="{{ 6 if can('link:delete_own') else 5 }}" class="loading">Loading&hellip;</td></tr>
+                <tr><td colspan="{{ 6 if can('link:delete_own') else 5 }}" class="loading">{{ _('Loading…') }}</td></tr>
             </tbody>
         </table>
     </div>
     <div id="links-empty" class="empty hidden">
-        <div class="empty-icon">No links</div>
+        <div class="empty-icon">{{ _('No links') }}</div>
         {% if can('link:create') %}
-        <p>Nothing here yet.</p>
-        <p><a href="{{ url_for('dashboard.create_link_form') }}">Create your first link</a></p>
+        <p>{{ _('Nothing here yet.') }}</p>
+        <p><a href="{{ url_for('dashboard.create_link_form') }}">{{ _('Create your first link') }}</a></p>
         {% else %}
-        <p>Nothing here yet.</p>
-        <p>This account may read links but not create them.</p>
+        <p>{{ _('Nothing here yet.') }}</p>
+        <p>{{ _('This account may read links but not create them.') }}</p>
         {% endif %}
     </div>
 </div>

@@ -19,6 +19,17 @@ class RequestContext:
         request_path: URL path of the request.
         request_method: HTTP method (GET, POST, ...).
         current_user: Authenticated user info, if available.
+        language: Language tag the request was answered in.
+
+            Carried because some of what a request starts is finished
+            elsewhere: a confirmation message is rendered in a Celery
+            worker, where there is no request to ask and the language
+            selector honestly answers the default. The choice has to
+            travel with the work, and this is what already travels.
+
+            ``None`` when nothing chose one -- a task queued by the CLI,
+            or a context built by a test. The mail templates fall back to
+            the configured default, which is what they did before.
     """
     request_id: str
     remote_addr: Optional[str] = None
@@ -26,6 +37,7 @@ class RequestContext:
     request_path: Optional[str] = None
     request_method: Optional[str] = None
     current_user: Optional[CurrentUserInfo] = None
+    language: Optional[str] = None
 
     def for_logging(self) -> Dict[str, Any]:
         """Extract a flat dictionary for structured logging.

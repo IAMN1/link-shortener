@@ -18,6 +18,7 @@ from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.auth_controller import AuthController
 from link_shortener.web.controllers.dashboard_controller import DashboardController
 from link_shortener.web.controllers.frontend_controller import FrontendController
+from link_shortener.web.i18n import init_babel
 from link_shortener.web.middleware.authentication import AuthenticationMiddleware
 from link_shortener.web.middleware.cache_control import PrivateCacheMiddleware
 from link_shortener.web.middleware.compression import CompressionMiddleware
@@ -148,6 +149,15 @@ def create_app(config=None) -> Flask:
         allow_headers=["Content-Type", "Authorization"],
         expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"],
     )
+
+    # ------------------------------------------------------------------
+    # Interface language
+    # ------------------------------------------------------------------
+    # Before anything that renders: the selector reads the request, so it
+    # only has to exist by the time a page is built, but registering it here
+    # keeps it beside the other extension rather than among the middlewares,
+    # which it is not -- it adds no hook to the request cycle.
+    init_babel(app)
 
     # ------------------------------------------------------------------
     # Dependency Injection Container

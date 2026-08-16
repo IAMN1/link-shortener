@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import re
 
 from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.i18n import N_
 
 
 EMAIL_PATTERN = r"^[^@\s\x1c-\x1f]+@[^@\s\x1c-\x1f]+\.[^@\s\x1c-\x1f]+$"
@@ -100,7 +101,7 @@ class Email:
             # reaches the client, and the same object is built from database
             # rows, so echoing it would reflect user input and leak stored
             # data on the read path.
-            raise ValidationError("Invalid email format", field="email")
+            raise ValidationError(N_("Invalid email format"), field="email")
 
         # object.__setattr__ because the dataclass is frozen. That call
         # would bypass frozen anywhere; what makes here the right place is

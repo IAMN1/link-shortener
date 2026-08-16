@@ -35,6 +35,28 @@ def _limiter(allowed=True, remaining=4):
     return limiter
 
 
+def _with_babel(app):
+    """
+    Give a hand-built app the extension the real factory always wires.
+
+    Only what the throttle's own sentence needs: the catalogues are not
+    the point here, and English is what an untranslated ``ngettext``
+    answers anyway. What this buys is that the call works at all.
+
+    Args:
+        app: The application to wire Babel into.
+
+    Returns:
+        The same application.
+    """
+    from link_shortener.web.i18n import init_babel
+
+    app.config.setdefault("SUPPORTED_LANGUAGES", ["en"])
+    app.config.setdefault("DEFAULT_LANGUAGE", "en")
+    init_babel(app)
+    return app
+
+
 TEMPLATES = Path(__file__).resolve().parent / "_stub_templates"
 """A one-line ``error.html``, for the page the throttle now renders.
 
@@ -61,6 +83,12 @@ class TestRateLimitMiddleware:
 
         app = Flask(__name__, template_folder=str(TEMPLATES))
         app.config["TESTING"] = True
+        # The throttle's sentence is translated like every other refusal,
+        # and `ngettext` reads the extension out of `app.extensions`. The
+        # real factory wires Babel before any middleware, so an app built
+        # by hand here without it is the odd one out -- and what it
+        # measures is `KeyError: 'babel'` rather than a limit.
+        _with_babel(app)
         app.config["DEFAULT_RATE_LIMIT"] = 5
         app.config["DEFAULT_RATE_LIMIT_PERIOD"] = 60
         app.config["RATE_LIMIT_AUTH_DISABLED"] = auth_disabled
@@ -173,6 +201,7 @@ class TestRateLimitMiddleware:
         limiter = _limiter()
         app = Flask(__name__)
         app.config["TESTING"] = True
+        _with_babel(app)
         RateLimitMiddleware(app, limiter)
 
         @app.route("/test")

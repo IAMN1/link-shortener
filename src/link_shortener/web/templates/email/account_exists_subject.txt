@@ -1,1 +1,1 @@
-Someone tried to register your address
+{% trans %}Someone tried to register your address{% endtrans %}

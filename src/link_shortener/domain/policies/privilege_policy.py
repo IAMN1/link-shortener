@@ -29,6 +29,7 @@ from typing import Iterable, Optional
 from link_shortener.domain.entities.user import User
 from link_shortener.domain.exceptions import DomainError
 from link_shortener.domain.system_permissions import SystemPermissions
+from link_shortener.domain.i18n import N_
 
 
 def permissions_held_by(user: Optional[User]) -> frozenset:
@@ -87,10 +88,15 @@ def require_may_confer(actor: Optional[User], permissions: Iterable[str]) -> Non
     exceeded = sorted(set(permissions) - held)
     if exceeded:
         raise DomainError(
-            "You cannot grant permissions you do not hold yourself: "
-            + ", ".join(exceeded),
-            code="FORBIDDEN",
-        )
+                  "You cannot grant permissions you do not hold yourself: "
+                  + ", ".join(exceeded),
+                  code="FORBIDDEN",
+                  template=N_(
+                      "You cannot grant permissions you do not hold yourself: "
+                      "%(permissions)s"
+                  ),
+                  params={"permissions": ", ".join(exceeded)},
+              )
 
 
 def require_not_last_administrator(remaining_administrators: int) -> None:
@@ -106,6 +112,6 @@ def require_not_last_administrator(remaining_administrators: int) -> None:
     """
     if remaining_administrators <= 0:
         raise DomainError(
-            "This would leave the system without an administrator",
+            N_("This would leave the system without an administrator"),
             code="FORBIDDEN",
         )

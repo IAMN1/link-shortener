@@ -24,7 +24,7 @@
             });
             if (!resp) return;
             var data = await resp.json();
-            if (!resp.ok) throw new Error(data.message || data.error || 'Failed');
+            if (!resp.ok) throw new Error(data.message || data.error || t('failed'));
             resultEl.innerHTML = '<div class="alert alert--success">'
                 + '<strong>' + escapeHtml(data.short_url) + '</strong>'
                 + '<br><span class="text-sm text-muted">' + escapeHtml(data.original_url) + '</span>'

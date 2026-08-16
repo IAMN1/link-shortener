@@ -15,8 +15,8 @@
     <p class="text-muted mb-2 measure">{{ doc.info.description }}</p>
 
     <div class="api">
-        <nav class="api-toc" aria-label="Sections">
-            <div class="lab mb-1">Sections</div>
+        <nav class="api-toc" aria-label="{{ _('Sections') }}">
+            <div class="lab mb-1">{{ _('Sections') }}</div>
             {% for tag in doc.tags %}
             <a href="#tag-{{ tag.name }}">{{ tag.name }}</a>
             {% endfor %}
@@ -26,12 +26,8 @@
 
         <div>
             <p class="text-sm text-muted mb-2 measure">
-                The machine-readable document is at
-                <a href="{{ url_for('frontend.openapi') }}"><code>/api/openapi.json</code></a>
-                — point Swagger UI, Redoc, Postman or a client generator at it.
-                Nothing is bundled here: a megabyte and a half of vendored
-                viewer, or a script tag pointing at somebody else's CDN, is not
-                something a redirect service needs to carry.
+                {%- set document %}<a href="{{ url_for('frontend.openapi') }}"><code>/api/openapi.json</code></a>{% endset -%}
+                {% trans link=document %}The machine-readable document is at {{ link }} — point Swagger UI, Redoc, Postman or a client generator at it. Nothing is bundled here: a megabyte and a half of vendored viewer, or a script tag pointing at somebody else's CDN, is not something a redirect service needs to carry.{% endtrans %}
             </p>
 
             {% for tag in doc.tags %}
@@ -53,19 +49,19 @@
                                     {% if operation.description %}<p>{{ operation.description }}</p>{% endif %}
 
                                     {% if operation.parameters %}
-                                    <div class="lab mb-1">Parameters</div>
+                                    <div class="lab mb-1">{{ _('Parameters') }}</div>
                                     <table class="api-table">
                                         {% for parameter in operation.parameters %}
                                         <tr>
                                             <td>{{ parameter.name }}</td>
-                                            <td>{{ parameter.in }}{% if parameter.required %}, required{% endif %}</td>
+                                            <td>{{ parameter.in }}{% if parameter.required %}, {{ _('required') }}{% endif %}</td>
                                             <td>{{ parameter.description }}</td>
                                         </tr>
                                         {% endfor %}
                                     </table>
                                     {% endif %}
 
-                                    <div class="lab mb-1 mt-1">Answers</div>
+                                    <div class="lab mb-1 mt-1">{{ _('Answers') }}</div>
                                     <table class="api-table">
                                         {% for status, response in operation.responses.items() %}
                                         {# The first digit is the whole

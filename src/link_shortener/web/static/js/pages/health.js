@@ -23,7 +23,7 @@
         render('redis', data.cache);
         render('celery', data.task_queue);
     } catch(e) {
-        showLoadError('health-error', 'The service could not be reached.');
+        showLoadError('health-error', t('unreachable'));
     }
 
     // State is written as a class rather than as a colour in a style
@@ -33,7 +33,19 @@
     function render(name, ok) {
         var word = document.getElementById('health-' + name);
         var dot = document.getElementById('dot-' + name);
-        if (word) word.textContent = ok === null ? 'unknown' : (ok ? 'answering' : 'not answering');
+        // Each key sits as a literal directly inside its own `t(...)`,
+        // rather than the shorter `t(ok ? 'answering' : 'not_answering')`.
+        // The test that checks the scripts against the catalogue reads
+        // these calls out of the file, and a key it cannot see is a key it
+        // reports as unused -- which would train the next reader to ignore
+        // it.
+        if (word) {
+            if (ok === null) {
+                word.textContent = t('unknown');
+            } else {
+                word.textContent = ok ? t('answering') : t('not_answering');
+            }
+        }
         if (!dot) return;
         dot.className = 'dot' + (ok === null ? '' : (ok ? ' dot--ok' : ' dot--danger'));
     }

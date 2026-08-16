@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Optional, Tuple
 
 
 class MailTemplates(ABC):
@@ -13,7 +13,12 @@ class MailTemplates(ABC):
     """
 
     @abstractmethod
-    def verification_email(self, confirm_url: str, ttl_hours: int) -> Tuple[str, str]:
+    def verification_email(
+        self,
+        confirm_url: str,
+        ttl_hours: int,
+        language: Optional[str] = None,
+    ) -> Tuple[str, str]:
         """
         Render the message that carries a confirmation link.
 
@@ -22,6 +27,9 @@ class MailTemplates(ABC):
             ttl_hours: How long that URL stays usable, so the message can
                 say so -- a link with no stated lifetime is one people
                 come back to a week later.
+            language: Language tag the request that asked for this message
+                was answered in. ``None`` means nobody chose, and the
+                configured default is used.
 
         Returns:
             Tuple of (subject, body), both plain text.
@@ -29,7 +37,9 @@ class MailTemplates(ABC):
         ...
 
     @abstractmethod
-    def account_exists_email(self, sign_in_url: str) -> Tuple[str, str]:
+    def account_exists_email(
+        self, sign_in_url: str, language: Optional[str] = None
+    ) -> Tuple[str, str]:
         """
         Render the message sent when the address is already registered.
 
@@ -44,6 +54,7 @@ class MailTemplates(ABC):
                 recovery a person can use on their own. An operator can
                 reset one with ``flask security reset-password``, and
                 that is not something to put in a mail to a stranger.
+            language: Language tag, as above.
 
         Returns:
             Tuple of (subject, body), both plain text.

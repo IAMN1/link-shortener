@@ -1,7 +1,7 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Health — Linkr{% endblock %}
+{% block title %}{{ _('Health — Linkr') }}{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">Service Health</h1>
+<h1 class="dash-title">{{ _('Service Health') }}</h1>
 
 <div id="health-error" class="alert alert--error hidden mb-2"></div>
 
@@ -12,7 +12,7 @@
    lost to a screenshot or to colour blindness. #}
 <div class="card narrow">
     <div class="status-row">
-        <span><span class="dot" id="dot-db"></span>Database</span>
+        <span><span class="dot" id="dot-db"></span>{{ _('Database') }}</span>
         <em id="health-db">&mdash;</em>
     </div>
     <div class="status-row">
@@ -20,13 +20,14 @@
         <em id="health-redis">&mdash;</em>
     </div>
     <div class="status-row">
-        <span><span class="dot" id="dot-celery"></span>Task queue</span>
+        <span><span class="dot" id="dot-celery"></span>{{ _('Task queue') }}</span>
         <em id="health-celery">&mdash;</em>
     </div>
 </div>
 
 <p class="text-xs text-muted mt-2">
-    Reported by <code>GET /api/v1/admin/health</code>, read once when this page opens.
+    {%- set endpoint %}<code>GET /api/v1/admin/health</code>{% endset -%}
+    {% trans name=endpoint %}Reported by {{ name }}, read once when this page opens.{% endtrans %}
 </p>
 {% endblock %}
 {% block page_scripts %}

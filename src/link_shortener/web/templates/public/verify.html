@@ -1,27 +1,26 @@
 {% extends "layout/base.html" %}
-{% block title %}Confirm your address — Linkr{% endblock %}
+{% block title %}{{ _('Confirm your address — Linkr') }}{% endblock %}
 {% block content %}
 <div class="container">
     <div class="auth" id="verify-card" data-token="{{ token or '' }}">
-        <h1>Confirm your address</h1>
+        <h1>{{ _('Confirm your address') }}</h1>
 
         {% if token %}
-        <p class="auth-lede">One press finishes signing up. The link expires,
-           so do it now rather than later.</p>
+        <p class="auth-lede">{{ _('One press finishes signing up. The link expires, so do it now rather than later.') }}</p>
 
         <div id="verify-error" class="form-error hidden"></div>
-        <button id="verify-btn" class="btn btn--primary btn--block">Confirm this address</button>
+        <button id="verify-btn" class="btn btn--primary btn--block">{{ _('Confirm this address') }}</button>
         <div id="verify-done" class="alert alert--success hidden mt-2"></div>
         <p id="verify-next" class="hidden mt-2">
-            <a href="{{ url_for('frontend.login_page') }}">Log in</a>
+            <a href="{{ url_for('frontend.login_page') }}">{{ _('Log in') }}</a>
         </p>
         {% else %}
         {# Reached without a token: somebody opened the page directly, or a
            mail client trimmed the link. #}
-        <div class="alert alert--error mb-2">This confirmation link is not valid.</div>
+        <div class="alert alert--error mb-2">{{ _('This confirmation link is not valid.') }}</div>
         <p class="text-sm text-muted">
-            Ask for a new one from the
-            <a href="{{ url_for('frontend.login_page') }}">sign-in page</a>.
+            {%- set page %}<a href="{{ url_for('frontend.login_page') }}">{{ _('sign-in page') }}</a>{% endset -%}
+            {% trans link=page %}Ask for a new one from the {{ link }}.{% endtrans %}
         </p>
         {% endif %}
     </div>

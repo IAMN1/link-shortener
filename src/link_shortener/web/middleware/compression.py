@@ -86,7 +86,16 @@ class CompressionMiddleware:
             # Said whether or not this particular answer was compressed. A
             # shared cache that skips this hands a gzipped body to a client
             # that never asked for one, and the client cannot read it.
-            response.headers.setdefault("Vary", "Accept-Encoding")
+            #
+            # `vary.add`, not `headers.setdefault`: this hook runs last of
+            # all the `after_request` hooks -- Flask runs them in reverse
+            # registration order and compression is registered first -- so
+            # by the time it gets here another hook has already written a
+            # `Vary` of its own. `setdefault` would find the header present
+            # and say nothing, dropping `Accept-Encoding` from a response
+            # that really does vary by it. Plain assignment has the mirror
+            # fault: it would drop whatever the other hook put there.
+            response.vary.add("Accept-Encoding")
 
             if "gzip" not in request.headers.get("Accept-Encoding", "").lower():
                 return response

@@ -6,9 +6,12 @@ All pages rely on client-side JS to fetch data from the API.
 """
 
 from flask import Blueprint, g, render_template, request
+from flask_babel import gettext
+
 from link_shortener.application import LinkService, AdminService
 from link_shortener.domain.system_permissions import SystemPermissions
 from link_shortener.infrastructure.auth.rbac_authorization_service import GUEST_ROLE_NAME
+from link_shortener.web.responses import error_page
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.decorators import login_required, require_permission
 
@@ -81,7 +84,7 @@ class DashboardController:
         ctx = self._get_context()
         user = self.admin_service.get_user(user_id, ctx)
         if not user:
-            return render_template("error.html", error="User not found"), 404
+            return error_page("USER_NOT_FOUND", gettext("User not found"), 404)
         return render_template("dashboard/user_stats.html", user=user)
 
     @login_required
@@ -145,7 +148,7 @@ class DashboardController:
         ctx = self._get_context()
         user = self.admin_service.get_user(user_id, ctx)
         if not user:
-            return render_template("error.html", error="User not found"), 404
+            return error_page("USER_NOT_FOUND", gettext("User not found"), 404)
         all_roles = self._assignable_roles(ctx)
         assignable = {role.name for role in all_roles}
         return render_template(
@@ -176,15 +179,19 @@ class DashboardController:
         ctx = self._get_context()
         role = self.admin_service.get_role(role_name, ctx)
         if not role:
-            return render_template("error.html", error="Role not found"), 404
+            return error_page("ROLE_NOT_FOUND", gettext("Role not found"), 404)
         if role.is_system:
             # The service refuses the save with "Cannot modify system
             # roles", so serving the form was a working-looking dead end:
             # the list hides the Edit link, and the URL behind it did not.
-            return render_template(
-                "error.html",
-                error=f"The role {role.name} is a system role and cannot be modified",
-            ), 403
+            return error_page(
+                "FORBIDDEN",
+                gettext(
+                    "The role %(name)s is a system role and cannot be modified",
+                    name=role.name,
+                ),
+                403,
+            )
         available_permissions = SystemPermissions.all_values()
         return render_template(
             "dashboard/edit_role.html", role=role, available_permissions=available_permissions

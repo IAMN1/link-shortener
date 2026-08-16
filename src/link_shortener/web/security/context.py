@@ -12,6 +12,7 @@ from flask import current_app, g, request
 
 from link_shortener.application import RequestContext
 from link_shortener.domain import User
+from link_shortener.web.i18n import select_language
 
 
 def get_client_ip() -> str:
@@ -100,7 +101,11 @@ def create_request_context() -> RequestContext:
         user_agent=request.headers.get('User-Agent'),
         request_path=request.path,
         request_method=request.method,
-        current_user=getattr(g, "current_user", None)
+        current_user=getattr(g, "current_user", None),
+        # Asked here, where a request exists to ask. What is queued from
+        # this request -- a confirmation message -- is rendered in a
+        # worker later, and `select_language` there has nothing to read.
+        language=select_language(),
     )
 
 

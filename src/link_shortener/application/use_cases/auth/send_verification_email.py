@@ -84,7 +84,12 @@ class SendVerificationEmailUseCase(BaseUseCase):
             f"{self.base_url.rstrip('/')}{VERIFY_PATH}?token={quote(token, safe='')}"
         )
         subject, body = self.templates.verification_email(
-            confirm_url=confirm_url, ttl_hours=self.ttl_hours
+            confirm_url=confirm_url,
+            ttl_hours=self.ttl_hours,
+            # The language the registration was answered in, carried on
+            # the context because this runs in a worker where the request
+            # is long over.
+            language=context.language,
         )
 
         try:

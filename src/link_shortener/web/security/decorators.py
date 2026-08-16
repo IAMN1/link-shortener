@@ -10,6 +10,7 @@ from flask import g, redirect, request, url_for
 
 from link_shortener.domain import DomainError
 from link_shortener.web.security.context import get_current_domain_user
+from link_shortener.domain.i18n import N_
 
 
 def require_permission(permission: str):
@@ -47,9 +48,9 @@ def require_permission(permission: str):
                 # caller is missing decides which refusal is truthful.
                 if user is None:
                     raise DomainError(
-                        "Authentication required", code="UNAUTHENTICATED"
+                        N_("Authentication required"), code="UNAUTHENTICATED"
                     )
-                raise DomainError("Not authorized", code="FORBIDDEN")
+                raise DomainError(N_("Not authorized"), code="FORBIDDEN")
 
             return view_func(*args, **kwargs)
         return wrapper
@@ -73,7 +74,7 @@ def login_required(view_func):
                 # answer built by hand here was the API's only 401 outside
                 # that envelope.
                 raise DomainError(
-                    "Authentication required", code="UNAUTHENTICATED"
+                    N_("Authentication required"), code="UNAUTHENTICATED"
                 )
             return redirect(url_for('frontend.login_page'))
         return view_func(*args, **kwargs)

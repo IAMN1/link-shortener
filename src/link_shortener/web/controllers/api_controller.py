@@ -43,6 +43,7 @@ from link_shortener.web.security.deletion_token import (
     link_id_from,
 )
 from link_shortener.web.security.decorators import login_required, require_permission
+from link_shortener.domain.i18n import N_
 
 def _read_json_object() -> dict:
     """
@@ -72,14 +73,14 @@ def _read_json_object() -> dict:
         # it went past every handler here into the catch-all: 500, from an
         # unauthenticated request, on every endpoint that reads a body.
         raise ValidationError(
-            "Request body is nested too deeply", field="body"
+            N_("Request body is nested too deeply"), field="body"
         )
 
     if data is None:
         return {}
     if not isinstance(data, dict):
         raise ValidationError(
-            "Request body must be a JSON object", field="body"
+            N_("Request body must be a JSON object"), field="body"
         )
     return data
 
@@ -263,7 +264,7 @@ class ApiController:
         if scope == "mine":
             if not g.get("current_user"):
                 raise DomainError(
-                    "Sign in to see your own statistics", code="UNAUTHENTICATED"
+                    N_("Sign in to see your own statistics"), code="UNAUTHENTICATED"
                 )
             owner_id = g.current_user.id
 
@@ -300,7 +301,7 @@ class ApiController:
         if scope == "mine":
             if not g.get("current_user"):
                 raise DomainError(
-                    "Sign in to see your own statistics", code="UNAUTHENTICATED"
+                    N_("Sign in to see your own statistics"), code="UNAUTHENTICATED"
                 )
             owner_id = g.current_user.id
 
@@ -308,7 +309,7 @@ class ApiController:
             days = int(request.args.get("days", 90))
         except ValueError as invalid:
             raise DomainError(
-                "days must be a whole number", code="VALIDATION_ERROR"
+                N_("days must be a whole number"), code="VALIDATION_ERROR"
             ) from invalid
 
         buckets = self.link_service.get_daily_visits(

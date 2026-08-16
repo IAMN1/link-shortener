@@ -7,6 +7,7 @@ from link_shortener.domain import (
     User, DomainError, ValidationError,
     Email, PasswordHash, Role
 )
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -53,7 +54,7 @@ class UserManagementService:
         
         # Check uniqueness
         if uow.users.find_by_email(email_vo):
-            raise ValidationError("Email already registered", field="email")
+            raise ValidationError(N_("Email already registered"), field="email")
         
         # Hash password using authentication service
         hashed_password = self.authentication_service.hash_password(password)
@@ -108,7 +109,12 @@ class UserManagementService:
 
         user = uow.users.find_by_id(user_id)
         if not user:
-            raise DomainError(f"User with id {user_id} not found", code="USER_NOT_FOUND")
+            raise DomainError(
+                      f"User with id {user_id} not found",
+                      code="USER_NOT_FOUND",
+                      template=N_("User with id %(id)s not found"),
+                      params={"id": user_id},
+                  )
         
         user.roles = roles
         return uow.users.save(user)
@@ -126,7 +132,12 @@ class UserManagementService:
         """
         user = uow.users.find_by_id(user_id)
         if not user:
-            raise DomainError(f"User with id {user_id} not found", code="USER_NOT_FOUND")
+            raise DomainError(
+                      f"User with id {user_id} not found",
+                      code="USER_NOT_FOUND",
+                      template=N_("User with id %(id)s not found"),
+                      params={"id": user_id},
+                  )
         user.deactivate()
 
         return uow.users.save(user)
@@ -144,7 +155,12 @@ class UserManagementService:
         """
         user = uow.users.find_by_id(user_id)
         if not user:
-            raise DomainError(f"User with id {user_id} not found", code="USER_NOT_FOUND")
+            raise DomainError(
+                      f"User with id {user_id} not found",
+                      code="USER_NOT_FOUND",
+                      template=N_("User with id %(id)s not found"),
+                      params={"id": user_id},
+                  )
         user.activate()
         return uow.users.save(user)
     
@@ -164,7 +180,7 @@ class UserManagementService:
             ValidationError: If the password is empty.
         """
         if not new_password:
-            raise ValidationError("Password must not be empty", field="password")
+            raise ValidationError(N_("Password must not be empty"), field="password")
 
         hashed = self.authentication_service.hash_password(new_password)
         user.password_hash = PasswordHash(hashed)

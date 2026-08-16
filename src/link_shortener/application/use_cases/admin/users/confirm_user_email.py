@@ -6,6 +6,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import DomainError
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -57,8 +58,11 @@ class ConfirmUserEmailUseCase(BaseUseCase):
             user = uow.users.find_by_id(user_id)
             if user is None:
                 raise DomainError(
-                    f"User with id {user_id} not found", code="USER_NOT_FOUND"
-                )
+                          f"User with id {user_id} not found",
+                          code="USER_NOT_FOUND",
+                          template=N_("User with id %(id)s not found"),
+                          params={"id": user_id},
+                      )
 
             # Already confirmed is not an error: an operator pressing the
             # button twice, or two operators pressing it at once, both

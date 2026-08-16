@@ -7,6 +7,7 @@ from urllib.parse import ParseResult, urlparse
 import idna
 
 from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.i18n import N_
 
 
 IpAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
@@ -168,7 +169,7 @@ class OriginalUrl:
             # -- would put the quoted authority back in the log the line
             # above just kept out of it.
             raise ValidationError(
-                "Malformed URL: its authority cannot be parsed", field="url"
+                N_("Malformed URL: its authority cannot be parsed"), field="url"
             ) from None
 
     @classmethod
@@ -207,8 +208,11 @@ class OriginalUrl:
 
         if len(self.value) > self.max_length:
             raise ValidationError(
-                f"URL too long (max {self.max_length} characters)", field="url"
-            )
+                      f"URL too long (max {self.max_length} characters)",
+                      field="url",
+                      template=N_("URL too long (max %(max)s characters)"),
+                      params={"max": self.max_length},
+                  )
 
     def _validate_admissible_characters(self) -> None:
         """
@@ -229,21 +233,26 @@ class OriginalUrl:
         """
         if any(ord(char) < 32 or ord(char) == 127 for char in self.value):
             raise ValidationError(
-                "URL contains control characters", field="url"
+                N_("URL contains control characters"), field="url"
             )
 
     def _validate_scheme(self, parsed: ParseResult) -> None:
         """Check that the scheme is present and allowed."""
         if not parsed.scheme:
-            raise ValidationError("URL must have a scheme!", field="url")
+            raise ValidationError(N_("URL must have a scheme!"), field="url")
 
         if parsed.scheme not in self.allowed_schemes:
             allowed_list = ", ".join(self.allowed_schemes)
             raise ValidationError(
-                f"Scheme '{parsed.scheme}' is not allowed. "
-                f"Allowed schemes: {allowed_list}",
-                field="url",
-            )
+                      f"Scheme '{parsed.scheme}' is not allowed. "
+                      f"Allowed schemes: {allowed_list}",
+                      field="url",
+                      template=N_(
+                          "Scheme '%(scheme)s' is not allowed. "
+                          "Allowed schemes: %(allowed)s"
+                      ),
+                      params={"scheme": parsed.scheme, "allowed": allowed_list},
+                  )
 
     def _validate_no_credentials(self, parsed: ParseResult) -> None:
         """
@@ -268,7 +277,7 @@ class OriginalUrl:
         """
         if "@" in parsed.netloc:
             raise ValidationError(
-                "URL must not contain credentials before the host",
+                N_("URL must not contain credentials before the host"),
                 field="url",
             )
 
@@ -307,7 +316,7 @@ class OriginalUrl:
             ipaddress.IPv6Address(host)
         except ValueError:
             raise ValidationError(
-                "Brackets in a URL enclose an IPv6 address", field="url"
+                N_("Brackets in a URL enclose an IPv6 address"), field="url"
             )
 
     def _validate_authority_present(self, parsed: ParseResult) -> None:
@@ -329,26 +338,26 @@ class OriginalUrl:
                 number.
         """
         if not parsed.netloc:
-            raise ValidationError("URL must have a domain!", field="url")
+            raise ValidationError(N_("URL must have a domain!"), field="url")
 
         try:
             hostname = parsed.hostname
         except ValueError:
-            raise ValidationError("Invalid host", field="url")
+            raise ValidationError(N_("Invalid host"), field="url")
         if not hostname:
-            raise ValidationError("URL must have a hostname", field="url")
+            raise ValidationError(N_("URL must have a hostname"), field="url")
 
         try:
             parsed.port
         except ValueError:
-            raise ValidationError("Invalid port number", field="url")
+            raise ValidationError(N_("Invalid port number"), field="url")
 
     def _validate_netloc(self, parsed: ParseResult) -> None:
         """Validate the network location (hostname and optional port)."""
 
         port = parsed.port
         if port is not None and not (1 <= port <= 65535):
-            raise ValidationError("Invalid port number", field="url")
+            raise ValidationError(N_("Invalid port number"), field="url")
 
         self._validate_host(parsed.hostname)
 
@@ -364,7 +373,7 @@ class OriginalUrl:
 
         # Validate as a domain name.
         if not host:
-            raise ValidationError("Empty host", field="url")
+            raise ValidationError(N_("Empty host"), field="url")
 
         # Check if it's a valid IP address (IPv4 or IPv6)
         try:
@@ -381,23 +390,28 @@ class OriginalUrl:
 
         # Otherwise must be a domain with at least one dot
         if '.' not in host:
-            raise ValidationError("Host must contain a dot (e.g., example.com)", field="url")
+            raise ValidationError(N_("Host must contain a dot (e.g., example.com)"), field="url")
 
         # Total length limit
         if len(host) > 253:
-            raise ValidationError("Host too long", field="url")
+            raise ValidationError(N_("Host too long"), field="url")
 
         # Validate each label
         labels = host.split(".")
         for label in labels:
             if not label:
-                raise ValidationError("Empty label in host", field="url")
+                raise ValidationError(N_("Empty label in host"), field="url")
             if len(label) > 63:
-                raise ValidationError("Label too long", field="url")
+                raise ValidationError(N_("Label too long"), field="url")
 
             # Label must start/end with alphanumeric, may contain hyphens inside
             if not LABEL_PATTERN.match(label):
-                raise ValidationError(f"Invalid characters in host label: {label}", field="url")
+                raise ValidationError(
+                          f"Invalid characters in host label: {label}",
+                          field="url",
+                          template=N_("Invalid characters in host label: %(label)s"),
+                          params={"label": label},
+                      )
 
     def _validate_path(self, parsed) -> None:
         """Validate that the URL path does not contain control characters.
@@ -411,7 +425,7 @@ class OriginalUrl:
             ValidationError: If a control character is found in the path."""
 
         if parsed.path and any(ord(c) < 32 or ord(c) == 127 for c in parsed.path):
-            raise ValidationError("Path contains control characters", field="url")
+            raise ValidationError(N_("Path contains control characters"), field="url")
 
     def _validate_public_target(self, parsed: ParseResult) -> None:
         """
@@ -455,13 +469,13 @@ class OriginalUrl:
                 for suffix in SPECIAL_USE_SUFFIXES
             ):
                 raise ValidationError(
-                    "URL must point at a public address", field="url"
+                    N_("URL must point at a public address"), field="url"
                 )
             return
 
         if self._is_internal_address(address):
             raise ValidationError(
-                "URL must point at a public address", field="url"
+                N_("URL must point at a public address"), field="url"
             )
 
     # ------------------------------------------------------------------
@@ -493,8 +507,11 @@ class OriginalUrl:
             return idna.encode(host, uts46=True).decode("ascii")
         except (idna.IDNAError, UnicodeError) as exc:
             raise ValidationError(
-                f"Invalid international domain name: {exc}", field="url"
-            )
+                      f"Invalid international domain name: {exc}",
+                      field="url",
+                      template=N_("Invalid international domain name: %(reason)s"),
+                      params={"reason": str(exc)},
+                  )
 
     @staticmethod
     def _as_ip_address(host: str) -> Optional[IpAddress]:
@@ -525,7 +542,7 @@ class OriginalUrl:
             try:
                 return ipaddress.IPv6Address(host)
             except ValueError:
-                raise ValidationError("Invalid IP address in host", field="url")
+                raise ValidationError(N_("Invalid IP address in host"), field="url")
 
         parts = host.split(".")
         if parts[-1] == "":
@@ -534,11 +551,11 @@ class OriginalUrl:
             # Ends in a name, so the host is a name and none of this applies.
             return None
         if len(parts) > 4:
-            raise ValidationError("Invalid IP address in host", field="url")
+            raise ValidationError(N_("Invalid IP address in host"), field="url")
 
         parsed = [OriginalUrl._parse_ipv4_part(part) for part in parts]
         if any(number is None for number in parsed):
-            raise ValidationError("Invalid IP address in host", field="url")
+            raise ValidationError(N_("Invalid IP address in host"), field="url")
 
         # Its own name for the same list without the Nones. The check above
         # rules them out for a reader, but it runs inside ``any()`` over the
@@ -546,10 +563,10 @@ class OriginalUrl:
         # comparisons below.
         numbers = [number for number in parsed if number is not None]
         if any(number > 255 for number in numbers[:-1]):
-            raise ValidationError("Invalid IP address in host", field="url")
+            raise ValidationError(N_("Invalid IP address in host"), field="url")
         # The last part fills every octet the ones before it left out.
         if numbers[-1] >= 256 ** (4 - (len(numbers) - 1)):
-            raise ValidationError("Invalid IP address in host", field="url")
+            raise ValidationError(N_("Invalid IP address in host"), field="url")
 
         packed = numbers[-1]
         for index, number in enumerate(numbers[:-1]):

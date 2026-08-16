@@ -24,6 +24,7 @@ from link_shortener.domain.exceptions import (
 )
 from link_shortener.domain.value_objects.dedup_scope import DedupScope
 from link_shortener.domain.value_objects.owner_id import OwnerID
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -105,9 +106,14 @@ class BatchCreateLinksUseCase(BaseUseCase):
                 "Batch limit exceeded", requested=len(urls), limit=self.batch_limit
             )
             raise ValidationError(
-                f"Batch limit exceeded. Max: {self.batch_limit}, requested: {len(urls)}",
-                field="urls",
-            )
+                      f"Batch limit exceeded. Max: {self.batch_limit}, "
+                      f"requested: {len(urls)}",
+                      field="urls",
+                      template=N_(
+                          "Batch limit exceeded. Max: %(max)s, requested: %(requested)s"
+                      ),
+                      params={"max": self.batch_limit, "requested": len(urls)},
+                  )
         
         log.info("Starting batch link creation", count=len(urls))
 
@@ -199,9 +205,11 @@ class BatchCreateLinksUseCase(BaseUseCase):
         # its per-item errors: that is what the response format is for.
         if quota_results and not (saved_links or fetched_results or invalid_results):
             raise GuestLinkLimitExceededError(
-                f"Guest link limit of {self.guest_link_limit} exceeded.",
-                retry_after_seconds=self.guest_link_window_days * 24 * 3600,
-            )
+                      f"Guest link limit of {self.guest_link_limit} exceeded.",
+                      retry_after_seconds=self.guest_link_window_days * 24 * 3600,
+                      template=N_("Guest link limit of %(limit)s exceeded."),
+                      params={"limit": self.guest_link_limit},
+                  )
 
         # 6. Build DTOs for newly created links
         new_results = self.builder.build_from_new_links(

@@ -11,6 +11,12 @@ dependencies = [
     "bcrypt>=5.0.0",
     "celery>=5.6.3",
     "flask>=3.1.2",
+    # Переводы интерфейса. Взят не ради подстановки строк -- её заменил бы
+    # словарь в двадцать строк -- а ради множественного числа: у русского
+    # три формы (ссылка / ссылки / ссылок), и правило выбора формы живёт в
+    # самих каталогах gettext, а не в коде страницы. Свой выбор формы
+    # пришлось бы писать под каждый язык заново.
+    "flask-babel>=4.0.0",
     "flask-cors>=6.0.2",
     # Runtime, not tooling: it is the production image's CMD. Absent from
     # here, the image built and then failed on start -- masked in compose,
@@ -97,6 +103,17 @@ link_shortener = [
     # Письма — обычный текст и под шаблоны выше не подпадают.
     "web/templates/**/*.txt",
     "web/static/**/*",
+    # Переводы. Обнаружено той же ловушкой, что и roles.yaml: без этой
+    # строки образ ставится, стартует и молча отдаёт каждую страницу
+    # по-английски, потому что gettext, не найдя каталога, возвращает
+    # исходный текст, а исходный текст — английский. Ошибки не будет.
+    #
+    # `.mo` — то, что читает gettext; `.po` — то, что правит человек.
+    # Оба лежат в пакете: сверка одного с другим стоит в наборе, и без
+    # `.po` рядом ей не с чем было бы сверять.
+    "web/translations/*.pot",
+    "web/translations/**/*.po",
+    "web/translations/**/*.mo",
 ]
 
 [tool.pytest.ini_options]
@@ -182,9 +199,10 @@ warn_redundant_casts = true
 # остаться в списке необъявленных.
 warn_unused_configs = true
 
-# celery и flask_cors не поставляют ни стабов, ни маркера py.typed. Названы
-# поимённо, а не общим --ignore-missing-imports: так молчание распространяется
-# ровно на два пакета, а новый нетипизированный импорт по-прежнему заметен.
+# celery, flask_babel и flask_cors не поставляют ни стабов, ни маркера
+# py.typed. Названы поимённо, а не общим --ignore-missing-imports: так
+# молчание распространяется ровно на три пакета, а новый нетипизированный
+# импорт по-прежнему заметен.
 [[tool.mypy.overrides]]
-module = ["celery.*", "flask_cors.*"]
+module = ["celery.*", "flask_babel.*", "flask_cors.*"]
 ignore_missing_imports = true

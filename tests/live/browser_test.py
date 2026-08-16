@@ -312,7 +312,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 18
+    expected = 24
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -706,6 +706,209 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         assert shown, "the table went blank instead of saying what happened"
         assert not is_a_code(shown), (
             f"the page shows a machine-readable code: {shown!r}"
+        )
+
+    @check("a browser that asks for Russian is answered in Russian")
+    def _():
+        # The seam nothing else in this file touches. Measured before this
+        # check existed: Playwright's Chromium sends no `Accept-Language`
+        # at all by default -- not `en-US`, nothing -- so every other page
+        # in this run takes the "declared nothing" branch and the whole
+        # negotiation could be deleted with the run still green. A context
+        # with a locale is what makes the browser send the header, and it
+        # is the only way to drive that branch through a real browser.
+        #
+        # Both halves, because they fail apart: `lang` is the decision
+        # written down -- it is what a screen reader picks a voice from --
+        # and the heading is whether the catalogue was found and read. A
+        # page can declare Russian and be written in English, which is what
+        # every misconfigured translation directory produces.
+        context = browser.new_context(locale="ru-RU")
+        try:
+            page = context.new_page()
+            page.on("console", lambda message: (
+                console_errors.append(f"/ (ru-RU): {message.text}")
+                if message.type == "error" and not is_a_server_answer(message.text)
+                else None
+            ))
+            page.goto(f"{base}/")
+            declared = page.get_attribute("html", "lang")
+            heading = page.inner_text("h1").strip()
+        finally:
+            context.close()
+
+        assert declared == "ru", (
+            f"a Russian browser was handed a page declaring {declared!r}"
+        )
+        assert heading == "Сократить ссылку", (
+            f"the page declares Russian and is written in {heading!r}"
+        )
+
+    @check("pressing a language redraws the page in it, and it sticks")
+    def _():
+        # The check the Python suite cannot make. It drives a client with
+        # no engine in it, so the control can be perfect in the markup --
+        # right ids, right attributes, right hooks -- and dead on the page.
+        # That has happened here before, which is why this file exists.
+        #
+        # Three things in one press, because they fail separately: the
+        # handler runs at all, the server is asked again (the words are
+        # chosen while the page is built, so nothing but a fresh page can
+        # change them), and the choice outlives the navigation.
+        page = page_for("/")
+        assert page.get_attribute("html", "lang") == "en", (
+            "the run started in a language other than the default"
+        )
+
+        page.click('.lang-btn[data-lang="ru"]')
+        page.wait_for_function(
+            "document.documentElement.lang === 'ru'", timeout=5000,
+        )
+
+        assert page.get_attribute("html", "lang") == "ru"
+        # And the control now says so, which is a separate fault: a page
+        # that switched while the control still marks the old language
+        # tells the visitor their press did nothing.
+        marked = page.get_attribute(".lang-btn--on", "data-lang")
+        assert marked == "ru", f"the control still marks {marked!r}"
+
+        # Survives leaving the page. The cookie is the whole mechanism --
+        # written by the script, read by the server on the next request --
+        # so a press that redrew this page and nothing after it would be
+        # the failure that matters most.
+        page.goto(f"{base}/login")
+        assert page.get_attribute("html", "lang") == "ru", (
+            "the choice did not survive a navigation"
+        )
+
+    @check("the language control still works after a Turbo navigation")
+    def _():
+        # The failure this file was built for, in its exact shape. Turbo
+        # replaces the whole `<body>` on a navigation, so a handler bound
+        # to the control instead of to `document` dies with the body it was
+        # bound to -- and the control keeps its markup, its class and its
+        # `data-lang`, and does nothing. The check above cannot see it: it
+        # presses on a freshly loaded page, where a per-element handler
+        # would still be alive.
+        page = page_for("/")
+
+        # A marker on `window`, which a Turbo visit keeps and a full load
+        # discards. Without it this check would still pass if the link
+        # happened to reload the page, and it would then be testing the
+        # same thing as the check above.
+        page.evaluate("() => { window.__stillTheSameDocument = true; }")
+        page.click('.header-link[href="/login"]')
+        page.wait_for_selector(".lang-switch", timeout=5000)
+
+        assert page.evaluate("() => window.__stillTheSameDocument === true"), (
+            "that was a full load, not a Turbo visit -- the check proves nothing"
+        )
+
+        page.click('.lang-btn[data-lang="ru"]')
+        page.wait_for_function(
+            "document.documentElement.lang === 'ru'", timeout=5000,
+        )
+
+        assert page.get_attribute("html", "lang") == "ru"
+
+    def in_russian(page):
+        """
+        Put this browser into Russian and load the page again.
+
+        Through the cookie, which is the mechanism a visitor's choice uses
+        and the one that outranks ``Accept-Language``. Set on the context
+        rather than by pressing the control, so that a check about what a
+        script writes cannot fail for a reason belonging to the switch.
+
+        Args:
+            page: An open page; it is reloaded in place.
+        """
+        page.context.add_cookies([{
+            "name": "lang", "value": "ru", "url": base,
+        }])
+        page.reload()
+
+    @check("a refusal a script prints is in the language of the page")
+    def _():
+        # The seam this whole mechanism exists for, and the one nothing
+        # else in this file could see. The page arrives in Russian and the
+        # script then writes its own sentence into it -- from a string that
+        # used to be typed into the `.js` file in English, on every page,
+        # in every language. `fetch` is made to throw, which is the branch
+        # that reaches for the script's own words rather than repeating the
+        # service's.
+        # Its own page, opened without the console collector: the network
+        # is cut on purpose here, and the browser reports that as an error
+        # like any other. Collecting it would make the last check in this
+        # file fail for a thing this one arranged.
+        #
+        # The cut is made with `route`, not by replacing `window.fetch`. A
+        # replaced `fetch` belongs to the document it was written into, and
+        # the reload that follows builds a new one -- so the script runs
+        # against the real network and the table fills in normally, which
+        # looks exactly like a check that passed.
+        page = browser.new_page()
+        page.goto(f"{base}/login")
+        sign_in(page, base)
+        page.context.add_cookies([{"name": "lang", "value": "ru", "url": base}])
+        page.route("**/api/v1/links/mine", lambda route: route.abort())
+        page.goto(f"{base}/dashboard/links")
+        page.wait_for_function(
+            "document.getElementById('links-error').textContent.trim() !== ''",
+            timeout=5000,
+        )
+        shown = page.inner_text("#links-error").strip()
+
+        assert shown == "Служба недоступна.", (
+            f"the page is Russian and its script wrote {shown!r}"
+        )
+
+    @check("a table a script draws is drawn in the language of the page")
+    def _():
+        # The other half, and it fails apart from the one above: an error
+        # path and a success path reach different strings, and the sixteen
+        # sentences this project had buried inside concatenated markup --
+        # `'<td>...Delete</button></td>'` -- were all on the success path.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/links")
+        page.wait_for_selector("#links-tbody .del-btn", timeout=5000)
+        in_russian(page)
+        page.wait_for_selector("#links-tbody .del-btn", timeout=5000)
+        caption = page.inner_text("#links-tbody .del-btn")
+
+        assert caption.strip() == "Удалить", (
+            f"the page is Russian and the button a script drew says {caption!r}"
+        )
+
+    @check("the question before a delete is asked in the language of the page")
+    def _():
+        # Includes the substitution, which is the part a dictionary of
+        # plain strings cannot carry: the sentence names the code, and a
+        # translator has to be able to move that name to the other end of
+        # it. What the browser shows is what is checked -- the value
+        # travels through `t()` into a real `confirm()`.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/links")
+        page.wait_for_selector("#links-tbody .del-btn", timeout=5000)
+        in_russian(page)
+        page.wait_for_selector("#links-tbody .del-btn", timeout=5000)
+        code = page.get_attribute("#links-tbody .del-btn", "data-code")
+
+        asked = []
+
+        def remember(dialog):
+            """Take the question down and answer no, so nothing is lost."""
+            asked.append(dialog.message)
+            dialog.dismiss()
+
+        page.on("dialog", remember)
+        page.click("#links-tbody .del-btn")
+
+        assert asked, "the delete button asked nothing before deleting"
+        assert asked[0] == f"Удалить ссылку {code}?", (
+            f"the page is Russian and the question was {asked[0]!r}"
         )
 
     @check("no page reported a script error to the console")

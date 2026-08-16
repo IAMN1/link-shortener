@@ -1,23 +1,23 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Create User — Linkr{% endblock %}
+{% block title %}{{ _('Create User — Linkr') }}{% endblock %}
 {% block dashboard_content %}
 <div class="dash-head">
-    <h1 class="dash-title">Create User</h1>
-    <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost btn--sm">Cancel</a>
+    <h1 class="dash-title">{{ _('Create User') }}</h1>
+    <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost btn--sm">{{ _('Cancel') }}</a>
 </div>
 
 <div class="card narrow">
     <form id="create-user-form">
         <div class="form-group">
-            <label class="form-label" for="email">Email</label>
+            <label class="form-label" for="email">{{ _('Email') }}</label>
             <input type="email" id="email" class="form-input" required autocomplete="off">
         </div>
         <div class="form-group">
-            <label class="form-label" for="password">Password</label>
+            <label class="form-label" for="password">{{ _('Password') }}</label>
             <input type="password" id="password" class="form-input" required minlength="6" autocomplete="new-password">
         </div>
         <div class="form-group">
-            <span class="form-label">Roles</span>
+            <span class="form-label">{{ _('Roles') }}</span>
             {# A tick and its word are one target now. Every row here used to
                carry `style="display:block; margin-bottom:0.25rem"` written
                out by hand, and the label was not clickable. #}
@@ -31,7 +31,7 @@
             </div>
         </div>
         <div id="create-user-error" class="form-error hidden"></div>
-        <button type="submit" class="btn btn--primary btn--block">Create user</button>
+        <button type="submit" class="btn btn--primary btn--block">{{ _('Create user') }}</button>
     </form>
 </div>
 {% endblock %}

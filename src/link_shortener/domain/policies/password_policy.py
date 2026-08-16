@@ -15,6 +15,7 @@ property that actually costs an attacker work.
 """
 
 from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.i18n import N_
 
 
 MIN_PASSWORD_LENGTH = 8
@@ -86,7 +87,7 @@ def validate_password(password: str) -> None:
     # that space keeps counting towards the length.
     if not password.strip():
         raise ValidationError(
-            "Password must not be blank",
+            N_("Password must not be blank"),
             field="password",
         )
 
@@ -97,15 +98,17 @@ def validate_password(password: str) -> None:
     # an account with no password at all.
     if "\x00" in password:
         raise ValidationError(
-            "Password must not contain a null character",
+            N_("Password must not contain a null character"),
             field="password",
         )
 
     if len(password) < MIN_PASSWORD_LENGTH:
         raise ValidationError(
-            f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
-            field="password",
-        )
+                  f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
+                  field="password",
+                  template=N_("Password must be at least %(count)s characters"),
+                  params={"count": MIN_PASSWORD_LENGTH},
+              )
 
     # One message for two ceilings, and the wording has to fit both. The
     # byte limit bites first for anything outside Latin -- 37 Cyrillic
@@ -121,17 +124,22 @@ def validate_password(password: str) -> None:
         or len(password.encode("utf-8")) > MAX_PASSWORD_BYTES
     ):
         raise ValidationError(
-            f"Password must not exceed {MAX_PASSWORD_LENGTH} characters, "
-            "and fewer for alphabets that need more room per character",
-            field="password",
-        )
+                  f"Password must not exceed {MAX_PASSWORD_LENGTH} characters, "
+                  "and fewer for alphabets that need more room per character",
+                  field="password",
+                  template=N_(
+                      "Password must not exceed %(count)s characters, and fewer "
+                      "for alphabets that need more room per character"
+                  ),
+                  params={"count": MAX_PASSWORD_LENGTH},
+              )
 
     # Compared in lower case: "Password123" is the same guess as
     # "password123" to anyone running a list through a case-folding rule,
     # which every cracking tool does by default.
     if password.lower() in COMMON_PASSWORDS:
         raise ValidationError(
-            "Password is too common -- choose one that is not on every "
-            "attacker's list",
+            N_("Password is too common -- choose one that is not on every "
+            "attacker's list"),
             field="password",
         )

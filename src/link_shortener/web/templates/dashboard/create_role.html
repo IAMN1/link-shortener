@@ -1,29 +1,29 @@
 {% extends "dashboard/base.html" %}
 {% import "dashboard/_perms.html" as perms %}
-{% block title %}Create Role — Linkr{% endblock %}
+{% block title %}{{ _('Create Role — Linkr') }}{% endblock %}
 {% block dashboard_content %}
 <div class="dash-head">
-    <h1 class="dash-title">Create Role</h1>
-    <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost btn--sm">Cancel</a>
+    <h1 class="dash-title">{{ _('Create Role') }}</h1>
+    <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost btn--sm">{{ _('Cancel') }}</a>
 </div>
 
 <div class="card">
     <form id="create-role-form">
         <div class="form-group narrow">
-            <label class="form-label" for="name">Name</label>
+            <label class="form-label" for="name">{{ _('Name') }}</label>
             <input type="text" id="name" class="form-input" required minlength="2" placeholder="editor" spellcheck="false">
         </div>
         <div class="form-group narrow">
-            <label class="form-label" for="description">Description</label>
-            <input type="text" id="description" class="form-input" placeholder="What this role is for">
+            <label class="form-label" for="description">{{ _('Description') }}</label>
+            <input type="text" id="description" class="form-input" placeholder="{{ _('What this role is for') }}">
         </div>
 
-        <span class="form-label">Permissions</span>
-        <span class="form-hint mb-1">Grouped by what they act on. The whole set used to be one flat column of ticks.</span>
+        <span class="form-label">{{ _('Permissions') }}</span>
+        <span class="form-hint mb-1">{{ _('Grouped by what they act on. The whole set used to be one flat column of ticks.') }}</span>
         {{ perms.checks(permissions, 'permissions') }}
 
         <div id="create-role-error" class="form-error hidden mt-2"></div>
-        <button type="submit" class="btn btn--primary mt-2">Create role</button>
+        <button type="submit" class="btn btn--primary mt-2">{{ _('Create role') }}</button>
     </form>
 </div>
 {% endblock %}

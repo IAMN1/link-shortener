@@ -11,6 +11,7 @@ from link_shortener.application.use_cases.admin.privilege_guard import (
 )
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import DomainError
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -58,7 +59,12 @@ class CreateUserUseCase(BaseUseCase):
                 for name in role_names:
                     role = uow.roles.get_by_name(name)
                     if not role:
-                        raise DomainError(f"Role '{name}' not found", code="VALIDATION_ERROR")
+                        raise DomainError(
+                                  f"Role '{name}' not found",
+                                  code="VALIDATION_ERROR",
+                                  template=N_("Role '%(name)s' not found"),
+                                  params={"name": name},
+                              )
                     roles.append(role)
 
                 # Creating an account is another way of handing out a role,

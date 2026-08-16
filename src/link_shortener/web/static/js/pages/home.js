@@ -87,7 +87,7 @@
             e.preventDefault();
             var url = document.getElementById('url-single').value;
             var btn = formSingle.querySelector('button[type="submit"]');
-            busy(btn, 'Working…');
+            busy(btn, t('working'));
             try {
                 var resp = await fetch('/api/v1/shorten', {
                     method: 'POST',
@@ -96,7 +96,7 @@
                     body: JSON.stringify({ url: url })
                 });
                 var data = await resp.json();
-                if (!resp.ok) throw new Error(data.message || data.error || 'Failed');
+                if (!resp.ok) throw new Error(data.message || data.error || t('failed'));
                 showResult(btn, data);
             } catch(err) { showError(btn, err.message); }
             done(btn);
@@ -111,7 +111,7 @@
             var raw = document.getElementById('urls-batch').value;
             var urls = raw.split('\n').map(function(u) { return u.trim(); }).filter(Boolean);
             var btn = formBatch.querySelector('button[type="submit"]');
-            busy(btn, 'Working…');
+            busy(btn, t('working'));
             try {
                 var resp = await fetch('/api/v1/batch/shorten', {
                     method: 'POST',
@@ -120,8 +120,8 @@
                     body: JSON.stringify({ urls: urls })
                 });
                 var data = await resp.json();
-                if (!resp.ok) throw new Error(data.message || data.error || 'Failed');
-                var html = '<div class="result-card"><div class="lab mb-1">Results</div>';
+                if (!resp.ok) throw new Error(data.message || data.error || t('failed'));
+                var html = '<div class="result-card"><div class="lab mb-1">' + escapeHtml(t('results')) + '</div>';
                 if (data.results) {
                     data.results.forEach(function(r) {
                         // The address the caller sent comes back as `url`.
@@ -137,13 +137,13 @@
                             // why, was the one thing not shown.
                             html += '<div class="text-xs text-muted">' + escapeHtml(r.url) + '</div>'
                                 + '<div class="alert alert--error mb-1">'
-                                + escapeHtml(r.error || 'Refused') + '</div>';
+                                + escapeHtml(r.error || t('refused')) + '</div>';
                             return;
                         }
-                        var status = r.is_new ? 'Created' : 'Existing';
+                        var status = r.is_new ? t('status_created') : t('status_existing');
                         html += '<div class="result-field"><span class="result-url">' + shortUrl(r.short_url) + '</span>'
-                            + '<button class="result-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)">Copy</button></div>'
-                            + '<div class="text-xs text-muted mb-1">' + status + ' &mdash; ' + escapeHtml(r.url) + '</div>'
+                            + '<button class="result-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)">' + escapeHtml(t('copy')) + '</button></div>'
+                            + '<div class="text-xs text-muted mb-1">' + escapeHtml(status) + ' &mdash; ' + escapeHtml(r.url) + '</div>'
                             + deleteControl(r);
                     });
                 }
@@ -161,28 +161,28 @@
             e.preventDefault();
             var code = document.getElementById('code-info').value;
             var btn = formInfo.querySelector('button[type="submit"]');
-            busy(btn, 'Looking…');
+            busy(btn, t('looking'));
             try {
                 var resp = await fetch('/api/v1/links/' + encodeURIComponent(code));
                 var data = await resp.json();
-                if (!resp.ok) throw new Error(data.message || data.error || 'Not found');
+                if (!resp.ok) throw new Error(data.message || data.error || t('not_found'));
                 // clicks is null unless the viewer is entitled to the link's
                 // traffic, so the stats a signed-out visitor gets are the
                 // ones that say nothing about its owner.
-                var stats = '<div class="stat-item"><strong>' + new Date(data.created_at).toLocaleDateString() + '</strong><span>Created</span></div>';
+                var stats = '<div class="stat-item"><strong>' + new Date(data.created_at).toLocaleDateString() + '</strong><span>' + escapeHtml(t('stat_created')) + '</span></div>';
                 // Withheld, not absent. Saying nothing made a link whose
                 // traffic the viewer may not see look like a link nobody has
                 // ever followed.
                 var withheld = '';
                 if (data.clicks !== null && data.clicks !== undefined) {
-                    stats = '<div class="stat-item"><strong>' + data.clicks + '</strong><span>Clicks</span></div>'
+                    stats = '<div class="stat-item"><strong>' + data.clicks + '</strong><span>' + escapeHtml(t('stat_clicks')) + '</span></div>'
                         + stats
-                        + '<div class="stat-item"><strong>' + (data.last_accessed ? new Date(data.last_accessed).toLocaleDateString() : 'Never') + '</strong><span>Last Access</span></div>';
+                        + '<div class="stat-item"><strong>' + (data.last_accessed ? new Date(data.last_accessed).toLocaleDateString() : escapeHtml(t('stat_never'))) + '</strong><span>' + escapeHtml(t('stat_last_access')) + '</span></div>';
                 } else {
                     withheld = '<p class="text-xs text-muted mt-1">'
-                        + 'This link\'s traffic is shown to whoever made it.</p>';
+                        + escapeHtml(t('traffic_withheld')) + '</p>';
                 }
-                var html = '<div class="result-card"><div class="lab mb-1">Link</div>'
+                var html = '<div class="result-card"><div class="lab mb-1">' + escapeHtml(t('link')) + '</div>'
                     + '<div class="result-field"><span class="result-url">' + shortUrl(data.short_url) + '</span></div>'
                     + '<div class="text-sm text-muted mt-1">' + escapeHtml(data.original_url) + '</div>'
                     + '<div class="result-stats">' + stats + '</div>' + withheld + '</div>';
@@ -199,24 +199,24 @@
             e.preventDefault();
             var code = document.getElementById('code-extended').value;
             var btn = formExtended.querySelector('button[type="submit"]');
-            busy(btn, 'Looking…');
+            busy(btn, t('looking'));
             try {
                 var resp = await fetch('/api/v1/links/' + encodeURIComponent(code) + '/extended');
                 var data = await resp.json();
-                if (!resp.ok) throw new Error(data.message || data.error || 'Not found');
-                var html = '<div class="result-card"><div class="lab mb-1">Extended</div>'
+                if (!resp.ok) throw new Error(data.message || data.error || t('not_found'));
+                var html = '<div class="result-card"><div class="lab mb-1">' + escapeHtml(t('extended')) + '</div>'
                     + '<div class="result-field"><span class="result-url">' + shortUrl(data.short_url) + '</span></div>'
                     // Classes, not literal greys. A colour written into a
                     // style attribute cannot be reached by the dark theme,
                     // and #374151 on the dark surface is 1.7:1.
                     + '<div class="text-sm text-muted mt-1">' + escapeHtml(data.original_url) + '</div>'
                     + '<div class="result-stats">'
-                    + '<div class="stat-item"><strong>' + data.clicks + '</strong><span>Clicks</span></div>'
-                    + '<div class="stat-item"><strong>' + data.age_days + '</strong><span>Days Old</span></div>'
-                    + '<div class="stat-item"><strong>' + data.clicks_per_day + '</strong><span>Clicks/Day</span></div>'
+                    + '<div class="stat-item"><strong>' + data.clicks + '</strong><span>' + escapeHtml(t('stat_clicks')) + '</span></div>'
+                    + '<div class="stat-item"><strong>' + data.age_days + '</strong><span>' + escapeHtml(t('stat_days_old')) + '</span></div>'
+                    + '<div class="stat-item"><strong>' + data.clicks_per_day + '</strong><span>' + escapeHtml(t('stat_clicks_per_day')) + '</span></div>'
                     + '</div><div class="text-xs text-muted mt-2">'
-                    + (data.is_popular ? 'Popular &nbsp;' : '')
-                    + (data.is_recent ? 'Recent' : '')
+                    + (data.is_popular ? escapeHtml(t('popular')) + ' &nbsp;' : '')
+                    + (data.is_recent ? escapeHtml(t('recent')) : '')
                     + '</div></div>';
                 showHtml(btn, html);
             } catch(err) { showError(btn, err.message); }
@@ -235,8 +235,8 @@
         return '<div class="result-delete">'
             + '<button class="btn btn--ghost btn--sm btn--danger js-delete-made"'
             + ' data-code="' + escapeHtml(data.short_code) + '"'
-            + ' data-token="' + escapeHtml(data.deletion_token) + '">Delete this link</button>'
-            + '<span class="text-xs text-muted">Only from this page, and only now.</span>'
+            + ' data-token="' + escapeHtml(data.deletion_token) + '">' + escapeHtml(t('delete_this_link')) + '</button>'
+            + '<span class="text-xs text-muted">' + escapeHtml(t('delete_token_note')) + '</span>'
             + '</div>';
     }
 
@@ -245,7 +245,7 @@
         scope.querySelectorAll('.js-delete-made').forEach(function(btn) {
             btn.addEventListener('click', async function() {
                 var code = btn.dataset.code;
-                if (!confirm('Delete link ' + code + '?')) return;
+                if (!confirm(t('confirm_delete_link', { code: code }))) return;
                 btn.disabled = true;
                 var resp = await fetch('/api/v1/links/' + encodeURIComponent(code), {
                     method: 'DELETE',
@@ -269,16 +269,16 @@
                     note.textContent = await apiErrorText(resp);
                     return;
                 }
-                btn.replaceWith(document.createTextNode('Deleted.'));
+                btn.replaceWith(document.createTextNode(t('deleted')));
             });
         });
     }
 
     function showResult(from, data) {
         var html = '<div class="result-card">'
-            + '<div class="lab mb-1">' + (data.is_new ? 'Created' : 'Existing') + '</div>'
+            + '<div class="lab mb-1">' + escapeHtml(data.is_new ? t('status_created') : t('status_existing')) + '</div>'
             + '<div class="result-field"><span class="result-url">' + shortUrl(data.short_url) + '</span>'
-            + '<button class="result-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)">Copy</button></div>'
+            + '<button class="result-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)">' + escapeHtml(t('copy')) + '</button></div>'
             + '<div class="text-sm text-muted mt-1">' + escapeHtml(data.original_url) + '</div>'
             + deleteControl(data)
             + '</div>';

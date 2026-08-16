@@ -1,8 +1,10 @@
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, request
+from flask_babel import gettext
 from pydantic import ValidationError as PydanticValidationError
 from werkzeug.exceptions import BadRequest, HTTPException
 
-from link_shortener.web.responses import wants_html
+from link_shortener.web.i18n import translate_error
+from link_shortener.web.responses import error_page, wants_html
 from link_shortener.web.schemas.error import ErrorDetail, ErrorResponse
 from link_shortener.application import Logger
 from link_shortener.domain.exceptions import (
@@ -44,6 +46,42 @@ class ErrorHandlerMiddleware:
         """
         return wants_html()
 
+    def _sentence_for(self, error: HTTPException) -> str:
+        """
+        Say what a Werkzeug refusal says, in the reader's language.
+
+        ``HTTPException.description`` is written inside Werkzeug and is
+        English wherever the visitor is from -- "Did not attempt to load
+        JSON data because the request Content-Type was not
+        'application/json'." It is also written for a developer rather
+        than for whoever is looking at the page.
+
+        So the ones that reach a browser get a sentence of this project's
+        own, marked and translated like every other. The rest keep the
+        library's, which is the honest answer for a status nobody here
+        anticipated: it is at least accurate, and it is in the log either
+        way.
+
+        Args:
+            error: The refusal Flask or a view raised.
+
+        Returns:
+            The sentence to show, translated where there is one to show.
+        """
+        # By status rather than by exception class: `abort(403)` and a
+        # decorator raising `Forbidden` are the same answer to the caller,
+        # and Werkzeug's own hierarchy is not the thing being described.
+        sentences = {
+            400: gettext("The request could not be understood"),
+            403: gettext("You do not have access to this"),
+            409: gettext("That conflicts with something already stored"),
+            413: gettext("What was sent is too large"),
+            415: gettext("The service expects a JSON body"),
+            503: gettext("The service is unavailable right now"),
+        }
+
+        return sentences.get(error.code or 0) or error.description or ""
+
     def _respond_http_exception(self, error: HTTPException):
         """
         Answer with the status the exception already carries.
@@ -56,17 +94,29 @@ class ErrorHandlerMiddleware:
         """
         code = "_".join(error.name.upper().split())
 
+        # The library's own wording, not the shown one: an operator
+        # matching this against a Werkzeug traceback needs the sentence
+        # Werkzeug wrote.
         self.logger.info(
-            "Request refused", status=error.code, path=request.path
+            "Request refused",
+            status=error.code,
+            path=request.path,
+            description=error.description,
         )
 
-        if self._should_return_html():
-            return render_template(
-                "error.html", error=error.description
-            ), error.code
+        message = self._sentence_for(error)
 
-        response = ErrorResponse(error=code, message=error.description or "")
-        return jsonify(response.model_dump()), error.code
+        # `HTTPException.code` is optional -- the base class carries None,
+        # and a subclass that forgot to set one would arrive here. 500 is
+        # the honest reading of "an exception with no status": something
+        # went wrong and nobody classified it.
+        status = error.code or 500
+
+        if self._should_return_html():
+            return error_page(code, message, status)
+
+        response = ErrorResponse(error=code, message=message)
+        return jsonify(response.model_dump()), status
 
     def _register_error_handlers(self):
         """Wire Flask error handlers to the appropriate methods."""
@@ -76,12 +126,10 @@ class ErrorHandlerMiddleware:
             """Handle 404 Not Found errors."""
 
             if self._should_return_html():
-                return render_template(
-                    "error.html", error="Page not found"
-                ), 404
+                return error_page("NOT_FOUND", gettext("Page not found"), 404)
 
             response = ErrorResponse(
-                error="NOT_FOUND", message="Resource not found"
+                error="NOT_FOUND", message=gettext("Resource not found")
             )
 
             return jsonify(response.model_dump()), 404
@@ -91,13 +139,18 @@ class ErrorHandlerMiddleware:
             """Handle 405 Method Not Allowed errors."""
 
             if self._should_return_html():
-                return render_template(
-                    "error.html", error="Method not allowed"
-                ), 405
+                return error_page(
+                    "METHOD_NOT_ALLOWED", gettext("Method not allowed"), 405
+                )
 
             response = ErrorResponse(
-                error="METHOD_NOT_ALLOWED", 
-                message=f"Method {request.method} not allowed"
+                error="METHOD_NOT_ALLOWED",
+                # The method is a value, not a word to translate, and it
+                # is named rather than positional so a translation can put
+                # it where that language puts it.
+                message=gettext(
+                    "Method %(method)s not allowed", method=request.method
+                )
             )
 
             return jsonify(response.model_dump()), 405
@@ -119,7 +172,12 @@ class ErrorHandlerMiddleware:
                 )
             response = ErrorResponse(
                 error="VALIDATION_ERROR",
-                message="Request validation failed",
+                message=gettext("Request validation failed"),
+                # `details` stays English. Those sentences are Pydantic's
+                # own -- "Input should be a valid string" -- built inside
+                # the library from a rule name, not written here, so there
+                # is no msgid to mark and no place to mark it. What names
+                # the field is `field`, which is a machine name either way.
                 details=details
             )
 
@@ -144,11 +202,16 @@ class ErrorHandlerMiddleware:
             These errors originate from value objects or domain entities.
             """
 
+            # Translated once and used twice: the envelope's `message` and
+            # the per-field detail are the same sentence, and translating
+            # each on its own is how the two start to differ.
+            message = translate_error(error)
+
             response = ErrorResponse(
                 error=error.code,
-                message=error.message,
+                message=message,
                 details=[
-                    ErrorDetail(field=error.field, message=error.message)
+                    ErrorDetail(field=error.field, message=message)
                 ] if error.field else None
             )
 
@@ -163,13 +226,15 @@ class ErrorHandlerMiddleware:
             """Handle case when a requested link is not found."""
 
             if self._should_return_html():
-                return render_template(
-                    "error.html", error="Link not found"
-                ), 404
+                # The page says the plain sentence rather than the error's
+                # own, which names the code that failed. The visitor typed
+                # that code; repeating it back is noise, and the page
+                # already shows the path it was asked for.
+                return error_page(error.code, gettext("Link not found"), 404)
 
             response = ErrorResponse(
                 error=error.code,
-                message=error.message
+                message=translate_error(error)
             )
             
             self.logger.info(
@@ -216,11 +281,12 @@ class ErrorHandlerMiddleware:
             # error monitoring.
             status_code = status_mapping.get(error.code, 500)
 
-            if self._should_return_html():
-                return render_template(
-                    "error.html", error=error.message
-                ), status_code
-
+            # Logged before either answer is built, and therefore on both
+            # paths. It used to sit below the HTML branch's `return`, so a
+            # domain failure on a page route -- the ones a person is
+            # actually looking at -- was answered and never recorded.
+            # Always in English: the operator reading `application.log` is
+            # not the visitor whose cookie chose a language.
             self.logger.error(
                 "Domain error", error=error.message, code=error.code
             )
@@ -228,11 +294,19 @@ class ErrorHandlerMiddleware:
             # A 5xx message describes the service's own state -- a missing
             # default role, a name from the configuration -- and the client
             # is not the audience for it. It stays in the log line above.
-            message = (
-                "An internal error occurred"
-                if status_code >= 500
-                else error.message
-            )
+            #
+            # Said once for both shapes. Said only in the JSON branch, the
+            # page showed the sentence the API refused to show: measured,
+            # `GET /dashboard/` with the default role missing put "Default
+            # role 'user' is missing from the database" on screen.
+            if status_code >= 500:
+                message = gettext("An internal error occurred")
+            else:
+                message = translate_error(error)
+
+            if self._should_return_html():
+                return error_page(error.code, message, status_code)
+
             response = ErrorResponse(error=error.code, message=message)
             headers = {}
 
@@ -258,11 +332,11 @@ class ErrorHandlerMiddleware:
             """Handle malformed request body (e.g., invalid JSON)."""
 
             if self._should_return_html():
-                return render_template("error.html", error="Bad request"), 400
+                return error_page("BAD_REQUEST", gettext("Bad request"), 400)
 
             response = ErrorResponse(
                 error="BAD_REQUEST",
-                message="Malformed request body"
+                message=gettext("Malformed request body")
             )
             return jsonify(response.model_dump()), 400
         
@@ -288,13 +362,13 @@ class ErrorHandlerMiddleware:
             self.logger.exception("Unhandled exception", exc_info=error)
 
             if self._should_return_html():
-                return render_template(
-                    'error.html', error='Internal server error'
-                ), 500
+                return error_page(
+                    "INTERNAL_SERVER_ERROR", gettext("Internal server error"), 500
+                )
 
             response = ErrorResponse(
                 error="INTERNAL_SERVER_ERROR",
-                message="An internal error occurred"
+                message=gettext("An internal error occurred")
             )
 
             return jsonify(response.model_dump()), 500

@@ -1,5 +1,5 @@
 {% extends "layout/base.html" %}
-{% block title %}Linkr — shorten a link{% endblock %}
+{% block title %}{{ _('Linkr — shorten a link') }}{% endblock %}
 {% block content %}
 {# Each mode is offered to a caller the service would actually answer.
    Shortening needs `link:create`, which an analyst does not hold. Extended
@@ -17,8 +17,8 @@
     {# The eyebrow is the call the button makes. In this design that is the
        most accurate caption the page could carry, and it is true. #}
     <div class="lab">POST /api/v1/shorten</div>
-    <h1>Shorten a link</h1>
-    <p>Paste an address. Get a code short enough to read out loud over a phone.</p>
+    <h1>{{ _('Shorten a link') }}</h1>
+    <p>{{ _('Paste an address. Get a code short enough to read out loud over a phone.') }}</p>
 
     {# `data-modes` sits on the section, not on an inner div: it marks the
        whole block a control belongs to, and the answer slot at the bottom
@@ -32,33 +32,33 @@
     <section class="shorten" data-modes>
         {% if not may_create %}
         <div class="alert alert--info mb-2">
-            This account may look links up, but not create them.
+            {{ _('This account may look links up, but not create them.') }}
         </div>
         {% endif %}
 
         {% if may_create %}
         <div>
-            <div class="modes" role="group" aria-label="How many links">
-                <button class="mode-btn active" data-mode="single" aria-pressed="true">One link</button>
-                <button class="mode-btn" data-mode="batch" aria-pressed="false">Many at once</button>
+            <div class="modes" role="group" aria-label="{{ _('How many links') }}">
+                <button class="mode-btn active" data-mode="single" aria-pressed="true">{{ _('One link') }}</button>
+                <button class="mode-btn" data-mode="batch" aria-pressed="false">{{ _('Many at once') }}</button>
             </div>
 
             <div id="mode-single" class="mode-content active">
                 <form id="form-single">
                     <div class="field">
-                        <label class="sr-only" for="url-single">Address to shorten</label>
+                        <label class="sr-only" for="url-single">{{ _('Address to shorten') }}</label>
                         <input type="url" id="url-single" placeholder="https://example.com/very/long/url" required spellcheck="false">
                         <span class="kbd">Enter</span>
-                        <button type="submit" class="btn btn--primary">Shorten</button>
+                        <button type="submit" class="btn btn--primary">{{ _('Shorten') }}</button>
                     </div>
                 </form>
             </div>
 
             <div id="mode-batch" class="mode-content">
                 <form id="form-batch">
-                    <label class="sr-only" for="urls-batch">Addresses, one per line</label>
+                    <label class="sr-only" for="urls-batch">{{ _('Addresses, one per line') }}</label>
                     <textarea id="urls-batch" class="form-input" rows="4" placeholder="https://example.com/1&#10;https://example.com/2" spellcheck="false"></textarea>
-                    <button type="submit" class="btn btn--primary mt-1">Shorten All</button>
+                    <button type="submit" class="btn btn--primary mt-1">{{ _('Shorten All') }}</button>
                 </form>
             </div>
         </div>
@@ -68,16 +68,23 @@
            and it was set in the smallest type on the page. #}
         {% if not g.current_user and guest_link_limit %}
         <div class="quota">
-            <span>Without an account: <b>{{ guest_link_limit }}</b> link{{ 's' if guest_link_limit != 1 }} a day</span>
-            <span>each expires after <b>{{ guest_ttl_days }}</b> day{{ 's' if guest_ttl_days != 1 }}</span>
-            <span><a href="{{ url_for('frontend.register_form') }}">Sign up</a> to keep them</span>
+            {%- set limit %}<b>{{ guest_link_limit }}</b>{% endset -%}
+            {%- set days %}<b>{{ guest_ttl_days }}</b>{% endset -%}
+            {# `pgettext`, not `_`: the header's button says "Sign up" too, and
+               English is content with one word for both. Russian is not --
+               the button wants a noun and the sentence wants a verb -- so the
+               two need separate entries, which is what a context gives them. #}
+            {%- set signup %}<a href="{{ url_for('frontend.register_form') }}">{{ pgettext('inside a sentence', 'Sign up') }}</a>{% endset -%}
+            <span>{% trans count=guest_link_limit, limit=limit %}Without an account: {{ limit }} link a day{% pluralize count %}Without an account: {{ limit }} links a day{% endtrans %}</span>
+            <span>{% trans count=guest_ttl_days, days=days %}each expires after {{ days }} day{% pluralize count %}each expires after {{ days }} days{% endtrans %}</span>
+            <span>{% trans link=signup %}{{ link }} to keep them{% endtrans %}</span>
         </div>
         {% endif %}
         {% endif %}
 
         {# The answer has a place before there is one, so the page says what
            is about to happen instead of growing a card out of nothing. #}
-        <p data-result-hint class="text-sm text-muted mt-2">Your short link appears here.</p>
+        <p data-result-hint class="text-sm text-muted mt-2">{{ _('Your short link appears here.') }}</p>
         <div id="result" data-result style="display: none;"></div>
     </section>
 </div>
@@ -86,22 +93,22 @@
     <div class="strip-grid">
         <div data-modes>
             <div class="lab">GET /api/v1/links/{code}</div>
-            <h2>Look up a code</h2>
-            <p>Where a short code leads, when it was made, how many times it has been followed.</p>
+            <h2>{{ _('Look up a code') }}</h2>
+            <p>{{ _('Where a short code leads, when it was made, how many times it has been followed.') }}</p>
 
             {% if may_read_extended %}
-            <div class="modes mt-1" role="group" aria-label="How much detail">
-                <button class="mode-btn active" data-mode="info" aria-pressed="true">Basic</button>
-                <button class="mode-btn" data-mode="extended" aria-pressed="false">Extended</button>
+            <div class="modes mt-1" role="group" aria-label="{{ _('How much detail') }}">
+                <button class="mode-btn active" data-mode="info" aria-pressed="true">{{ _('Basic') }}</button>
+                <button class="mode-btn" data-mode="extended" aria-pressed="false">{{ _('Extended') }}</button>
             </div>
             {% endif %}
 
             <div id="mode-info" class="mode-content active">
                 <form id="form-info">
                     <div class="field mt-1">
-                        <label class="sr-only" for="code-info">Short code</label>
+                        <label class="sr-only" for="code-info">{{ _('Short code') }}</label>
                         <input type="text" id="code-info" placeholder="k3nR7q" required pattern="[A-Za-z0-9_\-]{6,10}" spellcheck="false">
-                        <button type="submit" class="btn btn--ghost">Look up</button>
+                        <button type="submit" class="btn btn--ghost">{{ _('Look up') }}</button>
                     </div>
                 </form>
             </div>
@@ -110,11 +117,11 @@
             <div id="mode-extended" class="mode-content">
                 <form id="form-extended">
                     <div class="field mt-1">
-                        <label class="sr-only" for="code-extended">Short code</label>
+                        <label class="sr-only" for="code-extended">{{ _('Short code') }}</label>
                         <input type="text" id="code-extended" placeholder="k3nR7q" required pattern="[A-Za-z0-9_\-]{6,10}" spellcheck="false">
-                        <button type="submit" class="btn btn--ghost">Look up</button>
+                        <button type="submit" class="btn btn--ghost">{{ _('Look up') }}</button>
                     </div>
-                    <span class="form-hint">Extended figures are shown for your own links.</span>
+                    <span class="form-hint">{{ _('Extended figures are shown for your own links.') }}</span>
                 </form>
             </div>
             {% endif %}
@@ -126,10 +133,10 @@
         </div>
 
         <div>
-            <div class="lab">The whole service is an API</div>
-            <h2>Everything on this page is one call</h2>
-            <p>No SDK and no key ceremony. The full description lives at
-               <a href="{{ url_for('frontend.api_docs') }}">/api/docs</a>.</p>
+            <div class="lab">{{ _('The whole service is an API') }}</div>
+            <h2>{{ _('Everything on this page is one call') }}</h2>
+            {%- set docs %}<a href="{{ url_for('frontend.api_docs') }}">/api/docs</a>{% endset -%}
+            <p>{% trans link=docs %}No SDK and no key ceremony. The full description lives at {{ link }}.{% endtrans %}</p>
             {# `white-space: pre` holds this block, so the line breaks and
                the indentation below are the ones that reach the screen --
                nothing here may be reflowed for tidiness. #}

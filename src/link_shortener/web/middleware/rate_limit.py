@@ -1,8 +1,10 @@
 from flask import (
-    Flask, g, jsonify, make_response, render_template, request
+    Flask, g, jsonify, make_response, request
 )
+from flask_babel import ngettext
+
 from link_shortener.application import RateLimiter
-from link_shortener.web.responses import wants_html
+from link_shortener.web.responses import error_page, wants_html
 from link_shortener.web.schemas.error import ErrorResponse
 from link_shortener.web.security.context import get_client_ip
 from link_shortener.web.middleware.hooks import response_hook
@@ -249,9 +251,18 @@ class RateLimitMiddleware:
                 # as one that reads the header.
                 body = ErrorResponse(
                     error="RATE_LIMIT_EXCEEDED",
-                    message=(
-                        f"Too many requests. Limit {limit} per {period} "
-                        f"seconds."
+                    # `ngettext` rather than `gettext`, on `period`: the
+                    # sentence ends in a count of seconds, and Russian
+                    # takes three forms for it -- "1 секунду", "3
+                    # секунды", "60 секунд". A single form gets two of
+                    # those three wrong, and 60 is the value it ships
+                    # with.
+                    message=ngettext(
+                        "Too many requests. Limit %(limit)s per %(period)s second.",
+                        "Too many requests. Limit %(limit)s per %(period)s seconds.",
+                        period,
+                        limit=limit,
+                        period=period,
                     ),
                 ).model_dump()
                 body["retry_after"] = period
@@ -266,7 +277,9 @@ class RateLimitMiddleware:
                 if wants_html():
                     try:
                         response = make_response(
-                            render_template("error.html", error=body["message"])
+                            error_page(
+                                "RATE_LIMIT_EXCEEDED", body["message"], 429
+                            )
                         )
                     except Exception as e:
                         # A page that will not render must not cost the

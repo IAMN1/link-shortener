@@ -32,7 +32,7 @@
         var tbody = document.getElementById('recent-tbody');
         if (!data.recent_links || !data.recent_links.length) {
             tbody.innerHTML = '<tr><td colspan="' + columns
-                + '" class="text-muted text-center">No links</td></tr>';
+                + '" class="text-muted text-center">' + escapeHtml(t('no_links')) + '</td></tr>';
             return;
         }
         tbody.innerHTML = data.recent_links.map(function(l) {
@@ -43,7 +43,7 @@
                 + '<td>' + formatDate(l.created_at) + '</td>'
                 + (mayDelete
                     ? '<td><button class="btn btn--ghost btn--sm btn--danger js-del" data-code="'
-                        + escapeHtml(l.short_code) + '">Delete</button></td>'
+                        + escapeHtml(l.short_code) + '">' + escapeHtml(t('delete')) + '</button></td>'
                     : '')
                 + '</tr>';
         }).join('');
@@ -51,7 +51,7 @@
         tbody.querySelectorAll('.js-del').forEach(function(btn) {
             btn.addEventListener('click', async function() {
                 var code = btn.dataset.code;
-                if (!confirm('Delete link ' + code + '? It belongs to this account.')) return;
+                if (!confirm(t('confirm_delete_link_of_account', { code: code }))) return;
                 var r = await apiFetch('/api/v1/links/' + encodeURIComponent(code), { method: 'DELETE' });
                 if (!r) return;
                 if (!r.ok) {
@@ -66,6 +66,6 @@
     try {
         await load();
     } catch (e) {
-        showLoadError('user-stats-error', 'The service could not be reached.', 'recent-tbody', columns);
+        showLoadError('user-stats-error', t('unreachable'), 'recent-tbody', columns);
     }
 })();

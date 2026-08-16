@@ -21,7 +21,7 @@
                 body: JSON.stringify({ email: email, password: password })
             });
             var data = await resp.json();
-            if (!resp.ok) throw new Error(data.message || data.error || 'Registration failed');
+            if (!resp.ok) throw new Error(data.message || data.error || t('registration_failed'));
             // Not a redirect to /login any more. The account cannot sign in
             // until the mailed link is opened, and the answer is the same
             // whether or not the address was free -- so the page says what

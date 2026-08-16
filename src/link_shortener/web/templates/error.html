@@ -1,5 +1,5 @@
 {% extends "layout/base.html" %}
-{% block title %}{{ error or 'Something went wrong' }} — Linkr{% endblock %}
+{% block title %}{{ error or _('Something went wrong') }} — Linkr{% endblock %}
 {% block content %}
 {# The service already sends a different sentence for each refusal --
    "Page not found", "Link not found", "Method not allowed", "Bad request".
@@ -9,28 +9,34 @@
 <div class="container">
     <div class="stop">
         <div class="lab">{{ request.path }}</div>
-        <h1>{{ error or 'Something went wrong' }}</h1>
+        <h1>{{ error or _('Something went wrong') }}</h1>
 
         {# A code that leads nowhere is the ordinary business of a link
            shortener, not an accident, and the useful thing to offer is
-           another code -- not an apology. #}
-        {% if error and 'link' in error|lower %}
-        <p>The code may have expired, or it may never have existed. Codes made
-           without an account stop working after a few days.</p>
+           another code -- not an apology.
+
+           Which refusals those are is decided by `error_page` in
+           `web/responses.py`, by error code. This used to read
+           `'link' in error|lower`, which worked only while the sentence
+           was always English: the moment the service answers "Ссылка не
+           найдена", the test is false and the form silently disappears
+           from the one page that most needs it. #}
+        {% if offers_lookup %}
+        <p>{{ _('The code may have expired, or it may never have existed. Codes made without an account stop working after a few days.') }}</p>
         <form id="form-info" class="mt-2">
             <div class="field">
-                <label class="sr-only" for="code-info">Short code</label>
-                <input type="text" id="code-info" placeholder="Try another code" required pattern="[A-Za-z0-9_\-]{6,10}" spellcheck="false">
-                <button type="submit" class="btn btn--ghost">Look up</button>
+                <label class="sr-only" for="code-info">{{ _('Short code') }}</label>
+                <input type="text" id="code-info" placeholder="{{ _('Try another code') }}" required pattern="[A-Za-z0-9_\-]{6,10}" spellcheck="false">
+                <button type="submit" class="btn btn--ghost">{{ _('Look up') }}</button>
             </div>
         </form>
         <div id="result" data-result style="display: none;" class="mt-1"></div>
         {% else %}
-        <p>Nothing was changed. You can go back to the front page and try again.</p>
+        <p>{{ _('Nothing was changed. You can go back to the front page and try again.') }}</p>
         {% endif %}
 
         <p class="mt-3">
-            <a href="{{ url_for('frontend.index') }}" class="btn btn--primary">Front page</a>
+            <a href="{{ url_for('frontend.index') }}" class="btn btn--primary">{{ _('Front page') }}</a>
         </p>
     </div>
 </div>
@@ -38,7 +44,7 @@
 {% block scripts %}
 {# The lookup above is the same form the front page carries, so it is driven
    by the same script rather than by a copy of it. #}
-{% if error and 'link' in error|lower %}
+{% if offers_lookup %}
 <script src="{{ url_for('static', filename='js/pages/home.js') }}" defer></script>
 {% endif %}
 {% endblock %}

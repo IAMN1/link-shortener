@@ -25,9 +25,10 @@
                     + '<td>' + formatDate(l.created_at) + '</td></tr>';
             }).join('');
         } else {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">No links yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">'
+                + escapeHtml(t('no_links_yet')) + '</td></tr>';
         }
     } catch(e) {
-        showLoadError('home-error', 'The service could not be reached.', 'recent-links', 4);
+        showLoadError('home-error', t('unreachable'), 'recent-links', 4);
     }
 })();

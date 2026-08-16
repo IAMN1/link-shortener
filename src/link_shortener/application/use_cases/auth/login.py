@@ -9,6 +9,7 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import DomainError
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -50,14 +51,14 @@ class LoginUseCase(BaseUseCase):
         user = self.authentication_service.authenticate(email, password)
         if not user:
             log.warning("Login failed", email=email)
-            raise DomainError("Invalid email or password", code="INVALID_CREDENTIALS")
+            raise DomainError(N_("Invalid email or password"), code="INVALID_CREDENTIALS")
 
         if not user.is_active:
             # Answered exactly like a wrong password. Saying "deactivated"
             # only when the password is right confirms both that the account
             # exists and that the password guess landed.
             log.warning("Login attempt on inactive user", user_id=user.id)
-            raise DomainError("Invalid email or password", code="INVALID_CREDENTIALS")
+            raise DomainError(N_("Invalid email or password"), code="INVALID_CREDENTIALS")
 
         if not user.email_verified:
             # Named, unlike the case above, and the difference is who the
@@ -71,7 +72,7 @@ class LoginUseCase(BaseUseCase):
             # account exists.
             log.warning("Login attempt on unverified user", user_id=user.id)
             raise DomainError(
-                "Confirm your email address before signing in",
+                N_("Confirm your email address before signing in"),
                 code="EMAIL_NOT_VERIFIED",
             )
 

@@ -22,6 +22,57 @@ function csrfHeaders(base, method) {
     return headers;
 }
 
+// The sentences this file and the page scripts write onto a page, in the
+// language the page was built in. They are put there by
+// `layout/base.html`, which prints what `web/i18n.py:script_strings`
+// returns; nothing here decides a language, and nothing here holds an
+// English fallback -- a string in this file would be exactly the fault
+// this mechanism exists to remove.
+//
+// Cached against the element it was read from rather than in a plain
+// variable. This file is loaded from `<head>`, so it runs once per tab,
+// while the block it reads lives in `<body>`, which Turbo replaces on
+// every navigation. A variable filled on the first page would therefore be
+// the answer for the rest of the tab's life -- which is correct today,
+// since the language can only change by a full reload, and would quietly
+// stop being correct the day anything else swaps that block.
+var stringsNode = null;
+var stringsRead = {};
+
+function strings() {
+    var node = document.getElementById('script-strings');
+    if (!node) return {};
+    if (node !== stringsNode) {
+        try {
+            stringsRead = JSON.parse(node.textContent);
+        } catch (e) {
+            // A page whose catalogue did not parse is a broken page, and
+            // it is better broken loudly: `t` will answer with keys.
+            stringsRead = {};
+        }
+        stringsNode = node;
+    }
+    return stringsRead;
+}
+
+// One sentence, with its values put in. Named substitutions -- `%(code)s`
+// -- the same shape the service's own messages use, so a translator moving
+// a value across the sentence still knows which value it is.
+//
+// An unknown key comes back as the key. It shows up on the page as
+// `no_links_yet`, which is ugly on purpose: the alternative is an empty
+// string, and an empty string is a page that looks finished and says
+// nothing.
+function t(key, params) {
+    var template = strings()[key];
+    if (template === undefined) return key;
+    if (!params) return template;
+    return template.replace(/%\((\w+)\)s/g, function(whole, name) {
+        return Object.prototype.hasOwnProperty.call(params, name)
+            ? params[name] : whole;
+    });
+}
+
 async function apiFetch(url, opts) {
     opts = opts || {};
     opts.headers = csrfHeaders(opts.headers, opts.method || 'GET');
@@ -69,12 +120,17 @@ async function logoutUser() {
 // the screen on "Loading..." for good: a 403 and a slow network looked
 // exactly alike to the person waiting.
 async function apiErrorText(resp) {
-    if (!resp) return 'The service could not be reached.';
+    if (!resp) return t('unreachable');
     try {
         var data = await resp.json();
-        return data.message || data.error || ('Request failed (' + resp.status + ')');
+        // `data.message` is the service's own sentence, and the service
+        // already answered in the language of this request -- the browser
+        // sends the language cookie on its own API calls. The two sides of
+        // this expression are therefore both translated, by different
+        // machinery, and neither is a fallback for the other's language.
+        return data.message || data.error || t('request_failed', { status: resp.status });
     } catch (e) {
-        return 'Request failed (' + resp.status + ')';
+        return t('request_failed', { status: resp.status });
     }
 }
 
@@ -115,6 +171,7 @@ window.escapeHtml = escapeHtml;
 window.formatDate = formatDate;
 window.apiErrorText = apiErrorText;
 window.showLoadError = showLoadError;
+window.t = t;
 
 // How the page is painted, kept in a cookie rather than in localStorage, for
 // the same reason the sidebar's width is: the server reads a cookie and can
@@ -125,6 +182,28 @@ window.showLoadError = showLoadError;
 function rememberTheme(state) {
     document.cookie = 'theme=' + state
         + ';path=/;max-age=31536000;samesite=Lax';
+}
+
+// The chosen language, kept in a cookie for the same reason the theme is:
+// the server reads it while building the page, so the page arrives already
+// written in it. Same lifetime and same flags -- there is no secret in it,
+// it says which of three catalogues to render from.
+//
+// Unlike the theme, this cannot be applied here. The theme is a class on
+// `<html>` and the browser can repaint it; the words on the page were
+// chosen by the server, so the page has to be built again to change them.
+function rememberLanguage(tag) {
+    document.cookie = 'lang=' + tag
+        + ';path=/;max-age=31536000;samesite=Lax';
+}
+
+// A full load, not `Turbo.visit`. Turbo keeps a cache of pages it has
+// already drawn, and every one of them is in the language we are leaving:
+// a visit would swap this page and leave the back button holding the old
+// language. A load discards the cache along with everything else.
+function switchLanguage(tag) {
+    rememberLanguage(tag);
+    window.location.reload();
 }
 
 // Which control was pressed, given the thing actually clicked. A click
@@ -185,6 +264,17 @@ document.addEventListener('click', function(e) {
     // here left the menu hanging open, `aria-expanded` still saying "true".
     if (pressed(e, '#theme-toggle')) {
         toggleTheme();
+    } else if (pressed(e, '.lang-btn')) {
+        // Returns, like the logout link and unlike the theme switch: the
+        // page is being replaced, so there is nothing left for the menu
+        // branch below to close.
+        var chosen = pressed(e, '.lang-btn').getAttribute('data-lang');
+        // Pressing the language already in force would cost a full page
+        // load and change nothing on screen.
+        if (chosen && !e.target.closest('.lang-btn--on')) {
+            switchLanguage(chosen);
+        }
+        return;
     } else if (pressed(e, '#logout-link')) {
         // This one does return -- the page is being left.
         e.preventDefault();

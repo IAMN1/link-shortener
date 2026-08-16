@@ -592,6 +592,32 @@ class BaseConfig:
     """
 
     # ==========================================================================
+    # Interface Language
+    # ==========================================================================
+    SUPPORTED_LANGUAGES: List[str] = env_list("SUPPORTED_LANGUAGES", ["en", "ru", "zh"])
+    """
+    Languages the interface is offered in, best first.
+
+    Order is not decoration: it is the order ``Accept-Language`` is matched
+    against, so a caller who accepts several of them with equal weight gets
+    the first one named here.
+
+    A language listed without a catalogue on disk is not an error -- gettext
+    falls back to the untranslated text, which is English. The opposite is
+    the real fault, and it is what the deployment check looks for: a
+    catalogue nobody can reach because its language is not named here.
+    """
+
+    DEFAULT_LANGUAGE: str = env_str("DEFAULT_LANGUAGE", "en")
+    """
+    Language for a caller who asked for none.
+
+    Which is most callers of the API and, measured, every request the test
+    suite and the browser run make: neither sends ``Accept-Language`` at
+    all. So this is not an edge case -- it is the language a program sees.
+    """
+
+    # ==========================================================================
     # JWT Authentication Settings
     # ==========================================================================
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = env_int("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 15)
@@ -1304,6 +1330,7 @@ class BaseConfig:
         errors.extend(self._mail_errors())
         errors.extend(self._confirmation_errors())
         errors.extend(self._log_level_errors())
+        errors.extend(self._language_errors())
 
         return errors
 
@@ -1355,6 +1382,39 @@ class BaseConfig:
             errors.append(
                 "SHORT_CODE_LENGTH must lie between SHORT_CODE_MIN_LENGTH "
                 "and SHORT_CODE_MAX_LENGTH"
+            )
+
+        return errors
+
+
+    def _language_errors(self) -> List[str]:
+        """
+        Check that a language can actually be chosen.
+
+        Both faults here are silent at runtime rather than loud: an empty
+        list leaves the negotiator with nothing to match and a default
+        outside the list makes every page fall back to a language the
+        deployment did not offer. Neither raises anywhere -- the pages just
+        come out in the wrong language, which nobody reports as a bug.
+
+        Compared case-insensitively: language tags are case-insensitive by
+        RFC 5646, and refusing to start over ``DEFAULT_LANGUAGE=EN`` would
+        be pedantry rather than a check.
+
+        Returns:
+            List of human-readable error messages.
+        """
+        errors = []
+
+        supported = [tag.strip().lower() for tag in self.SUPPORTED_LANGUAGES]
+        supported = [tag for tag in supported if tag]
+
+        if not supported:
+            errors.append("SUPPORTED_LANGUAGES must name at least one language")
+        elif self.DEFAULT_LANGUAGE.strip().lower() not in supported:
+            errors.append(
+                f"DEFAULT_LANGUAGE ({self.DEFAULT_LANGUAGE}) is not in "
+                f"SUPPORTED_LANGUAGES ({', '.join(supported)})"
             )
 
         return errors

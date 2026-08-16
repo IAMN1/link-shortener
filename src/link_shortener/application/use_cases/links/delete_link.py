@@ -19,6 +19,7 @@ from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
     DomainError, Link, LinkNotFoundError, SystemPermissions
 )
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -188,7 +189,7 @@ class DeleteLinkUseCase(BaseUseCase):
         """
         requester = self._load_requester(context, uow)
         if requester is None:
-            raise DomainError("Authentication required", code="UNAUTHENTICATED")
+            raise DomainError(N_("Authentication required"), code="UNAUTHENTICATED")
 
         owner_id = link.owner.value if link.owner else None
         owns_it = owner_id is not None and owner_id == requester.id
@@ -206,7 +207,7 @@ class DeleteLinkUseCase(BaseUseCase):
                 required_permission=required,
             )
             raise DomainError(
-                "You are not allowed to delete this link", code="FORBIDDEN"
+                N_("You are not allowed to delete this link"), code="FORBIDDEN"
             )
 
     @staticmethod

@@ -1,24 +1,24 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Stats for {{ user.email }} — Linkr{% endblock %}
+{% block title %}{% trans email=user.email %}Stats for {{ email }} — Linkr{% endtrans %}{% endblock %}
 {% block dashboard_content %}
 <div class="dash-head">
     <h1 class="dash-title">{{ user.email }}</h1>
-    <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost btn--sm">All users</a>
+    <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost btn--sm">{{ _('All users') }}</a>
 </div>
 
 <div id="user-stats-error" class="alert alert--error hidden mb-2"></div>
 
 <div class="stats-grid mb-2">
     <div class="stat-card">
-        <span class="stat-label">Links</span>
+        <span class="stat-label">{{ _('Links') }}</span>
         <span class="stat-value" id="stat-links">&mdash;</span>
     </div>
     <div class="stat-card">
-        <span class="stat-label">Total Clicks</span>
+        <span class="stat-label">{{ _('Total Clicks') }}</span>
         <span class="stat-value" id="stat-clicks">&mdash;</span>
     </div>
     <div class="stat-card">
-        <span class="stat-label">Avg Clicks</span>
+        <span class="stat-label">{{ _('Avg Clicks') }}</span>
         <span class="stat-value" id="stat-avg">&mdash;</span>
     </div>
 </div>
@@ -31,16 +31,16 @@
      data-user-id="{{ user.id }}"
      data-can-delete="{{ 'yes' if can('link:delete_any') else 'no' }}">
     <div class="card-header">
-        <span class="card-title">Recent Links</span>
+        <span class="card-title">{{ _('Recent Links') }}</span>
     </div>
     <div class="table-wrap">
         <table class="table">
             <thead><tr>
-                <th>Code</th><th>Destination</th><th>Clicks</th><th>Created</th>
+                <th>{{ _('Code') }}</th><th>{{ _('Destination') }}</th><th>{{ _('Clicks') }}</th><th>{{ _('Created') }}</th>
                 {% if can('link:delete_any') %}<th></th>{% endif %}
             </tr></thead>
             <tbody id="recent-tbody">
-                <tr><td colspan="{{ 5 if can('link:delete_any') else 4 }}" class="loading">Loading&hellip;</td></tr>
+                <tr><td colspan="{{ 5 if can('link:delete_any') else 4 }}" class="loading">{{ _('Loading…') }}</td></tr>
             </tbody>
         </table>
     </div>
