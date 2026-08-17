@@ -266,6 +266,7 @@ curl "http://localhost:5000/api/v1/links/mine?offset=0&limit=20" \
 | Create Link | `link:create` |
 | Service Stats | `stats:view_basic`; the popular-links table needs `stats:view_full` |
 | Users, Roles, Health Check | the administrative permissions |
+| Journals | `audit:view` or `logs:view`; each journal is offered only to whoever may read that one |
 
 What a role is shown is decided by the permission its page asks for, so a
 menu entry that answers `403` is a bug rather than a fact of life. See

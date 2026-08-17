@@ -266,6 +266,7 @@ curl "http://localhost:5000/api/v1/links/mine?offset=0&limit=20" \
 | Create Link | `link:create` |
 | Service Stats | `stats:view_basic`; таблица популярных ссылок — `stats:view_full` |
 | Users, Roles, Health Check | административные разрешения |
+| Журналы | `audit:view` или `logs:view`; каждый журнал предлагается только тому, кто вправе его читать |
 
 Что показать роли, решает то самое разрешение, которое спрашивает
 страница, поэтому пункт меню, отвечающий `403`, — это дефект, а не

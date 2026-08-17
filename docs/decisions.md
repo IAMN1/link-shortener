@@ -1,6 +1,6 @@
 # Decisions
 
-Thirty-eight write-ups of why something is the way it is. Read this when the
+Thirty-nine write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -700,6 +700,101 @@ measuring something else, and the missing stamps surfaced only when the
 Docker stack was raised and its journals read by eye — the suite had every
 opportunity and no reason to look, because nothing in it had ever asked
 what a line from another library looks like on disk.
+
+### The journals are shown in the interface, and each one asks for its own permission
+
+**Decided** (2026-08-17): `GET /api/v1/journals/<journal>` serves the last
+lines of `application`, `error` or `audit`, and `/dashboard/service/journals`
+displays them. The audit journal is read under `audit:view`, the other two
+under `logs:view`, and the decision is made in `ReadJournalUseCase` rather
+than in a route decorator.
+
+**Why an endpoint at all.** The journals were readable by whoever had a
+shell on the host, which is a smaller set than the people who need to read
+them and a larger set than the people who should. An auditor with no
+deployment access could see nothing; an operator with deployment access
+could see everything, including the record kept about their own actions.
+The permissions split that in two, and a surface is what makes the split
+usable — a permission nobody can exercise without `ssh` is a permission
+that gets worked around by handing out `ssh`.
+
+**Why two permissions and not one.** The three journals expose different
+things. `audit.log` carries destination addresses and the accounts that
+followed them — measured, it is the only one of the three that ever
+contains a token, since `mask_url` leaves a token in a query string
+untouched. `application.log` carries the email address of everyone who
+registered, signed in, or failed to sign in. Google Cloud draws the same
+line between `logging.viewer` and `logging.privateLogViewer`. What
+`admin:all` does not carry is `audit:view`, for the reason written where
+`BEYOND_ADMIN_ALL` is defined: the administrator is the caller the audit
+trail is chiefly kept against.
+
+**Why the check is in the use case.** Which permission applies depends on
+which journal was asked for, and a decorator is fixed at import time. A
+route guarded by one of the two would be a second, coarser answer to the
+same question, and the coarser of two answers is the one that eventually
+decides. The route therefore carries no `@require_permission`; it converts
+the name in the address into a `Journal` member — which is what makes a
+path unspellable — and the use case, over `PERMISSION_FOR`, decides. The
+dashboard page is the one place with a decorator, `require_any_permission`,
+and it guards nothing but whether the page is worth opening: every journal
+on it is fetched through the endpoint that checks the permission belonging
+to it.
+
+**Polled, like the charts, and for the same reason.** Production is
+`gunicorn --worker-class sync --workers 4`. A journal held open over SSE
+would occupy a worker for as long as somebody is reading, and four readers
+would be the whole service. The same five intervals and the same off switch
+the charts offer, because it is the same question asked of a different
+reading.
+
+**What is shown.** The fields every record carries — time, level, event —
+as columns, everything else as `key=value`, and the raw line one click
+underneath: a rendering is a summary, and an operator reconstructing an
+incident eventually needs the bytes. A line that is not JSON is shown as it
+was found and marked, never dropped; a viewer that silently omits what it
+cannot parse is least trustworthy exactly when it matters. Under the table
+is what the answer *reached*, as against what exists — without it the
+oldest line on screen reads as the beginning of history, when it is usually
+the point at which the page filled up.
+
+**Timestamps are not converted.** The journals are stamped in UTC by one
+constant, and the page shows that stamp. The reader's own clock is offered
+as the cell's tooltip. A page that quietly shifted the times would leave an
+operator comparing a screen against a file and finding them three hours
+apart.
+
+**What looking at it changed.** Four things, none of which any test had an
+opinion about: `Url accessed successfully` wrapped onto two lines while the
+column beside it had room to spare; the timestamp was printed twice, once
+as written and once in local time, and on a journal every line of which is
+the same second that was a third of the table's width; the table scrolled
+the whole page, so choosing a different journal meant scrolling back up to
+reach the button; and the label read "1 lines from error.log", which is
+wrong in English and, at "1 строк", wrong in Russian — the count reaches
+the page in the browser where `ngettext` cannot follow it, so the sentence
+became a label with a colon, which takes any number in all three languages.
+
+**What the measurement changed.** Making the table scroll inside its own
+box introduced a fault and hid another. The heading row scrolled away with
+the rows, leaving four unlabelled columns of monospace — fixed by making it
+sticky. And the first fix for scroll position restored `scrollTop` after
+every poll, which turned out to be a line that did nothing: measured with
+it removed, a reader stopped partway is left at 300 before the poll and 300
+after, because replacing rows through `innerHTML` leaves the box alone.
+What the browser does get wrong is the reader watching the tail — new lines
+arrive below them and the box does not follow, and two polls at five
+seconds put the tail 204 pixels out of sight. Only that half is code now,
+and `browser_test.py` reddens by 1428 pixels without it.
+
+**What was left open.** The reading is not itself recorded. An audit trail
+that does not say who read it is half a trail, and the event to write —
+`AUDIT_VIEWED` — belongs with the other security events the journal does
+not yet carry: `LOGIN_SUCCEEDED`, `LOGIN_FAILED`, `USER_CREATED`,
+`ROLES_CHANGED`. They are one piece of work and it is the next one. There
+is also no search and no filter: the page answers "what just happened",
+and "what happened to this account in March" is a question for the branch
+that adds the events worth counting.
 
 ---
 
