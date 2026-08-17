@@ -1,6 +1,6 @@
 # Documentation
 
-Seven documents, each answering one kind of question. If you are not sure
+Eight documents, each answering one kind of question. If you are not sure
 where to look, the table below is sorted by what you are trying to do.
 
 | I want to… | Read | Kind |
@@ -12,6 +12,7 @@ where to look, the table below is sorted by what you are trying to do.
 | look up a setting | [Configuration](configuration.md) | reference |
 | understand how it fits together | [Architecture](architecture.md) | explanation |
 | know why it was built this way | [Decisions](decisions.md) | explanation |
+| know what was considered and not built | [Roadmap](roadmap.md) | explanation |
 
 > [!NOTE]
 > The split follows [Diátaxis](https://diataxis.fr/): a tutorial takes you
@@ -50,6 +51,11 @@ numbers it produced.
 **[Decisions](decisions.md)** — thirty-eight write-ups in the form *what
 was decided, why, and what holds it*. Read this one when the code does
 something that looks wrong until you know the reason.
+
+**[Roadmap](roadmap.md)** — work that was considered and never started,
+with what each idea would change and what it would cost. Read it before
+proposing something, in case the reason it is absent is already written
+down.
 
 ## Conventions in these documents
 

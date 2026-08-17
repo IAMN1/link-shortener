@@ -223,6 +223,7 @@ Full breakdown: [Testing](docs/testing.md).
 | [Testing](docs/testing.md) | The four levels, the live runs, and what CI enforces |
 | [Development](docs/development.md) | Patterns, the frontend, the load profile |
 | [Decisions](docs/decisions.md) | Thirty-eight write-ups of why something is the way it is |
+| [Roadmap](docs/roadmap.md) | What was considered and never built, and what each idea would cost |
 
 ## Requirements
 
