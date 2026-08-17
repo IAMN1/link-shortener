@@ -52,15 +52,45 @@ belongs where the permission is used, so a set widened later cannot leave an
 unguarded path behind.
 """
 
+# ==============================================================================
+# The limit of the administrative bypass
+# ==============================================================================
+
+BEYOND_ADMIN_ALL = frozenset({
+    SystemPermissions.AUDIT_VIEW.value,
+})
+"""Permissions ``admin:all`` does not carry, and has to be granted for.
+
+The audit journal records what was done to links and accounts, and an
+administrator is the person who can do the most of it. A bypass that handed
+them the record along with the powers would leave the journal proving
+nothing about the one caller it is chiefly kept against -- which is what
+NIST SP 800-53 AU-9 asks a system to prevent, and AC-5 the reason why.
+
+**What this does not do.** It does not stop an administrator reading the
+journal: they hold ``admin:manage_roles`` and can assign themselves
+``auditor``, and they can read the file off the disk besides. Nothing
+arranged inside one application can prevent that -- it takes a second
+system that this one cannot write to, which is the first entry in
+`docs/roadmap.md`. What the exception buys is that the short way round is
+closed and the remaining way leaves a record: the grant is an event, and so
+is the reading that follows it.
+
+``logs:view`` is deliberately absent from this set. `application.log` and
+`error.log` are operational journals -- an administrator reads them to do
+the job, and withholding them would be ceremony rather than separation.
+"""
+
 
 class RBACAuthorizationService(AuthorizationService):
     """
     Determines if a caller has a given permission based on assigned roles.
 
     Users holding the ``admin:all`` permission are considered super-users
-    and are granted implicit access to everything. That bypass is reachable
-    only for an authenticated user -- an anonymous caller is answered from
-    the ``guest`` role and never reaches it.
+    and are granted implicit access to everything except what
+    ``BEYOND_ADMIN_ALL`` names. That bypass is reachable only for an
+    authenticated user -- an anonymous caller is answered from the ``guest``
+    role and never reaches it.
 
     Attributes:
         uow_factory: Callable that returns a new Unit of Work instance.
@@ -97,8 +127,12 @@ class RBACAuthorizationService(AuthorizationService):
         """
         if user is None:
             return self._anonymous_is_allowed(permission)
-        # Admins bypass all permission checks.
-        if user.has_permission(SystemPermissions.ADMIN_ALL.value):
+        # Admins bypass permission checks, with the exception named in
+        # ``BEYOND_ADMIN_ALL``: the audit journal is not something the
+        # administrative role carries by being administrative.
+        if permission not in BEYOND_ADMIN_ALL and user.has_permission(
+            SystemPermissions.ADMIN_ALL.value
+        ):
             return True
         # Standard role-based check.
         return user.has_permission(permission)
