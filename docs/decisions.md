@@ -556,11 +556,42 @@ microseconds a request, against a request measured in milliseconds.
 **Retention differs by journal because the journals differ.**
 `application.log` and `error.log` are written by traffic — 796 bytes per
 request, so 690 MB a day at ten requests a second — and are kept for 14
-generations. `audit.log` is written by events, 750 bytes each, and is kept
-for 52 weeks: it is what an incident is reconstructed from, and an incident
-is not noticed the same day. Compression is worth having: JSON records
-compress about 23 times on the traffic measured here, which is an upper
-bound — real traffic with varied addresses will do less.
+generations, capped at 100 MB a file.
+
+`audit.log` is written by traffic too, and this entry said otherwise for a
+day. It claimed the journal grew "from events, not traffic, 750 bytes
+each", and concluded that a year of it compressed to single megabytes and
+so needed no size cap at all. Every part of that was wrong.
+`log_url_accessed` is called on every redirect, in all three branches of
+`redirect_link` — the cache hit, the entity hit and the repository read —
+so one line is written per hit and the journal grows exactly as fast as the
+service is used.
+
+Measured on this tree, driving real redirects through a real application:
+
+| | claimed | measured |
+|---|---|---|
+| per event | 750 B | 473 B (344–525, browser agents, four destinations) |
+| lines per redirect | — | 1000 per 1000 |
+| at 10 redirects/s | — | 389 MB a day |
+| live file, weekly rotation | — | 2.7 GB |
+| 52 generations, compressed | "single megabytes" | 4.1 GB |
+| compression | 23× | 33.8× |
+
+The line has a ceiling and a floor for the same reason: `mask_url`
+truncates an address past 100 characters to 73, so a long destination stops
+adding bytes, while the user-agent is not truncated by anything and is the
+field that actually varies.
+
+So `audit.log` now carries `maxsize 1G` beside `weekly`, and `rotate` rises
+from 52 to 200. The two numbers are one decision: a cap alone would have
+bought a smaller file by shortening the history, which is the one thing
+this journal exists to keep. 200 generations of a gigabyte cover a year
+until traffic passes about 14 redirects a second; above that the
+generations run out before the year does, and that is the limit of the
+arrangement rather than a setting to tune. It costs about 6 GB of disk —
+200 compressed generations of some 30 MB — against an uncapped live file
+that reaches 13 GB in a week at fifty redirects a second.
 
 **What was left open.** Two things the choice does not cover. The rotation
 depends on the profile being named: `.env.example` ships `logs` in
