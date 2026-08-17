@@ -1,6 +1,6 @@
 # Decisions
 
-Thirty-seven write-ups of why something is the way it is. Read this when the
+Thirty-eight write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -556,11 +556,42 @@ microseconds a request, against a request measured in milliseconds.
 **Retention differs by journal because the journals differ.**
 `application.log` and `error.log` are written by traffic — 796 bytes per
 request, so 690 MB a day at ten requests a second — and are kept for 14
-generations. `audit.log` is written by events, 750 bytes each, and is kept
-for 52 weeks: it is what an incident is reconstructed from, and an incident
-is not noticed the same day. Compression is worth having: JSON records
-compress about 23 times on the traffic measured here, which is an upper
-bound — real traffic with varied addresses will do less.
+generations, capped at 100 MB a file.
+
+`audit.log` is written by traffic too, and this entry said otherwise for a
+day. It claimed the journal grew "from events, not traffic, 750 bytes
+each", and concluded that a year of it compressed to single megabytes and
+so needed no size cap at all. Every part of that was wrong.
+`log_url_accessed` is called on every redirect, in all three branches of
+`redirect_link` — the cache hit, the entity hit and the repository read —
+so one line is written per hit and the journal grows exactly as fast as the
+service is used.
+
+Measured on this tree, driving real redirects through a real application:
+
+| | claimed | measured |
+|---|---|---|
+| per event | 750 B | 473 B (344–525, browser agents, four destinations) |
+| lines per redirect | — | 1000 per 1000 |
+| at 10 redirects/s | — | 389 MB a day |
+| live file, weekly rotation | — | 2.7 GB |
+| 52 generations, compressed | "single megabytes" | 4.1 GB |
+| compression | 23× | 33.8× |
+
+The line has a ceiling and a floor for the same reason: `mask_url`
+truncates an address past 100 characters to 73, so a long destination stops
+adding bytes, while the user-agent is not truncated by anything and is the
+field that actually varies.
+
+So `audit.log` now carries `maxsize 1G` beside `weekly`, and `rotate` rises
+from 52 to 200. The two numbers are one decision: a cap alone would have
+bought a smaller file by shortening the history, which is the one thing
+this journal exists to keep. 200 generations of a gigabyte cover a year
+until traffic passes about 14 redirects a second; above that the
+generations run out before the year does, and that is the limit of the
+arrangement rather than a setting to tune. It costs about 6 GB of disk —
+200 compressed generations of some 30 MB — against an uncapped live file
+that reaches 13 GB in a week at fifty redirects a second.
 
 **What was left open.** Two things the choice does not cover. The rotation
 depends on the profile being named: `.env.example` ships `logs` in
@@ -605,6 +636,70 @@ and it is why this does not fight the worker for the handlers.
 workers, the worker itself, and its prefork children — ten of them by
 default, one per core. That is what the rotation above is built for, and
 the reason nothing in either process rotates anything itself.
+
+### A moment is written one way, and the way says which clock
+
+**Decided** (2026-08-17): every journal line states its moment as
+`2026-08-17T09:31:43Z` — ISO 8601, UTC, to the second — from one constant,
+`UTC_SECONDS` in `infrastructure/logging/utils.py`. `LOG_DATE_FORMAT` no
+longer reaches any file; it dresses the console line and stops there.
+
+**Why.** The two chains disagreed. `structlog_config` stamped
+`TimeStamper(utc=True)` while `JSONFormatter` took
+`datetime.fromtimestamp(record.created)` with no zone, which is the
+machine's local one — so on a laptop three hours east of Greenwich the same
+second was written `09:31:43` by one configuration and `12:31:43` by the
+other, and neither line said which it meant. `MinimalLogger`, which writes
+the lines around a logging failure and is read beside both, was local too.
+
+Nothing had ever read a journal back, which is why a fault of this size sat
+in a file that four processes write to. It surfaced while measuring
+something else.
+
+The format was a setting as well as a zone: `LOG_DATE_FORMAT` was handed to
+`JSONFormatter`, so a deployment could set it to anything a person likes
+and leave the file unreadable by any program. A journal that will be
+filtered by time, ordered against another journal, or shipped to a
+collector is read by programs; the console line is read by a person, and
+only that line keeps the setting.
+
+**Why to the second and not finer.** That is what both chains already
+wrote, and the change is meant to fix the zone rather than quietly raise
+the resolution. Ordering within a file is by time of write, not time of
+event, so a finer stamp would sharpen a number that was never the
+authority on order — and it would cost seven bytes on every line of a
+journal this document has just finished measuring.
+
+**A third of the journal had no clock at all**, and only the live stack
+said so. `ProcessorFormatter` runs the application's processor chain for
+records that came through structlog and hands everything else to the
+renderer as it stands — so Celery's lines, werkzeug's and any library's
+carried neither `timestamp` nor `level`. Counted on the running stack:
+14 lines of 45 in `application.log`, and among them the two Celery writes
+that happen on every redirect, `Task received` and `Task succeeded`. The
+share therefore grew with traffic rather than being a start-up artefact,
+and those are the lines somebody reads when a task has failed.
+
+`FOREIGN_PRE_CHAIN` in `bootstrap.py` gives a foreign record the same three
+fields from the same constant. After it, on the same stack driven the same
+way: 39 lines of 39 stamped and levelled.
+
+**What holds it.** `TestBothChainsWriteOneClock` in
+`tests/integration/infrastructure/test_records_reach_the_journals.py`, in
+four parts: each chain's stamp is parsed and bracketed against real UTC
+taken around the call, the two chains are compared against each other,
+`LOG_DATE_FORMAT` is set to something no parser accepts to prove it reaches
+no file, and a record made by `celery.worker` — a logger outside this
+application — is asked for its stamp and its level. The first is the one
+that matters most: comparing the chains to each other alone would pass on
+any machine whose local zone is UTC, which is every CI runner and none of
+the laptops the fault was found on.
+
+**What found it.** Not the suite. The zone difference surfaced while
+measuring something else, and the missing stamps surfaced only when the
+Docker stack was raised and its journals read by eye — the suite had every
+opportunity and no reason to look, because nothing in it had ever asked
+what a line from another library looks like on disk.
 
 ---
 

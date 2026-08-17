@@ -9,7 +9,7 @@
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![тестов: 2870](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-2870-0b5d3b)](docs/testing.md)
+[![тестов: 2877](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-2877-0b5d3b)](docs/testing.md)
 [![покрытие: 95%](https://img.shields.io/badge/%D0%BF%D0%BE%D0%BA%D1%80%D1%8B%D1%82%D0%B8%D0%B5-95%25-0b5d3b)](docs/testing.md)
 [![mypy: 0](https://img.shields.io/badge/mypy-0%20%D0%BE%D1%88%D0%B8%D0%B1%D0%BE%D0%BA-0b5d3b)](docs/testing.md)
 [![лицензия: Apache 2.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-Apache%202.0-blue)](LICENSE)
@@ -198,7 +198,7 @@ flowchart LR
 ## Тестирование
 
 ```bash
-uv run pytest tests/                      # 2870 тестов
+uv run pytest tests/                      # 2877 тестов
 uv run python tests/live/smoke_test.py    # 124 проверки по HTTP
 uv run python tests/live/browser_test.py  # 37 проверок настоящим браузером
 ```
@@ -223,7 +223,8 @@ CI гоняет набор дважды, в чистом окружении и �
 | [Эксплуатация](docs/operations.md) | Миграции, CLI, резервные копии, обновление, здоровье |
 | [Тестирование](docs/testing.md) | Четыре уровня, живые прогоны и что требует CI |
 | [Разработка](docs/development.md) | Паттерны, фронтенд, нагрузочный профиль |
-| [Принятые решения](docs/decisions.md) | Тридцать разборов, почему сделано так, а не иначе |
+| [Принятые решения](docs/decisions.md) | Тридцать восемь разборов, почему сделано так, а не иначе |
+| [Планы](docs/roadmap.md) | Что рассматривалось и не сделано, и во что обошлась бы каждая мысль |
 
 ## Требования
 

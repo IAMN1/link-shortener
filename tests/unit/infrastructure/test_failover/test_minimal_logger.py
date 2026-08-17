@@ -16,9 +16,16 @@ from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
 
 
 ENTRY = re.compile(
-    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(INFO|WARNING|ERROR)\] (.*)$"
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \[(INFO|WARNING|ERROR)\] (.*)$"
 )
-"""The shape of one line: timestamp, bracketed level, then the message."""
+"""The shape of one line: timestamp, bracketed level, then the message.
+
+The ``T`` and the ``Z`` are held here on purpose. This logger writes the
+lines around a logging failure and they are read beside the journal's own,
+so the two have to name the same zone; before they did, one wrote UTC and
+the other the machine's local time, three hours apart on this laptop and
+nothing in either line to say so.
+"""
 
 
 class TestItWritesWhereTheOperatorIsLooking:
@@ -56,9 +63,9 @@ class TestEachLevelIsNamed:
 class TestTheLineIsReadable:
 
     def test_the_timestamp_is_now_and_not_merely_timestamp_shaped(self, capsys):
-        before = datetime.datetime.now()
+        before = datetime.datetime.now(datetime.timezone.utc)
         MinimalLogger().warning("switched to standby")
-        after = datetime.datetime.now()
+        after = datetime.datetime.now(datetime.timezone.utc)
 
         line = capsys.readouterr().err.strip()
         assert ENTRY.match(line), line
@@ -66,7 +73,14 @@ class TestTheLineIsReadable:
         # timestamp seven hours out because it was built in the wrong zone.
         # Bracketed by two readings taken around the call, which is a
         # comparison the code cannot satisfy by construction.
-        stamped = datetime.datetime.strptime(line[:19], "%Y-%m-%d %H:%M:%S")
+        #
+        # Both readings are aware and in UTC, so a machine whose local zone
+        # is not UTC fails this test if the logger stops writing UTC --
+        # which is what the comparison is for. Compared naive, the same
+        # drift would pass on a UTC machine and fail nowhere else.
+        stamped = datetime.datetime.strptime(
+            line[:20], "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=datetime.timezone.utc)
         assert before.replace(microsecond=0) <= stamped
         assert stamped <= after + datetime.timedelta(seconds=1)
 
@@ -97,7 +111,7 @@ class TestTheLineIsReadable:
 
         err = capsys.readouterr().err
         assert err == (
-            f"{err[:19]} [ERROR] first line\nsecond line\n"
+            f"{err[:20]} [ERROR] first line\nsecond line\n"
         )
 
     def test_one_call_writes_one_line(self, capsys):

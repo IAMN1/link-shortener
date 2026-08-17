@@ -27,6 +27,8 @@ a third live run: a script nobody runs rots, and these fit in a file that
 runs on every commit.
 """
 
+import datetime
+import json
 import logging
 
 import pytest
@@ -84,7 +86,13 @@ def journals(tmp_path):
             log_file_name="application",
             audit_log_filename="audit",
             error_log_filename="error",
-            log_date_format="%Y-%m-%d %H:%M:%S",
+            # Deliberately unlike the stamp the journals must carry, and
+            # deliberately useless to a parser: this setting dresses the
+            # console line for a person, and
+            # ``TestBothChainsWriteOneClock`` asserts that it reaches no
+            # file. Handed the ISO format here, that assertion would pass
+            # while the setting was wired straight back into the formatter.
+            log_date_format="%d %B %Y, %H:%M local",
             log_to_console=False,
             log_to_file=True,
             log_level_str="INFO",
@@ -256,3 +264,119 @@ class TestTheRecordSurvivesAFailover:
         dropped, _failed_checks, _lost = manager.counters()
         assert dropped == 1
         assert "a record nobody can take" not in read(directory, "application")
+
+
+class TestBothChainsWriteOneClock:
+    """That a moment is written the same way whichever chain wrote it.
+
+    It was not. ``structlog`` stamped UTC and ``standard`` stamped the
+    machine's local time, neither said which, and on a laptop three hours
+    east of Greenwich the same second was written 09:31:43 by one and
+    12:31:43 by the other. Nothing read the journals back, so nothing
+    noticed; anything that does read them -- a filter by time, a page
+    ordering two journals together, a shipper -- would have been wrong in a
+    way that looks like working.
+    """
+
+    @pytest.mark.parametrize("mode", ("structlog", "standard"))
+    def test_the_stamp_is_iso_8601_in_utc(self, mode, journals):
+        before = datetime.datetime.now(datetime.timezone.utc)
+        directory, manager, _audit = journals(mode)
+
+        manager.get_logger("live.check").info("a record with a moment on it")
+        after = datetime.datetime.now(datetime.timezone.utc)
+
+        record = json.loads(
+            [
+                line for line in read(directory, "application").splitlines()
+                if "a record with a moment on it" in line
+            ][0]
+        )
+        # Parsed rather than matched: a shape check passes on a stamp that
+        # says Z and holds local time, which is the failure this replaced.
+        stamped = datetime.datetime.strptime(
+            record["timestamp"], "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=datetime.timezone.utc)
+        assert before - datetime.timedelta(seconds=1) <= stamped
+        assert stamped <= after + datetime.timedelta(seconds=1)
+
+    def test_the_two_chains_agree_to_the_second(self, journals):
+        """The comparison the pair failed: one moment, two configurations.
+
+        Each chain is configured in turn and asked to write immediately, so
+        the two stamps describe the same second of wall clock. Before this
+        they described the same second and differed by the machine's offset
+        from UTC -- which is zero in CI, and was three hours where the fault
+        was found. Asserting equality of the two would therefore have been
+        green on the machine that had to catch it; asserting each against
+        real UTC, as above and here, is not.
+        """
+        stamps = {}
+        for mode in ("structlog", "standard"):
+            directory, manager, _audit = journals(mode)
+            manager.get_logger("live.check").info(f"one moment, {mode}")
+            record = json.loads(
+                [
+                    line for line in read(directory, "application").splitlines()
+                    if f"one moment, {mode}" in line
+                ][0]
+            )
+            stamps[mode] = datetime.datetime.strptime(
+                record["timestamp"], "%Y-%m-%dT%H:%M:%SZ"
+            )
+
+        apart = abs((stamps["structlog"] - stamps["standard"]).total_seconds())
+        assert apart <= 2, f"the chains are {apart}s apart: {stamps}"
+
+    @pytest.mark.parametrize("mode", ("structlog", "standard"))
+    def test_log_date_format_does_not_reach_the_file(self, mode, journals):
+        """A setting cannot make the journal unparseable.
+
+        ``LOG_DATE_FORMAT`` used to be handed to ``JSONFormatter``, so a
+        deployment setting it to something for a human -- a comma, a name
+        of a month -- left the file readable by nobody. It dresses the
+        console line and stops there. The fixture passes a format that
+        would be unmistakable in the output if it still arrived.
+        """
+        directory, manager, _audit = journals(mode)
+
+        manager.get_logger("live.check").info("a record under an odd setting")
+
+        record = json.loads(
+            [
+                line for line in read(directory, "application").splitlines()
+                if "a record under an odd setting" in line
+            ][0]
+        )
+        assert record["timestamp"].endswith("Z")
+        assert "T" in record["timestamp"]
+
+    @pytest.mark.parametrize("mode", ("structlog", "standard"))
+    def test_a_record_from_another_library_is_stamped_too(self, mode, journals):
+        """Celery's lines, werkzeug's lines, anybody's.
+
+        ``ProcessorFormatter`` runs the application's processor chain only
+        for records that came through structlog; a record made by the
+        standard ``logging`` module elsewhere went to the renderer with
+        neither a level nor a moment on it. On the live stack that was 14
+        lines of 45 -- a third of the journal -- and it included the two
+        Celery writes that happen on every redirect, so the share grew with
+        traffic. Those are the lines somebody reads when a task failed, and
+        no filter by time or level could reach them.
+
+        ``celery.worker`` by name because that is the logger that produced
+        them; any name outside the application would do, and that is the
+        point.
+        """
+        directory, _manager, _audit = journals(mode)
+
+        logging.getLogger("celery.worker").warning("a line from somebody else")
+
+        record = json.loads(
+            [
+                line for line in read(directory, "application").splitlines()
+                if "a line from somebody else" in line
+            ][0]
+        )
+        assert record["timestamp"].endswith("Z")
+        assert record["level"] == "warning"

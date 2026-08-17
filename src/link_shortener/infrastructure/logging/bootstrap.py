@@ -11,6 +11,31 @@ from link_shortener.infrastructure.logging.structlog_config import configure_str
 from link_shortener.infrastructure.logging.logging_settings import LoggingSettings
 from link_shortener.infrastructure.logging.formatters.console_formatter import ConsoleFormatter
 from link_shortener.infrastructure.logging.formatters.json_formatter import JSONFormatter
+from link_shortener.infrastructure.logging.utils import UTC_SECONDS
+
+
+FOREIGN_PRE_CHAIN: list = [
+    structlog.stdlib.add_log_level,
+    structlog.stdlib.add_logger_name,
+    structlog.processors.TimeStamper(fmt=UTC_SECONDS, utc=True),
+]
+"""What a record gets when it was not made through structlog.
+
+``ProcessorFormatter`` runs the application's chain only for records that
+came from structlog. Everything else -- Celery's own logger, werkzeug's,
+any library's -- goes straight to the renderer with whatever the standard
+``LogRecord`` carries, which is neither a timestamp field nor a level one.
+Measured on the live stack: 14 lines of 45 in `application.log` had no
+``timestamp`` and no ``level`` at all, a third of the file, and among them
+were the two Celery writes per redirect -- ``Task received`` and ``Task
+succeeded`` -- so the share grows with traffic rather than being a start-up
+artefact.
+
+Those are the lines a reader most wants when something is wrong, and they
+were the ones no filter by time or level could reach. This chain gives
+them the same three fields the application's own records carry, from the
+same constant, so one journal has one shape.
+"""
 
 
 def _stream_handler_class(settings: LoggingSettings) -> type:
@@ -79,7 +104,9 @@ def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logge
         root_logger.addHandler(handler)
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
-        formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
+        formatter = structlog.stdlib.ProcessorFormatter(
+            processor=renderer, foreign_pre_chain=FOREIGN_PRE_CHAIN
+        )
         handler = _stream_handler_class(settings)()
         handler.setLevel(settings.get_log_level_int())
         handler.setFormatter(formatter)
@@ -110,10 +137,12 @@ def _setup_file_handler(settings: LoggingSettings, root_logger: logging.Logger):
     os.makedirs(settings.log_dir, exist_ok=True)
     
     if settings.logger_type == "standard":
-        formatter = JSONFormatter(date_format=settings.log_date_format)
+        formatter = JSONFormatter()
     else:
         renderer = structlog.processors.JSONRenderer()
-        formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
+        formatter = structlog.stdlib.ProcessorFormatter(
+            processor=renderer, foreign_pre_chain=FOREIGN_PRE_CHAIN
+        )
 
     handler = _file_handler_class(settings)(
         filename=settings.log_file_path,
@@ -160,7 +189,9 @@ def _setup_audit_handler(settings: LoggingSettings):
             audit_logger.addHandler(handler)
         else:
             renderer = structlog.dev.ConsoleRenderer(colors=True)
-            formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
+            formatter = structlog.stdlib.ProcessorFormatter(
+                processor=renderer, foreign_pre_chain=FOREIGN_PRE_CHAIN
+            )
             handler = _stream_handler_class(settings)()
             handler.setLevel(logging.INFO)
             handler.setFormatter(formatter)
@@ -171,10 +202,12 @@ def _setup_audit_handler(settings: LoggingSettings):
         os.makedirs(settings.log_dir, exist_ok=True)
         
         if settings.logger_type == "standard":
-            formatter = JSONFormatter(date_format=settings.log_date_format)
+            formatter = JSONFormatter()
         else:
             renderer = structlog.processors.JSONRenderer()
-            formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
+            formatter = structlog.stdlib.ProcessorFormatter(
+                processor=renderer, foreign_pre_chain=FOREIGN_PRE_CHAIN
+            )
 
         audit_file = os.path.join(settings.log_dir, f"{settings.audit_log_filename}.log")
         
@@ -206,10 +239,12 @@ def _setup_error_handler(settings: LoggingSettings, root_logger: logging.Logger)
     os.makedirs(settings.log_dir, exist_ok=True)
     
     if settings.logger_type == "standard":
-        formatter = JSONFormatter(date_format=settings.log_date_format)
+        formatter = JSONFormatter()
     else:
         renderer = structlog.processors.JSONRenderer()
-        formatter = structlog.stdlib.ProcessorFormatter(processor=renderer)
+        formatter = structlog.stdlib.ProcessorFormatter(
+            processor=renderer, foreign_pre_chain=FOREIGN_PRE_CHAIN
+        )
     
     error_file = os.path.join(settings.log_dir, f"{settings.error_log_filename}.log")
     
