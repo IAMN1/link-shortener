@@ -138,7 +138,7 @@ flowchart LR
 
 ## API
 
-Тридцать одна операция. Полное описание — `/api/openapi.json`, страницей —
+Тридцать четыре операции. Полное описание — `/api/openapi.json`, страницей —
 `/api/docs`.
 
 | Метод | Эндпоинт | Право | |
@@ -172,6 +172,7 @@ flowchart LR
 | `GET`, `POST` | `/api/v1/admin/roles` | `admin:view_roles` / `admin:manage_roles` | Список, создание |
 | `PUT` | `/api/v1/admin/roles/{name}/permissions` | `admin:manage_roles` | Заменить права; системные роли защищены |
 | `GET` | `/api/v1/admin/health` | `admin:view_system_health` | Что ответила каждая зависимость |
+| `GET` | `/api/v1/journals/{journal}` | `audit:view` для `audit`, `logs:view` для `application` и `error` | Конец одного журнала, старые строки первыми; `admin:all` первого права не даёт |
 
 </details>
 

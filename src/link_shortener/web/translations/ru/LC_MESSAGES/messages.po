@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-16 17:41+0300\n"
+"POT-Creation-Date: 2026-08-17 23:19+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -71,6 +71,19 @@ msgstr "Превышен предел пакета. Максимум: %(max)s, �
 msgid "Guest link limit of %(limit)s exceeded."
 msgstr "Превышен гостевой предел в %(limit)s ссылок."
 
+#: src/link_shortener/application/use_cases/journals/read_journal.py:162
+#: src/link_shortener/application/use_cases/links/delete_link.py:192
+#: src/link_shortener/web/security/authorization.py:71
+#: src/link_shortener/web/security/decorators.py:51
+#: src/link_shortener/web/security/decorators.py:77
+msgid "Authentication required"
+msgstr "Требуется вход"
+
+#: src/link_shortener/application/use_cases/journals/read_journal.py:169
+#: src/link_shortener/web/security/decorators.py:53
+msgid "Not authorized"
+msgstr "Не разрешено"
+
 #: src/link_shortener/application/use_cases/links/create_short_link.py:234
 #, python-format
 msgid "'%(code)s' is reserved by the service and cannot be used as a short code"
@@ -80,13 +93,6 @@ msgstr "Код «%(code)s» занят службой и не может быт�
 #, python-format
 msgid "ttl_seconds must not exceed %(max)s"
 msgstr "ttl_seconds не может превышать %(max)s"
-
-#: src/link_shortener/application/use_cases/links/delete_link.py:192
-#: src/link_shortener/web/security/authorization.py:71
-#: src/link_shortener/web/security/decorators.py:51
-#: src/link_shortener/web/security/decorators.py:77
-msgid "Authentication required"
-msgstr "Требуется вход"
 
 #: src/link_shortener/application/use_cases/links/delete_link.py:210
 msgid "You are not allowed to delete this link"
@@ -602,6 +608,11 @@ msgstr "Роль не найдена"
 msgid "The role %(name)s is a system role and cannot be modified"
 msgstr "Роль %(name)s — системная, изменить её нельзя"
 
+#: src/link_shortener/web/controllers/journal_api_controller.py:113
+#, python-format
+msgid "No journal is called %(name)s"
+msgstr "Журнала с именем %(name)s нет"
+
 #: src/link_shortener/web/middleware/error_handler.py:75
 msgid "The request could not be understood"
 msgstr "Запрос не удалось разобрать"
@@ -647,20 +658,20 @@ msgstr "Метод %(method)s не разрешён"
 msgid "Request validation failed"
 msgstr "Проверка запроса не пройдена"
 
-#: src/link_shortener/web/middleware/error_handler.py:303
-#: src/link_shortener/web/middleware/error_handler.py:371
+#: src/link_shortener/web/middleware/error_handler.py:308
+#: src/link_shortener/web/middleware/error_handler.py:376
 msgid "An internal error occurred"
 msgstr "Произошла внутренняя ошибка"
 
-#: src/link_shortener/web/middleware/error_handler.py:335
+#: src/link_shortener/web/middleware/error_handler.py:340
 msgid "Bad request"
 msgstr "Неверный запрос"
 
-#: src/link_shortener/web/middleware/error_handler.py:339
+#: src/link_shortener/web/middleware/error_handler.py:344
 msgid "Malformed request body"
 msgstr "Неверное тело запроса"
 
-#: src/link_shortener/web/middleware/error_handler.py:366
+#: src/link_shortener/web/middleware/error_handler.py:371
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
 
@@ -675,10 +686,6 @@ msgstr[2] "Слишком много запросов. Предел %(limit)s з
 #: src/link_shortener/web/security/authorization.py:74
 msgid "You are not allowed to view this link"
 msgstr "Вам не разрешено смотреть эту ссылку"
-
-#: src/link_shortener/web/security/decorators.py:53
-msgid "Not authorized"
-msgstr "Не разрешено"
 
 #: src/link_shortener/web/templates/error.html:2
 #: src/link_shortener/web/templates/error.html:12

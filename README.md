@@ -139,7 +139,7 @@ flowchart LR
 
 ## API
 
-Thirty-one operations. Full description: `/api/openapi.json`, rendered at
+Thirty-four operations. Full description: `/api/openapi.json`, rendered at
 `/api/docs`.
 
 | Method | Endpoint | Permission | |
@@ -173,6 +173,7 @@ Thirty-one operations. Full description: `/api/openapi.json`, rendered at
 | `GET`, `POST` | `/api/v1/admin/roles` | `admin:view_roles` / `admin:manage_roles` | List, create |
 | `PUT` | `/api/v1/admin/roles/{name}/permissions` | `admin:manage_roles` | Replace permissions; system roles are protected |
 | `GET` | `/api/v1/admin/health` | `admin:view_system_health` | What each dependency answered |
+| `GET` | `/api/v1/journals/{journal}` | `audit:view` for `audit`, `logs:view` for `application` and `error` | The end of one journal, oldest line first; `admin:all` does not carry the first of the two |
 
 </details>
 

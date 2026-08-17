@@ -33,6 +33,9 @@ from pydantic import BaseModel
 
 from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.error import ErrorResponse
+from link_shortener.web.schemas.journal import (
+    DEFAULT_LINES, HARD_LIMIT, JournalPageResponse,
+)
 from link_shortener.web.schemas.link import (
     ExtendedLinkInfoResponse, ShortLinkResponse
 )
@@ -68,6 +71,7 @@ MODELS: Dict[str, Type[BaseModel]] = {
     "ServiceStatsResponse": ServiceStatsResponse,
     "MyStatsResponse": MyStatsResponse,
     "VisitStatsResponse": VisitStatsResponse,
+    "JournalPageResponse": JournalPageResponse,
     "DailyVisitsResponse": DailyVisitsResponse,
     "RegisterResponse": RegisterResponse,
     "TokenPairResponse": TokenPairResponse,
@@ -1044,6 +1048,76 @@ PATHS: Dict[str, Any] = {
             },
         }
     },
+    "/api/v1/journals/{journal}": {
+        "get": {
+            "summary": "Read the end of a journal",
+            "description": (
+                "The last lines of application, error or audit, oldest "
+                "first. The audit journal needs audit:view and the other "
+                "two need logs:view -- which permission applies is decided "
+                "by the journal asked for, so this operation answers 403 "
+                "to a caller entitled to one of them and not the other. "
+                "admin:all does not carry audit:view. A name that is not "
+                "one of the three is 404, and no path can be spelled: the "
+                "three names are the whole of what exists."
+            ),
+            "tags": ["journals"],
+            "parameters": [
+                {
+                    "name": "journal",
+                    "in": "path",
+                    "required": True,
+                    "description": "Which journal to read.",
+                    "schema": {
+                        "type": "string",
+                        "enum": ["application", "error", "audit"],
+                    },
+                },
+                {
+                    "name": "limit",
+                    "in": "query",
+                    "required": False,
+                    "description": (
+                        "Most lines to return. Refused above the ceiling "
+                        "rather than trimmed to it, so a caller is never "
+                        "told the journal is shorter than it is."
+                    ),
+                    "schema": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": HARD_LIMIT,
+                        "default": DEFAULT_LINES,
+                    },
+                },
+                {
+                    "name": "archives",
+                    "in": "query",
+                    "required": False,
+                    "description": (
+                        "Continue into the rotated files once the live "
+                        "journal is exhausted. Costs whole files: a gzip "
+                        "archive cannot be read from its end."
+                    ),
+                    "schema": {"type": "boolean", "default": False},
+                },
+            ],
+            "responses": {
+                "200": {
+                    "description": "The end of the journal",
+                    **_json("JournalPageResponse"),
+                },
+                "400": _error(
+                    f"limit outside 1..{HARD_LIMIT}, or not a whole number"
+                ),
+                "401": _error("Nobody is authenticated"),
+                "403": _error(
+                    "The caller does not hold the permission this journal "
+                    "is read under"
+                ),
+                "404": _error("No journal is called that"),
+            },
+        }
+    },
     "/{short_code}": {
         "get": {
             "summary": "Follow a short link",
@@ -1112,6 +1186,15 @@ def build_openapi(base_url: str, version: str = "1.0.0") -> Dict[str, Any]:
             {"name": "links", "description": "Creating, reading and deleting links"},
             {"name": "stats", "description": "Counters"},
             {"name": "auth", "description": "Accounts and tokens"},
+            {
+                "name": "journals",
+                "description": (
+                    "Reading what the service wrote down. Deliberately not "
+                    "under admin: the permissions are audit:view and "
+                    "logs:view, which sit outside the admin resource, and "
+                    "the auditor role holds them and nothing else."
+                ),
+            },
             {
                 "name": "admin",
                 "description": (

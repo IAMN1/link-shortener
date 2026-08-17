@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-16 17:41+0300\n"
+"POT-Creation-Date: 2026-08-17 23:19+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -70,6 +70,19 @@ msgstr "超出批量上限。最多 %(max)s 条，请求了 %(requested)s 条"
 msgid "Guest link limit of %(limit)s exceeded."
 msgstr "已超出访客 %(limit)s 条链接的上限。"
 
+#: src/link_shortener/application/use_cases/journals/read_journal.py:162
+#: src/link_shortener/application/use_cases/links/delete_link.py:192
+#: src/link_shortener/web/security/authorization.py:71
+#: src/link_shortener/web/security/decorators.py:51
+#: src/link_shortener/web/security/decorators.py:77
+msgid "Authentication required"
+msgstr "需要登录"
+
+#: src/link_shortener/application/use_cases/journals/read_journal.py:169
+#: src/link_shortener/web/security/decorators.py:53
+msgid "Not authorized"
+msgstr "未获授权"
+
 #: src/link_shortener/application/use_cases/links/create_short_link.py:234
 #, python-format
 msgid "'%(code)s' is reserved by the service and cannot be used as a short code"
@@ -79,13 +92,6 @@ msgstr "「%(code)s」由服务保留，不能用作短代码"
 #, python-format
 msgid "ttl_seconds must not exceed %(max)s"
 msgstr "ttl_seconds 不得超过 %(max)s"
-
-#: src/link_shortener/application/use_cases/links/delete_link.py:192
-#: src/link_shortener/web/security/authorization.py:71
-#: src/link_shortener/web/security/decorators.py:51
-#: src/link_shortener/web/security/decorators.py:77
-msgid "Authentication required"
-msgstr "需要登录"
 
 #: src/link_shortener/application/use_cases/links/delete_link.py:210
 msgid "You are not allowed to delete this link"
@@ -593,6 +599,11 @@ msgstr "找不到该角色"
 msgid "The role %(name)s is a system role and cannot be modified"
 msgstr "角色 %(name)s 是系统角色，无法修改"
 
+#: src/link_shortener/web/controllers/journal_api_controller.py:113
+#, python-format
+msgid "No journal is called %(name)s"
+msgstr "没有名为 %(name)s 的日志"
+
 #: src/link_shortener/web/middleware/error_handler.py:75
 msgid "The request could not be understood"
 msgstr "无法理解该请求"
@@ -638,20 +649,20 @@ msgstr "不允许使用 %(method)s 方法"
 msgid "Request validation failed"
 msgstr "请求校验未通过"
 
-#: src/link_shortener/web/middleware/error_handler.py:303
-#: src/link_shortener/web/middleware/error_handler.py:371
+#: src/link_shortener/web/middleware/error_handler.py:308
+#: src/link_shortener/web/middleware/error_handler.py:376
 msgid "An internal error occurred"
 msgstr "发生了内部错误"
 
-#: src/link_shortener/web/middleware/error_handler.py:335
+#: src/link_shortener/web/middleware/error_handler.py:340
 msgid "Bad request"
 msgstr "错误的请求"
 
-#: src/link_shortener/web/middleware/error_handler.py:339
+#: src/link_shortener/web/middleware/error_handler.py:344
 msgid "Malformed request body"
 msgstr "请求体格式有误"
 
-#: src/link_shortener/web/middleware/error_handler.py:366
+#: src/link_shortener/web/middleware/error_handler.py:371
 msgid "Internal server error"
 msgstr "服务器内部错误"
 
@@ -664,10 +675,6 @@ msgstr[0] "请求过于频繁。每 %(period)s 秒限 %(limit)s 次。"
 #: src/link_shortener/web/security/authorization.py:74
 msgid "You are not allowed to view this link"
 msgstr "您无权查看此链接"
-
-#: src/link_shortener/web/security/decorators.py:53
-msgid "Not authorized"
-msgstr "未获授权"
 
 #: src/link_shortener/web/templates/error.html:2
 #: src/link_shortener/web/templates/error.html:12

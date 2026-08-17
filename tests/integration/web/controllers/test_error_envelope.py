@@ -33,6 +33,10 @@ PARAMETERS = {
     "user_id": "00000000-0000-0000-0000-000000000000",
     "role_name": "no-such-role",
     "short_code": "nosuch",
+    # A journal that exists, deliberately: a name outside the enum is
+    # refused as a name, and the sweep is about what an anonymous caller
+    # is told when the route itself is real.
+    "journal": "application",
 }
 
 BODIES = {
