@@ -27,7 +27,7 @@ from link_shortener.application import (
     GetServiceStatsUseCase, GetVisitStatsUseCase,
     GetUserActivityStatsUseCase, GetUserLinksUseCase,
     GetUserUseCase, ListRolesUseCase, ListUsersUseCase, Logger, LoginUseCase,
-    Mailer, RateLimiter, RedirectLinkUseCase, RegisterUseCase,
+    Mailer, RateLimiter, ReadJournalUseCase, RedirectLinkUseCase, RegisterUseCase,
     ResendVerificationUseCase, RollUpVisitsUseCase, SeedDatabaseUseCase,
     SendAccountExistsEmailUseCase, SendVerificationEmailUseCase, ServiceCache,
     TaskQueue, UnitOfWorkFactory, UpdateLinkStatsUseCase,
@@ -56,6 +56,7 @@ from link_shortener.infrastructure.di.components.rate_limiter import RateLimiter
 from link_shortener.infrastructure.di.components.task_queue import TaskQueueComponent
 from link_shortener.infrastructure.di.components.auth import AuthComponent
 from link_shortener.infrastructure.di.components.use_cases.health.health_use_cases import HealthUseCasesComponent
+from link_shortener.infrastructure.di.components.use_cases.journals.journal_use_cases import JournalUseCasesComponent
 from link_shortener.infrastructure.di.components.use_cases.link.link_use_cases import LinkUseCasesComponent
 from link_shortener.infrastructure.di.components.use_cases.link.batch_use_cases import BatchUseCasesComponent
 from link_shortener.infrastructure.di.components.use_cases.stats.stats_use_cases import StatsUseCasesComponent
@@ -250,6 +251,7 @@ class Container:
         self._auth_use_cases: Optional[AuthUseCasesComponent] = None
         self._user_activity_stats_uc: Optional[GetUserActivityStatsUseCase] = None
         self._health_use_cases: Optional[HealthUseCasesComponent] = None
+        self._journal_use_cases: Optional[JournalUseCasesComponent] = None
 
         # ------------------------------------------------------------------
         # Facade service for Link operations (eagerly composed)
@@ -438,6 +440,26 @@ class Container:
             )
         return self._health_use_cases
 
+    def _init_journal_use_cases(self) -> JournalUseCasesComponent:
+        """Ensure ``JournalUseCasesComponent`` is created and return it."""
+        if self._journal_use_cases is None:
+            self._journal_use_cases = JournalUseCasesComponent(
+                # The same four settings the logging handlers are built
+                # from, read here again rather than asked of the handlers:
+                # a deployment that writes nowhere -- ``LOGGING_ENABLED``
+                # off, or a null logger -- still has a directory where the
+                # journals would be, and the reader is expected to answer
+                # "nothing there" rather than to fail to be built.
+                log_dir=self.config.LOG_DIR,
+                log_filename=self.config.LOG_FILENAME,
+                audit_log_filename=self.config.AUDIT_LOG_FILENAME,
+                error_log_filename=self.config.ERROR_LOG_FILENAME,
+                authorization_service=self.auth_component.get_authorization_service(),
+                uow_factory=self._uow_factory,
+                logger=self.logger_component.get_logger(__name__),
+            )
+        return self._journal_use_cases
+
     # ------------------------------------------------------------------
     # Public use case accessors
     # ------------------------------------------------------------------
@@ -585,6 +607,10 @@ class Container:
     def get_service_health_use_case(self) -> GetServiceHealthUseCase:
         """Return fully configured ``GetServiceHealthUseCase``."""
         return self._init_health_use_cases().get_service_health_use_case()
+
+    def get_read_journal_use_case(self) -> ReadJournalUseCase:
+        """Return fully configured ``ReadJournalUseCase``."""
+        return self._init_journal_use_cases().get_read_journal_use_case()
 
     def get_get_user_links_use_case(self) -> GetUserLinksUseCase:
         """Return fully configured ``GetUserLinksUseCase``."""

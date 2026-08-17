@@ -13,7 +13,9 @@ from link_shortener.domain.system_permissions import SystemPermissions
 from link_shortener.infrastructure.auth.rbac_authorization_service import GUEST_ROLE_NAME
 from link_shortener.web.responses import error_page
 from link_shortener.web.security.context import create_request_context
-from link_shortener.web.security.decorators import login_required, require_permission
+from link_shortener.web.security.decorators import (
+    login_required, require_any_permission, require_permission
+)
 
 
 USERS_PER_PAGE = 50
@@ -38,6 +40,7 @@ class DashboardController:
         self.bp.add_url_rule("/create-link", view_func=self.create_link_form, methods=["GET"])
         self.bp.add_url_rule("/service/stats", view_func=self.service_stats, methods=["GET"])
         self.bp.add_url_rule("/service/health", view_func=self.service_health, methods=["GET"])
+        self.bp.add_url_rule("/service/journals", view_func=self.journals, methods=["GET"])
         self.bp.add_url_rule("/users", view_func=self.users_list, methods=["GET"])
         self.bp.add_url_rule("/users/new", view_func=self.create_user_form, methods=["GET"])
         self.bp.add_url_rule("/users/<user_id>/edit", view_func=self.edit_user, methods=["GET"])
@@ -108,6 +111,25 @@ class DashboardController:
     @require_permission(SystemPermissions.ADMIN_VIEW_SYSTEM_HEALTH.value)
     def service_health(self):
         return render_template("dashboard/health.html")
+
+    @login_required
+    @require_any_permission(
+        SystemPermissions.AUDIT_VIEW.value, SystemPermissions.LOGS_VIEW.value
+    )
+    def journals(self):
+        """
+        One page over the three journals the service writes.
+
+        Either permission opens it, because either has something to show:
+        ``logs:view`` the application and error journals, ``audit:view``
+        the record of what was done. Which of the three the page then
+        offers is decided in the markup by ``can``, and enforced -- not
+        merely decided -- by the endpoint behind each of them.
+
+        Returns:
+            The rendered page.
+        """
+        return render_template("dashboard/journals.html")
 
     @login_required
     @require_permission(SystemPermissions.ADMIN_VIEW_USERS.value)

@@ -9,7 +9,7 @@
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![тестов: 2912](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-2912-0b5d3b)](docs/testing.md)
+[![тестов: 2984](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-2984-0b5d3b)](docs/testing.md)
 [![покрытие: 95%](https://img.shields.io/badge/%D0%BF%D0%BE%D0%BA%D1%80%D1%8B%D1%82%D0%B8%D0%B5-95%25-0b5d3b)](docs/testing.md)
 [![mypy: 0](https://img.shields.io/badge/mypy-0%20%D0%BE%D1%88%D0%B8%D0%B1%D0%BE%D0%BA-0b5d3b)](docs/testing.md)
 [![лицензия: Apache 2.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-Apache%202.0-blue)](LICENSE)
@@ -138,7 +138,7 @@ flowchart LR
 
 ## API
 
-Тридцать одна операция. Полное описание — `/api/openapi.json`, страницей —
+Тридцать четыре операции. Полное описание — `/api/openapi.json`, страницей —
 `/api/docs`.
 
 | Метод | Эндпоинт | Право | |
@@ -172,6 +172,7 @@ flowchart LR
 | `GET`, `POST` | `/api/v1/admin/roles` | `admin:view_roles` / `admin:manage_roles` | Список, создание |
 | `PUT` | `/api/v1/admin/roles/{name}/permissions` | `admin:manage_roles` | Заменить права; системные роли защищены |
 | `GET` | `/api/v1/admin/health` | `admin:view_system_health` | Что ответила каждая зависимость |
+| `GET` | `/api/v1/journals/{journal}` | `audit:view` для `audit`, `logs:view` для `application` и `error` | Конец одного журнала, старые строки первыми; `admin:all` первого права не даёт |
 
 </details>
 
@@ -198,9 +199,9 @@ flowchart LR
 ## Тестирование
 
 ```bash
-uv run pytest tests/                      # 2912 тестов
-uv run python tests/live/smoke_test.py    # 124 проверки по HTTP
-uv run python tests/live/browser_test.py  # 37 проверок настоящим браузером
+uv run pytest tests/                      # 2984 теста
+uv run python tests/live/smoke_test.py    # 137 проверок по HTTP
+uv run python tests/live/browser_test.py  # 41 проверка настоящим браузером
 ```
 
 Четыре уровня — unit, интеграционные на SQLite, интеграционные на настоящих

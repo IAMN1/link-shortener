@@ -471,3 +471,90 @@
     .dash-toggle { display: block; }
     .dash-main { padding: 16px 16px 72px; }
 }
+
+/* ---------------------------------------------------------------- */
+/* The journal viewer                                                */
+/* ---------------------------------------------------------------- */
+
+/* A journal is read as text, so the whole table is monospaced: a column of
+   timestamps in a proportional face does not line up, and lining up is what
+   makes a run of records scannable at all. */
+.journal-table td {
+    font-family: var(--mono);
+    font-size: calc(var(--d-fs) - 2px);
+    vertical-align: top;
+}
+
+.journal-time { white-space: nowrap; color: var(--c-text-2); }
+
+/* The level as a shape as well as a colour. A screenshot in grey, a
+   printer, and a reader who cannot tell red from green all get the word --
+   the tint is the glance, the word is the message. */
+.journal-level {
+    display: inline-block;
+    padding: 0 6px;
+    border: 1px solid var(--c-line);
+    border-radius: 3px;
+    font-size: 10px;
+    line-height: 16px;
+    text-transform: uppercase;
+    color: var(--c-text-3);
+}
+.journal-level--info { color: var(--c-text-2); }
+.journal-level--warning { color: var(--c-warn); border-color: var(--c-warn); }
+.journal-level--error,
+.journal-level--critical { color: var(--c-danger); border-color: var(--c-danger); }
+
+.journal-event { color: var(--c-text); white-space: nowrap; }
+
+/* The table scrolls in its own box, and the box is what keeps the controls
+   on screen: a thousand lines is twenty screens of scrolling, and the
+   button that chooses a different journal is at the top of all of them.
+   `vh` rather than a pixel height so a tall screen shows more of the
+   journal, which is the whole reason somebody made the window tall. */
+.journal-scroll {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* The headings stay put while the rows move under them. Found by looking:
+   with the table scrolling inside its own box, the first scroll took
+   `TIME LEVEL EVENT DETAILS` off the top and left four unlabelled columns
+   of monospace. An opaque background is part of it -- a transparent
+   sticky heading is a heading with journal lines sliding through it. */
+.journal-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--c-surface);
+}
+
+/* The leftover fields. Cut to one line rather than allowed to wrap: a
+   record carrying a user agent would otherwise be six lines tall and push
+   the rows around it off the screen. The whole line is one click away. */
+.journal-details {
+    color: var(--c-text-2);
+    max-width: 0;
+    width: 100%;
+}
+
+.journal-row { cursor: pointer; }
+.journal-row:hover { background: var(--c-wash); }
+.journal-row:focus-visible { outline: 2px solid var(--c-action); outline-offset: -2px; }
+
+/* A line nothing could parse, and the raw text under a row that was
+   expanded. Both are the bytes as they were written, so both wrap rather
+   than truncate -- this is the view somebody opened *because* the rendered
+   one was not enough. */
+.journal-raw {
+    font-family: var(--mono);
+    font-size: calc(var(--d-fs) - 2px);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 0;
+    color: var(--c-text-2);
+}
+
+.journal-row--raw td { background: var(--c-wash); }
+.journal-source { color: var(--c-text-3); white-space: nowrap; }
+.journal-expanded td { background: var(--c-wash); }

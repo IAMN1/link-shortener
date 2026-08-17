@@ -45,6 +45,7 @@ PAGES = [
     ("dashboard/create_link.html", {}),
     ("dashboard/service_stats.html", {}),
     ("dashboard/health.html", {}),
+    ("dashboard/journals.html", {}),
     ("dashboard/user_stats.html", {"user": None}),
     # `page` and `has_next` are what the view passes for the pager.
     ("dashboard/users_list.html", {"users": [], "page": 1, "has_next": False}),

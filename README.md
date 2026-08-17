@@ -9,7 +9,7 @@ suite that fails when the documentation starts lying.
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests: 2912](https://img.shields.io/badge/tests-2912-0b5d3b)](docs/testing.md)
+[![tests: 2984](https://img.shields.io/badge/tests-2984-0b5d3b)](docs/testing.md)
 [![coverage: 95%](https://img.shields.io/badge/coverage-95%25-0b5d3b)](docs/testing.md)
 [![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
 [![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -139,7 +139,7 @@ flowchart LR
 
 ## API
 
-Thirty-one operations. Full description: `/api/openapi.json`, rendered at
+Thirty-four operations. Full description: `/api/openapi.json`, rendered at
 `/api/docs`.
 
 | Method | Endpoint | Permission | |
@@ -173,6 +173,7 @@ Thirty-one operations. Full description: `/api/openapi.json`, rendered at
 | `GET`, `POST` | `/api/v1/admin/roles` | `admin:view_roles` / `admin:manage_roles` | List, create |
 | `PUT` | `/api/v1/admin/roles/{name}/permissions` | `admin:manage_roles` | Replace permissions; system roles are protected |
 | `GET` | `/api/v1/admin/health` | `admin:view_system_health` | What each dependency answered |
+| `GET` | `/api/v1/journals/{journal}` | `audit:view` for `audit`, `logs:view` for `application` and `error` | The end of one journal, oldest line first; `admin:all` does not carry the first of the two |
 
 </details>
 
@@ -200,9 +201,9 @@ Thirty-one operations. Full description: `/api/openapi.json`, rendered at
 ## Testing
 
 ```bash
-uv run pytest tests/                      # 2912 tests
-uv run python tests/live/smoke_test.py    # 124 checks over HTTP
-uv run python tests/live/browser_test.py  # 37 checks in a real browser
+uv run pytest tests/                      # 2984 tests
+uv run python tests/live/smoke_test.py    # 137 checks over HTTP
+uv run python tests/live/browser_test.py  # 41 checks in a real browser
 ```
 
 Four levels — unit, integration on SQLite, integration on real PostgreSQL and

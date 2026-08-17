@@ -9,11 +9,11 @@ maintained by hand -- the run records which rule answered each request and
 fails if one was never reached.
 
 The administrator is made the way an operator makes the first one, by
-writing the role onto an account (`promote_to_admin`): there is no endpoint
+writing the role onto an account (`grant_role`): there is no endpoint
 for it and should not be, since the first administrator cannot be appointed
 by an administrator.
 
-Five clients, because one cannot stand for five callers. A Flask test
+Six clients, because one cannot stand for six callers. A Flask test
 client keeps a cookie jar, so the moment any request on it logs in, every
 later request on that client is a cookie-authenticated one -- and the CSRF
 layer refuses unsafe cookie-authenticated requests that carry no token,
@@ -29,6 +29,11 @@ turned every later POST and DELETE into 403 and, worse, turned each
                  Every unsafe request on it goes through ``csrf()``.
   - ``admin``    an account with the admin role, written straight into
                  the database the way an operator makes the first one.
+  - ``auditor``  an account holding the `auditor` role: the two journal
+                 permissions and the health report, and nothing that
+                 writes. It exists because the administrator cannot stand
+                 in for it -- `admin:all` deliberately does not carry
+                 `audit:view`, so the same run needs a caller who has it.
   - ``stranger`` a second account, logged in and entitled to nothing here.
                  Without it the file has only an owner and an anonymous
                  caller, and every per-object authorization check could be
@@ -267,17 +272,24 @@ stranger = new_client("127.0.0.4")
 admin = new_client("127.0.0.5")
 
 
-def promote_to_admin(email: str) -> None:
+def grant_role(email: str, role_name: str) -> None:
     """
-    Give an account the admin role, the way an operator would.
+    Put a seeded role on an account, the way an operator would.
 
-    There is no endpoint for this and there should not be: the first
-    administrator cannot be made by an administrator. The row is written
-    directly, which is what `flask db` does and what the deployment notes
-    tell an operator to do.
+    There is no endpoint for the first of these and there should not be:
+    the first administrator cannot be made by an administrator. The row is
+    written directly, which is what `flask db` does and what the deployment
+    notes tell an operator to do.
+
+    Used for ``auditor`` as well, and for a reason worth stating: an
+    administrator *can* grant it through the API, and that is exactly the
+    path the permission split leaves open on purpose -- it leaves a record.
+    Granting it here keeps this run measuring the journals rather than
+    measuring the grant.
 
     Args:
-        email: Address of the account to promote.
+        email: Address of the account.
+        role_name: Name of a seeded role.
     """
     from sqlalchemy import text
 
@@ -289,10 +301,11 @@ def promote_to_admin(email: str) -> None:
                 {"email": email},
             ).fetchone()
             role = session.execute(
-                text("SELECT id FROM roles WHERE name = 'admin'")
+                text("SELECT id FROM roles WHERE name = :name"),
+                {"name": role_name},
             ).fetchone()
             assert user is not None, f"no account for {email}"
-            assert role is not None, "the admin role was never seeded"
+            assert role is not None, f"the {role_name} role was never seeded"
             session.execute(
                 text(
                     "INSERT OR IGNORE INTO user_roles (user_id, role_id) "
@@ -1196,7 +1209,7 @@ def _():
         "email": "admin@example.com", "password": "Test1234!"
     })
     assert r.status_code == 202, r.get_json()
-    promote_to_admin("admin@example.com")
+    grant_role("admin@example.com", "admin")
     confirm_email("admin@example.com")
 
     # Signed in here rather than at registration: registration issues no
@@ -1458,6 +1471,137 @@ def _():
     ).status_code == 200
 
 
+# ─── 14c. The journals, and who reads which ────────────────────────────
+print("\n=== JOURNALS ===")
+
+# A sixth client, and the only one whose whole point is what it may *not*
+# do. The administrator above cannot stand in for it: `admin:all` does not
+# carry `audit:view`, so an admin asking for the audit journal is refused
+# -- which is the arrangement this section exists to prove, and it needs
+# both sides of it in one run.
+auditor = new_client("127.0.0.9")
+auditor_headers = None
+
+
+@test("An auditor, holding the reading permissions and nothing that writes")
+def _():
+    global auditor_headers
+    r = auditor.post("/api/v1/auth/register", json={
+        "email": "auditor@example.com", "password": "Test1234!"
+    })
+    assert r.status_code == 202, r.get_json()
+    grant_role("auditor@example.com", "auditor")
+    confirm_email("auditor@example.com")
+
+    r = auditor.post("/api/v1/auth/login", json={
+        "email": "auditor@example.com", "password": "Test1234!"
+    })
+    assert r.status_code == 200
+    auditor_headers = {"Authorization": f"Bearer {r.get_json()['access_token']}"}
+
+@test("GET /api/v1/journals/application (as an auditor)")
+def _():
+    r = auditor.get("/api/v1/journals/application", headers=auditor_headers)
+    assert r.status_code == 200, r.get_json()
+    page = r.get_json()
+    # The shape, not the contents: what is in the file depends on what this
+    # deployment has done, and a run that asserted a particular line would
+    # be asserting its own history.
+    assert page["journal"] == "application"
+    assert isinstance(page["lines"], list)
+    assert isinstance(page["reached_start"], bool)
+    # Every line says which file it came from, and on a read that did not
+    # ask for the archives that can only be the live journal.
+    for line in page["lines"]:
+        assert line["source"] == "application.log", line["source"]
+        assert set(line) == {"raw", "fields", "parsed", "source"}
+
+@test("GET /api/v1/journals/audit (as an auditor)")
+def _():
+    r = auditor.get("/api/v1/journals/audit", headers=auditor_headers)
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["journal"] == "audit"
+
+@test("GET /api/v1/journals/error (as an auditor)")
+def _():
+    r = auditor.get("/api/v1/journals/error", headers=auditor_headers)
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["journal"] == "error"
+
+@test("GET /api/v1/journals/application (as an admin)")
+def _():
+    # The operational journals are ordinary administrative work, and
+    # withholding them would be ceremony rather than separation of duties.
+    r = admin.get("/api/v1/journals/application", headers=admin_headers)
+    assert r.status_code == 200, r.get_json()
+
+@test("GET /api/v1/journals/audit (an admin is refused)")
+def _():
+    # The whole arrangement, in one check. An administrator holds every
+    # power the audit journal records, so `admin:all` deliberately does not
+    # carry `audit:view` -- they can still take the `auditor` role, and
+    # taking it is itself an event.
+    r = admin.get("/api/v1/journals/audit", headers=admin_headers)
+    assert r.status_code == 403, r.get_json()
+    assert r.get_json()["error"] == "FORBIDDEN"
+
+@test("GET /api/v1/journals/application (authenticated, entitled to neither)")
+def _():
+    r = api.get("/api/v1/journals/application", headers=auth_headers)
+    assert r.status_code == 403
+
+@test("GET /api/v1/journals/audit (unauthenticated)")
+def _():
+    # 401 rather than 403: nobody is signed in, and the two statuses are
+    # how a client tells "log in" from "logging in will not help".
+    r = guest.get("/api/v1/journals/audit")
+    assert r.status_code == 401
+
+@test("GET /api/v1/journals/<name> (a name no journal has)")
+def _():
+    # The enum is what keeps a string in the address from becoming a path,
+    # and the refusal is about the name rather than about a permission:
+    # answering 403 here would tell an anonymous caller that a journal by
+    # that name exists.
+    r = auditor.get("/api/v1/journals/passwd", headers=auditor_headers)
+    assert r.status_code == 404
+    assert r.get_json()["error"] == "JOURNAL_NOT_FOUND"
+
+@test("GET /api/v1/journals/application?limit= (outside the range)")
+def _():
+    # Refused rather than trimmed: a caller who asked for ten thousand
+    # lines and silently got two thousand has been told the journal holds
+    # two thousand lines.
+    for asked in ("0", "-1", "20000", "all"):
+        r = auditor.get(
+            f"/api/v1/journals/application?limit={asked}",
+            headers=auditor_headers,
+        )
+        assert r.status_code == 400, f"limit={asked} answered {r.status_code}"
+        assert r.get_json()["error"] == "VALIDATION_ERROR"
+
+@test("GET /api/v1/journals/application?archives=true")
+def _():
+    # Rotation may have left archives beside the live journal or not, so
+    # what is checked is that asking for them is answered and that
+    # everything handed back is still a file belonging to this journal --
+    # `application.log`, `application.log.1`, `application.log.2.gz`.
+    r = auditor.get(
+        "/api/v1/journals/application?archives=true&limit=50",
+        headers=auditor_headers,
+    )
+    assert r.status_code == 200, r.get_json()
+    for name in r.get_json()["files_read"]:
+        assert name.startswith("application.log"), name
+
+@test("GET /dashboard/service/journals (as an auditor)")
+def _():
+    # The page itself, which is guarded by `require_any_permission` --
+    # either permission opens it, because either has something to show.
+    r = auditor.get("/dashboard/service/journals", follow_redirects=False)
+    assert r.status_code == 200
+
+
 # ─── 15. Web UI routes ─────────────────────────────────────────────────
 print("\n=== WEB UI ROUTES ===")
 
@@ -1504,6 +1648,12 @@ DASHBOARD_PAGES = (
     ("/dashboard/create-link", 200),
     ("/dashboard/service/stats", 200),
     ("/dashboard/service/health", 403),
+    # Neither `audit:view` nor `logs:view` is in the plain role, so the
+    # page is closed to it -- and it is open to the auditor, which is
+    # checked in section 14c. Both halves are needed: a page guarded by
+    # `require_any_permission("audit:view", "logs:view")` and a page
+    # guarded by nothing at all give the same answer to one of them.
+    ("/dashboard/service/journals", 403),
     ("/dashboard/users", 403),
     ("/dashboard/users/new", 403),
     ("/dashboard/users/<user_id>/edit", 403),
@@ -1789,7 +1939,7 @@ success = result.summary()
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 124
+EXPECTED_CHECKS = 137
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")

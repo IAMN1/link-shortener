@@ -18,6 +18,7 @@ from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.auth_controller import AuthController
 from link_shortener.web.controllers.dashboard_controller import DashboardController
 from link_shortener.web.controllers.frontend_controller import FrontendController
+from link_shortener.web.controllers.journal_api_controller import JournalApiController
 from link_shortener.web.i18n import init_babel
 from link_shortener.web.middleware.authentication import AuthenticationMiddleware
 from link_shortener.web.middleware.cache_control import PrivateCacheMiddleware
@@ -236,6 +237,7 @@ def create_app(config=None) -> Flask:
     api_controller = ApiController(link_service, admin_service, authorization_service)
     frontend_controller = FrontendController()
     admin_api_controller = AdminApiController(admin_service)
+    journal_api_controller = JournalApiController(container.get_read_journal_use_case())
     dashboard_controller = DashboardController(link_service, admin_service)
     auth_controller = AuthController(
         authentication_service,
@@ -248,6 +250,7 @@ def create_app(config=None) -> Flask:
     app.register_blueprint(api_controller.bp)
     app.register_blueprint(frontend_controller.bp)
     app.register_blueprint(admin_api_controller.bp)
+    app.register_blueprint(journal_api_controller.bp)
     app.register_blueprint(dashboard_controller.bp)
     app.register_blueprint(auth_controller.bp)
 

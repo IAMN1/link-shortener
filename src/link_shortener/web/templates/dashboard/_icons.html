@@ -33,6 +33,11 @@
     <path d="M7.5 8.5 13 3M10.9 5.1l1.6 1.6"/>
 {%- elif name == 'health' -%}
     <path d="M2.2 8h2.9l1.5-3.4 2.6 6.8 1.5-3.4h2.9"/>
+{%- elif name == 'journals' -%}
+    {# Ruled lines, one of them short: a written record, read from its end.
+       Not a document with a folded corner -- that is a file, and what this
+       entry opens is what the service wrote, not what an operator keeps. #}
+    <path d="M3 4.2h10M3 7.2h10M3 10.2h10M3 13.2h5.6"/>
 {%- elif name == 'overview' -%}
     {# Panes: the dashboard's own front page, which is several readings laid
        side by side. Distinct from `home`, which leaves for the public site

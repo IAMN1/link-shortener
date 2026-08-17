@@ -90,6 +90,17 @@
             {% endif %}
         {% endif %}
 
+        {# Its own section rather than an entry under Administration: the
+           two permissions behind it sit outside the `admin` resource, the
+           `auditor` role holds them and nothing administrative, and
+           `admin:all` does not carry `audit:view`. Listed under
+           Administration, the menu would say the opposite of all three to
+           the one reader who most needs it said plainly. #}
+        {% if can('audit:view') or can('logs:view') %}
+            <div class="dash-side-section">{{ _('Journals') }}</div>
+            {{ nav('dashboard.journals', 'journals', _('Journals')) }}
+        {% endif %}
+
         {% if can('admin:view_users') or can('admin:view_roles')
               or can('admin:view_system_health') %}
             <div class="dash-side-section">{{ _('Administration') }}</div>

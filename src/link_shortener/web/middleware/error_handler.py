@@ -251,6 +251,11 @@ class ErrorHandlerMiddleware:
                 "FORBIDDEN": 403,
                 "USER_NOT_FOUND": 404,
                 "ROLE_NOT_FOUND": 404,
+                # A name in the address that is not one of the three
+                # journals. 404 rather than 400 for the reason the other
+                # two are 404: the caller named a resource, and there is
+                # no such resource.
+                "JOURNAL_NOT_FOUND": 404,
                 "INVALID_CREDENTIALS": 401,
                 "ACCOUNT_INACTIVE": 403,
                 "VALIDATION_ERROR": 400,
