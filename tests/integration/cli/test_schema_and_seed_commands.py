@@ -90,7 +90,7 @@ def _roles_file(path, description):
         '    action: "read"\n'
         '    description: "Read the reports"\n'
         "roles:\n"
-        '  - name: "auditor"\n'
+        '  - name: "report-reader"\n'
         f'    description: "{description}"\n'
         "    is_system: false\n"
         "    permissions:\n"
@@ -242,7 +242,7 @@ class TestRoleLoading:
             '    action: "read"\n'
             '    description: "Read the reports"\n'
             "roles:\n"
-            '  - name: "auditor"\n'
+            '  - name: "report-reader"\n'
             '    description: "Reads reports and nothing else"\n'
             "    is_system: false\n"
             "    permissions:\n"
@@ -259,9 +259,9 @@ class TestRoleLoading:
         assert result.exit_code == 0, result.output
         with app.app_context():
             with app.container.get_uow_factory()(read_only=True) as uow:
-                auditor = uow.roles.get_by_name("auditor")
-        assert auditor is not None
-        assert {p.name for p in auditor.permissions} == {"report:read"}
+                reader = uow.roles.get_by_name("report-reader")
+        assert reader is not None
+        assert {p.name for p in reader.permissions} == {"report:read"}
 
     def test_an_existing_role_is_left_alone_without_the_flag(
         self, populated_database, tmp_path
@@ -281,7 +281,7 @@ class TestRoleLoading:
         result = runner.invoke(app.cli, ["db", "load-custom-roles", str(second)])
 
         assert result.exit_code == 0, result.output
-        assert _role_description(app, "auditor") == "Reads reports"
+        assert _role_description(app, "report-reader") == "Reads reports"
 
     def test_the_flag_updates_the_existing_role(
         self, populated_database, tmp_path
@@ -299,7 +299,7 @@ class TestRoleLoading:
         )
 
         assert result.exit_code == 0, result.output
-        assert _role_description(app, "auditor") == "Reads everything"
+        assert _role_description(app, "report-reader") == "Reads everything"
 
     def test_a_missing_file_is_refused(self, populated_database, tmp_path):
         """Click checks the path before anything opens a session."""

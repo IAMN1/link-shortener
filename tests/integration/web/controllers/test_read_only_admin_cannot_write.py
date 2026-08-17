@@ -72,7 +72,7 @@ def reader_token(app, client):
         with db.session() as session:
             session.execute(text(
                 "INSERT OR IGNORE INTO roles (id, name, description, is_system) "
-                "VALUES ('11111111-1111-1111-1111-111111111111', 'auditor', "
+                "VALUES ('11111111-1111-1111-1111-111111111111', 'admin-reader', "
                 "'reads the administration', 0)"
             ))
             for permission in READ_PERMISSIONS:

@@ -66,6 +66,25 @@ permissions:
     action: "view_any"
     description: "View detailed statistics of any link, not only one's own"
 
+  # --- Journals ---
+  # Two permissions rather than one, and neither of them under `admin`.
+  # Reading a journal is not an administrative act -- the role that does it
+  # is entitled to nothing else -- and the two journals are separated from
+  # each other because they expose different things: `audit.log` carries
+  # destination addresses and the accounts that followed them, while
+  # `application.log` carries the email address of everyone who registered,
+  # signed in, or failed to. Google Cloud draws the same line between
+  # `logging.viewer` and `logging.privateLogViewer`.
+  - name: "audit:view"
+    resource: "audit"
+    action: "view"
+    description: "Read the audit journal, which records what was done to links and accounts"
+
+  - name: "logs:view"
+    resource: "logs"
+    action: "view"
+    description: "Read the application and error journals"
+
   # --- Administrative Functions ---
   - name: "admin:view_users"
     resource: "admin"
@@ -87,10 +106,15 @@ permissions:
     action: "manage_roles"
     description: "Create, update, or delete roles (system roles are protected)"
 
+  # "and logs" used to stand at the end of this line and was never true:
+  # the endpoint answers with the state of the database, the cache, the
+  # queue and the failover counters, and no journal has ever been reachable
+  # through it. Now that the journals have permissions of their own, the
+  # wording would read as a grant.
   - name: "admin:view_system_health"
     resource: "admin"
     action: "view_system_health"
-    description: "Access system health metrics and logs"
+    description: "Access system health metrics"
 
   - name: "admin:all"
     resource: "admin"
@@ -147,13 +171,38 @@ roles:
       - "stats:view_full"
       - "stats:view_any"
 
+  # Auditor role – reads the record and changes nothing.
+  #
+  # It exists because the alternative is to hand somebody `admin` to let
+  # them read a journal, and an administrator is the one person an audit
+  # trail is kept against. NIST SP 800-53 AU-9(6) asks for read-only
+  # authorisation to audit information for a subset of privileged users,
+  # and PCI DSS 4.0 10.3.1 asks that the read be limited to those with a
+  # job-related need; both are answered by a role that grants reading and
+  # nothing else. Note what is absent: no `link:` permission, no
+  # `admin:manage_*`, nothing that writes.
+  - name: "auditor"
+    description: "Reads the journals and the health report; changes nothing"
+    is_system: true
+    permissions:
+      - "audit:view"
+      - "logs:view"
+      - "admin:view_system_health"
+
   # Administrator role – has full control over the system.
   - name: "admin"
     description: "System administrator with unrestricted access"
     is_system: true
-    # One permission, and it is the whole role: ``admin:all`` passes every
-    # check on its own, and it is also what identifies an administrator to
-    # the guard that refuses to remove the last one. Listing the other
-    # twelve here would grant nothing and read as though it did.
+    # One permission, and it is nearly the whole role: ``admin:all`` passes
+    # every check but one, and it is also what identifies an administrator
+    # to the guard that refuses to remove the last one. Listing the other
+    # permissions here would grant nothing and read as though it did.
+    #
+    # The exception is ``audit:view``. An administrator holds every power
+    # the audit journal exists to record, so a bypass that also handed them
+    # the record would leave the journal proving nothing about the one
+    # person it is kept against -- see ``BEYOND_ADMIN_ALL`` in
+    # ``rbac_authorization_service.py``. An administrator who needs to read
+    # it takes the ``auditor`` role, and taking it is itself an event.
     permissions:
       - "admin:all"

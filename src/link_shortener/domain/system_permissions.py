@@ -23,6 +23,19 @@ class SystemPermissions(Enum):
     STATS_VIEW_FULL = "stats:view_full"
     STATS_VIEW_ANY = "stats:view_any"
 
+    # --- Journal permissions ---
+    # Their own resources rather than actions on ``admin``, because reading
+    # a journal is not an administrative act: the role that does it is
+    # entitled to nothing else, and the two are separated from each other
+    # because the journals differ in what they expose. ``audit.log`` holds
+    # destination addresses -- with whatever ``mask_url`` could not clean
+    # out of them -- and the accounts that followed them;
+    # ``application.log`` holds the email address of everyone who
+    # registered, signed in, or failed to. Google Cloud draws the same line
+    # between ``logging.viewer`` and ``logging.privateLogViewer``.
+    AUDIT_VIEW = "audit:view"
+    LOGS_VIEW = "logs:view"
+
     # --- Admin permissions ---
     ADMIN_VIEW_USERS = "admin:view_users"
     ADMIN_MANAGE_USERS = "admin:manage_users"
