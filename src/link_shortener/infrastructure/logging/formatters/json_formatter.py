@@ -1,8 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 
-from link_shortener.infrastructure.logging.utils import STANDARD_RECORD_ATTRS
+from link_shortener.infrastructure.logging.utils import (
+    STANDARD_RECORD_ATTRS, UTC_SECONDS,
+)
 
 
 class JSONFormatter(logging.Formatter):
@@ -14,21 +16,15 @@ class JSONFormatter(logging.Formatter):
     are excluded to keep the output clean.
     """
 
-    def __init__(
-        self, 
-        date_format: str = "%Y-%m-%d %H:%M:%S", 
-        ensure_ascii: bool = False
-    ):
+    def __init__(self, ensure_ascii: bool = False):
         """
         Initialize the JSON formatter.
 
         Args:
-            date_format: Format string for timestamps.
             ensure_ascii: If True, all non-ASCII characters are escaped.
         """
-        
+
         super().__init__()
-        self.date_format = date_format
         self.ensure_ascii = ensure_ascii
     
     def format(self, record: logging.LogRecord) -> str:
@@ -43,7 +39,9 @@ class JSONFormatter(logging.Formatter):
         """
         
         log_entry = {
-            "timestamp": datetime.fromtimestamp(record.created).strftime(self.date_format),
+            "timestamp": datetime.fromtimestamp(
+                record.created, tz=timezone.utc
+            ).strftime(UTC_SECONDS),
             "level": record.levelname.lower(),
             "logger": record.name,
             "event": record.getMessage(),

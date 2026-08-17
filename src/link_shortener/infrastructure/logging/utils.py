@@ -2,6 +2,28 @@ import logging
 import re
 from urllib.parse import urlsplit, urlunsplit
 
+UTC_SECONDS = "%Y-%m-%dT%H:%M:%SZ"
+"""How a machine-read journal states a moment, and the only way it may.
+
+Not settable, and that is the point. ``JSONFormatter`` took the moment from
+``datetime.fromtimestamp`` with no zone -- the machine's local one -- while
+the structlog chain stamped UTC, so one instant was written 09:31:43 by one
+configuration and 12:31:43 by the other, with nothing in either line to say
+which. A reader could not tell them apart, and a filter by time meant
+different things depending on ``LOGGER_TYPE``.
+
+The format was read from ``LOG_DATE_FORMAT`` as well, so a deployment could
+set it to anything and leave the file unparseable by whatever reads it
+back. ``LOG_DATE_FORMAT`` still shapes the console line, which is written
+for a person; this stamp is written for a program, and ISO 8601 in UTC is
+what a program can sort as text and parse with ``fromisoformat``.
+
+It lives in this module because three chains have to agree on it and this
+is the one place all three can reach: ``json_formatter`` for the standard
+journal, ``structlog_config`` for the other, and ``MinimalLogger``, which
+writes the lines around a failure and is read beside both.
+"""
+
 
 def _standard_record_attrs() -> frozenset:
     """

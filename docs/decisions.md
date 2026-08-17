@@ -1,6 +1,6 @@
 # Decisions
 
-Thirty-seven write-ups of why something is the way it is. Read this when the
+Thirty-eight write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -636,6 +636,70 @@ and it is why this does not fight the worker for the handlers.
 workers, the worker itself, and its prefork children — ten of them by
 default, one per core. That is what the rotation above is built for, and
 the reason nothing in either process rotates anything itself.
+
+### A moment is written one way, and the way says which clock
+
+**Decided** (2026-08-17): every journal line states its moment as
+`2026-08-17T09:31:43Z` — ISO 8601, UTC, to the second — from one constant,
+`UTC_SECONDS` in `infrastructure/logging/utils.py`. `LOG_DATE_FORMAT` no
+longer reaches any file; it dresses the console line and stops there.
+
+**Why.** The two chains disagreed. `structlog_config` stamped
+`TimeStamper(utc=True)` while `JSONFormatter` took
+`datetime.fromtimestamp(record.created)` with no zone, which is the
+machine's local one — so on a laptop three hours east of Greenwich the same
+second was written `09:31:43` by one configuration and `12:31:43` by the
+other, and neither line said which it meant. `MinimalLogger`, which writes
+the lines around a logging failure and is read beside both, was local too.
+
+Nothing had ever read a journal back, which is why a fault of this size sat
+in a file that four processes write to. It surfaced while measuring
+something else.
+
+The format was a setting as well as a zone: `LOG_DATE_FORMAT` was handed to
+`JSONFormatter`, so a deployment could set it to anything a person likes
+and leave the file unreadable by any program. A journal that will be
+filtered by time, ordered against another journal, or shipped to a
+collector is read by programs; the console line is read by a person, and
+only that line keeps the setting.
+
+**Why to the second and not finer.** That is what both chains already
+wrote, and the change is meant to fix the zone rather than quietly raise
+the resolution. Ordering within a file is by time of write, not time of
+event, so a finer stamp would sharpen a number that was never the
+authority on order — and it would cost seven bytes on every line of a
+journal this document has just finished measuring.
+
+**A third of the journal had no clock at all**, and only the live stack
+said so. `ProcessorFormatter` runs the application's processor chain for
+records that came through structlog and hands everything else to the
+renderer as it stands — so Celery's lines, werkzeug's and any library's
+carried neither `timestamp` nor `level`. Counted on the running stack:
+14 lines of 45 in `application.log`, and among them the two Celery writes
+that happen on every redirect, `Task received` and `Task succeeded`. The
+share therefore grew with traffic rather than being a start-up artefact,
+and those are the lines somebody reads when a task has failed.
+
+`FOREIGN_PRE_CHAIN` in `bootstrap.py` gives a foreign record the same three
+fields from the same constant. After it, on the same stack driven the same
+way: 39 lines of 39 stamped and levelled.
+
+**What holds it.** `TestBothChainsWriteOneClock` in
+`tests/integration/infrastructure/test_records_reach_the_journals.py`, in
+four parts: each chain's stamp is parsed and bracketed against real UTC
+taken around the call, the two chains are compared against each other,
+`LOG_DATE_FORMAT` is set to something no parser accepts to prove it reaches
+no file, and a record made by `celery.worker` — a logger outside this
+application — is asked for its stamp and its level. The first is the one
+that matters most: comparing the chains to each other alone would pass on
+any machine whose local zone is UTC, which is every CI runner and none of
+the laptops the fault was found on.
+
+**What found it.** Not the suite. The zone difference surfaced while
+measuring something else, and the missing stamps surfaced only when the
+Docker stack was raised and its journals read by eye — the suite had every
+opportunity and no reason to look, because nothing in it had ever asked
+what a line from another library looks like on disk.
 
 ---
 
