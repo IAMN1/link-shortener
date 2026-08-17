@@ -29,6 +29,9 @@ from .ports.auth.auth_service import AuthenticationService
 from .ports.auth.authorization_service import AuthorizationService
 from .ports.uow import UnitOfWork, UnitOfWorkFactory
 from .ports.health_check import HealthCheck
+from .ports.journal_reader import (
+    Journal, JournalLine, JournalPage, JournalReaderPort,
+)
 
 # ------------------------------------------------------------------
 # Application Services (facades)
@@ -137,6 +140,10 @@ __all__ = [
     "UnitOfWork",
     "UnitOfWorkFactory",
     "HealthCheck",
+    "Journal",
+    "JournalLine",
+    "JournalPage",
+    "JournalReaderPort",
 
     # Services
     "AdminService",
