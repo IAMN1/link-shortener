@@ -103,7 +103,7 @@ def free_port() -> int:
         return probe.getsockname()[1]
 
 
-def build_app(database_path: Path, base_url: str, mail_port: int):
+def build_app(database_path: Path, base_url: str, mail_port: int, log_dir: Path):
     """
     Build the application against a file database.
 
@@ -117,6 +117,12 @@ def build_app(database_path: Path, base_url: str, mail_port: int):
             It is also the base the confirmation link is built on, so the
             browser can follow the link straight out of the message.
         mail_port: Port the catcher of this run listens on.
+        log_dir: Where this run writes its journals. Its own directory,
+            because the journal page reads what the service wrote: pointed
+            at the default, the checks on it would read whatever the
+            developer's tree happens to hold -- green on a machine with an
+            old `datas/logs` and red on a fresh clone, and never a
+            statement about this run.
 
     Returns:
         The Flask application, tables created and roles seeded.
@@ -141,6 +147,14 @@ def build_app(database_path: Path, base_url: str, mail_port: int):
         MAIL_USE_TLS = False
         MAIL_USE_SSL = False
         MAIL_FROM = "no-reply@link-shortener.test"
+        # Journals on, and written to this run's own directory. The page
+        # under test displays them, so a run with logging off would be
+        # checking that an empty table renders.
+        LOGGING_ENABLED = True
+        AUDIT_ENABLED = True
+        LOG_TO_FILE = True
+        LOG_TO_CONSOLE = False
+        LOG_DIR = str(log_dir)
 
     app = create_app(config=BrowserConfig())
     with app.app_context():
@@ -227,18 +241,22 @@ def confirm_email(page, mail: MailCatcher, email: str) -> None:
     )
 
 
-def promote_to_admin(app, email: str) -> None:
+def grant_role(app, email: str, role_name: str) -> None:
     """
-    Give an account the admin role, the way an operator makes the first one.
+    Put a seeded role on an account, the way an operator would.
 
-    There is no endpoint for this and there should not be: the first
-    administrator cannot be appointed by an administrator. The row is
+    There is no endpoint for the first administrator and there should not
+    be: the first one cannot be appointed by an administrator. The row is
     written directly, which is what ``smoke_test.py`` does for the same
     reason.
 
+    Used for ``auditor`` as well: the journal page needs a caller holding
+    a permission ``admin:all`` does not carry.
+
     Args:
         app: The running application.
-        email: Address of the account to promote.
+        email: Address of the account.
+        role_name: Name of a seeded role.
     """
     from sqlalchemy import text
 
@@ -249,10 +267,11 @@ def promote_to_admin(app, email: str) -> None:
                 {"email": email},
             ).fetchone()
             role = session.execute(
-                text("SELECT id FROM roles WHERE name = 'admin'")
+                text("SELECT id FROM roles WHERE name = :name"),
+                {"name": role_name},
             ).fetchone()
             assert user is not None, f"no account for {email}"
-            assert role is not None, "the admin role was never seeded"
+            assert role is not None, f"the {role_name} role was never seeded"
             session.execute(
                 text(
                     "INSERT OR IGNORE INTO user_roles (user_id, role_id) "
@@ -267,7 +286,7 @@ def record_visits(app, email: str) -> int:
     """
     Give an account a link with a week of traffic behind it.
 
-    Written straight into the tables, the way ``promote_to_admin`` writes a
+    Written straight into the tables, the way ``grant_role`` writes a
     role, and for a related reason: the charts are about a *span*, and
     every redirect this run could serve would be stamped "now" -- a week of
     them would draw one column and prove nothing about the other
@@ -384,7 +403,9 @@ def main() -> int:
         port = free_port()
         base = f"http://127.0.0.1:{port}"
         mail = MailCatcher()
-        app = build_app(Path(workspace) / "browser.db", base, mail.port)
+        journals = Path(workspace) / "journals"
+        journals.mkdir()
+        app = build_app(Path(workspace) / "browser.db", base, mail.port, journals)
         server = make_server("127.0.0.1", port, app, threaded=True)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -409,7 +430,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 37
+    expected = 41
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -755,7 +776,7 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         # The column read `{{ role.name }}` over a list of names, and
         # Undefined prints as nothing: it was blank for every account in
         # the service, on the page whose job is to say who holds what.
-        promote_to_admin(app, "browser-user@example.test")
+        grant_role(app, "browser-user@example.test", "admin")
         page = page_for("/login")
         sign_in(page, base)
         page.goto(f"{base}/dashboard/users")
@@ -1385,6 +1406,97 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
             f"the page is Russian and the date reads {written!r} -- "
             "Russian writes 16.08.2026, en-US writes 8/16/2026"
         )
+
+    @check("the journal page shows records, not an empty table")
+    def _():
+        # This whole page is drawn by a script from an endpoint, so a test
+        # client can prove the endpoint answers and nothing else: whether
+        # any of it reaches the screen is only answerable in a browser.
+        grant_role(app, "browser-user@example.test", "auditor")
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+
+        first = page.inner_text("[data-journal-row] .journal-time").strip()
+        assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", first), first
+        # The label under the table, which is what keeps the oldest line on
+        # screen from reading as the beginning of history.
+        said = page.inner_text("[data-journal-reach]").strip()
+        assert "application.log" in said, said
+
+    @check("choosing another journal reads that journal")
+    def _():
+        # The three buttons are the page's only navigation, and each one is
+        # a different permission behind the same address -- a button that
+        # silently kept showing the previous journal would be the most
+        # convincing possible way to get an audit read wrong.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+        page.click('[data-journal="audit"]')
+        page.wait_for_function(
+            "document.querySelector('[data-journal-reach]')"
+            ".textContent.indexOf('audit.log') !== -1",
+            timeout=5000,
+        )
+
+        assert page.inner_text("[data-journal-title]").strip().lower() == "audit"
+
+    @check("a record opens to show the line as it was written")
+    def _():
+        # Everything on a row is a rendering; an operator reconstructing an
+        # incident eventually needs the bytes. The raw line is a sibling row
+        # that starts hidden, and `hidden` is a class -- so a stylesheet
+        # that lost the rule would leave every raw line permanently open,
+        # which this catches from the other direction too.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+        assert page.locator(".journal-expanded:not(.hidden)").count() == 0
+
+        page.click("[data-journal-row]")
+        page.wait_for_selector(".journal-expanded:not(.hidden)", timeout=5000)
+
+        raw = page.inner_text(".journal-expanded:not(.hidden) .journal-raw")
+        assert raw.strip().startswith("{"), raw[:80]
+
+    @check("a reader watching the tail is still watching it after a poll")
+    def _():
+        # The table scrolls inside its own box, and new lines arrive at the
+        # bottom of it. Somebody who has scrolled down to watch the tail is
+        # therefore left behind by every poll unless the box is moved for
+        # them: measured with the follow removed, two polls at five seconds
+        # put the tail 204 pixels below the last line on screen.
+        #
+        # Only this half is checked, because only this half is code. A
+        # reader stopped partway keeps their place without help --
+        # replacing the rows leaves `scrollTop` alone -- and a check on
+        # that would be a check on the browser, green whatever this page
+        # does.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+        page.click('[data-journal-lines="1000"]')
+        page.click('[data-journal-every="5"]')
+        page.wait_for_timeout(1000)
+
+        page.evaluate(
+            "var box = document.querySelector('[data-journal-scroll]');"
+            "box.scrollTop = box.scrollHeight;"
+        )
+        # Long enough for two polls, each of which adds the requests this
+        # very page just made.
+        page.wait_for_timeout(12000)
+        behind = page.evaluate(
+            "var box = document.querySelector('[data-journal-scroll]');"
+            "box.scrollHeight - box.clientHeight - box.scrollTop"
+        )
+
+        assert behind < 40, f"the tail ran {behind} pixels ahead of the reader"
 
     @check("no page reported a script error to the console")
     def _():
