@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-17 23:19+0300\n"
+"POT-Creation-Date: 2026-08-17 16:23+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -75,12 +75,14 @@ msgstr "Превышен гостевой предел в %(limit)s ссылок
 #: src/link_shortener/application/use_cases/links/delete_link.py:192
 #: src/link_shortener/web/security/authorization.py:71
 #: src/link_shortener/web/security/decorators.py:51
-#: src/link_shortener/web/security/decorators.py:77
+#: src/link_shortener/web/security/decorators.py:104
+#: src/link_shortener/web/security/decorators.py:128
 msgid "Authentication required"
 msgstr "Требуется вход"
 
 #: src/link_shortener/application/use_cases/journals/read_journal.py:169
 #: src/link_shortener/web/security/decorators.py:53
+#: src/link_shortener/web/security/decorators.py:106
 msgid "Not authorized"
 msgstr "Не разрешено"
 
@@ -542,15 +544,45 @@ msgstr "автообновление выключено"
 msgid "Stats"
 msgstr "Статистика"
 
-#: src/link_shortener/web/i18n.py:315
+#: src/link_shortener/web/i18n.py:319
+msgid "Nothing has been written to this journal"
+msgstr "В этот журнал ничего не записано"
+
+#: src/link_shortener/web/i18n.py:320
+msgid "The journal could not be read"
+msgstr "Журнал не удалось прочитать"
+
+#: src/link_shortener/web/i18n.py:324
+msgid "not a record"
+msgstr "не запись"
+
+#: src/link_shortener/web/i18n.py:331
+#, python-format
+msgid "Lines: %(count)s · %(files)s"
+msgstr "Строк: %(count)s · %(files)s"
+
+#: src/link_shortener/web/i18n.py:332
+msgid "This is the start of the journal."
+msgstr "Это начало журнала."
+
+#: src/link_shortener/web/i18n.py:333
+msgid "Older lines exist."
+msgstr "Есть строки старше."
+
+#: src/link_shortener/web/i18n.py:335
+#, python-format
+msgid "Archives reach back to %(name)s."
+msgstr "Архивы уходят до %(name)s."
+
+#: src/link_shortener/web/i18n.py:337
 msgid "answering"
 msgstr "отвечает"
 
-#: src/link_shortener/web/i18n.py:316
+#: src/link_shortener/web/i18n.py:338
 msgid "not answering"
 msgstr "не отвечает"
 
-#: src/link_shortener/web/i18n.py:317
+#: src/link_shortener/web/i18n.py:339
 msgid "unknown"
 msgstr "неизвестно"
 
@@ -594,16 +626,16 @@ msgstr "Нет токена обновления"
 msgid "Invalid or expired refresh token"
 msgstr "Токен обновления неверен или истёк"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:118
-#: src/link_shortener/web/controllers/dashboard_controller.py:182
+#: src/link_shortener/web/controllers/dashboard_controller.py:140
+#: src/link_shortener/web/controllers/dashboard_controller.py:204
 msgid "User not found"
 msgstr "Учётная запись не найдена"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:213
+#: src/link_shortener/web/controllers/dashboard_controller.py:235
 msgid "Role not found"
 msgstr "Роль не найдена"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:221
+#: src/link_shortener/web/controllers/dashboard_controller.py:243
 #, python-format
 msgid "The role %(name)s is a system role and cannot be modified"
 msgstr "Роль %(name)s — системная, изменить её нельзя"
@@ -756,34 +788,42 @@ msgid "90 days"
 msgstr "90 дней"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:51
+#: src/link_shortener/web/templates/dashboard/journals.html:51
 msgid "Refresh"
 msgstr "Обновлять"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:57
+#: src/link_shortener/web/templates/dashboard/journals.html:59
 msgid "5 s"
 msgstr "5 с"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:58
+#: src/link_shortener/web/templates/dashboard/journals.html:60
 msgid "10 s"
 msgstr "10 с"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:59
+#: src/link_shortener/web/templates/dashboard/journals.html:61
 msgid "30 s"
 msgstr "30 с"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:60
+#: src/link_shortener/web/templates/dashboard/journals.html:62
 msgid "1 min"
 msgstr "1 мин"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:61
+#: src/link_shortener/web/templates/dashboard/journals.html:63
 msgid "5 min"
 msgstr "5 мин"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:62
+#: src/link_shortener/web/templates/dashboard/journals.html:64
 msgid "Off"
 msgstr "Выкл"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:63
+#: src/link_shortener/web/templates/dashboard/journals.html:74
 msgid "Refresh now"
 msgstr "Обновить"
 
@@ -832,16 +872,22 @@ msgstr "Моя статистика"
 msgid "Service Stats"
 msgstr "Статистика службы"
 
-#: src/link_shortener/web/templates/dashboard/base.html:95
+#: src/link_shortener/web/templates/dashboard/base.html:100
+#: src/link_shortener/web/templates/dashboard/base.html:101
+#: src/link_shortener/web/templates/dashboard/journals.html:4
+msgid "Journals"
+msgstr "Журналы"
+
+#: src/link_shortener/web/templates/dashboard/base.html:106
 msgid "Administration"
 msgstr "Администрирование"
 
-#: src/link_shortener/web/templates/dashboard/base.html:97
+#: src/link_shortener/web/templates/dashboard/base.html:108
 #: src/link_shortener/web/templates/dashboard/users_list.html:5
 msgid "Users"
 msgstr "Пользователи"
 
-#: src/link_shortener/web/templates/dashboard/base.html:102
+#: src/link_shortener/web/templates/dashboard/base.html:113
 #: src/link_shortener/web/templates/dashboard/create_user.html:20
 #: src/link_shortener/web/templates/dashboard/edit_user.html:15
 #: src/link_shortener/web/templates/dashboard/roles_list.html:6
@@ -849,33 +895,33 @@ msgstr "Пользователи"
 msgid "Roles"
 msgstr "Роли"
 
-#: src/link_shortener/web/templates/dashboard/base.html:106
+#: src/link_shortener/web/templates/dashboard/base.html:117
 msgid "Health Check"
 msgstr "Состояние"
 
-#: src/link_shortener/web/templates/dashboard/base.html:111
+#: src/link_shortener/web/templates/dashboard/base.html:122
 msgid "Back to Home"
 msgstr "На главную"
 
-#: src/link_shortener/web/templates/dashboard/base.html:112
-#: src/link_shortener/web/templates/dashboard/base.html:113
+#: src/link_shortener/web/templates/dashboard/base.html:123
+#: src/link_shortener/web/templates/dashboard/base.html:124
 #: src/link_shortener/web/templates/layout/base.html:102
 msgid "Log out"
 msgstr "Выйти"
 
-#: src/link_shortener/web/templates/dashboard/base.html:121
+#: src/link_shortener/web/templates/dashboard/base.html:132
 msgid "Expand the menu"
 msgstr "Развернуть меню"
 
-#: src/link_shortener/web/templates/dashboard/base.html:122
+#: src/link_shortener/web/templates/dashboard/base.html:133
 msgid "Collapse"
 msgstr "Свернуть"
 
-#: src/link_shortener/web/templates/dashboard/base.html:141
+#: src/link_shortener/web/templates/dashboard/base.html:152
 msgid "Menu"
 msgstr "Меню"
 
-#: src/link_shortener/web/templates/dashboard/base.html:145
+#: src/link_shortener/web/templates/dashboard/base.html:156
 #: src/link_shortener/web/templates/layout/base.html:106
 #: src/link_shortener/web/templates/public/login.html:8
 #: src/link_shortener/web/templates/public/login.html:21
@@ -884,7 +930,7 @@ msgstr "Меню"
 msgid "Log in"
 msgstr "Войти"
 
-#: src/link_shortener/web/templates/dashboard/base.html:146
+#: src/link_shortener/web/templates/dashboard/base.html:157
 #, python-format
 msgid "You are not logged in. %(link)s"
 msgstr "Вы не вошли. %(link)s"
@@ -1105,6 +1151,7 @@ msgid "Destination"
 msgstr "Куда ведёт"
 
 #: src/link_shortener/web/templates/dashboard/home.html:38
+#: src/link_shortener/web/templates/dashboard/journals.html:101
 #: src/link_shortener/web/templates/dashboard/my_links.html:34
 #: src/link_shortener/web/templates/dashboard/my_stats.html:40
 #: src/link_shortener/web/templates/dashboard/service_stats.html:40
@@ -1133,6 +1180,75 @@ msgstr "статистика службы"
 #, python-format
 msgid "The %(link)s are open to it."
 msgstr "%(link)s ей доступна."
+
+#: src/link_shortener/web/templates/dashboard/journals.html:2
+msgid "Journals — Linkr"
+msgstr "Журналы — Linkr"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:27
+msgid "What to read"
+msgstr "Что читать"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:35
+msgid "Journal"
+msgstr "Журнал"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:37
+msgid "Application"
+msgstr "Приложение"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:38
+msgid "Errors"
+msgstr "Ошибки"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:41
+msgid "Audit"
+msgstr "Аудит"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:44
+msgid "Lines"
+msgstr "Строк"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:73
+msgid "Include archives"
+msgstr "С архивами"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:90
+msgid "Time"
+msgstr "Время"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:91
+msgid "Level"
+msgstr "Уровень"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:92
+msgid "Event"
+msgstr "Событие"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:93
+msgid "Details"
+msgstr "Подробности"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:114
+#, python-format
+msgid "Read from %(name)s, from the end of the file, by polling."
+msgstr "Читается через %(name)s, с конца файла, опросом."
+
+#: src/link_shortener/web/templates/dashboard/journals.html:121
+msgid ""
+"The audit journal names destination addresses and the accounts that "
+"followed them."
+msgstr ""
+"В журнале аудита названы адреса назначения и учётные записи, которые по "
+"ним переходили."
+
+#: src/link_shortener/web/templates/dashboard/journals.html:122
+msgid ""
+"The application journal names the address of everyone who registered or "
+"signed in."
+msgstr ""
+"В журнале приложения назван почтовый адрес каждого, кто регистрировался "
+"или входил."
 
 #: src/link_shortener/web/templates/dashboard/link_stats.html:3
 #, python-format
@@ -1647,5 +1763,15 @@ msgstr "Запросите новую со %(link)s."
 #~ msgstr ""
 
 #~ msgid "with"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "The audit journal records destination "
+#~ "addresses and the accounts that followed"
+#~ " them; the application journal records "
+#~ "the email address of everyone who "
+#~ "registered or signed in. Both are "
+#~ "read here, and reading them is "
+#~ "itself a privilege somebody granted."
 #~ msgstr ""
 

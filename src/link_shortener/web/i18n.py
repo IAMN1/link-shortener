@@ -312,6 +312,28 @@ def script_strings() -> Dict[str, str]:
         # The way from the table of links to one link's own page. Drawn by
         # `my_links.js` per row, so it cannot come from the template.
         "chart_link_stats": gettext("Stats"),
+        # The journal viewer. It reuses the freshness sentences above
+        # rather than starting a second set: "updated 40 s ago" is the same
+        # sentence about the same kind of reading, and two entries would be
+        # two things for a translator to keep in step.
+        "journal_empty": gettext("Nothing has been written to this journal"),
+        "journal_failed": gettext("The journal could not be read"),
+        # Marks a line that is not a record: a write torn by rotation, or
+        # something a library printed itself. It is shown as it was found
+        # rather than dropped, and this says which.
+        "journal_unparsed": gettext("not a record"),
+        # Written as a label with a colon rather than as a sentence, and
+        # that is a grammar decision rather than a stylistic one. "1 lines
+        # from error.log" is wrong in English and "1 строк" is wrong in
+        # Russian, which needs three plural forms; the count reaches the
+        # page in the browser, where `ngettext` cannot follow it. A label
+        # takes a number of any size in all three languages.
+        "journal_lines_read": gettext("Lines: %(count)s · %(files)s"),
+        "journal_begins": gettext("This is the start of the journal."),
+        "journal_more": gettext("Older lines exist."),
+        "journal_archives_reach": gettext(
+            "Archives reach back to %(name)s."
+        ),
         "answering": gettext("answering"),
         "not_answering": gettext("not answering"),
         "unknown": gettext("unknown"),

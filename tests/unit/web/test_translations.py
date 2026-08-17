@@ -391,8 +391,11 @@ NOT_PROSE_JS = {
     "Content-Type",
     "X-CSRF-Token",
     "X-Deletion-Token",
-    # The key, as it is printed on a keyboard the world over.
+    # The keys, as they are printed on a keyboard the world over -- and as
+    # `KeyboardEvent.key` spells them, which makes them protocol rather
+    # than language: a translated "Enter" would compare equal to nothing.
     "Escape",
+    "Enter",
     # Selectors carrying a quoted attribute, which is why they survive the
     # code-only filter above.
     'button[type="submit"]',
