@@ -58,6 +58,8 @@ from .use_cases.links.redirect_link import RedirectLinkUseCase
 from .use_cases.links.delete_link import DeleteLinkUseCase
 from .use_cases.links.update_link_stats import UpdateLinkStatsUseCase
 
+from .use_cases.journals.read_journal import ReadJournalUseCase
+
 from .use_cases.stats.get_service_health import GetServiceHealthUseCase
 from .use_cases.stats.get_service_stats import GetServiceStatsUseCase
 from .use_cases.stats.get_visit_stats import GetVisitStatsUseCase
@@ -165,6 +167,8 @@ __all__ = [
     "RedirectLinkUseCase",
     "DeleteLinkUseCase",
     "UpdateLinkStatsUseCase",
+
+    "ReadJournalUseCase",
 
     "GetServiceHealthUseCase",
     "GetServiceStatsUseCase",
