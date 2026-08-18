@@ -202,6 +202,30 @@ mistake has been made in Kubernetes (`system:unauthenticated` as an ordinary
 RoleBinding subject) and in PostgreSQL (`PUBLIC`, CVE-2018-1058). Full
 reasoning: [Architecture](architecture.md#the-anonymous-request-and-the-ceiling-over-it).
 
+### One link's traffic belongs to whoever owns the link
+
+**Decided** (2026-08-19): `?code=` on `/api/v1/stats/visits` and
+`/api/v1/stats/visits/daily` is checked against `can_view_link_details`,
+the same gate the extended link endpoint uses.
+
+**Why.** Both endpoints hold `stats:view_basic`, which the `guest` role
+carries — that is deliberate, because the service-wide answer is a count
+nobody owns. A named code is not that answer. Measured against the running
+stack: an anonymous caller who knew a seven-character code was given the
+link's total, its bucketed timeline and its device and browser split,
+while the same caller asking `/api/v1/links/<code>` got `clicks: null` and
+asking `/api/v1/links/<code>/extended` got `401`. Three endpoints, one
+question, two answers.
+
+The ownership check only ran when `scope=mine` set an `owner_id`, so the
+parameter that names somebody else's link was the one path through these
+endpoints with no check on it at all.
+
+**What it costs.** A code that no link carries now answers `404` rather
+than a span of zeroes, for everybody. The existence of a code is public
+anyway — the redirect and the basic endpoint answer it — and it is only
+the traffic behind it that is not.
+
 ### An account's responses are not stored by the browser
 
 **Decided** (2026-08-15): `Cache-Control: no-store` on every response that

@@ -86,17 +86,39 @@ class TestWhatAnAnonymousCallerGets:
         assert body["total"] >= 3
         assert body["top_links"] == []
 
-    def test_a_span_with_no_visits_keeps_its_shape(self, client):
+    def test_a_span_with_no_visits_keeps_its_shape(
+        self, client, uow_factory
+    ):
         """
         Zeroes and a full list of buckets, not ``null`` and not ``[]``: a
         page that has to tell "nothing happened" from "no answer" ends up
         showing "Loading..." forever.
+
+        Asked as the owner of a link nobody has opened. It used to name a
+        code no link carried, which answered zeroes from an empty query
+        -- but a code names somebody's link now, and one that exists is
+        the honest way to ask this.
         """
-        body = client.get("/api/v1/stats/visits?period=24h&code=nosuch1").get_json()
+        token = register_and_login(client, email="visits-empty@example.com")
+        user_id = jwt.decode(token, options={"verify_signature": False})["sub"]
+        link_with_visits(uow_factory, "empty1", 0, owner_id=user_id)
+
+        body = client.get(
+            "/api/v1/stats/visits?period=24h&code=empty1",
+            headers=auth_headers(token),
+        ).get_json()
 
         assert body["total"] == 0
         assert len(body["buckets"]) == 24
         assert all(bucket["total"] == 0 for bucket in body["buckets"])
+
+    def test_a_code_no_link_carries_is_404_for_everybody(self, client):
+        """The same answer the basic endpoint and the redirect give: the
+        existence of a code is public, and only its traffic is not."""
+        response = client.get("/api/v1/stats/visits?period=24h&code=nosuch1")
+
+        assert response.status_code == 404
+        assert response.get_json()["error"] == "LINK_NOT_FOUND"
 
     def test_an_unknown_period_is_refused_in_words(self, client):
         response = client.get("/api/v1/stats/visits?period=all-time")
@@ -148,6 +170,85 @@ class TestWhatTheOwnerAndTheAnalystGet:
         ).get_json()
 
         assert any(row["label"] == "topful" for row in body["top_links"])
+
+
+class TestOneLinksTrafficIsItsOwners:
+    """`?code=` names somebody's link, and its traffic is theirs.
+
+    The service-wide answer is a count nobody owns and stays public, but
+    a named code turns these endpoints into the per-link analytics that
+    `can_view_link_details` exists to gate -- and they were handing them
+    to anyone who could guess seven characters, while `/links/<code>`
+    nulled its counters and `/links/<code>/extended` answered 401 to the
+    same caller.
+    """
+
+    @pytest.mark.parametrize("path, code", [
+        ("/api/v1/stats/visits?period=24h&code={code}", "secre1"),
+        ("/api/v1/stats/visits/daily?days=7&code={code}", "secre2"),
+    ])
+    def test_an_anonymous_caller_is_refused_a_named_code(
+        self, client, uow_factory, path, code
+    ):
+        """
+        Args:
+            path: The endpoint, with a place for the code.
+            code: A code of its own, since the table is shared.
+        """
+        link_with_visits(uow_factory, code, 3, owner_id="owner-of-secret")
+
+        response = client.get(path.format(code=code))
+
+        assert response.status_code == 401
+        assert response.get_json()["error"] == "UNAUTHENTICATED"
+
+    @pytest.mark.parametrize("path, code", [
+        ("/api/v1/stats/visits?period=24h&code={code}", "secre3"),
+        ("/api/v1/stats/visits/daily?days=7&code={code}", "secre4"),
+    ])
+    def test_a_signed_in_stranger_is_refused_a_named_code(
+        self, client, uow_factory, path, code
+    ):
+        """
+        Args:
+            path: The endpoint, with a place for the code.
+            code: A code of its own, since the table is shared.
+        """
+        link_with_visits(uow_factory, code, 3, owner_id="owner-of-secret")
+        token = register_and_login(
+            client, email=f"visits-stranger-{code}@example.com"
+        )
+
+        response = client.get(
+            path.format(code=code), headers=auth_headers(token)
+        )
+
+        assert response.status_code == 403
+        assert response.get_json()["error"] == "FORBIDDEN"
+
+    def test_the_owner_still_reads_their_own(
+        self, client, app, uow_factory
+    ):
+        """The point of the check is who asks, not that nobody may ask."""
+        token = register_and_login(client, email="visits-holder@example.com")
+        user_id = jwt.decode(token, options={"verify_signature": False})["sub"]
+        link_with_visits(uow_factory, "ownco1", 4, owner_id=user_id)
+
+        body = client.get(
+            "/api/v1/stats/visits?period=24h&code=ownco1",
+            headers=auth_headers(token),
+        ).get_json()
+
+        assert body["total"] == 4
+
+    def test_the_service_wide_answer_stays_public(self, client, uow_factory):
+        """Named no code, it is a count of everything and nobody's to
+        withhold -- which is what the endpoint was public for."""
+        link_with_visits(uow_factory, "public1", 2)
+
+        assert client.get(
+            "/api/v1/stats/visits?period=24h"
+        ).status_code == 200
 
 
 class TestTheDailySeries:
