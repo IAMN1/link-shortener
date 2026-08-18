@@ -77,6 +77,7 @@ class JournalApiController:
             create_request_context(),
             limit=query.limit,
             include_archives=query.archives,
+            following=query.follow,
         )
         return jsonify(
             JournalPageResponse.from_domain(journal, page).model_dump()

@@ -9,7 +9,7 @@ suite that fails when the documentation starts lying.
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests: 2984](https://img.shields.io/badge/tests-2984-0b5d3b)](docs/testing.md)
+[![tests: 3066](https://img.shields.io/badge/tests-3066-0b5d3b)](docs/testing.md)
 [![coverage: 95%](https://img.shields.io/badge/coverage-95%25-0b5d3b)](docs/testing.md)
 [![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
 [![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -201,7 +201,7 @@ Thirty-four operations. Full description: `/api/openapi.json`, rendered at
 ## Testing
 
 ```bash
-uv run pytest tests/                      # 2984 tests
+uv run pytest tests/                      # 3066 tests
 uv run python tests/live/smoke_test.py    # 137 checks over HTTP
 uv run python tests/live/browser_test.py  # 41 checks in a real browser
 ```
@@ -223,7 +223,7 @@ Full breakdown: [Testing](docs/testing.md).
 | [Operations](docs/operations.md) | Migrations, CLI, backups, upgrades, health |
 | [Testing](docs/testing.md) | The four levels, the live runs, and what CI enforces |
 | [Development](docs/development.md) | Patterns, the frontend, the load profile |
-| [Decisions](docs/decisions.md) | Thirty-eight write-ups of why something is the way it is |
+| [Decisions](docs/decisions.md) | Forty-one write-ups of why something is the way it is |
 | [Roadmap](docs/roadmap.md) | What was considered and never built, and what each idea would cost |
 
 ## Requirements

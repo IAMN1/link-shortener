@@ -136,6 +136,7 @@ def use_case(reader, uow_factory):
         ),
         uow_factory=uow_factory,
         logger=Mock(),
+        audit_logger=Mock(),
     )
 
 
@@ -303,6 +304,7 @@ class TestARefusalDoesNotReadTheFile:
             ),
             uow_factory=uow_factory,
             logger=logger,
+            audit_logger=Mock(),
         )
         context = signed_in_as(
             user_holding(SystemPermissions.LOGS_VIEW.value), uow_factory
@@ -413,3 +415,116 @@ class TestWhatTheCallerAskedForReachesTheReader:
         )
 
         assert use_case.execute(Journal.APPLICATION, context) is page
+
+
+class TestReadingAJournalLeavesARecord:
+    """The trace that reading the journals used to leave, which was none.
+
+    An account holding ``audit:view`` could read every destination address
+    and every account that followed one, and nothing anywhere said it had
+    happened. The gap was written down in ``docs/decisions.md`` as open;
+    this is it being closed, and the interesting half is what is *not*
+    recorded -- the page polls, so a record per read would put twelve lines
+    a minute into the journal it is displaying.
+    """
+
+    @pytest.fixture
+    def audit(self):
+        """The audit logger, watched for what a read writes to it."""
+        logger = Mock()
+        logger.bind.return_value = logger
+        return logger
+
+    @pytest.fixture
+    def use_case(self, reader, uow_factory, audit):
+        """The use case over a watched audit logger."""
+        return ReadJournalUseCase(
+            reader=reader,
+            authorization_service=RBACAuthorizationService(
+                uow_factory=None, logger=Mock()
+            ),
+            uow_factory=uow_factory,
+            logger=Mock(),
+            audit_logger=audit,
+        )
+
+    @pytest.fixture
+    def auditor(self, uow_factory):
+        """A caller entitled to all three journals."""
+        return signed_in_as(
+            user_holding(
+                SystemPermissions.AUDIT_VIEW.value,
+                SystemPermissions.LOGS_VIEW.value,
+            ),
+            uow_factory,
+        )
+
+    def test_going_to_look_is_recorded(self, use_case, audit, auditor):
+        use_case.execute(Journal.AUDIT, auditor)
+
+        _, kwargs = audit.log_audit_viewed.call_args
+        assert kwargs["journal"] == "audit"
+        assert kwargs["reason"] == "opened"
+
+    def test_each_journal_is_recorded_under_its_own_name(
+        self, use_case, audit, auditor
+    ):
+        """"Somebody read a journal" does not say which one, and the three
+        are not equally sensitive."""
+        for journal in (Journal.APPLICATION, Journal.ERROR, Journal.AUDIT):
+            use_case.execute(journal, auditor)
+
+        written = [
+            call.kwargs["journal"] for call in audit.log_audit_viewed.call_args_list
+        ]
+        assert written == ["application", "error", "audit"]
+
+    def test_following_the_tail_is_not_recorded_again(
+        self, use_case, audit, auditor
+    ):
+        """The page refreshing itself is the same reading, still going on.
+
+        Recorded per poll, an open page writes twelve lines a minute into
+        the journal it is showing -- each of which is then shown, pushing
+        out the lines the reader came for.
+        """
+        use_case.execute(Journal.AUDIT, auditor, following=True)
+
+        audit.log_audit_viewed.assert_not_called()
+
+    def test_reaching_into_the_archives_is_recorded_even_while_following(
+        self, use_case, audit, auditor
+    ):
+        """The page polls its tail; it does not poll the rotated files.
+
+        So a request that names the archives is somebody going further
+        back on purpose, whatever else it says about itself.
+        """
+        use_case.execute(Journal.AUDIT, auditor, include_archives=True,
+                         following=True)
+
+        assert audit.log_audit_viewed.call_args.kwargs["reason"] == "archives"
+
+    def test_a_refused_read_is_not_recorded_as_a_read(
+        self, use_case, audit, uow_factory
+    ):
+        """It did not happen. The refusal is written by the permission
+        check, in its own line, as a warning."""
+        context = signed_in_as(
+            user_holding(SystemPermissions.LOGS_VIEW.value), uow_factory
+        )
+
+        with pytest.raises(DomainError):
+            use_case.execute(Journal.AUDIT, context)
+
+        audit.log_audit_viewed.assert_not_called()
+
+    def test_the_record_carries_who_and_from_where(
+        self, use_case, audit, auditor
+    ):
+        """A reading nobody can be attached to answers nothing."""
+        use_case.execute(Journal.AUDIT, auditor)
+
+        _, bound = audit.bind.call_args
+        assert bound["user_id"] == auditor.current_user.id
+        assert bound["remote_addr"] == "127.0.0.1"

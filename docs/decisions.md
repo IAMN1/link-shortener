@@ -794,7 +794,96 @@ not yet carry: `LOGIN_SUCCEEDED`, `LOGIN_FAILED`, `USER_CREATED`,
 `ROLES_CHANGED`. They are one piece of work and it is the next one. There
 is also no search and no filter: the page answers "what just happened",
 and "what happened to this account in March" is a question for the branch
-that adds the events worth counting.
+that adds the events worth counting. *Closed by the entry below, except
+for the search.*
+
+### The audit journal records what the service does about accounts, and who read it
+
+**Decided** (2026-08-18): the audit journal carried three events — a link
+created, followed, deleted — and nothing about accounts at all. It now
+carries eleven more, through one method on `AuditLogger`
+(`log_security_event`) and a named wrapper per event above it.
+
+**Which events, by one rule.** An act that changes who may do what leaves a
+record. That admits both sign-in outcomes, the four things that happen to
+an account (`USER_CREATED`, `USER_DELETED`, `USER_ACTIVATED`,
+`USER_DEACTIVATED`), the roles on an account (`ROLES_CHANGED`), the three
+things that happen to a role itself (`ROLE_CREATED`, `ROLE_DELETED`,
+`ROLE_PERMISSIONS_CHANGED`) and the reading of a journal
+(`AUDIT_VIEWED`). It excludes listing accounts, reading one, and seeding
+the database: they change nothing, and a journal that records reads as
+loudly as writes buries the writes. The role events are the ones easiest
+to leave out and the worst to be without — changing what a role grants
+moves what every holder of it may do, at once, with no account touched, so
+an investigator asking why an account could suddenly do something finds
+nothing against that account.
+
+**Why not a method per event.** Five events were asked for and eleven were
+written, which is the argument by itself: on the port's original shape each
+would have cost an abstract method and three adapter implementations — 33
+methods to add eleven events. The abstract method is one, the adapters
+implement it once each, and the typed wrappers sit in the ABC where they
+cost nothing per adapter. What the wrappers buy over calling
+`log_security_event` directly is a signature: a field left out or misspelt
+is a type error rather than a record missing a column nobody notices until
+the search for it comes up empty. A test holds the two sides together — a
+member added to `AuditEvent` with no wrapper reddens the suite.
+
+**`event_type` cannot be overridden, unlike every other field.** On the
+three link events the call site wins over the event's own fields, and that
+is right for a context field: the caller knows its own context. It is not
+right for the event's identity. A login written as `URL_ACCESSED` is not a
+record with a wrong field in it — it is a login that a search for logins
+never returns, answering "none" rather than "cannot say". So the security
+events apply `event_type` last, after the bound fields and after the call's.
+
+**The address is masked, and the whole one stays where it already was.**
+`i***@example.com` in the audit journal; `application.log` keeps the full
+address, as it already did on registration, sign-in and failed sign-in.
+The two journals are read under different permissions, and masking here is
+what stops `audit:view` and `logs:view` being two routes to the same
+personal data — the audit journal is also the one kept longest, at
+`maxsize 1G` and `rotate 200`. What survives the masking is enough for the
+questions the journal is read with: whether failures are landing on one
+account or many, and whether the domain belongs here at all.
+
+**The account an event is about is `target_user_id`, never `user_id`.**
+`user_id` is bound from the request context and means whoever is asking.
+On `USER_CREATED` the two are never the same person, and written under one
+name the new account would overwrite the administrator — leaving a record
+of accounts created and no record of who created them. On the sign-in
+events they are usually the same and usually nobody, since the caller is
+anonymous until it succeeds; but an already signed-in client may post
+credentials for another account, and the collision is the same one.
+
+**The refusals are named in the journal and conflated in the response.** A
+wrong password and a deactivated account are one answer over the wire, so
+that a guesser learns nothing from the difference. They are two records
+here — `invalid_credentials` against `account_deactivated` — because an
+operator needs to tell "somebody is guessing passwords" from "a live
+credential is being used against an account we switched off", and the
+second is the one that may mean the intrusion already happened. The two
+readers are different people, and `audit:view` is what separates them.
+
+**Reading a journal is recorded, but polling it is not.** The viewer polls
+every five seconds. A record per read would put twelve lines a minute into
+the journal being displayed, each of which is then displayed, pushing out
+the lines the reader came for — the same reflection the read's own
+`log.debug` was already dropped to `debug` to avoid. What is recorded is
+the act of going to look: opening the page, switching journals, reaching
+into the archives. The refresh marks itself with `follow=true` and is not
+recorded; a request naming the archives is recorded whatever it says about
+itself, because the page polls its tail and never the rotated files.
+
+**What looking at it changed.** Two things the suite had no opinion about.
+Masking applied only to the call's fields left binding as a way around it:
+an address bound as `email` reached the record whole on the standard
+adapter, whose `_log` merges the bound fields *after* the event's — the
+same defect the link events had been fixed for, reintroduced on the new
+method. And the first live run of the sign-in events recorded four of the
+five outcomes: the fifth request came back `CSRF_TOKEN_INVALID`, because
+the run reused one client and a client that has signed in is no longer
+anonymous.
 
 ---
 
@@ -857,6 +946,24 @@ counter rather than raising. Raising would take down the request that
 happened to be in flight — a request that has nothing to do with logging.
 The counter is reported by `/api/v1/admin/health`, which is the only place
 an operator can see it.
+
+</details>
+
+<details>
+<summary><b>A reader who marks a first read as a refresh leaves no record</b> — accepted 2026-08-18</summary>
+
+`AUDIT_VIEWED` is written for every read except one the caller marks
+`follow=true`, which is how the polling viewer avoids writing twelve lines
+a minute into the journal it displays. A caller who sets the flag on a
+first read is therefore not recorded.
+
+Closing it means per-reader state — remembering who last read what, and
+when — which is a store to keep, expire and reason about across four
+`sync` workers, for a gap bounded on its own: `audit:view` is granted
+separately from `admin:all` and its granting is recorded as
+`ROLES_CHANGED`, so a reader can hide a reading but not the entitlement
+that allowed it. The alternative considered was suppressing repeats inside
+a time window, which needs the same store.
 
 </details>
 

@@ -306,13 +306,20 @@ function mountJournals(root) {
         }
     }
 
-    async function load() {
+    // `following` says this request continues a reading the audit journal
+    // has already recorded, and it is the only thing that decides whether
+    // this one is recorded too. Without it every poll would write a line
+    // into the journal being displayed -- twelve a minute, each of them
+    // then shown to the reader who came to look at something else.
+    async function load(following) {
         try {
             // Built rather than pasted together, for the reason
             // `chartQuery` is: `URLSearchParams` escapes the values, and a
             // line count arriving from storage is a value like any other.
             var query = new URLSearchParams({
-                limit: lines, archives: archives ? 'true' : 'false',
+                limit: lines,
+                archives: archives ? 'true' : 'false',
+                follow: following ? 'true' : 'false',
             });
             var resp = await apiFetch(
                 '/api/v1/journals/' + journal + '?' + query.toString()
@@ -334,7 +341,7 @@ function mountJournals(root) {
     }
 
     function repoll() {
-        journalStartPolling(every, load);
+        journalStartPolling(every, function () { load(true); });
     }
 
     // A different journal, or a different number of lines, is a different
@@ -344,7 +351,10 @@ function mountJournals(root) {
     // "this reader is watching the tail".
     function loadFresh() {
         if (scroller) scroller.scrollTop = scroller.scrollHeight;
-        load();
+        // Not a continuation: a different journal, or a different depth of
+        // the same one, is somebody going to look at something else, and
+        // the audit journal records it as such.
+        load(false);
     }
 
     journalButtons.forEach(function (button) {
@@ -434,6 +444,8 @@ function mountJournals(root) {
     // Every second, so "updated 40 s ago" is a reading rather than a
     // number frozen at whatever it was when the page last fetched.
     journalTrack(setInterval(paintFreshness, 1000));
-    load();
+    // The first read of the page, which is the one that gets recorded;
+    // everything `repoll` starts after it says it is following.
+    load(false);
     repoll();
 }

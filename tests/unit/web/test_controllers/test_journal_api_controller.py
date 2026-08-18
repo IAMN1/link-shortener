@@ -158,7 +158,7 @@ class TestTheQueryStringIsValidatedRatherThanRead:
         journal_api.get("/api/v1/journals/application")
 
         assert read_journal.execute.call_args.kwargs == {
-            "limit": 200, "include_archives": False
+            "limit": 200, "include_archives": False, "following": False
         }
 
     def test_a_limit_arrives_as_a_number(self, journal_api, read_journal):

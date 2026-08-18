@@ -23,6 +23,7 @@ from link_shortener.application.ports.auth.authorization_service import (
 from link_shortener.application.ports.journal_reader import (
     Journal, JournalPage, JournalReaderPort,
 )
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.admin.privilege_guard import load_actor
@@ -76,12 +77,15 @@ class ReadJournalUseCase(BaseUseCase):
         authorization_service: Service that answers permission questions.
         uow_factory: Callable that returns a new Unit of Work instance.
         logger: Application logger.
+        audit_logger: Audit logger, where a read that was not a
+            continuation of an earlier one is recorded.
     """
 
     reader: JournalReaderPort
     authorization_service: AuthorizationService
     uow_factory: UnitOfWorkFactory
     logger: Logger
+    audit_logger: AuditLogger
 
     def execute(
         self,
@@ -89,6 +93,7 @@ class ReadJournalUseCase(BaseUseCase):
         context: RequestContext,
         limit: int = DEFAULT_LINES,
         include_archives: bool = False,
+        following: bool = False,
     ) -> JournalPage:
         """
         Read the most recent lines of a journal.
@@ -103,6 +108,10 @@ class ReadJournalUseCase(BaseUseCase):
                 request whatever route it took to get there.
             include_archives: Whether to continue into the rotated files
                 once the live journal is exhausted.
+            following: Whether this read continues one already recorded --
+                the page polling the tail it is displaying. It decides
+                whether the read leaves a record, and only that; what is
+                read and who may read it are the same either way.
 
         Returns:
             The page, oldest line first.
@@ -120,6 +129,8 @@ class ReadJournalUseCase(BaseUseCase):
             journal, limit=limit, include_archives=include_archives
         )
 
+        self._record_the_read(journal, context, include_archives, following)
+
         # `debug`, not `info`: this runs on every poll of an open page, and
         # a page refreshing every five seconds would otherwise write twelve
         # lines a minute into the journal it is displaying -- each of which
@@ -131,6 +142,56 @@ class ReadJournalUseCase(BaseUseCase):
         )
 
         return page
+
+    def _record_the_read(
+        self,
+        journal: Journal,
+        context: RequestContext,
+        include_archives: bool,
+        following: bool,
+    ) -> None:
+        """
+        Leave a record of this read, unless it merely continues one.
+
+        Reading the journals used to leave no trace at all, which is the
+        one thing the journals are for: an account granted ``audit:view``
+        could read every destination address and every account that
+        followed one, and nothing anywhere would say it had happened.
+
+        Not every read, though, and the reason is the shape of this page
+        rather than squeamishness about volume. The viewer polls, so a
+        record per read would put twelve lines a minute into the journal
+        being displayed -- each of which is then displayed, pushing out the
+        lines the reader came for. What is recorded is the act of going to
+        look: opening the page, switching to another journal, reaching back
+        into the archives. What is not is the tail refreshing itself, which
+        the caller marks by asking to follow.
+
+        A caller marking a first read as a continuation therefore leaves no
+        record. That is the price of deciding from the request alone rather
+        than keeping per-reader state, and it is bounded: the permission
+        itself is granted separately and its granting is recorded, so a
+        reader can hide a reading but not the entitlement that allowed it.
+        Written down in ``docs/decisions.md`` rather than left here.
+
+        Args:
+            journal: The journal that was just read.
+            context: Request context carrying the caller's identity.
+            include_archives: Whether the read reached into the archives.
+            following: Whether the caller says this continues a read
+                already recorded.
+        """
+        # Reaching into the archives is a deliberate act whichever way the
+        # read is marked -- the page polls its tail, it does not poll the
+        # rotated files behind it.
+        if following and not include_archives:
+            return
+
+        audit = self._get_audit_logger(self.audit_logger, context)
+        audit.log_audit_viewed(
+            journal=journal.value,
+            reason="archives" if include_archives else "opened",
+        )
 
     def _require_may_read(
         self, journal: Journal, context: RequestContext, log: Logger

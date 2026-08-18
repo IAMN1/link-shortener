@@ -459,6 +459,7 @@ class Container:
                 authorization_service=self.auth_component.get_authorization_service(),
                 uow_factory=self._uow_factory,
                 logger=self.logger_component.get_logger(__name__),
+                audit_logger=self.audit_component.get_audit_logger(),
             )
         return self._journal_use_cases
 

@@ -44,13 +44,23 @@ class JournalQuery(BaseModel):
             journal is exhausted. Off by default: the newest archive is
             uncompressed but the rest are gzip, which cannot be read from
             the end, so a page that includes them costs whole files.
+        follow: Whether this read continues one the caller already made --
+            the viewer refreshing the tail it is displaying. It changes
+            nothing about what comes back; it decides whether the read is
+            recorded in the audit journal, so that a page polling every
+            five seconds does not write twelve lines a minute into the
+            journal it is showing. Off by default, which is the safe way
+            round: a caller that says nothing is recorded.
     """
 
     limit: int = Field(default=DEFAULT_LINES, ge=1, le=HARD_LIMIT)
     archives: bool = False
+    follow: bool = False
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"limit": 200, "archives": False}}
+        json_schema_extra={
+            "example": {"limit": 200, "archives": False, "follow": False}
+        }
     )
 
 
