@@ -430,7 +430,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 46
+    expected = 50
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -1573,6 +1573,86 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         assert "Искать" in said, said
         assert "Очистить" in said, said
         assert "Учётная запись" in said, said
+
+    @check("the security counters show figures, not empty tiles")
+    def _():
+        # Drawn by a script from an endpoint, like everything else on this
+        # page: a test client can prove the endpoint answers and nothing
+        # about whether a number reaches the screen.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector(".counts-tile", timeout=5000)
+
+        tiles = page.locator(".counts-tile").count()
+        assert tiles == 4, tiles
+        # This run has signed in several times by now, so the sign-in tile
+        # cannot be zero -- which is what an endpoint answering and a page
+        # dropping the answer would look like.
+        signed_in = page.inner_text(".counts-tile:first-child .counts-tile-value")
+        assert int(signed_in.strip()) > 0, signed_in
+
+    @check("the security chart draws columns and labels its axis")
+    def _():
+        # The axis is the half worth checking. `chartAxis` takes the
+        # buckets and reads a moment off each one; handed a count instead
+        # it writes no labels and the chart still looks drawn, which is
+        # exactly what happened when this was first written.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-counts-chart] svg", timeout=5000)
+        page.wait_for_timeout(500)
+
+        columns = page.locator("[data-counts-chart] svg rect").count()
+        assert columns > 0, columns
+        # More than the numbers up the side: those are the grid ticks, and
+        # a chart with only them has no axis along the bottom.
+        labels = page.locator("[data-counts-chart] .chart-axis").count()
+        numeric = page.locator("[data-counts-chart] .chart-axis--num").count()
+        assert labels > numeric, (labels, numeric)
+
+    @check("choosing another span redraws the counters for it")
+    def _():
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-counts-note]", timeout=5000)
+        page.wait_for_timeout(500)
+        before = page.inner_text("[data-counts-note]")
+
+        page.click('[data-counts-period="90d"]')
+        page.wait_for_function(
+            "document.querySelector('[data-counts-note]').textContent !== "
+            + repr(before),
+            timeout=5000,
+        )
+
+        # And the button says which one is chosen, through `aria-pressed`
+        # -- the attribute this page's other button rows use, and the one
+        # a screen reader reads. Written with a class of its own it looked
+        # right to the eye and said nothing to anything else.
+        assert page.get_attribute(
+            '[data-counts-period="90d"]', "aria-pressed"
+        ) == "true"
+
+    @check("the counters are written in the language of the page")
+    def _():
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector(".counts-tile", timeout=5000)
+        in_russian(page)
+        page.wait_for_selector(".counts-tile", timeout=5000)
+        page.wait_for_timeout(500)
+
+        said = page.inner_text("[data-counts-tiles]")
+        assert "Входов" in said, said
+        assert "Отказано" in said, said
+        # The axis too: a date under a Russian heading must not read
+        # 8/17/2026.
+        axis = page.inner_text("[data-counts-chart]")
+        assert "/" not in axis, axis
 
     @check("a reader watching the tail is still watching it after a poll")
     def _():

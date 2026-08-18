@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-18 15:22+0300\n"
+"POT-Creation-Date: 2026-08-18 17:19+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -71,6 +71,7 @@ msgstr ""
 
 #: src/link_shortener/application/use_cases/journals/read_journal.py:288
 #: src/link_shortener/application/use_cases/links/delete_link.py:192
+#: src/link_shortener/application/use_cases/security/get_security_counts.py:175
 #: src/link_shortener/web/security/authorization.py:71
 #: src/link_shortener/web/security/decorators.py:51
 #: src/link_shortener/web/security/decorators.py:104
@@ -79,6 +80,7 @@ msgid "Authentication required"
 msgstr ""
 
 #: src/link_shortener/application/use_cases/journals/read_journal.py:295
+#: src/link_shortener/application/use_cases/security/get_security_counts.py:180
 #: src/link_shortener/web/security/decorators.py:53
 #: src/link_shortener/web/security/decorators.py:106
 msgid "Not authorized"
@@ -98,6 +100,7 @@ msgstr ""
 msgid "You are not allowed to delete this link"
 msgstr ""
 
+#: src/link_shortener/application/use_cases/security/get_security_counts.py:130
 #: src/link_shortener/application/use_cases/stats/get_visit_stats.py:87
 #, python-format
 msgid "Unknown period '%(period)s'. Choose one of: %(choices)s"
@@ -326,7 +329,7 @@ msgstr ""
 msgid "Not found"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:241
+#: src/link_shortener/web/i18n.py:241 src/link_shortener/web/i18n.py:355
 msgid "Refused"
 msgstr ""
 
@@ -577,15 +580,40 @@ msgstr ""
 msgid "Archives reach back to %(name)s."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:351
+#: src/link_shortener/web/i18n.py:354
+msgid "Signed in"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:356
+msgid "Roles changed"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:357
+msgid "Other events"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:362
+#, python-format
+msgid "Counted: %(since)s — %(until)s"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:363
+msgid "Security events over time"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:364
+msgid "The counters could not be read"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:365
 msgid "answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:352
+#: src/link_shortener/web/i18n.py:366
 msgid "not answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:353
+#: src/link_shortener/web/i18n.py:367
 msgid "unknown"
 msgstr ""
 
@@ -643,7 +671,7 @@ msgstr ""
 msgid "The role %(name)s is a system role and cannot be modified"
 msgstr ""
 
-#: src/link_shortener/web/controllers/journal_api_controller.py:115
+#: src/link_shortener/web/controllers/journal_api_controller.py:157
 #, python-format
 msgid "No journal is called %(name)s"
 msgstr ""
@@ -775,15 +803,18 @@ msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:47
 #: src/link_shortener/web/templates/dashboard/create_link.html:18
+#: src/link_shortener/web/templates/dashboard/journals.html:180
 msgid "7 days"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:48
 #: src/link_shortener/web/templates/dashboard/create_link.html:19
+#: src/link_shortener/web/templates/dashboard/journals.html:181
 msgid "30 days"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:49
+#: src/link_shortener/web/templates/dashboard/journals.html:182
 msgid "90 days"
 msgstr ""
 
@@ -1252,18 +1283,26 @@ msgstr ""
 msgid "Details"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:167
+#: src/link_shortener/web/templates/dashboard/journals.html:177
+msgid "Security events"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/journals.html:179
+msgid "24 h"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/journals.html:200
 #, python-format
 msgid "Read from %(name)s, from the end of the file, by polling."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:174
+#: src/link_shortener/web/templates/dashboard/journals.html:207
 msgid ""
 "The audit journal names destination addresses and the accounts that "
 "followed them."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:175
+#: src/link_shortener/web/templates/dashboard/journals.html:208
 msgid ""
 "The application journal names the address of everyone who registered or "
 "signed in."

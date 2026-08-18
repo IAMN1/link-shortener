@@ -590,3 +590,42 @@
     gap: var(--d-gap-sm, 8px);
     margin-top: var(--d-gap-sm, 8px);
 }
+
+/* The counted half of the journal page: four figures above the chart they
+   are drawn from. A grid rather than a row, for the reason the search
+   fields are one -- four tiles in a line either overflow a narrow card or
+   squeeze the numbers to a width that cannot hold them. */
+.counts-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--d-gap-sm, 8px);
+    margin-bottom: var(--d-gap);
+}
+
+.counts-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--c-line);
+    border-radius: 8px;
+}
+
+/* The dot carries the colour the series has in the chart, so the figure
+   above and the column below are readable as the same thing. */
+.counts-tile-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.counts-tile-value {
+    font-size: calc(var(--d-fs) + 6px);
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.counts-tile-label {
+    color: var(--c-text-3);
+    font-size: calc(var(--d-fs) - 2px);
+}

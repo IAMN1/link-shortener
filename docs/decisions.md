@@ -952,6 +952,78 @@ hands `load` the event as its first argument — the argument that says "this
 is a poll" — so the one press on the page that is unmistakably somebody
 going to look was marking itself as a poll and leaving no trace.
 
+### The security events are counted in the database, and charted beside the journal
+
+**Decided** (2026-08-18): every security event is written to
+`security_events` as well as to the audit journal; finished days are folded
+into `security_event_days`; `GET /api/v1/journals/counters` serves the
+figures, and the journal page draws them.
+
+**Why a second place at all.** The journal answers "what happened" and
+cannot answer "how many". It is a file read from its end, and a filtered
+read of fifty thousand lines costs 117 to 136 ms and reaches about an hour
+and a half of a busy service — so "failed sign-ins over ninety days" is not
+a question that file can answer at any price worth paying.
+
+**What the rows hold, and what they deliberately do not.** An event type
+and a moment. Widening them to carry the account, the address and the
+reason would make the same event exist twice in two shapes that can
+disagree, and the one that gets read is the one nobody checks. The journal
+stays the record; this is the count.
+
+**Counted by a wrapper, not by a call at each site.** Fourteen events are
+written from seven use cases, and a counter invoked beside each
+`audit.log_*` is a counter the fifteenth event forgets. `CountingAuditLogger`
+implements `AuditLogger`, counts, and delegates — wrapped once in the
+container, so no use case knows its events are counted.
+
+**Redirects are not counted here.** They already write to `link_visits`,
+through a background task so the redirect itself is not made slower.
+Counting them again would put a synchronous insert on the hottest path in
+the service to reach a number another table holds, and the guard is on the
+event rather than on the method called: `log_security_event` takes any
+member of the vocabulary, and one redirect logged that way would
+double-count against a figure nobody would think to compare.
+
+**The count is taken before the journal line, in its own transaction.** Its
+own, because this logger is handed to use cases that are mid-transaction,
+and joining theirs would let a failed count roll back the work it was
+recording — an account not created because the service could not count it.
+Before, because the journal is what an incident is reconstructed from: a
+database failure loses the count and keeps the record.
+
+**A year of retention, against ninety days for visits.** A visit is
+traffic: last quarter's redirects answer a question this quarter's answer
+better. A sign-in is evidence, and "when did this account last get in, and
+from where" is usually asked long after the fact. They also fill at
+different rates — ten redirects a second is a million rows a day, while
+sign-ins and account changes are counted in thousands. The roll-up is a
+command of its own for the same reason: a cron line saying "roll up visits"
+should not delete the security history under a name that does not mention
+it.
+
+**The figures answer to `audit:view`.** A count is not a weaker version of
+a record — it is the same information aggregated, so "eleven failed
+sign-ins yesterday" summarises lines a caller without that permission may
+not read. `admin:all` still does not carry it, so an administrator is
+refused these numbers, and the panel is not rendered for a reader holding
+`logs:view` alone: a panel whose every request answers 403 reads as the
+service being broken rather than as the reader being unentitled.
+
+**The spans are the visit charts' spans.** Two charts on one screen must be
+about the same week. A test holds the two lists against each other rather
+than trusting that they were copied correctly.
+
+**What looking at it changed.** Two faults the suite had no opinion about,
+both found by opening the page. The axis along the bottom was empty:
+`chartAxis` takes the buckets and reads a moment off each one, and handed a
+count instead its loop runs zero times — a chart that looks drawn and says
+nothing about when. And the span buttons all looked alike, because the
+chosen one was marked with a class of this panel's own invention while
+every other button row on the page uses `aria-pressed` — which is also what
+a screen reader reads, so the panel was silent about its own state in two
+ways at once.
+
 ---
 
 ## Known limits
