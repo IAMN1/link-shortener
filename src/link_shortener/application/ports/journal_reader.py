@@ -24,6 +24,133 @@ class Journal(Enum):
 
 
 @dataclass(frozen=True)
+class JournalFilter:
+    """What a caller is looking for in a journal, if anything.
+
+    Every field is optional and an empty filter matches everything, which
+    is what makes it safe to pass one always: the reader asks whether it
+    is empty rather than whether it exists.
+
+    Matching is exact on the identifiers and by prefix on the times. Exact,
+    because these are identifiers and a substring of one is not a weaker
+    version of the question -- ``remote_addr`` containing ``10.0.0.1``
+    would also answer for ``110.0.0.199``, which is a different machine.
+    Prefix on the times, because the stamps are ISO 8601 in UTC and
+    therefore sort as text: ``2026-08-18`` reads as the whole of that day
+    at either end of the range, ``2026-08-18T14`` as that hour, with no
+    parsing and no clock arithmetic.
+
+    A line that did not parse matches nothing. It has no fields to match
+    on, so a filter cannot say anything about it -- the alternative,
+    letting unparsed lines through every filter, would answer a search for
+    one account with every torn line in the file.
+
+    Attributes:
+        event_type: The event's own name, from ``AuditEvent``'s vocabulary.
+        account: An account id, matched against ``user_id`` *and*
+            ``target_user_id``. One field rather than two because the
+            question an investigation brings is "everything about this
+            account", and the events split across those two names by
+            whether the account acted or was acted upon -- searching one
+            name is a way to see half of what happened and not notice.
+        remote_addr: The address a request came from.
+        short_code: The link an event was about.
+        since: Earliest stamp to include, as a prefix of one.
+        until: Latest stamp to include, as a prefix of one.
+    """
+
+    event_type: Optional[str] = None
+    account: Optional[str] = None
+    remote_addr: Optional[str] = None
+    short_code: Optional[str] = None
+    since: Optional[str] = None
+    until: Optional[str] = None
+
+    @property
+    def is_empty(self) -> bool:
+        """Whether this filter asks for anything at all.
+
+        Returns:
+            ``True`` when every field is unset, so that a reader can take
+            the cheap path and read exactly the page it was asked for.
+        """
+        return not any(
+            (
+                self.event_type,
+                self.account,
+                self.remote_addr,
+                self.short_code,
+                self.since,
+                self.until,
+            )
+        )
+
+    def matches(self, fields: dict) -> bool:
+        """Whether one record answers this filter.
+
+        Args:
+            fields: What parsed out of the line, empty for a line that did
+                not parse as a JSON object.
+
+        Returns:
+            ``True`` if every field that was asked for matches.
+        """
+        if self.is_empty:
+            return True
+
+        if not fields:
+            return False
+
+        if self.event_type and fields.get("event_type") != self.event_type:
+            return False
+
+        if self.account and self.account not in (
+            fields.get("user_id"),
+            fields.get("target_user_id"),
+        ):
+            return False
+
+        if self.remote_addr and fields.get("remote_addr") != self.remote_addr:
+            return False
+
+        if self.short_code and fields.get("short_code") != self.short_code:
+            return False
+
+        return self._within_the_range(fields.get("timestamp"))
+
+    def _within_the_range(self, stamp) -> bool:
+        """Whether a stamp falls inside the range asked for.
+
+        Compared as text against a prefix of the same shape, which is what
+        ISO 8601 in UTC is for. Truncating the stamp to the length of the
+        bound is what makes both ends inclusive: with ``until`` given as a
+        date, every moment of that date compares equal to it rather than
+        after it, so a day named as the end of a range is part of it.
+
+        Args:
+            stamp: The record's ``timestamp``, or ``None`` if it has none.
+
+        Returns:
+            ``True`` if the stamp is within both bounds that were given.
+        """
+        if not (self.since or self.until):
+            return True
+
+        if not isinstance(stamp, str):
+            # A record with no usable stamp cannot be placed in time, and
+            # a search bounded by time is asking exactly where it falls.
+            return False
+
+        if self.since and stamp[:len(self.since)] < self.since:
+            return False
+
+        if self.until and stamp[:len(self.until)] > self.until:
+            return False
+
+        return True
+
+
+@dataclass(frozen=True)
 class JournalLine:
     """One line of a journal, parsed as far as it can be.
 
@@ -104,6 +231,7 @@ class JournalReaderPort(ABC):
         journal: Journal,
         limit: int,
         include_archives: bool = False,
+        where: Optional[JournalFilter] = None,
     ) -> JournalPage:
         """Read the most recent lines of a journal.
 
@@ -115,6 +243,12 @@ class JournalReaderPort(ABC):
                 asking the service to stop answering.
             include_archives: Whether to continue into the rotated files
                 beside the live journal once it is exhausted.
+            where: What to look for, or ``None`` for the plain tail. A
+                filter changes what the number of lines means: without one
+                the reader stops as soon as it has that many, with one it
+                keeps looking past them, so an implementation owes a
+                ceiling of its own on how far it will go. What it looked
+                at is reported as ``total_scanned``.
 
         Returns:
             The page, oldest line first.

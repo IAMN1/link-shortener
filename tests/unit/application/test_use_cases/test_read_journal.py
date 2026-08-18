@@ -20,7 +20,7 @@ import pytest
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.current_user_info import CurrentUserInfo
 from link_shortener.application.ports.journal_reader import (
-    Journal, JournalLine, JournalPage,
+    Journal, JournalFilter, JournalLine, JournalPage,
 )
 from link_shortener.application.use_cases.journals.read_journal import (
     DEFAULT_LINES, PERMISSION_FOR, ReadJournalUseCase,
@@ -381,7 +381,10 @@ class TestWhatTheCallerAskedForReachesTheReader:
         use_case.execute(Journal.APPLICATION, context)
 
         reader.tail.assert_called_once_with(
-            Journal.APPLICATION, limit=DEFAULT_LINES, include_archives=False
+            Journal.APPLICATION,
+            limit=DEFAULT_LINES,
+            include_archives=False,
+            where=None,
         )
 
     def test_a_limit_and_the_archives_are_passed_through(
@@ -402,7 +405,7 @@ class TestWhatTheCallerAskedForReachesTheReader:
         )
 
         reader.tail.assert_called_once_with(
-            Journal.ERROR, limit=10_000, include_archives=True
+            Journal.ERROR, limit=10_000, include_archives=True, where=None
         )
 
     def test_the_page_is_handed_back_as_the_reader_gave_it(
@@ -528,3 +531,98 @@ class TestReadingAJournalLeavesARecord:
         _, bound = audit.bind.call_args
         assert bound["user_id"] == auditor.current_user.id
         assert bound["remote_addr"] == "127.0.0.1"
+
+
+class TestASearchIsRecordedWithWhatWasSearchedFor:
+    """A reading and a search are different acts, and the terms say which.
+
+    "Read the audit journal" and "read the audit journal for one account's
+    failed logins" are not the same thing to find afterwards, so the terms
+    go into the record. They are also what makes a search worth recording
+    while a poll is not: the tail refreshing itself is the same reading
+    still going on, a new set of terms is a new question.
+    """
+
+    @pytest.fixture
+    def audit(self):
+        """The audit logger, watched for what a search writes to it."""
+        logger = Mock()
+        logger.bind.return_value = logger
+        return logger
+
+    @pytest.fixture
+    def use_case(self, reader, uow_factory, audit):
+        return ReadJournalUseCase(
+            reader=reader,
+            authorization_service=RBACAuthorizationService(
+                uow_factory=None, logger=Mock()
+            ),
+            uow_factory=uow_factory,
+            logger=Mock(),
+            audit_logger=audit,
+        )
+
+    @pytest.fixture
+    def auditor(self, uow_factory):
+        return signed_in_as(
+            user_holding(SystemPermissions.AUDIT_VIEW.value), uow_factory
+        )
+
+    def test_the_terms_reach_the_record(self, use_case, audit, auditor):
+        use_case.execute(
+            Journal.AUDIT,
+            auditor,
+            where=JournalFilter(account="u-1", event_type="LOGIN_FAILED"),
+        )
+
+        _, kwargs = audit.log_audit_viewed.call_args
+        assert kwargs["filters"] == {
+            "account": "u-1", "event_type": "LOGIN_FAILED"
+        }
+        assert kwargs["reason"] == "searched"
+
+    def test_terms_that_were_not_given_are_absent_rather_than_null(
+        self, use_case, audit, auditor
+    ):
+        """A record of a search should say what was asked, not list what
+        was not."""
+        use_case.execute(
+            Journal.AUDIT, auditor, where=JournalFilter(short_code="-gxXupR")
+        )
+
+        assert audit.log_audit_viewed.call_args[1]["filters"] == {
+            "short_code": "-gxXupR"
+        }
+
+    def test_a_search_is_recorded_even_when_it_says_it_is_following(
+        self, use_case, audit, auditor
+    ):
+        """The exemption is for the tail refreshing itself, and a set of
+        terms is not that."""
+        use_case.execute(
+            Journal.AUDIT,
+            auditor,
+            following=True,
+            where=JournalFilter(account="u-1"),
+        )
+
+        audit.log_audit_viewed.assert_called_once()
+        assert audit.log_audit_viewed.call_args[1]["reason"] == "searched"
+
+    def test_an_empty_filter_is_not_a_search(self, use_case, audit, auditor):
+        """The viewer passes one always, so an empty filter must leave the
+        polling exemption exactly as it was."""
+        use_case.execute(
+            Journal.AUDIT, auditor, following=True, where=JournalFilter()
+        )
+
+        audit.log_audit_viewed.assert_not_called()
+
+    def test_the_terms_reach_the_reader(self, use_case, reader, auditor):
+        """Recorded and applied are two different things, and only one of
+        them answers the reader's question."""
+        where = JournalFilter(remote_addr="10.0.0.1")
+
+        use_case.execute(Journal.AUDIT, auditor, where=where)
+
+        assert reader.tail.call_args.kwargs["where"] is where

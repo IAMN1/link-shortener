@@ -15,13 +15,14 @@ Cloud draws the line in the same place, between ``logging.viewer`` and
 """
 
 from dataclasses import dataclass
+from typing import Optional
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.auth.authorization_service import (
     AuthorizationService,
 )
 from link_shortener.application.ports.journal_reader import (
-    Journal, JournalPage, JournalReaderPort,
+    Journal, JournalFilter, JournalPage, JournalReaderPort,
 )
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
@@ -94,6 +95,7 @@ class ReadJournalUseCase(BaseUseCase):
         limit: int = DEFAULT_LINES,
         include_archives: bool = False,
         following: bool = False,
+        where: Optional[JournalFilter] = None,
     ) -> JournalPage:
         """
         Read the most recent lines of a journal.
@@ -112,6 +114,11 @@ class ReadJournalUseCase(BaseUseCase):
                 the page polling the tail it is displaying. It decides
                 whether the read leaves a record, and only that; what is
                 read and who may read it are the same either way.
+            where: What the caller is looking for, or ``None`` for the
+                plain tail. A search is recorded even when it says it is
+                following: the tail refreshing itself is the same reading
+                going on, while a new set of terms is somebody asking a
+                new question.
 
         Returns:
             The page, oldest line first.
@@ -126,10 +133,15 @@ class ReadJournalUseCase(BaseUseCase):
         self._require_may_read(journal, context, log)
 
         page = self.reader.tail(
-            journal, limit=limit, include_archives=include_archives
+            journal,
+            limit=limit,
+            include_archives=include_archives,
+            where=where,
         )
 
-        self._record_the_read(journal, context, include_archives, following)
+        self._record_the_read(
+            journal, context, include_archives, following, where
+        )
 
         # `debug`, not `info`: this runs on every poll of an open page, and
         # a page refreshing every five seconds would otherwise write twelve
@@ -149,6 +161,7 @@ class ReadJournalUseCase(BaseUseCase):
         context: RequestContext,
         include_archives: bool,
         following: bool,
+        where: Optional[JournalFilter] = None,
     ) -> None:
         """
         Leave a record of this read, unless it merely continues one.
@@ -180,18 +193,70 @@ class ReadJournalUseCase(BaseUseCase):
             include_archives: Whether the read reached into the archives.
             following: Whether the caller says this continues a read
                 already recorded.
+            where: What the caller searched for, if anything.
         """
+        searching = bool(where and not where.is_empty)
+
         # Reaching into the archives is a deliberate act whichever way the
         # read is marked -- the page polls its tail, it does not poll the
-        # rotated files behind it.
-        if following and not include_archives:
+        # rotated files behind it -- and so is naming what to look for.
+        if following and not (include_archives or searching):
             return
 
         audit = self._get_audit_logger(self.audit_logger, context)
         audit.log_audit_viewed(
             journal=journal.value,
-            reason="archives" if include_archives else "opened",
+            reason=self._why_this_read_is_recorded(searching, include_archives),
+            filters=self._terms_of(where),
         )
+
+    @staticmethod
+    def _why_this_read_is_recorded(searching: bool, archives: bool) -> str:
+        """Name what made this read worth a record.
+
+        Args:
+            searching: Whether terms were given.
+            archives: Whether the read reached into the archives.
+
+        Returns:
+            The reason, which a later search over the audit journal itself
+            can be filtered by.
+        """
+        if searching:
+            return "searched"
+        return "archives" if archives else "opened"
+
+    @staticmethod
+    def _terms_of(where: Optional[JournalFilter]) -> dict:
+        """What was searched for, as it goes into the record.
+
+        The terms are written down because what somebody went looking for
+        is the part of a reading worth keeping: "read the audit journal"
+        and "read the audit journal for one account's failed logins" are
+        different acts. Empty fields are dropped rather than written as
+        nulls -- a record of a search should say what was asked, not list
+        what was not.
+
+        Args:
+            where: The filter, or ``None``.
+
+        Returns:
+            The terms that were set, as a mapping.
+        """
+        if where is None:
+            return {}
+        return {
+            name: value
+            for name, value in (
+                ("event_type", where.event_type),
+                ("account", where.account),
+                ("remote_addr", where.remote_addr),
+                ("short_code", where.short_code),
+                ("since", where.since),
+                ("until", where.until),
+            )
+            if value
+        }
 
     def _require_may_read(
         self, journal: Journal, context: RequestContext, log: Logger

@@ -23,9 +23,9 @@ import json
 
 import pytest
 
-from link_shortener.application.ports.journal_reader import Journal
+from link_shortener.application.ports.journal_reader import Journal, JournalFilter
 from link_shortener.infrastructure.logging.journal_reader import (
-    BLOCK, HARD_LIMIT, FileJournalReader, _lines_backwards,
+    BLOCK, HARD_LIMIT, SCAN_LIMIT, FileJournalReader, _lines_backwards,
 )
 
 
@@ -430,3 +430,144 @@ class TestAWideReadCostsWhatANarrowOneDoes:
         # a test pinning that would be pinning ``BLOCK``.
         assert _lines_backwards(path, 100)[1] is False
         assert _lines_backwards(path, 5_001)[1] is True
+
+
+class TestSearchingRatherThanTailing:
+    """A filter changes what the page size means.
+
+    Without one, the reader stops as soon as it holds the lines it was
+    asked for, and the size of the file stops mattering. With one it has to
+    keep looking past them -- so the second number in the answer,
+    ``total_scanned``, stops being decoration and becomes the difference
+    between "there is nothing" and "there is nothing in what was looked
+    at".
+    """
+
+    def test_only_the_matching_lines_come_back(self, journals):
+        reader, tmp_path, write = journals
+        write("audit.log", [
+            json.dumps({"event_type": "URL_ACCESSED", "index": 0}),
+            json.dumps({"event_type": "LOGIN_FAILED", "index": 1}),
+            json.dumps({"event_type": "URL_ACCESSED", "index": 2}),
+            json.dumps({"event_type": "USER_CREATED", "index": 3}),
+        ])
+
+        page = reader.tail(
+            Journal.AUDIT, limit=10, where=JournalFilter(event_type="LOGIN_FAILED")
+        )
+
+        assert [line.fields["index"] for line in page.lines] == [1]
+
+    def test_the_page_still_holds_the_newest_of_them(self, journals):
+        """The last N *matching* lines, in the order they were written."""
+        reader, tmp_path, write = journals
+        write("audit.log", [
+            json.dumps({"event_type": "LOGIN_FAILED", "index": i})
+            if i % 2 else json.dumps({"event_type": "URL_ACCESSED", "index": i})
+            for i in range(100)
+        ])
+
+        page = reader.tail(
+            Journal.AUDIT, limit=3, where=JournalFilter(event_type="LOGIN_FAILED")
+        )
+
+        assert [line.fields["index"] for line in page.lines] == [95, 97, 99]
+
+    def test_what_was_looked_at_is_reported_apart_from_what_was_found(
+        self, journals
+    ):
+        """Without this the page cannot say "one match in ten thousand
+        lines" as against "one match, and one line"."""
+        reader, tmp_path, write = journals
+        write("audit.log", [
+            json.dumps({"event_type": "LOGIN_FAILED" if i == 0 else "URL_ACCESSED"})
+            for i in range(500)
+        ])
+
+        page = reader.tail(
+            Journal.AUDIT, limit=10, where=JournalFilter(event_type="LOGIN_FAILED")
+        )
+
+        assert len(page.lines) == 1
+        assert page.total_scanned == 500
+
+    def test_an_empty_filter_reads_the_plain_tail(self, journals):
+        """It must not cost the window: a filter with nothing in it is the
+        page every poll of the viewer asks for."""
+        reader, tmp_path, write = journals
+        write("audit.log", [record(i) for i in range(1_000)])
+
+        page = reader.tail(Journal.AUDIT, limit=5, where=JournalFilter())
+
+        assert [line.fields["index"] for line in page.lines] == [995, 996, 997, 998, 999]
+        assert page.total_scanned == 5
+
+    def test_the_window_bounds_how_far_a_search_looks(self, journals):
+        """A search for something that is not there must not walk the file.
+
+        The ceiling is `SCAN_LIMIT`; this checks the shape of the stop
+        rather than the number, by asking for something absent from a file
+        longer than the window it is given.
+        """
+        reader, tmp_path, write = journals
+        write("audit.log", [json.dumps({"event_type": "URL_ACCESSED"})
+                            for _ in range(SCAN_LIMIT + 500)])
+
+        page = reader.tail(
+            Journal.AUDIT, limit=10, where=JournalFilter(event_type="NOTHING_LIKE_IT")
+        )
+
+        assert page.lines == ()
+        assert page.total_scanned == SCAN_LIMIT
+        # The window ran out, not the journal -- and saying otherwise would
+        # tell a reader the account they are looking for was never here.
+        assert page.reached_start is False
+
+    def test_a_short_journal_searched_to_its_start_says_so(self, journals):
+        """The other half of the same distinction."""
+        reader, tmp_path, write = journals
+        write("audit.log", [json.dumps({"event_type": "URL_ACCESSED"})
+                            for _ in range(50)])
+
+        page = reader.tail(
+            Journal.AUDIT, limit=10, where=JournalFilter(event_type="NOTHING_LIKE_IT")
+        )
+
+        assert page.lines == ()
+        assert page.total_scanned == 50
+        assert page.reached_start is True
+
+    def test_a_search_continues_into_the_archives_when_asked(self, journals):
+        reader, tmp_path, write = journals
+        write("audit.log", [json.dumps({"event_type": "URL_ACCESSED"})
+                            for _ in range(10)])
+        write("audit.log.1", [json.dumps({"event_type": "LOGIN_FAILED", "index": 1})])
+
+        without = reader.tail(
+            Journal.AUDIT, limit=10, where=JournalFilter(event_type="LOGIN_FAILED")
+        )
+        with_them = reader.tail(
+            Journal.AUDIT, limit=10, include_archives=True,
+            where=JournalFilter(event_type="LOGIN_FAILED"),
+        )
+
+        assert without.lines == ()
+        assert [line.fields["index"] for line in with_them.lines] == [1]
+
+    def test_a_line_that_did_not_parse_is_left_out_of_a_search(self, journals):
+        """Kept in a plain tail, dropped by a filter: it has no fields to
+        match on, and letting it through would answer a search for one
+        account with every torn line in the file."""
+        reader, tmp_path, write = journals
+        write("audit.log", [
+            "{not json at all",
+            json.dumps({"event_type": "LOGIN_FAILED", "index": 7}),
+        ])
+
+        plain = reader.tail(Journal.AUDIT, limit=10)
+        searched = reader.tail(
+            Journal.AUDIT, limit=10, where=JournalFilter(event_type="LOGIN_FAILED")
+        )
+
+        assert len(plain.lines) == 2
+        assert [line.fields["index"] for line in searched.lines] == [7]
