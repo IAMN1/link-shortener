@@ -175,6 +175,11 @@ function mountJournals(root) {
     var everyButtons = Array.prototype.slice.call(root.querySelectorAll('[data-journal-every]'));
     var archivesButton = root.querySelector('[data-journal-archives]');
     var refreshButton = root.querySelector('[data-journal-refresh]');
+    var searchForm = root.querySelector('[data-journal-search]');
+    var clearButton = root.querySelector('[data-journal-clear]');
+    var termInputs = Array.prototype.slice.call(
+        root.querySelectorAll('[data-journal-term]')
+    );
 
     // Which journals this caller may read is decided by the server: the
     // buttons for the others are not rendered at all. So the offered set
@@ -201,6 +206,24 @@ function mountJournals(root) {
     if (isNaN(every) || JOURNAL_INTERVALS.indexOf(every) === -1) every = 10;
 
     var archives = journalRemember('archives') === 'yes';
+
+    // The terms are not remembered between visits, unlike the journal and
+    // the interval. A search is a question somebody is asking now, and a
+    // page that reopened still filtered would answer it with a journal
+    // that looks empty -- with the reason two scrolls up, in a field they
+    // filled in yesterday.
+    function terms() {
+        var asked = {};
+        termInputs.forEach(function (input) {
+            var value = (input.value || '').trim();
+            if (value) asked[input.getAttribute('data-journal-term')] = value;
+        });
+        return asked;
+    }
+
+    function searching() {
+        return Object.keys(terms()).length > 0;
+    }
     var loadedAt = null;
 
     function pressed(buttons, matches) {
@@ -265,7 +288,25 @@ function mountJournals(root) {
             count: formatNumber(page.lines.length),
             files: page.files_read.join(', ') || '—',
         })];
-        said.push(page.reached_start ? t('journal_begins') : t('journal_more'));
+
+        // With terms in play the two numbers stop being the same one, and
+        // the difference is the answer: "five in fifty thousand lines" is
+        // a different fact from "five lines in this journal".
+        if (searching()) {
+            said.push(t('journal_found', {
+                found: formatNumber(page.lines.length),
+                scanned: formatNumber(page.total_scanned),
+            }));
+            // A search that ran out of window has not looked at the whole
+            // journal, and saying "this is the start" there would tell a
+            // reader the account they are after was never here.
+            said.push(page.reached_start
+                ? t('journal_begins')
+                : t('journal_window_ended'));
+        } else {
+            said.push(page.reached_start ? t('journal_begins') : t('journal_more'));
+        }
+
         if (page.oldest_available && !archives) {
             said.push(t('journal_archives_reach', { name: page.oldest_available }));
         }
@@ -294,8 +335,15 @@ function mountJournals(root) {
             : false;
 
         if (!page.lines.length) {
+            // Both keys asked for by name rather than through one `t()`
+            // over a conditional: the catalogue and the scripts are
+            // checked against each other by reading the `t('...')` calls,
+            // and a key computed at run time is a key that check cannot
+            // see -- it reads as a sentence shipped to every page that
+            // nothing ever asks for.
+            var nothing = searching() ? t('journal_no_matches') : t('journal_empty');
             body.innerHTML = '<tr><td colspan="4" class="text-muted text-center">'
-                + escapeHtml(t('journal_empty')) + '</td></tr>';
+                + escapeHtml(nothing) + '</td></tr>';
         } else {
             body.innerHTML = page.lines.map(journalRow).join('');
         }
@@ -320,6 +368,10 @@ function mountJournals(root) {
                 limit: lines,
                 archives: archives ? 'true' : 'false',
                 follow: following ? 'true' : 'false',
+            });
+            var asked = terms();
+            Object.keys(asked).forEach(function (name) {
+                query.set(name, asked[name]);
             });
             var resp = await apiFetch(
                 '/api/v1/journals/' + journal + '?' + query.toString()
@@ -397,7 +449,28 @@ function mountJournals(root) {
     }
 
     if (refreshButton) {
-        refreshButton.addEventListener('click', load);
+        // `load(false)` rather than `load`: a listener passes the event as
+        // the first argument, and `load` reads its first argument as "this
+        // is a poll following a reading already recorded". A `MouseEvent`
+        // is truthy, so pressing Refresh marked itself as a poll and left
+        // no trace in the audit journal -- while being the one press on
+        // this page that is unmistakably somebody going to look.
+        refreshButton.addEventListener('click', function () { load(false); });
+    }
+
+    if (searchForm) {
+        searchForm.addEventListener('submit', function (event) {
+            // The answer is fetched, not navigated to.
+            event.preventDefault();
+            loadFresh();
+        });
+    }
+
+    if (clearButton) {
+        clearButton.addEventListener('click', function () {
+            termInputs.forEach(function (input) { input.value = ''; });
+            loadFresh();
+        });
     }
 
     // Delegated rather than bound per row, because the rows are replaced

@@ -1,6 +1,6 @@
 # Testing
 
-**3066 tests**, 95.20% coverage against a floor of 88%, plus two live runs
+**3118 tests**, 95.24% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -112,7 +112,7 @@ the throttle instead of what it is named after.
 
 </details>
 
-### browser_test.py — 41 checks in a real browser
+### browser_test.py — 46 checks in a real browser
 
 ```bash
 uv sync --group browser
@@ -237,7 +237,7 @@ Both now raise `tests/live/mail_catcher.py`, an SMTP server on the loopback,
 point the mailer at it, and take the link out of the delivered message.
 
 Measured by pointing `VERIFY_PATH` at a path nothing answers: the HTTP run
-gives 81/137, the browser run 10/41.
+gives 81/137, the browser run 10/46.
 
 The link has to be **opened**, not parsed. The message now leads to a page
 whose button posts the token, which tempted the HTTP run into extracting the
@@ -401,7 +401,7 @@ flowchart TD
     subgraph clean["clean"]
         C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
         C2 --> C3[count collected tests<br/>minimum 2793] --> C4[pytest --error-for-skips]
-        C4 --> C5[smoke_test.py<br/>137 checks] --> C6[browser_test.py<br/>41 checks]
+        C4 --> C5[smoke_test.py<br/>137 checks] --> C6[browser_test.py<br/>46 checks]
     end
     subgraph hostile["hostile"]
         H1[the same, plus a polluted .env<br/>and exported variables] --> H2[pytest --error-for-skips]

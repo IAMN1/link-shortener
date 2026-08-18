@@ -73,6 +73,59 @@
                 aria-pressed="false">{{ _('Include archives') }}</button>
         <button type="button" class="btn btn--sm btn--ghost" data-journal-refresh>{{ _('Refresh now') }}</button>
     </div>
+
+    {# A search costs what a tail does not: the reader stops at the page it
+       was asked for, a filter keeps looking past it -- measured, 2 ms
+       against some 130. So the terms are empty by default and the page
+       goes on polling the plain tail until somebody asks for something.
+
+       A form rather than loose inputs, so Enter searches; the script stops
+       it from submitting, since the answer is fetched rather than
+       navigated to. #}
+    <form class="journal-search" data-journal-search>
+        <div class="journal-search-fields">
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Event') }}</span>
+                <input type="text" class="form-input" data-journal-term="event_type"
+                       placeholder="LOGIN_FAILED" spellcheck="false" maxlength="64">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Account') }}</span>
+                {# One field for both names an event can carry an account
+                   under: who acted, and who was acted upon. Searching one
+                   of them shows half of what happened without saying so. #}
+                <input type="text" class="form-input" data-journal-term="account"
+                       placeholder="{{ _('id of the account') }}" spellcheck="false" maxlength="64">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Address') }}</span>
+                <input type="text" class="form-input" data-journal-term="remote_addr"
+                       placeholder="203.0.113.7" spellcheck="false" maxlength="64">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Code') }}</span>
+                <input type="text" class="form-input" data-journal-term="short_code"
+                       placeholder="abc123" spellcheck="false" maxlength="64">
+            </label>
+            {# A date, an hour or a whole stamp -- any prefix of the shape
+               the journals are written in. Both ends are inclusive, so one
+               date in both fields is that day. #}
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('From') }}</span>
+                <input type="text" class="form-input" data-journal-term="since"
+                       placeholder="2026-08-18" spellcheck="false" maxlength="20">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('To') }}</span>
+                <input type="text" class="form-input" data-journal-term="until"
+                       placeholder="2026-08-18T14" spellcheck="false" maxlength="20">
+            </label>
+        </div>
+        <div class="journal-search-actions">
+            <button type="submit" class="btn btn--sm btn--primary">{{ _('Search') }}</button>
+            <button type="button" class="btn btn--sm btn--ghost" data-journal-clear>{{ _('Clear') }}</button>
+        </div>
+    </form>
 </div>
 
 <div class="card card--flush">

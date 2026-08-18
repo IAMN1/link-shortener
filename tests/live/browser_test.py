@@ -430,7 +430,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 41
+    expected = 46
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -1462,6 +1462,117 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
 
         raw = page.inner_text(".journal-expanded:not(.hidden) .journal-raw")
         assert raw.strip().startswith("{"), raw[:80]
+
+    @check("a search narrows the journal to what was asked for")
+    def _():
+        # The terms are read off the form by the script and sent as query
+        # parameters; nothing here is server-rendered, so a form that
+        # collected the values and never sent them would look exactly like
+        # a journal with nothing in it.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+        before = page.locator("[data-journal-row]").count()
+        assert before > 1, "the fixture leaves nothing to narrow down"
+
+        page.fill('[data-journal-term="event_type"]', "NOTHING_LIKE_IT")
+        page.click('[data-journal-search] button[type="submit"]')
+        page.wait_for_function(
+            "document.querySelectorAll('[data-journal-row]').length === 0",
+            timeout=5000,
+        )
+
+        # And it says which of the two things happened: nothing matched,
+        # rather than nothing was ever written here.
+        said = page.inner_text("[data-journal-body]").strip()
+        assert "matched" in said.lower(), said
+
+    @check("a search says how much was looked at, not just what was found")
+    def _():
+        # "None found" and "none found in the last fifty thousand lines"
+        # are different answers, and only the second one is true. The
+        # sentence under the table is where the difference lives.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+
+        page.fill('[data-journal-term="event_type"]', "NOTHING_LIKE_IT")
+        page.click('[data-journal-search] button[type="submit"]')
+        page.wait_for_function(
+            "document.querySelector('[data-journal-reach]')"
+            ".textContent.toLowerCase().indexOf('scanned') !== -1",
+            timeout=5000,
+        )
+
+        said = page.inner_text("[data-journal-reach]").strip().lower()
+        assert "found: 0" in said, said
+
+    @check("clearing the search brings the whole journal back")
+    def _():
+        # A page left filtered with the terms two scrolls up is a page that
+        # answers every later question with an empty table.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+
+        page.fill('[data-journal-term="event_type"]', "NOTHING_LIKE_IT")
+        page.click('[data-journal-search] button[type="submit"]')
+        page.wait_for_function(
+            "document.querySelectorAll('[data-journal-row]').length === 0",
+            timeout=5000,
+        )
+        page.click("[data-journal-clear]")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+
+        assert page.input_value('[data-journal-term="event_type"]') == ""
+
+    @check("reading the audit journal leaves a record of the reading")
+    def _():
+        # The event this branch exists for, seen from the only place it can
+        # be seen from: the page reads `audit.log`, and what it shows must
+        # eventually include the reading itself.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+        page.click('[data-journal="audit"]')
+        page.wait_for_function(
+            "document.querySelector('[data-journal-reach]')"
+            ".textContent.indexOf('audit.log') !== -1",
+            timeout=5000,
+        )
+
+        page.fill('[data-journal-term="event_type"]', "AUDIT_VIEWED")
+        page.click('[data-journal-search] button[type="submit"]')
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+
+        shown = page.inner_text("[data-journal-body]")
+        assert "AUDIT_VIEWED" in shown, shown[:200]
+
+    @check("the search controls are written in the language of the page")
+    def _():
+        # Six labels and two buttons, all of them added to the catalogues
+        # in the same commit as the form. A string written straight into
+        # the template raises nothing -- the page just comes out half in
+        # English.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-search]", timeout=5000)
+        # Through the cookie, the way `in_russian` does it: the choice a
+        # visitor makes outranks `Accept-Language`, and setting it here
+        # keeps this check about the labels rather than about the switch.
+        page.context.add_cookies([{"name": "lang", "value": "ru", "url": base}])
+        page.reload()
+        page.wait_for_selector("[data-journal-search]", timeout=5000)
+
+        said = page.inner_text("[data-journal-search]")
+        assert "Искать" in said, said
+        assert "Очистить" in said, said
+        assert "Учётная запись" in said, said
 
     @check("a reader watching the tail is still watching it after a poll")
     def _():

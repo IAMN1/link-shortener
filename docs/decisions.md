@@ -885,6 +885,73 @@ five outcomes: the fifth request came back `CSRF_TOKEN_INVALID`, because
 the run reused one client and a client that has signed in is no longer
 anonymous.
 
+### The journals can be searched, and a search says how far it looked
+
+**Decided** (2026-08-18): `GET /api/v1/journals/<journal>` takes six terms
+— `event_type`, `account`, `remote_addr`, `short_code`, `since`, `until` —
+and the page carries a form for them. The reader applies them while walking
+backwards, and stops after 50 000 lines whether or not it has found
+anything.
+
+**Why the filter is in the reader.** It is the only part that can stop
+early. Filtering above it means the reader hands up everything it looked at
+and the caller throws most of it away, which costs the memory the reader
+exists to avoid. So `tail` takes the filter, and the page reports
+`total_scanned` beside the lines.
+
+**Why a ceiling at all, and why 50 000.** Without a filter the reader stops
+as soon as it has the lines asked for, and the size of the journal stops
+mattering — that is the property the whole class is built on. A filter
+removes it: a search for something absent would walk to the front of the
+file. Measured end to end against a 46 MB journal of real-width records, a
+filtered read costs 117 to 136 ms whatever it looks for, against 2 ms for
+an unfiltered tail; the cost is the scan and not the matching, so a search
+finding nothing costs what one filling a page does. At 100 000 the buffer
+alone is 36 MB, and four searches at once on `--workers 4` would be most of
+a small container. At ten redirects a second the window is about an hour
+and a half of a busy service and weeks of a quiet one.
+
+**What the two numbers say together.** `total_scanned` reaching the ceiling
+while `reached_start` stays false is the difference between "this account
+is not in the journal" and "this account is not in the last fifty thousand
+lines". The page says the second one — "Not searched further back than
+this" — because the first is a claim the read did not make.
+
+**One account field, not two.** The events carry an account under `user_id`
+when it acted and `target_user_id` when it was acted upon, so a role change
+names the administrator under one and the account under the other.
+Searching one name is a way to see half of what happened to an account and
+not notice, and the question an investigation arrives with is "everything
+about this account".
+
+**Identifiers exactly, times by prefix.** A substring of an identifier is a
+different identifier: `remote_addr` matched by containment answers a search
+for `10.0.0.1` with traffic from `110.0.0.199`. The stamps are ISO 8601 in
+UTC by one constant and therefore sort as text, so a bound is compared as a
+prefix and truncates the stamp to its own length — which is what makes both
+ends inclusive, so one date in both fields is that day. A bound that is not
+a stamp is refused rather than accepted: compared as text it would sort
+past every line and answer "nothing found", which reads as "the journal is
+empty" rather than "that is not a time".
+
+**A search is recorded even while following.** The polling exemption is for
+the tail refreshing itself, and a new set of terms is somebody asking a new
+question. The terms go into the record: "read the audit journal" and "read
+the audit journal for one account's failed logins" are different acts to
+find afterwards. Terms left unset are absent rather than null.
+
+**What the measurement changed.** Two things, neither visible to the suite.
+Walking the file backwards accumulated `buffer = read(step) + buffer`,
+which rebuilds everything read so far on every block — quadratic in the
+number of blocks, invisible at a page of 200 lines, and 3087 ms against
+13.5 ms at 100 000, with the peak RSS following to 2.3 GB. Nothing could
+have caught it, because the lines returned are identical and no caller had
+a reason to scan past what it returns; a filter has exactly that reason.
+And `Refresh now` was bound as `addEventListener('click', load)`, which
+hands `load` the event as its first argument — the argument that says "this
+is a poll" — so the one press on the page that is unmistakably somebody
+going to look was marking itself as a poll and leaving no trace.
+
 ---
 
 ## Known limits

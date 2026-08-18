@@ -558,3 +558,35 @@
 .journal-row--raw td { background: var(--c-wash); }
 .journal-source { color: var(--c-text-3); white-space: nowrap; }
 .journal-expanded td { background: var(--c-wash); }
+
+/* The search over a journal. Six terms, laid out as a grid that reflows
+   rather than as a row: on a narrow screen a row of six inputs either
+   overflows the card or squeezes each of them to a width that fits no
+   value anybody would type. */
+.journal-search {
+    border-top: 1px solid var(--c-line);
+    margin-top: var(--d-gap);
+    padding-top: var(--d-gap);
+}
+
+.journal-search-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--d-gap-sm, 8px);
+}
+
+.journal-search-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* The labels sit above their fields and are read as a group, so they carry
+   less weight than a section heading would. */
+.journal-search-field .form-label { margin-bottom: 0; }
+
+.journal-search-actions {
+    display: flex;
+    gap: var(--d-gap-sm, 8px);
+    margin-top: var(--d-gap-sm, 8px);
+}

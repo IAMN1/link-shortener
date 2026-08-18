@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-17 16:23+0300\n"
+"POT-Creation-Date: 2026-08-18 15:22+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -37,18 +37,18 @@ msgstr ""
 msgid "Password must not be empty"
 msgstr ""
 
-#: src/link_shortener/application/use_cases/admin/users/create_user.py:65
-#: src/link_shortener/application/use_cases/admin/users/update_user_role.py:64
+#: src/link_shortener/application/use_cases/admin/users/create_user.py:75
+#: src/link_shortener/application/use_cases/admin/users/update_user_role.py:73
 #, python-format
 msgid "Role '%(name)s' not found"
 msgstr ""
 
-#: src/link_shortener/application/use_cases/auth/login.py:54
-#: src/link_shortener/application/use_cases/auth/login.py:61
+#: src/link_shortener/application/use_cases/auth/login.py:77
+#: src/link_shortener/application/use_cases/auth/login.py:93
 msgid "Invalid email or password"
 msgstr ""
 
-#: src/link_shortener/application/use_cases/auth/login.py:75
+#: src/link_shortener/application/use_cases/auth/login.py:112
 msgid "Confirm your email address before signing in"
 msgstr ""
 
@@ -69,7 +69,7 @@ msgstr ""
 msgid "Guest link limit of %(limit)s exceeded."
 msgstr ""
 
-#: src/link_shortener/application/use_cases/journals/read_journal.py:162
+#: src/link_shortener/application/use_cases/journals/read_journal.py:288
 #: src/link_shortener/application/use_cases/links/delete_link.py:192
 #: src/link_shortener/web/security/authorization.py:71
 #: src/link_shortener/web/security/decorators.py:51
@@ -78,7 +78,7 @@ msgstr ""
 msgid "Authentication required"
 msgstr ""
 
-#: src/link_shortener/application/use_cases/journals/read_journal.py:169
+#: src/link_shortener/application/use_cases/journals/read_journal.py:295
 #: src/link_shortener/web/security/decorators.py:53
 #: src/link_shortener/web/security/decorators.py:106
 msgid "Not authorized"
@@ -551,28 +551,41 @@ msgstr ""
 msgid "Lines: %(count)s · %(files)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:332
+#: src/link_shortener/web/i18n.py:335
+msgid "Nothing here matched that search"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:339
+#, python-format
+msgid "Found: %(found)s · scanned: %(scanned)s"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:344
+msgid "Not searched further back than this."
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:346
 msgid "This is the start of the journal."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:333
+#: src/link_shortener/web/i18n.py:347
 msgid "Older lines exist."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:335
+#: src/link_shortener/web/i18n.py:349
 #, python-format
 msgid "Archives reach back to %(name)s."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:337
+#: src/link_shortener/web/i18n.py:351
 msgid "answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:338
+#: src/link_shortener/web/i18n.py:352
 msgid "not answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:339
+#: src/link_shortener/web/i18n.py:353
 msgid "unknown"
 msgstr ""
 
@@ -630,7 +643,7 @@ msgstr ""
 msgid "The role %(name)s is a system role and cannot be modified"
 msgstr ""
 
-#: src/link_shortener/web/controllers/journal_api_controller.py:113
+#: src/link_shortener/web/controllers/journal_api_controller.py:115
 #, python-format
 msgid "No journal is called %(name)s"
 msgstr ""
@@ -927,6 +940,7 @@ msgid "Create Link — Linkr"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/create_link.html:9
+#: src/link_shortener/web/templates/dashboard/journals.html:101
 msgid "Address"
 msgstr ""
 
@@ -1117,6 +1131,7 @@ msgid "New link"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:36
+#: src/link_shortener/web/templates/dashboard/journals.html:106
 #: src/link_shortener/web/templates/dashboard/my_links.html:25
 #: src/link_shortener/web/templates/dashboard/my_stats.html:37
 #: src/link_shortener/web/templates/dashboard/service_stats.html:37
@@ -1134,7 +1149,7 @@ msgid "Destination"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:38
-#: src/link_shortener/web/templates/dashboard/journals.html:101
+#: src/link_shortener/web/templates/dashboard/journals.html:154
 #: src/link_shortener/web/templates/dashboard/my_links.html:34
 #: src/link_shortener/web/templates/dashboard/my_stats.html:40
 #: src/link_shortener/web/templates/dashboard/service_stats.html:40
@@ -1196,34 +1211,59 @@ msgstr ""
 msgid "Include archives"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:90
-msgid "Time"
-msgstr ""
-
-#: src/link_shortener/web/templates/dashboard/journals.html:91
-msgid "Level"
-msgstr ""
-
-#: src/link_shortener/web/templates/dashboard/journals.html:92
+#: src/link_shortener/web/templates/dashboard/journals.html:88
+#: src/link_shortener/web/templates/dashboard/journals.html:145
 msgid "Event"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/journals.html:93
-msgid "Details"
+msgid "Account"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/journals.html:98
+msgid "id of the account"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/journals.html:114
+msgid "From"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/journals.html:119
+msgid "To"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/journals.html:125
+msgid "Search"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/journals.html:126
+msgid "Clear"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/journals.html:143
+msgid "Time"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/journals.html:144
+msgid "Level"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/journals.html:146
+msgid "Details"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/journals.html:167
 #, python-format
 msgid "Read from %(name)s, from the end of the file, by polling."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:121
+#: src/link_shortener/web/templates/dashboard/journals.html:174
 msgid ""
 "The audit journal names destination addresses and the accounts that "
 "followed them."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:122
+#: src/link_shortener/web/templates/dashboard/journals.html:175
 msgid ""
 "The application journal names the address of everyone who registered or "
 "signed in."
