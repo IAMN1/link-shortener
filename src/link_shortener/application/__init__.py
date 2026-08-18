@@ -67,6 +67,9 @@ from .use_cases.stats.get_user_activity_stats import GetUserActivityStatsUseCase
 
 from .use_cases.admin.links.clean_expired_links import CleanExpiredLinksUseCase
 from .use_cases.admin.links.roll_up_visits import RollUpVisitsUseCase
+from .use_cases.admin.security.roll_up_security_events import (
+    RollUpSecurityEventsUseCase,
+)
 from .use_cases.admin.links.get_recent_links import GetRecentLinksUseCase
 from .use_cases.admin.database.seed_database import SeedDatabaseUseCase
 
@@ -178,6 +181,7 @@ __all__ = [
 
     "CleanExpiredLinksUseCase",
     "RollUpVisitsUseCase",
+    "RollUpSecurityEventsUseCase",
     "GetRecentLinksUseCase",
     "SeedDatabaseUseCase",
     "CreateRoleUseCase",

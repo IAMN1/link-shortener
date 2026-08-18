@@ -109,6 +109,7 @@ group.
 | `db migrate` | Apply Alembic migrations |
 | `db load-base-roles` | Seed or update the system roles from YAML |
 | `maintenance roll-up-visits` | Fold finished days of visits into day totals, then delete raw rows past `VISIT_RETENTION_DAYS`. Run daily |
+| `maintenance roll-up-security-events` | Fold finished days of security events into day totals, then delete raw rows past `SECURITY_EVENT_RETENTION_DAYS`. Run daily. A command of its own rather than a step in the line above: the two tables fill at different rates and keep their history for different lengths, and a cron line saying "roll up visits" should not delete the security history under a name that does not mention it |
 | `db load-custom-roles <file>` | The same from a file of your own |
 | `db seed --count N` | Fill the database with test links. These are **guest** links, so they hit `GUEST_LINK_LIMIT` — raise it for large N |
 | `db init` · `db drop --yes` | Only meaningful with `USE_ALEMBIC=false` |

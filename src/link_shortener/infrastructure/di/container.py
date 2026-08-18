@@ -28,7 +28,8 @@ from link_shortener.application import (
     GetUserActivityStatsUseCase, GetUserLinksUseCase,
     GetUserUseCase, ListRolesUseCase, ListUsersUseCase, Logger, LoginUseCase,
     Mailer, RateLimiter, ReadJournalUseCase, RedirectLinkUseCase, RegisterUseCase,
-    ResendVerificationUseCase, RollUpVisitsUseCase, SeedDatabaseUseCase,
+    ResendVerificationUseCase, RollUpSecurityEventsUseCase,
+    RollUpVisitsUseCase, SeedDatabaseUseCase,
     SendAccountExistsEmailUseCase, SendVerificationEmailUseCase, ServiceCache,
     TaskQueue, UnitOfWorkFactory, UpdateLinkStatsUseCase,
     UpdateRolePermissionsUseCase, UpdateUserRolesUseCase, VerifyEmailUseCase,
@@ -531,6 +532,21 @@ class Container:
     def get_roll_up_visits_use_case(self) -> RollUpVisitsUseCase:
         """Return fully configured ``RollUpVisitsUseCase``."""
         return self._init_admin_link_use_cases().get_roll_up_visits_use_case()
+
+    def get_roll_up_security_events_use_case(
+        self,
+    ) -> RollUpSecurityEventsUseCase:
+        """Return fully configured ``RollUpSecurityEventsUseCase``.
+
+        Built here rather than in a component of its own: it needs a unit
+        of work, a logger and one setting, and a component holding nothing
+        else would be a file to keep in step for no gain.
+        """
+        return RollUpSecurityEventsUseCase(
+            uow_factory=self._uow_factory,
+            logger=self.logger_component.get_logger(__name__),
+            retention_days=self.config.SECURITY_EVENT_RETENTION_DAYS,
+        )
 
     def get_clean_expired_links_use_case(self) -> CleanExpiredLinksUseCase:
         """Return fully configured ``CleanExpiredLinksUseCase``."""

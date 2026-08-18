@@ -556,6 +556,30 @@ class BaseConfig:
     deliberately.
     """
 
+    SECURITY_EVENT_RETENTION_DAYS: int = env_int(
+        "SECURITY_EVENT_RETENTION_DAYS", 365
+    )
+    """
+    How long a raw security event row is kept before the sweep deletes it.
+
+    A year rather than the ninety days the visits get, and the difference
+    is what the two tables are for. A visit is traffic: last quarter's
+    redirects answer a question about popularity that this quarter's
+    answer better. A sign-in is evidence, and the question asked of it --
+    "when did this account last get in, and from where" -- is usually
+    asked long after the fact.
+
+    They also fill at different rates. At ten redirects a second the visit
+    table takes a million rows a day; the security events are sign-ins,
+    account changes and journal reads, which a busy deployment counts in
+    thousands.
+
+    Days that have ended are folded into one row per kind per day first,
+    so the long-range chart keeps its shape after the rows behind it are
+    gone. Zero disables the sweep, and the table then grows without limit
+    -- which is a choice, not an accident.
+    """
+
     BATCH_CREATE_LIMIT: int = env_int("BATCH_CREATE_LIMIT", 100)
     """
     Maximum number of URLs allowed in a single batch creation request.
@@ -1797,6 +1821,7 @@ class BaseConfig:
             ("POPULAR_THRESHOLD", self.POPULAR_THRESHOLD),
             ("RECENT_DAYS", self.RECENT_DAYS),
             ("VISIT_RETENTION_DAYS", self.VISIT_RETENTION_DAYS),
+            ("SECURITY_EVENT_RETENTION_DAYS", self.SECURITY_EVENT_RETENTION_DAYS),
         )
         for name, value in non_negative_settings:
             if value < 0:
