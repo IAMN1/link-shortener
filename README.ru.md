@@ -200,7 +200,7 @@ flowchart LR
 
 ```bash
 uv run pytest tests/                      # 3118 тестов
-uv run python tests/live/smoke_test.py    # 137 проверок по HTTP
+uv run python tests/live/smoke_test.py    # 141 проверка по HTTP
 uv run python tests/live/browser_test.py  # 46 проверок настоящим браузером
 ```
 

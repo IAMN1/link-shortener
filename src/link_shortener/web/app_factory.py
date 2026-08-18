@@ -237,7 +237,10 @@ def create_app(config=None) -> Flask:
     api_controller = ApiController(link_service, admin_service, authorization_service)
     frontend_controller = FrontendController()
     admin_api_controller = AdminApiController(admin_service)
-    journal_api_controller = JournalApiController(container.get_read_journal_use_case())
+    journal_api_controller = JournalApiController(
+        container.get_read_journal_use_case(),
+        container.get_security_counts_use_case(),
+    )
     dashboard_controller = DashboardController(link_service, admin_service)
     auth_controller = AuthController(
         authentication_service,

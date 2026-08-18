@@ -202,7 +202,7 @@ Thirty-four operations. Full description: `/api/openapi.json`, rendered at
 
 ```bash
 uv run pytest tests/                      # 3118 tests
-uv run python tests/live/smoke_test.py    # 137 checks over HTTP
+uv run python tests/live/smoke_test.py    # 141 checks over HTTP
 uv run python tests/live/browser_test.py  # 46 checks in a real browser
 ```
 

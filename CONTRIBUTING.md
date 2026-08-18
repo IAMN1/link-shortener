@@ -39,7 +39,7 @@ uv run mypy src                           # floor: zero errors
 Plus the two live runs, if your change touches HTTP or the frontend:
 
 ```bash
-uv run python tests/live/smoke_test.py    # 137 checks
+uv run python tests/live/smoke_test.py    # 141 checks
 uv run python tests/live/browser_test.py  # 46 checks, needs --group browser
 ```
 

@@ -48,6 +48,9 @@ from link_shortener.infrastructure.di.components.logger import LoggerComponent
 from link_shortener.infrastructure.logging.status_reader import (
     ComponentLoggingStatus,
 )
+from link_shortener.application.use_cases.security.get_security_counts import (
+    GetSecurityCountsUseCase,
+)
 from link_shortener.infrastructure.logging.handlers.audit.counting import (
     CountingAuditLogger,
 )
@@ -532,6 +535,21 @@ class Container:
     def get_roll_up_visits_use_case(self) -> RollUpVisitsUseCase:
         """Return fully configured ``RollUpVisitsUseCase``."""
         return self._init_admin_link_use_cases().get_roll_up_visits_use_case()
+
+    def get_security_counts_use_case(self) -> GetSecurityCountsUseCase:
+        """Return fully configured ``GetSecurityCountsUseCase``.
+
+        Built here for the reason the roll-up is: a unit of work, the
+        authorization service and a logger, and nothing a component would
+        add beyond a file to keep in step.
+        """
+        return GetSecurityCountsUseCase(
+            uow_factory=self._uow_factory,
+            authorization_service=(
+                self.auth_component.get_authorization_service()
+            ),
+            logger=self.logger_component.get_logger(__name__),
+        )
 
     def get_roll_up_security_events_use_case(
         self,

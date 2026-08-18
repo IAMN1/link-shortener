@@ -33,6 +33,7 @@ from pydantic import BaseModel
 
 from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.error import ErrorResponse
+from link_shortener.web.schemas.security import SecurityCountsResponse
 from link_shortener.web.schemas.journal import (
     DEFAULT_LINES, HARD_LIMIT, JournalPageResponse,
 )
@@ -72,6 +73,7 @@ MODELS: Dict[str, Type[BaseModel]] = {
     "MyStatsResponse": MyStatsResponse,
     "VisitStatsResponse": VisitStatsResponse,
     "JournalPageResponse": JournalPageResponse,
+    "SecurityCountsResponse": SecurityCountsResponse,
     "DailyVisitsResponse": DailyVisitsResponse,
     "RegisterResponse": RegisterResponse,
     "TokenPairResponse": TokenPairResponse,
@@ -1106,6 +1108,51 @@ PATHS: Dict[str, Any] = {
                 },
                 "401": _error("Nobody is authenticated"),
                 "403": _error("The caller does not hold admin:view_system_health"),
+            },
+        }
+    },
+    "/api/v1/journals/counters": {
+        "get": {
+            "summary": "Count the security events of a span",
+            "description": (
+                "How many sign-ins, refusals, account and role changes "
+                "and journal reads fell inside a span, in total and split "
+                "into intervals for a chart. Read under audit:view -- the "
+                "permission that opens the audit journal -- because these "
+                "figures are that journal counted, and a count is not a "
+                "weaker version of a record but the same information "
+                "aggregated. admin:all does not carry it. Redirects are "
+                "not here: they are counted in link_visits and served by "
+                "the visit endpoints."
+            ),
+            "tags": ["journals"],
+            "parameters": [
+                {
+                    "name": "period",
+                    "in": "query",
+                    "required": False,
+                    "description": (
+                        "Which span, from a fixed set. Free-form spans "
+                        "are not offered: a caller naming its own span "
+                        "and bucket count can ask for a million buckets. "
+                        "The same four the visit charts use, so two "
+                        "charts on one screen are about the same week."
+                    ),
+                    "schema": {
+                        "type": "string",
+                        "enum": ["24h", "7d", "30d", "90d"],
+                        "default": "7d",
+                    },
+                },
+            ],
+            "responses": {
+                "200": {
+                    "description": "The counts and the series behind them",
+                    **_json("SecurityCountsResponse"),
+                },
+                "400": _error("period is not one of the four on offer"),
+                "401": _error("Nobody is authenticated"),
+                "403": _error("The caller does not hold audit:view"),
             },
         }
     },

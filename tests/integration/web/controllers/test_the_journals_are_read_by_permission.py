@@ -171,13 +171,19 @@ class TestEveryJournalIsClosedToWhoeverHoldsNeitherPermission:
     def test_no_second_endpoint_serves_a_journal(self, app):
         """
         Guards the guard: these checks are worth nothing if a second way in
-        exists. The one endpoint is the one tested; anything else handing
-        out journal content would be untested by construction.
+        exists. The endpoints that exist are the ones tested; anything else
+        handing out journal content would be untested by construction.
+
+        Two now, and the second is not a way to read a journal but a way to
+        count one: `/counters` answers with totals and series drawn from
+        `security_events`, never with a line. It is listed here anyway,
+        because a count is the same information aggregated -- which is why
+        it answers to `audit:view` as well, checked below.
 
         Only the API surface is counted. A dashboard page named after the
         journals serves none of them -- it is a shell that fetches from
-        this endpoint -- so including the page here would make this a check
-        on which pages happen to exist rather than on where journal
+        these endpoints -- so including the page here would make this a
+        check on which pages happen to exist rather than on where journal
         content comes from.
         """
         serving = {
@@ -185,4 +191,23 @@ class TestEveryJournalIsClosedToWhoeverHoldsNeitherPermission:
             if "journal" in str(rule) and str(rule).startswith("/api/")
         }
 
-        assert serving == {"/api/v1/journals/<journal>"}
+        assert serving == {
+            "/api/v1/journals/<journal>",
+            "/api/v1/journals/counters",
+        }
+
+    def test_the_counters_answer_to_the_audit_permission(
+        self, client, administrator, audit_reader
+    ):
+        """The figures summarise the journal, so they close with it.
+
+        An administrator is refused for the same reason they are refused
+        the journal itself: `admin:all` does not carry `audit:view`, and
+        these numbers are the record kept about administrators.
+        """
+        assert client.get(
+            "/api/v1/journals/counters", headers=administrator
+        ).status_code == 403
+        assert client.get(
+            "/api/v1/journals/counters", headers=audit_reader
+        ).status_code == 200
