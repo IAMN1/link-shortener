@@ -135,12 +135,23 @@ class GetSecurityCountsUseCase(BaseUseCase):
         self._require_may_read(context, log)
 
         span, buckets = PERIODS[period]
-        until = now or datetime.now(timezone.utc)
-        since = until - span
+        since, until = self._span_of(
+            now or datetime.now(timezone.utc), span, buckets
+        )
 
         with self.uow_factory(read_only=True) as uow:
-            totals = uow.security_events.counts_between(since, until)
             series = uow.security_events.buckets_between(since, until, buckets)
+
+        # Added up here rather than counted again in the database. Asked
+        # for separately, the two answers were free to disagree -- the
+        # totals came from the raw rows while the series could also read
+        # the folded days -- and a panel whose figures contradict the
+        # chart under them is worse than either number alone.
+        totals = sorted(
+            ((event_type, sum(counts)) for event_type, counts in series),
+            key=lambda pair: pair[1],
+            reverse=True,
+        )
 
         return SecurityCounts(
             period=period,
@@ -150,6 +161,45 @@ class GetSecurityCountsUseCase(BaseUseCase):
             series=series,
             buckets=buckets,
         )
+
+    @staticmethod
+    def _span_of(
+        now: datetime, span: timedelta, buckets: int
+    ) -> Tuple[datetime, datetime]:
+        """
+        Both ends of a span, given how finely it is drawn.
+
+        A span drawn in whole days is moved onto the days themselves:
+        it ends at the midnight after now and begins ``buckets`` days
+        before that, so every bucket is a date rather than a slice
+        running from whatever time of day the question was asked. The
+        last bucket is therefore today, still filling up.
+
+        Two things need that. The folded totals in
+        ``security_event_days`` are totals between midnights and cannot
+        be laid on a bucket that straddles two days, so without this the
+        fold is unreadable and the sweep takes the long-range chart's
+        past with it. And the axis already labels these buckets with
+        dates, which is only true if a bucket is one.
+
+        Shorter buckets keep the span as asked: an hour of a 24-hour
+        span means the hour that just passed, and rounding it to the
+        clock would answer a different question.
+
+        Args:
+            now: The moment the question was asked.
+            span: How long the span is.
+            buckets: How many intervals it is drawn in.
+
+        Returns:
+            Start, inclusive, and end, exclusive, both in UTC.
+        """
+        if buckets < 1 or span / buckets != timedelta(days=1):
+            return now - span, now
+
+        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = midnight + timedelta(days=1)
+        return end - timedelta(days=buckets), end
 
     def _require_may_read(self, context: RequestContext, log: Logger) -> None:
         """

@@ -39,30 +39,25 @@ class SecurityEventRepository(ABC):
         ...
 
     @abstractmethod
-    def counts_between(
-        self, since: datetime, until: datetime
-    ) -> List[Tuple[str, int]]:
-        """
-        How many of each kind of event fell inside a span.
-
-        Args:
-            since: Start of the span, inclusive, in UTC.
-            until: End of the span, exclusive, in UTC.
-
-        Returns:
-            Pairs of event type and count, for the kinds that occurred.
-            A kind that did not occur is absent rather than present with a
-            zero: the vocabulary is the application's and this is a report
-            of what happened, not a form to fill in.
-        """
-        ...
-
-    @abstractmethod
     def buckets_between(
         self, since: datetime, until: datetime, buckets: int
     ) -> List[Tuple[str, List[int]]]:
         """
-        The same counts, split into equal intervals across the span.
+        How many of each kind of event fell inside each interval of a span.
+
+        The only way to ask how many events there were: a caller wanting
+        the total of a span adds its own buckets up. Answering that
+        second question with a second query is what let the two answers
+        disagree -- the totals were read from the raw rows while the
+        series merged in the folded days, so a chart and the figures
+        above it could describe different weeks.
+
+        When an interval is exactly a day long and the span starts at
+        midnight, the folded totals in ``security_event_days`` are read
+        for the days that have them and the raw rows for the rest. A day
+        present in both is taken from the fold once, not added twice:
+        folding does not delete what it folded, the sweep does, and
+        between the two the same events sit in both tables.
 
         Args:
             since: Start of the span, inclusive, in UTC.
@@ -72,7 +67,10 @@ class SecurityEventRepository(ABC):
         Returns:
             Pairs of event type and a list of ``buckets`` counts, oldest
             first. Every list has exactly ``buckets`` entries, so a chart
-            can draw them without asking which interval is missing.
+            can draw them without asking which interval is missing. A kind
+            that did not occur at all is absent rather than present as a
+            row of zeroes: the vocabulary is the application's and this is
+            a report of what happened, not a form to fill in.
         """
         ...
 

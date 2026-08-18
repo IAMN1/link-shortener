@@ -9,7 +9,7 @@ every administrator, and every test about the numbers would still pass.
 """
 
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
 import pytest
@@ -192,8 +192,48 @@ class TestTheSpansOnOffer:
 
         span, buckets = PERIODS[period]
         assert counts.buckets == buckets
-        assert counts.since == NOON - span
+        # Every bucket is the same width, and it is the width the period
+        # promises: the span divided by the number of intervals.
+        assert (counts.until - counts.since) / buckets == span / buckets
+
+    @pytest.mark.parametrize("period", ["30d", "90d"])
+    def test_a_span_drawn_in_days_is_drawn_on_the_days_themselves(
+        self, use_case, uow, period
+    ):
+        """The buckets are dates, so they start and end at midnight.
+
+        Without that the folded day totals cannot be read at all -- a
+        fold is a total between midnights, and it cannot be laid on a
+        bucket running from whatever time of day the page was opened --
+        and the axis under the chart labels these buckets with dates,
+        which is only honest if a bucket is one. The last bucket is
+        today, still filling up, so the end is the midnight after now.
+        """
+        context = signed_in_as(
+            user_holding(SystemPermissions.AUDIT_VIEW.value), uow
+        )
+
+        counts = use_case.execute(context, period=period, now=NOON)
+
+        midnight = NOON.replace(hour=0, minute=0, second=0, microsecond=0)
+        assert counts.until == midnight + timedelta(days=1)
+        assert counts.since == counts.until - timedelta(days=counts.buckets)
+
+    @pytest.mark.parametrize("period", ["24h", "7d"])
+    def test_a_span_drawn_finer_than_a_day_ends_now(
+        self, use_case, uow, period
+    ):
+        """An hour of a day-long span is the hour that just passed, and
+        rounding it to the clock would answer a different question."""
+        context = signed_in_as(
+            user_holding(SystemPermissions.AUDIT_VIEW.value), uow
+        )
+
+        counts = use_case.execute(context, period=period, now=NOON)
+
+        span, _ = PERIODS[period]
         assert counts.until == NOON
+        assert counts.since == NOON - span
 
     def test_anything_else_is_refused(self, use_case, uow):
         context = signed_in_as(

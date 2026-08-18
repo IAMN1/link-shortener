@@ -58,6 +58,26 @@ def record(uow_factory, event_type, at):
         uow.commit()
 
 
+def totals_between(uow_factory, since, until):
+    """
+    What a span amounted to, by kind, read the way the use case reads it.
+
+    One bucket over the whole span, added up -- there is no second query
+    for totals, and that is the point: two queries were free to disagree.
+
+    Args:
+        uow_factory: Factory for a unit of work.
+        since: Start of the span, inclusive.
+        until: End of the span, exclusive.
+
+    Returns:
+        Mapping of event type to count.
+    """
+    with uow_factory(read_only=True) as uow:
+        series = uow.security_events.buckets_between(since, until, 1)
+    return {event_type: sum(counts) for event_type, counts in series}
+
+
 class TestCountingASpan:
     """What fell inside a span, by kind."""
 
@@ -66,10 +86,9 @@ class TestCountingASpan:
             record(uow_factory, "LOGIN_FAILED", NOON)
         record(uow_factory, "LOGIN_SUCCEEDED", NOON)
 
-        with uow_factory(read_only=True) as uow:
-            counts = dict(uow.security_events.counts_between(
-                NOON - timedelta(hours=1), NOON + timedelta(hours=1)
-            ))
+        counts = totals_between(
+            uow_factory, NOON - timedelta(hours=1), NOON + timedelta(hours=1)
+        )
 
         assert counts == {"LOGIN_FAILED": 3, "LOGIN_SUCCEEDED": 1}
 
@@ -79,22 +98,20 @@ class TestCountingASpan:
         record(uow_factory, "LOGIN_FAILED", NOON)
         record(uow_factory, "LOGIN_FAILED", NOON + timedelta(hours=1))
 
-        with uow_factory(read_only=True) as uow:
-            counts = dict(uow.security_events.counts_between(
-                NOON, NOON + timedelta(hours=1)
-            ))
+        counts = totals_between(uow_factory, NOON, NOON + timedelta(hours=1))
 
         assert counts == {"LOGIN_FAILED": 1}
 
     def test_a_span_with_nothing_in_it_is_empty_rather_than_absent(
         self, uow_factory
     ):
-        with uow_factory(read_only=True) as uow:
-            counts = uow.security_events.counts_between(
-                NOON - timedelta(days=400), NOON - timedelta(days=399)
-            )
+        counts = totals_between(
+            uow_factory,
+            NOON - timedelta(days=400),
+            NOON - timedelta(days=399),
+        )
 
-        assert counts == []
+        assert counts == {}
 
 
 class TestBucketingASpan:
@@ -211,10 +228,9 @@ class TestSweepingTheRowsBehindTheTotals:
 
         assert deleted == 1
 
-        with uow_factory(read_only=True) as uow:
-            counts = dict(uow.security_events.counts_between(
-                NOON - timedelta(days=365), NOON + timedelta(days=1)
-            ))
+        counts = totals_between(
+            uow_factory, NOON - timedelta(days=365), NOON + timedelta(days=1)
+        )
 
         assert counts == {"LOGIN_FAILED": 1}
 
@@ -237,3 +253,54 @@ class TestSweepingTheRowsBehindTheTotals:
             )
 
         assert [(row[1], row[2]) for row in totals] == [("LOGIN_FAILED", 1)]
+
+    def test_a_day_chart_reads_the_folded_days_after_the_sweep(
+        self, uow_factory
+    ):
+        """Surviving in the table is not the same as being read.
+
+        The fold was written and never looked at: the chart queried the
+        raw rows only, so the sweep took the long-range past with it
+        after all -- silently, and only for a deployment whose retention
+        is shorter than the span being drawn.
+        """
+        midnight = NOON.replace(hour=0, minute=0, second=0, microsecond=0)
+        old = midnight - timedelta(days=100, hours=-12)
+        record(uow_factory, "LOGIN_FAILED", old)
+
+        with uow_factory() as uow:
+            uow.security_events.fold_days_before(midnight)
+            uow.security_events.delete_before(midnight - timedelta(days=90))
+            uow.commit()
+
+        since = midnight - timedelta(days=119)
+        until = midnight + timedelta(days=1)
+        with uow_factory(read_only=True) as uow:
+            series = dict(uow.security_events.buckets_between(since, until, 120))
+
+        counts = series["LOGIN_FAILED"]
+        assert sum(counts) == 1
+        assert counts[(old.replace(hour=0) - since).days] == 1
+
+    def test_a_folded_day_is_not_counted_twice_before_the_sweep(
+        self, uow_factory
+    ):
+        """Between the fold and the sweep the same events sit in both
+        tables, and adding the two would double every day in that
+        window."""
+        midnight = NOON.replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday = midnight - timedelta(hours=12)
+        record(uow_factory, "LOGIN_FAILED", yesterday)
+        record(uow_factory, "LOGIN_FAILED", yesterday)
+
+        with uow_factory() as uow:
+            uow.security_events.fold_days_before(midnight)
+            uow.commit()
+
+        since = midnight - timedelta(days=29)
+        with uow_factory(read_only=True) as uow:
+            series = dict(uow.security_events.buckets_between(
+                since, midnight + timedelta(days=1), 30
+            ))
+
+        assert sum(series["LOGIN_FAILED"]) == 2

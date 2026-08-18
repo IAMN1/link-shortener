@@ -8,7 +8,7 @@ security event is about the service.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple, cast as as_type
 
 from sqlalchemy import Integer, cast, delete, extract, func, select
@@ -30,6 +30,40 @@ No offset change ever makes a UTC day longer or shorter, so folding by
 ``epoch // 86400`` is folding by date -- and it is arithmetic both
 dialects do the same way, unlike ``date()`` against ``date_trunc()``.
 """
+
+
+def _as_utc(moment: datetime) -> datetime:
+    """
+    Give a moment a timezone if it arrived without one.
+
+    SQLite stores no offset, so every datetime read back from it is
+    naive, and comparing one against an aware datetime raises. What was
+    written is UTC, so reading it back as UTC restores rather than
+    assumes. A naive bound from a caller is read the same way, for the
+    same reason the visit repository does it: ``timestamp()`` on a naive
+    datetime asks the host what zone it is in, and the answer moves every
+    bucket by the machine's offset.
+
+    Args:
+        moment: Datetime from the database or from a caller.
+
+    Returns:
+        The same moment, marked UTC when it carried no zone.
+    """
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def _midnight_of(moment: datetime) -> datetime:
+    """
+    The start of the day a moment falls in.
+
+    Args:
+        moment: Any moment, in UTC.
+
+    Returns:
+        The same day at 00:00:00.
+    """
+    return moment.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 class SQLAlchemySecurityEventRepository(SecurityEventRepository):
@@ -77,37 +111,6 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
             )
         )
 
-    def counts_between(
-        self, since: datetime, until: datetime
-    ) -> List[Tuple[str, int]]:
-        """
-        How many of each kind of event fell inside a span.
-
-        Args:
-            since: Start of the span, inclusive.
-            until: End of the span, exclusive.
-
-        Returns:
-            Pairs of event type and count, largest first.
-        """
-        statement = (
-            select(
-                SecurityEventModel.event_type,
-                func.count(SecurityEventModel.id),
-            )
-            .where(
-                SecurityEventModel.occurred_at >= since,
-                SecurityEventModel.occurred_at < until,
-            )
-            .group_by(SecurityEventModel.event_type)
-            .order_by(func.count(SecurityEventModel.id).desc())
-        )
-
-        return [
-            (str(row[0]), int(row[1]))
-            for row in self.session.execute(statement)
-        ]
-
     def buckets_between(
         self, since: datetime, until: datetime, buckets: int
     ) -> List[Tuple[str, List[int]]]:
@@ -126,6 +129,7 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
         if buckets < 1:
             return []
 
+        since, until = _as_utc(since), _as_utc(until)
         width = max(1, int((until - since).total_seconds()) // buckets)
 
         # `//`, not `/`: SQLAlchemy renders true division as a fraction on
@@ -164,7 +168,48 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
             elif position == buckets:
                 row[buckets - 1] += int(total)
 
+        self._lay_the_folded_days_over(counted, since, width, buckets)
+
         return sorted(counted.items(), key=lambda pair: sum(pair[1]), reverse=True)
+
+    def _lay_the_folded_days_over(
+        self,
+        counted: Dict[str, List[int]],
+        since: datetime,
+        width: int,
+        buckets: int,
+    ) -> None:
+        """
+        Replace whole-day buckets with the folded totals for those days.
+
+        The fold exists so that the sweep can delete the raw rows without
+        the long-range chart losing its past. Read only where a bucket is
+        exactly one day and lines up with one: a folded day is a total
+        between midnights and cannot be split across six-hour intervals,
+        and laying it on a bucket that straddles two days would move
+        events in time to keep them in view.
+
+        Replace rather than add: folding does not delete what it folded --
+        the sweep does, afterwards -- so for as long as both exist, a day
+        added from both tables is counted twice.
+
+        Args:
+            counted: Series per event type, as read from the raw rows.
+                Modified in place.
+            since: Start of the span, inclusive.
+            width: Seconds in one bucket.
+            buckets: How many buckets the span holds.
+        """
+        if width != SECONDS_IN_A_DAY or since != _midnight_of(since):
+            return
+
+        until = since + timedelta(seconds=width * buckets)
+        for day, event_type, total in self.day_totals_between(since, until):
+            position = int((_as_utc(day) - since).total_seconds()) // width
+            if not 0 <= position < buckets:
+                continue
+            row = counted.setdefault(event_type, [0] * buckets)
+            row[position] = total
 
     def fold_days_before(self, day: datetime) -> int:
         """
