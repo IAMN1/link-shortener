@@ -115,10 +115,10 @@ class ReadJournalUseCase(BaseUseCase):
                 whether the read leaves a record, and only that; what is
                 read and who may read it are the same either way.
             where: What the caller is looking for, or ``None`` for the
-                plain tail. A search is recorded even when it says it is
-                following: the tail refreshing itself is the same reading
-                going on, while a new set of terms is somebody asking a
-                new question.
+                plain tail. The terms describe the read in its record;
+                whether there is a record is ``following`` alone, because
+                a request carrying terms cannot say whether they were
+                just typed or are being polled for the hundredth time.
 
         Returns:
             The page, oldest line first.
@@ -177,8 +177,10 @@ class ReadJournalUseCase(BaseUseCase):
         being displayed -- each of which is then displayed, pushing out the
         lines the reader came for. What is recorded is the act of going to
         look: opening the page, switching to another journal, reaching back
-        into the archives. What is not is the tail refreshing itself, which
-        the caller marks by asking to follow.
+        into the archives, asking a search. What is not is the tail
+        refreshing itself, which the caller marks by asking to follow --
+        and every one of those acts reloads the page marked as not
+        following, so the flag is enough on its own to tell them apart.
 
         A caller marking a first read as a continuation therefore leaves no
         record. That is the price of deciding from the request alone rather
@@ -197,10 +199,17 @@ class ReadJournalUseCase(BaseUseCase):
         """
         searching = bool(where and not where.is_empty)
 
-        # Reaching into the archives is a deliberate act whichever way the
-        # read is marked -- the page polls its tail, it does not poll the
-        # rotated files behind it -- and so is naming what to look for.
-        if following and not (include_archives or searching):
+        # The flag decides on its own, and nothing else is consulted.
+        # Reaching into the archives and naming terms were once treated as
+        # deliberate acts that a poll could not be -- but the page polls
+        # whatever is on screen, terms and archives included, so the
+        # exemption was defeated by the two controls it exempted: one open
+        # tab with a term in the box wrote a line every ten seconds, into
+        # the journal it was displaying. The going-to-look is already
+        # marked: every control on the page -- another journal, another
+        # depth, the archives, a search, Refresh -- reloads with
+        # ``follow=false``, and only the timer sends ``true``.
+        if following:
             return
 
         audit = self._get_audit_logger(self.audit_logger, context)

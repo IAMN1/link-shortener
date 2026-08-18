@@ -495,18 +495,28 @@ class TestReadingAJournalLeavesARecord:
 
         audit.log_audit_viewed.assert_not_called()
 
-    def test_reaching_into_the_archives_is_recorded_even_while_following(
+    def test_reaching_into_the_archives_is_recorded_when_asked_for(
         self, use_case, audit, auditor
     ):
-        """The page polls its tail; it does not poll the rotated files.
+        """Going further back is somebody going to look, and says so."""
+        use_case.execute(Journal.AUDIT, auditor, include_archives=True)
 
-        So a request that names the archives is somebody going further
-        back on purpose, whatever else it says about itself.
+        assert audit.log_audit_viewed.call_args.kwargs["reason"] == "archives"
+
+    def test_polling_with_the_archives_on_is_not_recorded_again(
+        self, use_case, audit, auditor
+    ):
+        """Turning the archives on was recorded; the timer after it is not.
+
+        The page polls whatever is on screen, the archives included, so
+        exempting the poll and then re-admitting it whenever the archives
+        are on exempts nothing: the button is remembered across visits,
+        and one open tab wrote a line every ten seconds.
         """
         use_case.execute(Journal.AUDIT, auditor, include_archives=True,
                          following=True)
 
-        assert audit.log_audit_viewed.call_args.kwargs["reason"] == "archives"
+        audit.log_audit_viewed.assert_not_called()
 
     def test_a_refused_read_is_not_recorded_as_a_read(
         self, use_case, audit, uow_factory
@@ -538,9 +548,10 @@ class TestASearchIsRecordedWithWhatWasSearchedFor:
 
     "Read the audit journal" and "read the audit journal for one account's
     failed logins" are not the same thing to find afterwards, so the terms
-    go into the record. They are also what makes a search worth recording
-    while a poll is not: the tail refreshing itself is the same reading
-    still going on, a new set of terms is a new question.
+    go into the record. What they do not do is decide whether there is a
+    record at all: that is the follow flag alone, because a request
+    carrying terms says nothing about whether they were just typed or are
+    being polled for the hundredth time.
     """
 
     @pytest.fixture
@@ -594,11 +605,18 @@ class TestASearchIsRecordedWithWhatWasSearchedFor:
             "short_code": "-gxXupR"
         }
 
-    def test_a_search_is_recorded_even_when_it_says_it_is_following(
+    def test_a_poll_carrying_the_same_terms_is_not_recorded_again(
         self, use_case, audit, auditor
     ):
-        """The exemption is for the tail refreshing itself, and a set of
-        terms is not that."""
+        """Asking the question was recorded; the timer repeating it is not.
+
+        Nothing in a request distinguishes new terms from the same terms
+        polled again, so recording every poll that carries terms records
+        the tail refreshing itself -- six lines a minute, in the journal
+        on screen, and the search that put them there is displaced by
+        them. The submit that set the terms reloads with ``follow=false``
+        and is recorded there.
+        """
         use_case.execute(
             Journal.AUDIT,
             auditor,
@@ -606,8 +624,7 @@ class TestASearchIsRecordedWithWhatWasSearchedFor:
             where=JournalFilter(account="u-1"),
         )
 
-        audit.log_audit_viewed.assert_called_once()
-        assert audit.log_audit_viewed.call_args[1]["reason"] == "searched"
+        audit.log_audit_viewed.assert_not_called()
 
     def test_an_empty_filter_is_not_a_search(self, use_case, audit, auditor):
         """The viewer passes one always, so an empty filter must leave the

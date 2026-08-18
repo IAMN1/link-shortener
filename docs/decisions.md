@@ -934,11 +934,22 @@ a stamp is refused rather than accepted: compared as text it would sort
 past every line and answer "nothing found", which reads as "the journal is
 empty" rather than "that is not a time".
 
-**A search is recorded even while following.** The polling exemption is for
-the tail refreshing itself, and a new set of terms is somebody asking a new
-question. The terms go into the record: "read the audit journal" and "read
-the audit journal for one account's failed logins" are different acts to
-find afterwards. Terms left unset are absent rather than null.
+**The follow flag decides alone, and the terms only describe.** Recording a
+read was first made conditional on the terms as well: a poll was exempt,
+but a poll carrying a search or reaching into the archives was recorded,
+on the reasoning that naming terms is somebody asking a new question. It
+is not — the page polls whatever is on screen. Nothing in a request tells
+new terms from the same terms polled again, and the archives button is
+remembered across visits, so the exemption was defeated by the two
+controls it exempted: one open tab with a term in the box wrote a line
+every ten seconds into the journal it was displaying, and the search that
+put them there was pushed out by them. Measured before the fix: 35 seconds
+of polling, three lines. The going-to-look is already marked without
+guessing — every control on the page reloads with `follow=false`, and only
+the timer sends `true`. The terms still go into the record, because "read
+the audit journal" and "read the audit journal for one account's failed
+logins" are different acts to find afterwards; terms left unset are absent
+rather than null.
 
 **What the measurement changed.** Two things, neither visible to the suite.
 Walking the file backwards accumulated `buffer = read(step) + buffer`,
