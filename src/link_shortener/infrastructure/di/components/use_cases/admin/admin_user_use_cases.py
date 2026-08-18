@@ -32,14 +32,16 @@ class AdminUserUseCasesComponent:
             user_service=self.user_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
         )
 
     def get_update_user_roles_use_case(self) -> UpdateUserRolesUseCase:
         """Return a configured ``UpdateUserRolesUseCase``."""
         return UpdateUserRolesUseCase(
-            user_service=self.user_service,            
+            user_service=self.user_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
         )
 
     def get_deactivate_user_use_case(self) -> DeactivateUserUseCase:
@@ -48,6 +50,7 @@ class AdminUserUseCasesComponent:
             user_service=self.user_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
         )
 
     def get_confirm_user_email_use_case(self) -> ConfirmUserEmailUseCase:
@@ -63,6 +66,7 @@ class AdminUserUseCasesComponent:
             user_service=self.user_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
         )
 
     def get_list_users_use_case(self) -> ListUsersUseCase:

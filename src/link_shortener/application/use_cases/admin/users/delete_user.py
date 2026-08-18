@@ -106,6 +106,14 @@ class DeleteUserUseCase(BaseUseCase):
             target_user_id=user_id,
             links_deleted=len(deleted_links),
         )
+        # After the per-link records, and in addition to them. The links
+        # are the trail of what was destroyed; this is the trail of the
+        # account itself, and searching for one must not require reading
+        # the other -- an account deleted while it owned nothing writes no
+        # link records at all.
+        audit.log_user_deleted(
+            target_user_id=user_id, links_deleted=len(deleted_links)
+        )
         return True
 
     def _drop_cached(self, links, log) -> None:
