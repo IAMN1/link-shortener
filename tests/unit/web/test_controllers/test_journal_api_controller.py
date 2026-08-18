@@ -366,6 +366,26 @@ class TestTheSearchTermsReachTheUseCase:
         assert response.status_code == 200
         assert read_journal.execute.call_args.kwargs["where"].since == bound
 
+    @pytest.mark.parametrize(
+        "bound",
+        ["2026-08-18Z", "2026-08-18T14Z", "2026-08-18T14:46Z"],
+    )
+    def test_a_zone_on_anything_shorter_than_the_seconds_is_refused(
+        self, journal_api, read_journal, bound
+    ):
+        """The designator belongs to a time, and the comparison to a prefix.
+
+        A bound is compared against the stamp cut to the bound's own
+        length, and ``Z`` sorts after every character that can stand at
+        that position -- so ``since=2026-08-18Z`` matched nothing at all
+        while ``since=2026-08-18`` matched the day. Two spellings of one
+        date, one of them silently empty, is worse than a refusal.
+        """
+        response = journal_api.get(f"/api/v1/journals/audit?since={bound}")
+
+        assert response.status_code == 400
+        read_journal.execute.assert_not_called()
+
     def test_a_term_longer_than_the_ceiling_is_refused(
         self, journal_api, read_journal
     ):

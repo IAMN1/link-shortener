@@ -934,6 +934,15 @@ a stamp is refused rather than accepted: compared as text it would sort
 past every line and answer "nothing found", which reads as "the journal is
 empty" rather than "that is not a time".
 
+The zone designator is part of that refusal, and was not at first. `Z` was
+allowed after any prefix, and on anything shorter than the seconds it does
+exactly what an unstamped bound does: it sorts after every character a
+stamp can carry at that position, so `since=2026-08-18Z` excluded the whole
+of 18 August while `since=2026-08-18` included it — two spellings of one
+date, one of them silently empty, both accepted by the schema. It is now
+tied to the seconds, which is also where ISO 8601 puts it: a date has no
+zone to name.
+
 **The follow flag decides alone, and the terms only describe.** Recording a
 read was first made conditional on the terms as well: a poll was exempt,
 but a poll carrying a search or reaching into the archives was recorded,

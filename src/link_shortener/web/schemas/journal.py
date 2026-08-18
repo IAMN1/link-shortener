@@ -30,18 +30,28 @@ STAMP_PREFIX = (
     r"(-(0[1-9]|[12]\d|3[01])"
     r"(T([01]\d|2[0-3])"
     r"(:[0-5]\d"
-    r"(:[0-5]\d)?)?)?)?)?Z?$"
+    r"(:[0-5]\dZ?)?)?)?)?)?$"
 )
 """A whole ISO 8601 stamp in UTC, or any prefix of one that ends on a field.
 
 The journals are stamped ``2026-08-18T10:46:53Z`` and nothing else, by one
 constant, so a bound is compared against them as text and any prefix is a
-meaningful bound: a year, a month, a day, an hour. What the pattern refuses is a prefix cut mid-field -- ``2026-08-1`` would
-silently mean the 1st and the 10th through 19th, which is not a range
-anybody asked for -- and anything that is not a stamp at all. Each field is
-bounded to its real range as well, so ``2026-13-45T99`` is a 400 rather
-than a bound that sorts past every line in the file and answers "nothing
-found", which a caller reads as "the journal is empty".
+meaningful bound: a year, a month, a day, an hour. What the pattern refuses
+is a prefix cut mid-field -- ``2026-08-1`` would silently mean the 1st and
+the 10th through 19th, which is not a range anybody asked for -- and
+anything that is not a stamp at all. Each field is bounded to its real
+range as well, so ``2026-13-45T99`` is a 400 rather than a bound that sorts
+past every line in the file and answers "nothing found", which a caller
+reads as "the journal is empty".
+
+The ``Z`` belongs to the seconds and to nothing shorter. Accepted after any
+prefix -- which it was -- it inverts the very comparison the prefix exists
+for: the bound is compared against the stamp truncated to the bound's own
+length, and ``Z`` sorts after every character a stamp can carry there, so
+``since=2026-08-18Z`` excluded all of 18 August while ``since=2026-08-18``
+included it. Two spellings of one day, one of them silently empty. There is
+no zone to name on a date anyway: ISO 8601 hangs the designator on a time,
+never on a day.
 """
 
 
