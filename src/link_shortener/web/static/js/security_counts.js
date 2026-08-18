@@ -24,7 +24,7 @@ function countsStopPolling() {
 document.addEventListener('turbo:before-cache', countsStopPolling);
 
 // Which series are drawn, in this order, and everything else is summed
-// into one. Fourteen event types would be fourteen colours nobody can tell
+// into one. Fifteen event types would be fifteen colours nobody can tell
 // apart; these three are the ones an operator watches -- did people get
 // in, were they refused, and did anything change about who may do what.
 // The label is a function rather than a key, and that is not style: the

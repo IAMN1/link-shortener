@@ -369,6 +369,10 @@ WRAPPERS = [
     (lambda log: log.log_user_deleted("u-1", 3), "USER_DELETED"),
     (lambda log: log.log_user_activated("u-1"), "USER_ACTIVATED"),
     (lambda log: log.log_user_deactivated("u-1", 2), "USER_DEACTIVATED"),
+    (
+        lambda log: log.log_user_email_confirmed("u-1", False),
+        "USER_EMAIL_CONFIRMED",
+    ),
     (lambda log: log.log_roles_changed("u-1", [], ["admin"]), "ROLES_CHANGED"),
     (lambda log: log.log_role_created("editor", ["link:create"]), "ROLE_CREATED"),
     (lambda log: log.log_role_deleted("editor"), "ROLE_DELETED"),

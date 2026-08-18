@@ -801,18 +801,29 @@ for the search.*
 
 **Decided** (2026-08-18): the audit journal carried three events — a link
 created, followed, deleted — and nothing about accounts at all. It now
-carries eleven more, through one method on `AuditLogger`
+carries twelve more, through one method on `AuditLogger`
 (`log_security_event`) and a named wrapper per event above it.
 
 **Which events, by one rule.** An act that changes who may do what leaves a
-record. That admits both sign-in outcomes, the four things that happen to
+record. That admits both sign-in outcomes, the five things that happen to
 an account (`USER_CREATED`, `USER_DELETED`, `USER_ACTIVATED`,
-`USER_DEACTIVATED`), the roles on an account (`ROLES_CHANGED`), the three
-things that happen to a role itself (`ROLE_CREATED`, `ROLE_DELETED`,
-`ROLE_PERMISSIONS_CHANGED`) and the reading of a journal
-(`AUDIT_VIEWED`). It excludes listing accounts, reading one, and seeding
-the database: they change nothing, and a journal that records reads as
-loudly as writes buries the writes. The role events are the ones easiest
+`USER_DEACTIVATED`, `USER_EMAIL_CONFIRMED`), the roles on an account
+(`ROLES_CHANGED`), the three things that happen to a role itself
+(`ROLE_CREATED`, `ROLE_DELETED`, `ROLE_PERMISSIONS_CHANGED`) and the
+reading of a journal (`AUDIT_VIEWED`). It excludes listing accounts,
+reading one, and seeding the database: they change nothing, and a journal
+that records reads as loudly as writes buries the writes.
+
+`USER_EMAIL_CONFIRMED` is the one this rule caught late. An operator
+marking an address confirmed bypasses the proof that anybody can read that
+mailbox, and what it hands over is the ability to sign in -- the same kind
+of act as suspension and deletion, behind the same permission as both. The
+comment in `confirm_user_email.py` explaining why it wrote to the
+application log and no further cited an audit port that carried link
+events and nothing about accounts; this entry is what made that false, and
+the file was never revisited. Measured against the running stack
+afterwards: of twelve administrative operations driven by hand, it was the
+only one leaving no record. The role events are the ones easiest
 to leave out and the worst to be without — changing what a role grants
 moves what every holder of it may do, at once, with no account touched, so
 an investigator asking why an account could suddenly do something finds
@@ -991,7 +1002,7 @@ reason would make the same event exist twice in two shapes that can
 disagree, and the one that gets read is the one nobody checks. The journal
 stays the record; this is the count.
 
-**Counted by a wrapper, not by a call at each site.** Fourteen events are
+**Counted by a wrapper, not by a call at each site.** Fifteen events are
 written from seven use cases, and a counter invoked beside each
 `audit.log_*` is a counter the fifteenth event forgets. `CountingAuditLogger`
 implements `AuditLogger`, counts, and delegates — wrapped once in the

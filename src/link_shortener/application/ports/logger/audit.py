@@ -40,6 +40,7 @@ class AuditEvent(Enum):
     USER_CREATED = "USER_CREATED"
     USER_DELETED = "USER_DELETED"
     USER_ACTIVATED = "USER_ACTIVATED"
+    USER_EMAIL_CONFIRMED = "USER_EMAIL_CONFIRMED"
     USER_DEACTIVATED = "USER_DEACTIVATED"
     ROLES_CHANGED = "ROLES_CHANGED"
 
@@ -253,6 +254,35 @@ class AuditLogger(ABC):
         """
         self.log_security_event(
             AuditEvent.USER_ACTIVATED, target_user_id=target_user_id, **fields
+        )
+
+    def log_user_email_confirmed(
+        self, target_user_id: str, already_confirmed: bool, **fields
+    ) -> None:
+        """
+        Record an address marked confirmed on an operator's word.
+
+        The act it records is a bypass: confirmation normally proves that
+        whoever registered can read that mailbox, and this asserts it
+        instead. What it grants is the ability to sign in, which is why
+        it belongs here by the same rule as suspension and deletion --
+        and it sits behind the same permission as both.
+
+        ``already_confirmed`` because pressing the button twice is not an
+        error and leaves a record either way: without it the journal
+        cannot tell an address that was opened up from one that was
+        already open, and only the first is a bypass of anything.
+
+        Args:
+            target_user_id: The account whose address was confirmed.
+            already_confirmed: Whether it was confirmed before this.
+            **fields: Additional context.
+        """
+        self.log_security_event(
+            AuditEvent.USER_EMAIL_CONFIRMED,
+            target_user_id=target_user_id,
+            already_confirmed=already_confirmed,
+            **fields,
         )
 
     def log_user_deactivated(

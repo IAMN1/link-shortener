@@ -32,6 +32,9 @@ from link_shortener.application.use_cases.admin.roles.update_role_permissions im
 from link_shortener.application.use_cases.admin.users.activate_user import (
     ActivateUserUseCase,
 )
+from link_shortener.application.use_cases.admin.users.confirm_user_email import (
+    ConfirmUserEmailUseCase,
+)
 from link_shortener.application.use_cases.admin.users.create_user import (
     CreateUserUseCase,
 )
@@ -367,6 +370,51 @@ class TestAccountsAreRecorded:
         use_case.execute(TARGET, context)
 
         assert audit.log_user_activated.call_args[1]["target_user_id"] == TARGET
+
+    def test_an_address_confirmed_by_an_operator_is_recorded(
+        self, uow_factory, uow, stored, audit, context
+    ):
+        """The bypass of the proof that an address belongs to anybody.
+
+        It sits behind the same permission as suspension and deletion and
+        does the same kind of thing -- it decides who may sign in -- so
+        for a while it was the only one of them leaving no record. The
+        comment saying why cited a port that carried nothing about
+        accounts, which stopped being true the day the rest of this file
+        was written.
+        """
+        account = user_with()
+        account.email_verified = False
+        stored[TARGET] = account
+        uow.email_verifications.invalidate_for_user.return_value = 2
+        use_case = ConfirmUserEmailUseCase(
+            uow_factory=uow_factory, logger=Mock(), audit_logger=audit
+        )
+
+        use_case.execute(TARGET, context)
+
+        written = audit.log_user_email_confirmed.call_args[1]
+        assert written["target_user_id"] == TARGET
+        assert written["already_confirmed"] is False
+
+    def test_confirming_an_address_that_was_already_confirmed_says_so(
+        self, uow_factory, uow, stored, audit, context
+    ):
+        """Pressing the button twice is not an error and is not a bypass
+        either: the second press opened nothing that was shut."""
+        account = user_with()
+        account.email_verified = True
+        stored[TARGET] = account
+        uow.email_verifications.invalidate_for_user.return_value = 0
+        use_case = ConfirmUserEmailUseCase(
+            uow_factory=uow_factory, logger=Mock(), audit_logger=audit
+        )
+
+        use_case.execute(TARGET, context)
+
+        assert audit.log_user_email_confirmed.call_args[1][
+            "already_confirmed"
+        ] is True
 
 
 class TestARoleChangeOnAnAccountRecordsBothSides:

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.user import UserResponse
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
@@ -32,10 +33,16 @@ class ConfirmUserEmailUseCase(BaseUseCase):
     still works after the address is confirmed is a live credential for
     an account that no longer needs one, and it would sit in a mailbox
     until it expired.
+
+    Attributes:
+        uow_factory: Callable that returns a new unit of work.
+        logger: Application logger.
+        audit_logger: Audit logger, where the bypass is recorded.
     """
 
     uow_factory: UnitOfWorkFactory
     logger: Logger
+    audit_logger: AuditLogger
 
     def execute(self, user_id: str, context: RequestContext) -> UserResponse:
         """
@@ -53,6 +60,7 @@ class ConfirmUserEmailUseCase(BaseUseCase):
                 carries that id.
         """
         log = self._get_logger(self.logger, context)
+        audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
             user = uow.users.find_by_id(user_id)
@@ -75,14 +83,14 @@ class ConfirmUserEmailUseCase(BaseUseCase):
             spent = uow.email_verifications.invalidate_for_user(user_id)
             uow.commit()
 
-        # Named in the application log rather than the audit journal: the
-        # audit port carries link events and nothing about accounts, and
-        # widening a port is a larger decision than this change.
         log.info(
             "Email confirmed by an administrator",
             target_user_id=user_id,
             was_already_confirmed=already,
             tokens_invalidated=spent,
+        )
+        audit.log_user_email_confirmed(
+            target_user_id=user_id, already_confirmed=already
         )
 
         return UserResponse.from_user(user)

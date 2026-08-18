@@ -58,6 +58,7 @@ class AdminUserUseCasesComponent:
         return ConfirmUserEmailUseCase(
             logger=self.logger,
             uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
         )
 
     def get_activate_user_use_case(self) -> ActivateUserUseCase:
