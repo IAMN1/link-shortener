@@ -90,7 +90,15 @@ class JournalApiController:
             create_request_context(),
             period=request.args.get("period", DEFAULT_PERIOD),
         )
-        return jsonify(SecurityCountsResponse.from_domain(counts).model_dump())
+        # `mode="json"`, as the visit endpoints do it: without it the two
+        # datetimes leave the model as `datetime` objects, and Flask's
+        # encoder writes those as RFC 1123 -- "Tue, 18 Aug 2026 10:46:53
+        # GMT" where this endpoint's own OpenAPI schema says
+        # `format: date-time`, and where the visit chart beside it on the
+        # same page is given ISO 8601. One page, two spellings of a moment.
+        return jsonify(
+            SecurityCountsResponse.from_domain(counts).model_dump(mode="json")
+        )
 
     def read_journal_page(self, journal: str):
         """

@@ -201,7 +201,7 @@ flowchart LR
 ```bash
 uv run pytest tests/                      # 3171 тест
 uv run python tests/live/smoke_test.py    # 141 проверка по HTTP
-uv run python tests/live/browser_test.py  # 50 проверок настоящим браузером
+uv run python tests/live/browser_test.py  # 51 проверка настоящим браузером
 ```
 
 Четыре уровня — unit, интеграционные на SQLite, интеграционные на настоящих

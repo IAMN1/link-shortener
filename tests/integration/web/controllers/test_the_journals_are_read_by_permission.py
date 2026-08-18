@@ -20,6 +20,8 @@ rules that holds in the service and is bypassed by the surface -- is only
 answerable from here.
 """
 
+from datetime import datetime
+
 import pytest
 
 from tests.integration.conftest import account_with_permissions, auth_headers
@@ -211,3 +213,22 @@ class TestEveryJournalIsClosedToWhoeverHoldsNeitherPermission:
         assert client.get(
             "/api/v1/journals/counters", headers=audit_reader
         ).status_code == 200
+
+    def test_the_counters_write_their_moments_the_way_everything_else_does(
+        self, client, audit_reader
+    ):
+        """ISO 8601 in UTC, which is what this codebase means by a moment.
+
+        Serialised without `mode="json"` the two bounds leave as
+        `datetime` objects and Flask writes them as RFC 1123 -- "Tue, 18
+        Aug 2026 10:46:53 GMT" -- while the schema this endpoint
+        publishes says `format: date-time` and the visit chart beside it
+        on the same page is handed ISO. A client generated from the
+        document cannot parse what the service sends.
+        """
+        body = client.get(
+            "/api/v1/journals/counters", headers=audit_reader
+        ).get_json()
+
+        for bound in (body["since"], body["until"]):
+            assert datetime.fromisoformat(bound).tzinfo is not None

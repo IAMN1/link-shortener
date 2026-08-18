@@ -430,7 +430,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 50
+    expected = 51
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -1611,6 +1611,33 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         labels = page.locator("[data-counts-chart] .chart-axis").count()
         numeric = page.locator("[data-counts-chart] .chart-axis--num").count()
         assert labels > numeric, (labels, numeric)
+
+    @check("the dates along the axis are a whole number of days apart")
+    def _():
+        # The weekly span is drawn in six-hour buckets, and the labels
+        # were spaced by a count of buckets that had nothing to do with
+        # days: every fifth one, which is thirty hours. The dates walked
+        # -- 11, 13, 14, 15, 16, 18 at even spacing -- so equal distances
+        # meant unequal times and two days of the seven were never named.
+        # Read as dates rather than as positions, because the fault is
+        # what the labels say, not where they sit.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-counts-chart] svg", timeout=5000)
+        page.wait_for_timeout(500)
+
+        stamps = page.evaluate(
+            """() => [...document.querySelectorAll(
+                '[data-counts-chart] .chart-axis:not(.chart-axis--num)'
+            )].map(node => Date.parse(node.textContent))"""
+        )
+        assert len(stamps) > 2, stamps
+        assert all(stamp == stamp for stamp in stamps), stamps
+
+        gaps = {stamps[i + 1] - stamps[i] for i in range(len(stamps) - 1)}
+        assert len(gaps) == 1, (stamps, gaps)
+        assert gaps.pop() % 86_400_000 == 0, stamps
 
     @check("choosing another span redraws the counters for it")
     def _():

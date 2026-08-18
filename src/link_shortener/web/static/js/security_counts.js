@@ -12,6 +12,10 @@
 
 var countsTimers = [];
 
+// A day, in the units `Date.getTime()` speaks. Used to keep a date label
+// standing on a date -- see `labelEvery`.
+var DAY_IN_MILLISECONDS = 86400000;
+
 function countsStopPolling() {
     countsTimers.forEach(function (id) { clearInterval(id); });
     countsTimers = [];
@@ -135,7 +139,26 @@ function drawSecurityColumns(host, answer) {
         svg.appendChild(hit);
     });
 
-    chartAxis(svg, plot, stacked, Math.max(1, Math.round(buckets / 6)), label);
+    chartAxis(svg, plot, stacked, labelEvery(buckets, step, label), label);
+}
+
+// How many buckets apart the labels stand: about six of them across the
+// chart, but never a stride that leaves a date label standing somewhere
+// other than a date.
+//
+// Six alone gave 5 on the weekly span -- 28 buckets of six hours -- so
+// each label sat 30 hours after the one before it. The dates walked:
+// 11, 13, 14, 15, 16, 18, at even spacing, with the 12th and the 17th
+// never named and equal gaps meaning a day and a quarter. Rounded up to
+// the 4 buckets that make a day, the labels are days again.
+function labelEvery(buckets, step, format) {
+    var about = Math.max(1, Math.round(buckets / 6));
+    if (format !== formatDate) return about;
+
+    var perDay = Math.round(DAY_IN_MILLISECONDS / step);
+    if (perDay <= 1) return about;
+
+    return perDay * Math.max(1, Math.round(about / perDay));
 }
 
 function mountSecurityCounts(root) {

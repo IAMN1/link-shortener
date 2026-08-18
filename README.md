@@ -203,7 +203,7 @@ Thirty-four operations. Full description: `/api/openapi.json`, rendered at
 ```bash
 uv run pytest tests/                      # 3171 tests
 uv run python tests/live/smoke_test.py    # 141 checks over HTTP
-uv run python tests/live/browser_test.py  # 50 checks in a real browser
+uv run python tests/live/browser_test.py  # 51 checks in a real browser
 ```
 
 Four levels — unit, integration on SQLite, integration on real PostgreSQL and
