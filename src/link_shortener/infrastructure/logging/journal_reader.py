@@ -23,8 +23,9 @@ import gzip
 import json
 import os
 import re
+from collections import deque
 from pathlib import Path
-from typing import IO, List, Optional, Tuple, cast
+from typing import IO, Deque, List, Optional, Tuple, cast
 
 from link_shortener.application.ports.journal_reader import (
     Journal, JournalFilter, JournalLine, JournalPage, JournalReaderPort,
@@ -139,13 +140,19 @@ def _lines_backwards(path: Path, wanted: int) -> Tuple[List[str], bool]:
         The lines, and whether the read reached the start of the file.
     """
     if path.suffix == ".gz":
-        window: List[str] = []
+        # A deque bounded to the window, rather than a list trimmed with
+        # `pop(0)`: popping the front of a list moves every remaining
+        # entry, once per line of the file, which is the same quadratic
+        # shape the block loop below carries a comment about. It stayed
+        # cheap only while the window was `HARD_LIMIT` -- a filtered read
+        # raised it to `SCAN_LIMIT`, twenty-five times as far to move.
+        # Measured on this tree over 200 000 lines: 0.90 s against 0.03 s
+        # at a window of 50 000.
+        window: Deque[str] = deque(maxlen=wanted)
         with _open(path) as handle:
             for raw in handle:
                 window.append(raw.decode("utf-8", errors="replace").rstrip("\n"))
-                if len(window) > wanted:
-                    window.pop(0)
-        return window, True
+        return list(window), True
 
     with path.open("rb") as handle:
         handle.seek(0, os.SEEK_END)

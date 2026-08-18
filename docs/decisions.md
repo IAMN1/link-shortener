@@ -983,6 +983,16 @@ hands `load` the event as its first argument — the argument that says "this
 is a poll" — so the one press on the page that is unmistakably somebody
 going to look was marking itself as a poll and leaving no trace.
 
+The same quadratic shape survived one branch over in the same function.
+An archive cannot be read from the end, so it is walked forwards while a
+window of the wanted lines is held — and that window was a list trimmed
+with `pop(0)`, which moves every entry still in it, once per line of the
+file. It stayed cheap only while the window was `HARD_LIMIT`; the filtered
+read raised it to `SCAN_LIMIT`, twenty-five times as far to move.
+Measured over 200 000 lines at a window of 50 000: 0.89 s against 0.04 s
+for a `deque` bounded to the window, byte for byte the same answer. A
+wall-clock ceiling holds it, beside the one on the plain branch.
+
 ### The security events are counted in the database, and charted beside the journal
 
 **Decided** (2026-08-18): every security event is written to

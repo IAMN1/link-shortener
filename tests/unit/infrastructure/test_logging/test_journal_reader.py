@@ -403,6 +403,43 @@ class TestAWideReadCostsWhatANarrowOneDoes:
             "buffer does it in about 14, the rebuilt one in about 3100"
         )
 
+    def test_the_same_holds_for_an_archive_that_is_walked_forwards(
+        self, journals, tmp_path
+    ):
+        """The compressed branch had the fault the plain one was fixed for.
+
+        gzip cannot be read from the end, so the archive is walked
+        forwards while a window of the wanted lines is held -- and the
+        window was a list trimmed with `pop(0)`, which moves every entry
+        still in it, once per line of the file. Harmless while the window
+        was `HARD_LIMIT`; a filtered read asks for `SCAN_LIMIT`, twenty
+        five times as far to move. Measured on this tree over 200 000
+        lines at a window of 50 000: 0.89 s against 0.04 s.
+        """
+        import gzip
+        import time
+
+        path = tmp_path / "audit.log.4.gz"
+        with gzip.open(path, "wb") as handle:
+            handle.write(
+                ("\n".join(record(i) for i in range(200_000)) + "\n").encode()
+            )
+
+        started = time.perf_counter()
+        lines, reached_start = _lines_backwards(path, SCAN_LIMIT)
+        elapsed = time.perf_counter() - started
+
+        assert len(lines) == SCAN_LIMIT
+        assert reached_start is True
+        # The last line of the file is the newest, and it must still be
+        # the last of the window: speed bought by returning the wrong end
+        # would be no bargain.
+        assert json.loads(lines[-1])["index"] == 199_999
+        assert elapsed < 0.5, (
+            f"reading the archive took {elapsed * 1000:.0f} ms; the bounded "
+            "window does it in about 40, the trimmed list in about 890"
+        )
+
     def test_the_lines_are_the_same_ones_the_slow_spelling_returned(
         self, journals
     ):
