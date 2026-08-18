@@ -10,8 +10,8 @@ from typing import Optional, Any, Dict
 
 import structlog
 
-from link_shortener.application import AuditLogger
-from link_shortener.infrastructure.logging.utils import mask_url
+from link_shortener.application import AuditEvent, AuditLogger
+from link_shortener.infrastructure.logging.utils import mask_email, mask_url
 
 
 class StructlogAuditLogger(AuditLogger):
@@ -105,7 +105,7 @@ class StructlogAuditLogger(AuditLogger):
             **kwargs: Additional context (e.g. batch_id, is_new).
         """
         data = self._build_data(
-            event_type="URL_CREATED",
+            event_type=AuditEvent.URL_CREATED.value,
             short_code=short_code,
             original_url=original_url,
             **kwargs
@@ -121,7 +121,7 @@ class StructlogAuditLogger(AuditLogger):
             **kwargs: Additional context (e.g. clicks count).
         """
         data = self._build_data(
-            event_type="URL_ACCESSED",
+            event_type=AuditEvent.URL_ACCESSED.value,
             short_code=short_code,
             original_url=original_url,
             **kwargs
@@ -137,12 +137,39 @@ class StructlogAuditLogger(AuditLogger):
             **kwargs: Additional context (e.g. request_id, remote_addr).
         """
         data = self._build_data(
-            event_type="URL_DELETED",
+            event_type=AuditEvent.URL_DELETED.value,
             short_code=short_code,
             original_url=original_url,
             **kwargs
         )
         self._logger.info("Url deleted successfully", **data)
+
+    def log_security_event(self, event: AuditEvent, **fields) -> None:
+        """Log an event about an account rather than about a link.
+
+        ``email`` is masked on its way in, the way ``original_url`` is on
+        the link events, and under the same rule: the field is masked
+        because of the name it arrives under. An address passed as
+        anything else -- or bound with ``bind()`` -- is written as given.
+
+        ``event_type`` is written last and therefore cannot be overridden,
+        by a bound field or by a keyword. See the reasoning in the sibling
+        adapter ``StandardAuditLogger``: a context field is a caller's to
+        override, the event's identity is not, and a record filed under the
+        wrong ``event_type`` is one that a search for its own kind never
+        returns.
+
+        Args:
+            event: Which event this is.
+            **fields: The event's fields.
+        """
+        data = dict(self._bound_fields)
+        data.update(fields)
+        if "email" in data:
+            data["email"] = mask_email(data["email"])
+        data["event_type"] = event.value
+
+        self._logger.info(f"Security event: {event.value}", **data)
 
     def is_healthy(self) -> bool:
         """Check whether the audit logger is operational.

@@ -19,7 +19,7 @@ from .ports.cache.link_cache import LinkCache
 from .ports.cache.link_service_stats_cache import StatsCache
 from .ports.cache.service_cache import ServiceCache
 from .ports.cache.redirect_cache import CachedRedirect, RedirectCache
-from .ports.logger.audit import AuditLogger
+from .ports.logger.audit import AuditEvent, AuditLogger
 from .ports.logger.logger import Logger
 from .ports.mail_templates import MailTemplates
 from .ports.mailer import Mailer, MailDeliveryError
@@ -130,6 +130,7 @@ __all__ = [
     "ServiceCache",
     "CachedRedirect",
     "RedirectCache",
+    "AuditEvent",
     "AuditLogger",
     "Logger",
     "Mailer",

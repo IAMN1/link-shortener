@@ -12,7 +12,7 @@ to a healthy fallback logger if the primary one fails.
 
 from typing import List, Optional, Tuple
 
-from link_shortener.application import AuditLogger
+from link_shortener.application import AuditEvent, AuditLogger
 from link_shortener.infrastructure.failover.failover_service import FailoverService
 from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
 from link_shortener.infrastructure.logging.handlers.audit.null_audit import NullAuditLogger
@@ -245,7 +245,7 @@ class FailoverAuditLoggerProxy(AuditLogger):
             self._service, {**self._bound_fields, **kwargs}
         )
 
-    POSITIONAL_FIELDS = ("short_code", "original_url")
+    POSITIONAL_FIELDS = ("short_code", "original_url", "event")
     """Names this proxy passes positionally to the implementations.
 
     A bound field with one of these names would otherwise reach the same
@@ -260,6 +260,12 @@ class FailoverAuditLoggerProxy(AuditLogger):
     ``request_id``, ``remote_addr``, ``user_agent``, ``request_path``,
     ``request_method`` and ``user_id``. The guard is for the sixth caller,
     which will pass ``**extra`` because the signature invites it.
+
+    ``event`` is here for ``log_security_event`` and costs the link events
+    nothing: it is not a field any of them writes, and it is not one a
+    context could sensibly carry -- structlog spells the message itself
+    ``event``, so a bound field of that name is already a collision with
+    the record's own text rather than a piece of context.
     """
 
     def _context(self, **kwargs) -> dict:
@@ -327,6 +333,17 @@ class FailoverAuditLoggerProxy(AuditLogger):
         self._service.execute(
             "log_url_deleted", short_code, original_url, **all_kwargs
         )
+
+    def log_security_event(self, event: AuditEvent, **fields) -> None:
+        """
+        Forward a security event to the active audit logger via failover.
+
+        Args:
+            event: Which event this is.
+            **fields: The event's fields.
+        """
+        all_kwargs = self._context(**fields)
+        self._service.execute("log_security_event", event, **all_kwargs)
 
     def is_healthy(self) -> bool:
         """
