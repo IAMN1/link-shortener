@@ -22,6 +22,7 @@ from .repositories.link_repository import (
 from .repositories.refresh_session_repository import RefreshSessionRepository
 from .repositories.email_verification_repository import EmailVerificationRepository
 from .repositories.link_visit_repository import LinkVisitRepository
+from .repositories.security_event_repository import SecurityEventRepository
 
 from .value_objects.original_url import OriginalUrl
 from .value_objects.short_code import ShortCode
@@ -66,6 +67,7 @@ __all__ = [
     "RefreshSessionRepository",
     "EmailVerificationRepository",
     "LinkVisitRepository",
+    "SecurityEventRepository",
     "UserRepository",
     "RoleRepository",
     "PermissionRepository",

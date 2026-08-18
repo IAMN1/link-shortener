@@ -14,11 +14,15 @@ from link_shortener.application import Logger, UnitOfWork
 from link_shortener.domain import (
     EmailVerificationRepository, LinkRepository, LinkVisitRepository,
     PermissionRepository,
-    RefreshSessionRepository, RoleRepository, UserRepository
+    RefreshSessionRepository, RoleRepository, SecurityEventRepository,
+    UserRepository
 )
 from link_shortener.infrastructure.database.manager import DatabaseManager
 from link_shortener.infrastructure.database.repositories.sqlalchemy_email_verification_repository import SQLAlchemyEmailVerificationRepository
 from link_shortener.infrastructure.database.repositories.sqlalchemy_link_visit_repository import SQLAlchemyLinkVisitRepository
+from link_shortener.infrastructure.database.repositories.sqlalchemy_security_event_repository import (
+    SQLAlchemySecurityEventRepository,
+)
 from link_shortener.infrastructure.database.repositories.sqlalchemy_link_repository import SQLAlchemyLinkRepository
 from link_shortener.infrastructure.database.repositories.sqlalchemy_permission_repository import SQLAlchemyPermissionRepository
 from link_shortener.infrastructure.database.repositories.sqlalchemy_refresh_session_repository import SQLAlchemyRefreshSessionRepository
@@ -69,6 +73,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         self._refresh_sessions: Optional[RefreshSessionRepository] = None
         self._email_verifications: Optional[EmailVerificationRepository] = None
         self._link_visits: Optional[LinkVisitRepository] = None
+        self._security_events: Optional[SecurityEventRepository] = None
         self._committed = False
 
     # ------------------------------------------------------------------
@@ -107,6 +112,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         self._refresh_sessions = SQLAlchemyRefreshSessionRepository(self._session)
         self._email_verifications = SQLAlchemyEmailVerificationRepository(self._session)
         self._link_visits = SQLAlchemyLinkVisitRepository(self._session)
+        self._security_events = SQLAlchemySecurityEventRepository(self._session)
         self._committed = False
 
         self._start_transaction()
@@ -266,3 +272,14 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         if self._link_visits is None:
             raise RuntimeError("Unit of Work not entered")
         return self._link_visits
+
+    @property
+    def security_events(self) -> SecurityEventRepository:
+        """Return the ``SecurityEventRepository`` bound to the session.
+
+        Raises:
+            RuntimeError: If the context has not been entered.
+        """
+        if self._security_events is None:
+            raise RuntimeError("Unit of Work not entered")
+        return self._security_events
