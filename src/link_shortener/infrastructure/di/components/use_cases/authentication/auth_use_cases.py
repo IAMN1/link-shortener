@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from link_shortener.application import (
-    UnitOfWorkFactory, CleanUnverifiedAccountsUseCase,
+    UnitOfWorkFactory, AuditLogger, CleanUnverifiedAccountsUseCase,
     LoginUseCase, RegisterUseCase, ResendVerificationUseCase,
     SendAccountExistsEmailUseCase, SendVerificationEmailUseCase,
     VerifyEmailUseCase, AuthenticationService, Logger, Mailer,
@@ -15,14 +15,16 @@ class AuthUseCasesComponent:
     Provides factory methods for authentication-related use cases.
 
     Requires the Unit of Work factory, authentication service, logger,
-    the name of the default role assigned to new users, and everything the
-    address confirmation needs: a queue to hand the message to, a mailer
-    and templates for the worker that sends it, and the two lifetimes.
+    audit logger, the name of the default role assigned to new users, and
+    everything the address confirmation needs: a queue to hand the message
+    to, a mailer and templates for the worker that sends it, and the two
+    lifetimes.
     """
 
     uow_factory: UnitOfWorkFactory
     authentication_service: AuthenticationService
     logger: Logger
+    audit_logger: AuditLogger
     default_role_name: str
     task_queue: TaskQueue
     mailer: Mailer
@@ -42,6 +44,7 @@ class AuthUseCasesComponent:
             authentication_service=self.authentication_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
         )
 
     def get_register_use_case(self) -> RegisterUseCase:

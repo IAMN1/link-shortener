@@ -402,6 +402,7 @@ class Container:
                 uow_factory=self._uow_factory,
                 authentication_service=self.auth_component.get_authentication_service(),
                 logger=self.logger_component.get_logger(__name__),
+                audit_logger=self.audit_component.get_audit_logger(),
                 default_role_name=self.config.DEFAULT_ROLE_NAME,
                 task_queue=self.task_queue_component.get_task_queue(),
                 mailer=self.mail_component.get_mailer(),
