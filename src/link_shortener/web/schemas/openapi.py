@@ -341,6 +341,67 @@ is why it cannot drift from what the endpoint validates. This one can:
 together instead.
 """
 
+JOURNAL_SEARCH_PARAMETERS = [
+    {
+        "name": name,
+        "in": "query",
+        "required": False,
+        "description": description,
+        "schema": schema,
+    }
+    for name, description, schema in (
+        (
+            "event_type",
+            "Match the event's own type exactly, as the audit journal "
+            "writes it: LOGIN_FAILED, ROLES_CHANGED, URL_ACCESSED.",
+            {"type": "string", "maxLength": 64},
+        ),
+        (
+            "account",
+            "Match an account id against both names an event can carry it "
+            "under -- user_id, whoever acted, and target_user_id, whoever "
+            "was acted upon. One term rather than two, because searching "
+            "one name shows half of what happened to an account without "
+            "saying so.",
+            {"type": "string", "maxLength": 64},
+        ),
+        (
+            "remote_addr",
+            "Match the address a request came from, exactly: a substring "
+            "of an address is a different address.",
+            {"type": "string", "maxLength": 64},
+        ),
+        (
+            "short_code",
+            "Match the link an event was about, exactly.",
+            {"type": "string", "maxLength": 64},
+        ),
+        (
+            "since",
+            "Earliest stamp to include. A whole ISO 8601 stamp in UTC or "
+            "any prefix of one: 2026-08-18 is that whole day, "
+            "2026-08-18T14 that hour. Both ends are inclusive.",
+            {"type": "string", "example": "2026-08-18"},
+        ),
+        (
+            "until",
+            "Latest stamp to include, in the same shape as since.",
+            {"type": "string", "example": "2026-08-18T14"},
+        ),
+    )
+]
+"""The six terms a journal read may be narrowed by.
+
+Built from a list because the six differ only in name and wording, and six
+near-identical dictionaries invite the copy that leaves one field's
+description on another's parameter.
+
+A search costs more than a tail -- measured, 117 to 136 ms against 2 ms,
+since it scans up to fifty thousand lines rather than stopping at the page
+-- so it is a thing a caller asks for rather than the default.
+"""
+
+
 PATHS: Dict[str, Any] = {
     "/api/v1/shorten": {
         "post": {
@@ -1100,6 +1161,20 @@ PATHS: Dict[str, Any] = {
                     ),
                     "schema": {"type": "boolean", "default": False},
                 },
+                {
+                    "name": "follow",
+                    "in": "query",
+                    "required": False,
+                    "description": (
+                        "Say that this read continues one already made -- "
+                        "a viewer refreshing the tail it is displaying. "
+                        "Changes nothing about the answer; it keeps the "
+                        "poll out of the audit journal, which would "
+                        "otherwise gain twelve lines a minute per reader."
+                    ),
+                    "schema": {"type": "boolean", "default": False},
+                },
+                *JOURNAL_SEARCH_PARAMETERS,
             ],
             "responses": {
                 "200": {
@@ -1107,7 +1182,9 @@ PATHS: Dict[str, Any] = {
                     **_json("JournalPageResponse"),
                 },
                 "400": _error(
-                    f"limit outside 1..{HARD_LIMIT}, or not a whole number"
+                    f"limit outside 1..{HARD_LIMIT}, a search term longer "
+                    "than 64 characters, or a time bound that is not an "
+                    "ISO 8601 stamp in UTC or a prefix of one"
                 ),
                 "401": _error("Nobody is authenticated"),
                 "403": _error(

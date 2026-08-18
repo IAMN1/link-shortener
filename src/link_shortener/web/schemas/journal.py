@@ -16,12 +16,33 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from link_shortener.application.ports.journal_reader import (
-    JournalLine, JournalPage,
+    JournalFilter, JournalLine, JournalPage,
 )
 from link_shortener.application.use_cases.journals.read_journal import (
     DEFAULT_LINES,
 )
 from link_shortener.infrastructure.logging.journal_reader import HARD_LIMIT
+
+
+STAMP_PREFIX = (
+    r"^\d{4}"
+    r"(-(0[1-9]|1[0-2])"
+    r"(-(0[1-9]|[12]\d|3[01])"
+    r"(T([01]\d|2[0-3])"
+    r"(:[0-5]\d"
+    r"(:[0-5]\d)?)?)?)?)?Z?$"
+)
+"""A whole ISO 8601 stamp in UTC, or any prefix of one that ends on a field.
+
+The journals are stamped ``2026-08-18T10:46:53Z`` and nothing else, by one
+constant, so a bound is compared against them as text and any prefix is a
+meaningful bound: a year, a month, a day, an hour. What the pattern refuses is a prefix cut mid-field -- ``2026-08-1`` would
+silently mean the 1st and the 10th through 19th, which is not a range
+anybody asked for -- and anything that is not a stamp at all. Each field is
+bounded to its real range as well, so ``2026-13-45T99`` is a 400 rather
+than a bound that sorts past every line in the file and answers "nothing
+found", which a caller reads as "the journal is empty".
+"""
 
 
 class JournalQuery(BaseModel):
@@ -57,11 +78,42 @@ class JournalQuery(BaseModel):
     archives: bool = False
     follow: bool = False
 
+    event_type: Optional[str] = Field(default=None, max_length=64)
+    account: Optional[str] = Field(default=None, max_length=64)
+    remote_addr: Optional[str] = Field(default=None, max_length=64)
+    short_code: Optional[str] = Field(default=None, max_length=64)
+    since: Optional[str] = Field(default=None, pattern=STAMP_PREFIX)
+    until: Optional[str] = Field(default=None, pattern=STAMP_PREFIX)
+
     model_config = ConfigDict(
         json_schema_extra={
-            "example": {"limit": 200, "archives": False, "follow": False}
+            "example": {
+                "limit": 200,
+                "archives": False,
+                "follow": False,
+                "event_type": "LOGIN_FAILED",
+                "since": "2026-08-18",
+            }
         }
     )
+
+    def to_filter(self) -> JournalFilter:
+        """
+        The search terms, as the reader takes them.
+
+        Returns:
+            The filter. Empty when nothing was asked for, which the reader
+            treats as no filter at all rather than as a filter matching
+            everything -- the difference is whether it scans.
+        """
+        return JournalFilter(
+            event_type=self.event_type,
+            account=self.account,
+            remote_addr=self.remote_addr,
+            short_code=self.short_code,
+            since=self.since,
+            until=self.until,
+        )
 
 
 class JournalLineSchema(BaseModel):
