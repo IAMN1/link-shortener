@@ -16,12 +16,19 @@
             render('db', null);
             render('redis', null);
             render('celery', null);
+            render('limiter', null);
+            renderLogging(null);
             return;
         }
         var data = await resp.json();
         render('db', data.database);
         render('redis', data.cache);
         render('celery', data.task_queue);
+        // The limiter fails open: with its backend gone it enforces
+        // nothing and the service answers normally, so this row is the
+        // only place the failure appears.
+        render('limiter', data.rate_limiter);
+        renderLogging(data.logging);
     } catch(e) {
         showLoadError('health-error', t('unreachable'));
     }
@@ -48,5 +55,29 @@
         }
         if (!dot) return;
         dot.className = 'dot' + (ok === null ? '' : (ok ? ' dot--ok' : ' dot--danger'));
+    }
+
+    // The counters `FailoverService` keeps. They were published by the
+    // endpoint and read by nobody, which is how an audit trail that had
+    // stopped being written looked, from every surface an operator has,
+    // exactly like one that was fine.
+    //
+    // `active` names the implementation actually doing the work -- the
+    // primary, or the fallback it failed over to -- and until this page
+    // read it, the only word about which one holds the work was a single
+    // line at startup.
+    function renderLogging(logging) {
+        ['logger', 'audit'].forEach(function(chain) {
+            var state = logging ? logging[chain] : null;
+            var name = document.getElementById('logging-' + chain);
+            if (name) name.textContent = state ? state.active : t('unknown');
+
+            ['dropped_calls', 'failed_checks', 'lost_log_lines']
+                .forEach(function(counter) {
+                    var cell = document.getElementById(chain + '-' + counter);
+                    if (!cell) return;
+                    cell.textContent = state ? state[counter] : '\u2014';
+                });
+        });
     }
 })();

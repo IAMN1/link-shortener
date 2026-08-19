@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-19 14:23+0300\n"
+"POT-Creation-Date: 2026-08-19 14:31+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1078,7 +1078,43 @@ msgstr ""
 msgid "Task queue"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:30
+#: src/link_shortener/web/templates/dashboard/health.html:31
+msgid "Rate limiter"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:41
+msgid "Logging"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:43
+msgid "Application log"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:47
+msgid "Audit log"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:53
+msgid "Records that did not survive"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:55
+msgid "Calls dropped"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:60
+msgid "Health checks that failed"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:65
+msgid "Lines lost"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:70
+msgid "Application log · audit log."
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:76
 #, python-format
 msgid "Reported by %(name)s, read once when this page opens."
 msgstr ""

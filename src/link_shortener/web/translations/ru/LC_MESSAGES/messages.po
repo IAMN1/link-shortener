@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-19 14:23+0300\n"
+"POT-Creation-Date: 2026-08-19 14:31+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -1095,7 +1095,43 @@ msgstr "База данных"
 msgid "Task queue"
 msgstr "Очередь задач"
 
-#: src/link_shortener/web/templates/dashboard/health.html:30
+#: src/link_shortener/web/templates/dashboard/health.html:31
+msgid "Rate limiter"
+msgstr "Ограничитель частоты"
+
+#: src/link_shortener/web/templates/dashboard/health.html:41
+msgid "Logging"
+msgstr "Журналирование"
+
+#: src/link_shortener/web/templates/dashboard/health.html:43
+msgid "Application log"
+msgstr "Журнал приложения"
+
+#: src/link_shortener/web/templates/dashboard/health.html:47
+msgid "Audit log"
+msgstr "Журнал аудита"
+
+#: src/link_shortener/web/templates/dashboard/health.html:53
+msgid "Records that did not survive"
+msgstr "Записи, которые не дошли"
+
+#: src/link_shortener/web/templates/dashboard/health.html:55
+msgid "Calls dropped"
+msgstr "Потеряно вызовов"
+
+#: src/link_shortener/web/templates/dashboard/health.html:60
+msgid "Health checks that failed"
+msgstr "Проверок с отказом"
+
+#: src/link_shortener/web/templates/dashboard/health.html:65
+msgid "Lines lost"
+msgstr "Потеряно строк"
+
+#: src/link_shortener/web/templates/dashboard/health.html:70
+msgid "Application log · audit log."
+msgstr "Журнал приложения · журнал аудита."
+
+#: src/link_shortener/web/templates/dashboard/health.html:76
 #, python-format
 msgid "Reported by %(name)s, read once when this page opens."
 msgstr "Сообщает %(name)s, читается один раз при открытии страницы."
