@@ -20,7 +20,7 @@ import pytest
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.current_user_info import CurrentUserInfo
 from link_shortener.application.ports.journal_reader import (
-    Journal, JournalLine, JournalPage,
+    Journal, JournalFilter, JournalLine, JournalPage,
 )
 from link_shortener.application.use_cases.journals.read_journal import (
     DEFAULT_LINES, PERMISSION_FOR, ReadJournalUseCase,
@@ -136,6 +136,7 @@ def use_case(reader, uow_factory):
         ),
         uow_factory=uow_factory,
         logger=Mock(),
+        audit_logger=Mock(),
     )
 
 
@@ -303,6 +304,7 @@ class TestARefusalDoesNotReadTheFile:
             ),
             uow_factory=uow_factory,
             logger=logger,
+            audit_logger=Mock(),
         )
         context = signed_in_as(
             user_holding(SystemPermissions.LOGS_VIEW.value), uow_factory
@@ -379,7 +381,10 @@ class TestWhatTheCallerAskedForReachesTheReader:
         use_case.execute(Journal.APPLICATION, context)
 
         reader.tail.assert_called_once_with(
-            Journal.APPLICATION, limit=DEFAULT_LINES, include_archives=False
+            Journal.APPLICATION,
+            limit=DEFAULT_LINES,
+            include_archives=False,
+            where=None,
         )
 
     def test_a_limit_and_the_archives_are_passed_through(
@@ -400,7 +405,7 @@ class TestWhatTheCallerAskedForReachesTheReader:
         )
 
         reader.tail.assert_called_once_with(
-            Journal.ERROR, limit=10_000, include_archives=True
+            Journal.ERROR, limit=10_000, include_archives=True, where=None
         )
 
     def test_the_page_is_handed_back_as_the_reader_gave_it(
@@ -413,3 +418,228 @@ class TestWhatTheCallerAskedForReachesTheReader:
         )
 
         assert use_case.execute(Journal.APPLICATION, context) is page
+
+
+class TestReadingAJournalLeavesARecord:
+    """The trace that reading the journals used to leave, which was none.
+
+    An account holding ``audit:view`` could read every destination address
+    and every account that followed one, and nothing anywhere said it had
+    happened. The gap was written down in ``docs/decisions.md`` as open;
+    this is it being closed, and the interesting half is what is *not*
+    recorded -- the page polls, so a record per read would put twelve lines
+    a minute into the journal it is displaying.
+    """
+
+    @pytest.fixture
+    def audit(self):
+        """The audit logger, watched for what a read writes to it."""
+        logger = Mock()
+        logger.bind.return_value = logger
+        return logger
+
+    @pytest.fixture
+    def use_case(self, reader, uow_factory, audit):
+        """The use case over a watched audit logger."""
+        return ReadJournalUseCase(
+            reader=reader,
+            authorization_service=RBACAuthorizationService(
+                uow_factory=None, logger=Mock()
+            ),
+            uow_factory=uow_factory,
+            logger=Mock(),
+            audit_logger=audit,
+        )
+
+    @pytest.fixture
+    def auditor(self, uow_factory):
+        """A caller entitled to all three journals."""
+        return signed_in_as(
+            user_holding(
+                SystemPermissions.AUDIT_VIEW.value,
+                SystemPermissions.LOGS_VIEW.value,
+            ),
+            uow_factory,
+        )
+
+    def test_going_to_look_is_recorded(self, use_case, audit, auditor):
+        use_case.execute(Journal.AUDIT, auditor)
+
+        _, kwargs = audit.log_audit_viewed.call_args
+        assert kwargs["journal"] == "audit"
+        assert kwargs["reason"] == "opened"
+
+    def test_each_journal_is_recorded_under_its_own_name(
+        self, use_case, audit, auditor
+    ):
+        """"Somebody read a journal" does not say which one, and the three
+        are not equally sensitive."""
+        for journal in (Journal.APPLICATION, Journal.ERROR, Journal.AUDIT):
+            use_case.execute(journal, auditor)
+
+        written = [
+            call.kwargs["journal"] for call in audit.log_audit_viewed.call_args_list
+        ]
+        assert written == ["application", "error", "audit"]
+
+    def test_following_the_tail_is_not_recorded_again(
+        self, use_case, audit, auditor
+    ):
+        """The page refreshing itself is the same reading, still going on.
+
+        Recorded per poll, an open page writes twelve lines a minute into
+        the journal it is showing -- each of which is then shown, pushing
+        out the lines the reader came for.
+        """
+        use_case.execute(Journal.AUDIT, auditor, following=True)
+
+        audit.log_audit_viewed.assert_not_called()
+
+    def test_reaching_into_the_archives_is_recorded_when_asked_for(
+        self, use_case, audit, auditor
+    ):
+        """Going further back is somebody going to look, and says so."""
+        use_case.execute(Journal.AUDIT, auditor, include_archives=True)
+
+        assert audit.log_audit_viewed.call_args.kwargs["reason"] == "archives"
+
+    def test_polling_with_the_archives_on_is_not_recorded_again(
+        self, use_case, audit, auditor
+    ):
+        """Turning the archives on was recorded; the timer after it is not.
+
+        The page polls whatever is on screen, the archives included, so
+        exempting the poll and then re-admitting it whenever the archives
+        are on exempts nothing: the button is remembered across visits,
+        and one open tab wrote a line every ten seconds.
+        """
+        use_case.execute(Journal.AUDIT, auditor, include_archives=True,
+                         following=True)
+
+        audit.log_audit_viewed.assert_not_called()
+
+    def test_a_refused_read_is_not_recorded_as_a_read(
+        self, use_case, audit, uow_factory
+    ):
+        """It did not happen. The refusal is written by the permission
+        check, in its own line, as a warning."""
+        context = signed_in_as(
+            user_holding(SystemPermissions.LOGS_VIEW.value), uow_factory
+        )
+
+        with pytest.raises(DomainError):
+            use_case.execute(Journal.AUDIT, context)
+
+        audit.log_audit_viewed.assert_not_called()
+
+    def test_the_record_carries_who_and_from_where(
+        self, use_case, audit, auditor
+    ):
+        """A reading nobody can be attached to answers nothing."""
+        use_case.execute(Journal.AUDIT, auditor)
+
+        _, bound = audit.bind.call_args
+        assert bound["user_id"] == auditor.current_user.id
+        assert bound["remote_addr"] == "127.0.0.1"
+
+
+class TestASearchIsRecordedWithWhatWasSearchedFor:
+    """A reading and a search are different acts, and the terms say which.
+
+    "Read the audit journal" and "read the audit journal for one account's
+    failed logins" are not the same thing to find afterwards, so the terms
+    go into the record. What they do not do is decide whether there is a
+    record at all: that is the follow flag alone, because a request
+    carrying terms says nothing about whether they were just typed or are
+    being polled for the hundredth time.
+    """
+
+    @pytest.fixture
+    def audit(self):
+        """The audit logger, watched for what a search writes to it."""
+        logger = Mock()
+        logger.bind.return_value = logger
+        return logger
+
+    @pytest.fixture
+    def use_case(self, reader, uow_factory, audit):
+        return ReadJournalUseCase(
+            reader=reader,
+            authorization_service=RBACAuthorizationService(
+                uow_factory=None, logger=Mock()
+            ),
+            uow_factory=uow_factory,
+            logger=Mock(),
+            audit_logger=audit,
+        )
+
+    @pytest.fixture
+    def auditor(self, uow_factory):
+        return signed_in_as(
+            user_holding(SystemPermissions.AUDIT_VIEW.value), uow_factory
+        )
+
+    def test_the_terms_reach_the_record(self, use_case, audit, auditor):
+        use_case.execute(
+            Journal.AUDIT,
+            auditor,
+            where=JournalFilter(account="u-1", event_type="LOGIN_FAILED"),
+        )
+
+        _, kwargs = audit.log_audit_viewed.call_args
+        assert kwargs["filters"] == {
+            "account": "u-1", "event_type": "LOGIN_FAILED"
+        }
+        assert kwargs["reason"] == "searched"
+
+    def test_terms_that_were_not_given_are_absent_rather_than_null(
+        self, use_case, audit, auditor
+    ):
+        """A record of a search should say what was asked, not list what
+        was not."""
+        use_case.execute(
+            Journal.AUDIT, auditor, where=JournalFilter(short_code="-gxXupR")
+        )
+
+        assert audit.log_audit_viewed.call_args[1]["filters"] == {
+            "short_code": "-gxXupR"
+        }
+
+    def test_a_poll_carrying_the_same_terms_is_not_recorded_again(
+        self, use_case, audit, auditor
+    ):
+        """Asking the question was recorded; the timer repeating it is not.
+
+        Nothing in a request distinguishes new terms from the same terms
+        polled again, so recording every poll that carries terms records
+        the tail refreshing itself -- six lines a minute, in the journal
+        on screen, and the search that put them there is displaced by
+        them. The submit that set the terms reloads with ``follow=false``
+        and is recorded there.
+        """
+        use_case.execute(
+            Journal.AUDIT,
+            auditor,
+            following=True,
+            where=JournalFilter(account="u-1"),
+        )
+
+        audit.log_audit_viewed.assert_not_called()
+
+    def test_an_empty_filter_is_not_a_search(self, use_case, audit, auditor):
+        """The viewer passes one always, so an empty filter must leave the
+        polling exemption exactly as it was."""
+        use_case.execute(
+            Journal.AUDIT, auditor, following=True, where=JournalFilter()
+        )
+
+        audit.log_audit_viewed.assert_not_called()
+
+    def test_the_terms_reach_the_reader(self, use_case, reader, auditor):
+        """Recorded and applied are two different things, and only one of
+        them answers the reader's question."""
+        where = JournalFilter(remote_addr="10.0.0.1")
+
+        use_case.execute(Journal.AUDIT, auditor, where=where)
+
+        assert reader.tail.call_args.kwargs["where"] is where

@@ -1594,6 +1594,51 @@ def _():
     for name in r.get_json()["files_read"]:
         assert name.startswith("application.log"), name
 
+@test("GET /api/v1/journals/counters (as an auditor)")
+def _():
+    # The figures the charts are drawn from. They are the audit journal
+    # counted, so they open to the same permission -- which is why this
+    # runs on the auditor and the next one on the administrator.
+    r = auditor.get("/api/v1/journals/counters", headers=auditor_headers)
+    assert r.status_code == 200, r.get_json()
+    body = r.get_json()
+    assert body["period"] == "7d", body
+    assert isinstance(body["totals"], dict), body
+    # This run has signed in several times by now, so the one event that
+    # cannot be absent is a successful sign-in.
+    assert body["totals"].get("LOGIN_SUCCEEDED", 0) > 0, body
+
+@test("GET /api/v1/journals/counters (an administrator is refused)")
+def _():
+    # The limit of `admin:all`, measured through this endpoint: these
+    # numbers summarise the record kept about administrators, and a count
+    # is the same information as a record, aggregated.
+    r = api.get("/api/v1/journals/counters", headers=auth_headers)
+    assert r.status_code == 403, r.get_json()
+
+@test("GET /api/v1/journals/counters?period= (outside the four on offer)")
+def _():
+    # Refused rather than trimmed to the nearest: a caller free to name a
+    # span is a caller free to name a bucket count.
+    r = auditor.get(
+        "/api/v1/journals/counters?period=all-of-it", headers=auditor_headers
+    )
+    assert r.status_code == 400, r.get_json()
+
+@test("GET /api/v1/journals/counters (every span answers with its own width)")
+def _():
+    widths = {"24h": 24, "7d": 28, "30d": 30, "90d": 90}
+    for period, buckets in widths.items():
+        r = auditor.get(
+            f"/api/v1/journals/counters?period={period}",
+            headers=auditor_headers,
+        )
+        assert r.status_code == 200, r.get_json()
+        body = r.get_json()
+        assert body["buckets"] == buckets, (period, body["buckets"])
+        for name, series in body["series"].items():
+            assert len(series) == buckets, (period, name, len(series))
+
 @test("GET /dashboard/service/journals (as an auditor)")
 def _():
     # The page itself, which is guarded by `require_any_permission` --
@@ -1939,7 +1984,7 @@ success = result.summary()
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 137
+EXPECTED_CHECKS = 141
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")

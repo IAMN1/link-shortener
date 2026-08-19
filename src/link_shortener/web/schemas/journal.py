@@ -16,12 +16,43 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from link_shortener.application.ports.journal_reader import (
-    JournalLine, JournalPage,
+    JournalFilter, JournalLine, JournalPage,
 )
 from link_shortener.application.use_cases.journals.read_journal import (
     DEFAULT_LINES,
 )
 from link_shortener.infrastructure.logging.journal_reader import HARD_LIMIT
+
+
+STAMP_PREFIX = (
+    r"^\d{4}"
+    r"(-(0[1-9]|1[0-2])"
+    r"(-(0[1-9]|[12]\d|3[01])"
+    r"(T([01]\d|2[0-3])"
+    r"(:[0-5]\d"
+    r"(:[0-5]\dZ?)?)?)?)?)?$"
+)
+"""A whole ISO 8601 stamp in UTC, or any prefix of one that ends on a field.
+
+The journals are stamped ``2026-08-18T10:46:53Z`` and nothing else, by one
+constant, so a bound is compared against them as text and any prefix is a
+meaningful bound: a year, a month, a day, an hour. What the pattern refuses
+is a prefix cut mid-field -- ``2026-08-1`` would silently mean the 1st and
+the 10th through 19th, which is not a range anybody asked for -- and
+anything that is not a stamp at all. Each field is bounded to its real
+range as well, so ``2026-13-45T99`` is a 400 rather than a bound that sorts
+past every line in the file and answers "nothing found", which a caller
+reads as "the journal is empty".
+
+The ``Z`` belongs to the seconds and to nothing shorter. Accepted after any
+prefix -- which it was -- it inverts the very comparison the prefix exists
+for: the bound is compared against the stamp truncated to the bound's own
+length, and ``Z`` sorts after every character a stamp can carry there, so
+``since=2026-08-18Z`` excluded all of 18 August while ``since=2026-08-18``
+included it. Two spellings of one day, one of them silently empty. There is
+no zone to name on a date anyway: ISO 8601 hangs the designator on a time,
+never on a day.
+"""
 
 
 class JournalQuery(BaseModel):
@@ -44,14 +75,55 @@ class JournalQuery(BaseModel):
             journal is exhausted. Off by default: the newest archive is
             uncompressed but the rest are gzip, which cannot be read from
             the end, so a page that includes them costs whole files.
+        follow: Whether this read continues one the caller already made --
+            the viewer refreshing the tail it is displaying. It changes
+            nothing about what comes back; it decides whether the read is
+            recorded in the audit journal, so that a page polling every
+            five seconds does not write twelve lines a minute into the
+            journal it is showing. Off by default, which is the safe way
+            round: a caller that says nothing is recorded.
     """
 
     limit: int = Field(default=DEFAULT_LINES, ge=1, le=HARD_LIMIT)
     archives: bool = False
+    follow: bool = False
+
+    event_type: Optional[str] = Field(default=None, max_length=64)
+    account: Optional[str] = Field(default=None, max_length=64)
+    remote_addr: Optional[str] = Field(default=None, max_length=64)
+    short_code: Optional[str] = Field(default=None, max_length=64)
+    since: Optional[str] = Field(default=None, pattern=STAMP_PREFIX)
+    until: Optional[str] = Field(default=None, pattern=STAMP_PREFIX)
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"limit": 200, "archives": False}}
+        json_schema_extra={
+            "example": {
+                "limit": 200,
+                "archives": False,
+                "follow": False,
+                "event_type": "LOGIN_FAILED",
+                "since": "2026-08-18",
+            }
+        }
     )
+
+    def to_filter(self) -> JournalFilter:
+        """
+        The search terms, as the reader takes them.
+
+        Returns:
+            The filter. Empty when nothing was asked for, which the reader
+            treats as no filter at all rather than as a filter matching
+            everything -- the difference is whether it scans.
+        """
+        return JournalFilter(
+            event_type=self.event_type,
+            account=self.account,
+            remote_addr=self.remote_addr,
+            short_code=self.short_code,
+            since=self.since,
+            until=self.until,
+        )
 
 
 class JournalLineSchema(BaseModel):

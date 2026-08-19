@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-19 14:31+0300\n"
+"POT-Creation-Date: 2026-08-19 20:32+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -23,7 +23,7 @@ msgstr ""
 #: src/link_shortener/application/services/user_management_service.py:115
 #: src/link_shortener/application/services/user_management_service.py:138
 #: src/link_shortener/application/services/user_management_service.py:161
-#: src/link_shortener/application/use_cases/admin/users/confirm_user_email.py:63
+#: src/link_shortener/application/use_cases/admin/users/confirm_user_email.py:71
 #: src/link_shortener/web/controllers/admin_api_controller.py:111
 #: src/link_shortener/web/controllers/admin_api_controller.py:214
 #, python-format
@@ -38,18 +38,18 @@ msgstr "该邮箱地址已被注册"
 msgid "Password must not be empty"
 msgstr "密码不能为空"
 
-#: src/link_shortener/application/use_cases/admin/users/create_user.py:65
-#: src/link_shortener/application/use_cases/admin/users/update_user_role.py:64
+#: src/link_shortener/application/use_cases/admin/users/create_user.py:75
+#: src/link_shortener/application/use_cases/admin/users/update_user_role.py:73
 #, python-format
 msgid "Role '%(name)s' not found"
 msgstr "找不到角色「%(name)s」"
 
-#: src/link_shortener/application/use_cases/auth/login.py:54
-#: src/link_shortener/application/use_cases/auth/login.py:61
+#: src/link_shortener/application/use_cases/auth/login.py:77
+#: src/link_shortener/application/use_cases/auth/login.py:93
 msgid "Invalid email or password"
 msgstr "邮箱地址或密码不正确"
 
-#: src/link_shortener/application/use_cases/auth/login.py:75
+#: src/link_shortener/application/use_cases/auth/login.py:112
 msgid "Confirm your email address before signing in"
 msgstr "请先确认邮箱地址再登录"
 
@@ -70,8 +70,9 @@ msgstr "超出批量上限。最多 %(max)s 条，请求了 %(requested)s 条"
 msgid "Guest link limit of %(limit)s exceeded."
 msgstr "已超出访客 %(limit)s 条链接的上限。"
 
-#: src/link_shortener/application/use_cases/journals/read_journal.py:162
+#: src/link_shortener/application/use_cases/journals/read_journal.py:297
 #: src/link_shortener/application/use_cases/links/delete_link.py:192
+#: src/link_shortener/application/use_cases/security/get_security_counts.py:225
 #: src/link_shortener/web/security/authorization.py:71
 #: src/link_shortener/web/security/decorators.py:51
 #: src/link_shortener/web/security/decorators.py:104
@@ -79,7 +80,8 @@ msgstr "已超出访客 %(limit)s 条链接的上限。"
 msgid "Authentication required"
 msgstr "需要登录"
 
-#: src/link_shortener/application/use_cases/journals/read_journal.py:169
+#: src/link_shortener/application/use_cases/journals/read_journal.py:304
+#: src/link_shortener/application/use_cases/security/get_security_counts.py:230
 #: src/link_shortener/web/security/decorators.py:53
 #: src/link_shortener/web/security/decorators.py:106
 msgid "Not authorized"
@@ -99,12 +101,13 @@ msgstr "ttl_seconds 不得超过 %(max)s"
 msgid "You are not allowed to delete this link"
 msgstr "您无权删除此链接"
 
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:87
+#: src/link_shortener/application/use_cases/security/get_security_counts.py:130
+#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:95
 #, python-format
 msgid "Unknown period '%(period)s'. Choose one of: %(choices)s"
 msgstr "未知的时间段「%(period)s」。请从以下选择：%(choices)s"
 
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:171
+#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:181
 #, python-format
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr "days 必须在 1 到 730 之间，收到的是 %(days)s"
@@ -321,7 +324,7 @@ msgstr "发送失败"
 msgid "Not found"
 msgstr "未找到"
 
-#: src/link_shortener/web/i18n.py:241
+#: src/link_shortener/web/i18n.py:241 src/link_shortener/web/i18n.py:355
 msgid "Refused"
 msgstr "已拒绝"
 
@@ -546,28 +549,66 @@ msgstr "不是一条记录"
 msgid "Lines: %(count)s · %(files)s"
 msgstr "行数：%(count)s · %(files)s"
 
-#: src/link_shortener/web/i18n.py:332
+#: src/link_shortener/web/i18n.py:335
+msgid "Nothing here matched that search"
+msgstr "没有符合该搜索的记录"
+
+#: src/link_shortener/web/i18n.py:339
+#, python-format
+msgid "Found: %(found)s · scanned: %(scanned)s"
+msgstr "找到：%(found)s · 已扫描：%(scanned)s"
+
+#: src/link_shortener/web/i18n.py:344
+msgid "Not searched further back than this."
+msgstr "搜索未再往前追溯。"
+
+#: src/link_shortener/web/i18n.py:346
 msgid "This is the start of the journal."
 msgstr "这是日志的开头。"
 
-#: src/link_shortener/web/i18n.py:333
+#: src/link_shortener/web/i18n.py:347
 msgid "Older lines exist."
 msgstr "还有更早的行。"
 
-#: src/link_shortener/web/i18n.py:335
+#: src/link_shortener/web/i18n.py:349
 #, python-format
 msgid "Archives reach back to %(name)s."
 msgstr "归档可回溯到 %(name)s。"
 
-#: src/link_shortener/web/i18n.py:337
+#: src/link_shortener/web/i18n.py:354
+msgid "Signed in"
+msgstr "成功登录"
+
+#: src/link_shortener/web/i18n.py:356
+msgid "Roles changed"
+msgstr "角色变更"
+
+#: src/link_shortener/web/i18n.py:357
+msgid "Other events"
+msgstr "其他事件"
+
+#: src/link_shortener/web/i18n.py:362
+#, python-format
+msgid "Counted: %(since)s — %(until)s"
+msgstr "统计范围：%(since)s — %(until)s"
+
+#: src/link_shortener/web/i18n.py:363
+msgid "Security events over time"
+msgstr "安全事件随时间变化"
+
+#: src/link_shortener/web/i18n.py:364
+msgid "The counters could not be read"
+msgstr "无法读取计数"
+
+#: src/link_shortener/web/i18n.py:365
 msgid "answering"
 msgstr "正常响应"
 
-#: src/link_shortener/web/i18n.py:338
+#: src/link_shortener/web/i18n.py:366
 msgid "not answering"
 msgstr "无响应"
 
-#: src/link_shortener/web/i18n.py:339
+#: src/link_shortener/web/i18n.py:367
 msgid "unknown"
 msgstr "未知"
 
@@ -590,12 +631,12 @@ msgstr "请求体嵌套过深"
 msgid "Request body must be a JSON object"
 msgstr "请求体必须是 JSON 对象"
 
-#: src/link_shortener/web/controllers/api_controller.py:301
-#: src/link_shortener/web/controllers/api_controller.py:341
+#: src/link_shortener/web/controllers/api_controller.py:312
+#: src/link_shortener/web/controllers/api_controller.py:353
 msgid "Sign in to see your own statistics"
 msgstr "登录后可查看自己的统计"
 
-#: src/link_shortener/web/controllers/api_controller.py:349
+#: src/link_shortener/web/controllers/api_controller.py:361
 msgid "days must be a whole number"
 msgstr "days 必须是整数"
 
@@ -630,7 +671,7 @@ msgstr "找不到该角色"
 msgid "The role %(name)s is a system role and cannot be modified"
 msgstr "角色 %(name)s 是系统角色，无法修改"
 
-#: src/link_shortener/web/controllers/journal_api_controller.py:113
+#: src/link_shortener/web/controllers/journal_api_controller.py:165
 #, python-format
 msgid "No journal is called %(name)s"
 msgstr "没有名为 %(name)s 的日志"
@@ -761,15 +802,18 @@ msgstr "24 小时"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:47
 #: src/link_shortener/web/templates/dashboard/create_link.html:18
+#: src/link_shortener/web/templates/dashboard/journals.html:182
 msgid "7 days"
 msgstr "7 天"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:48
 #: src/link_shortener/web/templates/dashboard/create_link.html:19
+#: src/link_shortener/web/templates/dashboard/journals.html:184
 msgid "30 days"
 msgstr "30 天"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:49
+#: src/link_shortener/web/templates/dashboard/journals.html:186
 msgid "90 days"
 msgstr "90 天"
 
@@ -926,6 +970,7 @@ msgid "Create Link — Linkr"
 msgstr "创建链接 — Linkr"
 
 #: src/link_shortener/web/templates/dashboard/create_link.html:9
+#: src/link_shortener/web/templates/dashboard/journals.html:101
 msgid "Address"
 msgstr "网址"
 
@@ -1148,6 +1193,7 @@ msgid "New link"
 msgstr "新建链接"
 
 #: src/link_shortener/web/templates/dashboard/home.html:36
+#: src/link_shortener/web/templates/dashboard/journals.html:106
 #: src/link_shortener/web/templates/dashboard/my_links.html:25
 #: src/link_shortener/web/templates/dashboard/my_stats.html:37
 #: src/link_shortener/web/templates/dashboard/service_stats.html:37
@@ -1165,7 +1211,7 @@ msgid "Destination"
 msgstr "目标地址"
 
 #: src/link_shortener/web/templates/dashboard/home.html:38
-#: src/link_shortener/web/templates/dashboard/journals.html:101
+#: src/link_shortener/web/templates/dashboard/journals.html:154
 #: src/link_shortener/web/templates/dashboard/my_links.html:34
 #: src/link_shortener/web/templates/dashboard/my_stats.html:40
 #: src/link_shortener/web/templates/dashboard/service_stats.html:40
@@ -1227,34 +1273,67 @@ msgstr "行数"
 msgid "Include archives"
 msgstr "包含归档"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:90
-msgid "Time"
-msgstr "时间"
-
-#: src/link_shortener/web/templates/dashboard/journals.html:91
-msgid "Level"
-msgstr "级别"
-
-#: src/link_shortener/web/templates/dashboard/journals.html:92
+#: src/link_shortener/web/templates/dashboard/journals.html:88
+#: src/link_shortener/web/templates/dashboard/journals.html:145
 msgid "Event"
 msgstr "事件"
 
 #: src/link_shortener/web/templates/dashboard/journals.html:93
+msgid "Account"
+msgstr "账户"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:98
+msgid "id of the account"
+msgstr "账户标识"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:114
+msgid "From"
+msgstr "起"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:119
+msgid "To"
+msgstr "至"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:125
+msgid "Search"
+msgstr "搜索"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:126
+msgid "Clear"
+msgstr "清除"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:143
+msgid "Time"
+msgstr "时间"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:144
+msgid "Level"
+msgstr "级别"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:146
 msgid "Details"
 msgstr "详情"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:114
+#: src/link_shortener/web/templates/dashboard/journals.html:177
+msgid "Security events"
+msgstr "安全事件"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:180
+msgid "24 h"
+msgstr "24 小时"
+
+#: src/link_shortener/web/templates/dashboard/journals.html:204
 #, python-format
 msgid "Read from %(name)s, from the end of the file, by polling."
 msgstr "通过 %(name)s 轮询读取，从文件末尾开始。"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:121
+#: src/link_shortener/web/templates/dashboard/journals.html:211
 msgid ""
 "The audit journal names destination addresses and the accounts that "
 "followed them."
 msgstr "审计日志会写出目标地址以及访问它们的账户。"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:122
+#: src/link_shortener/web/templates/dashboard/journals.html:212
 msgid ""
 "The application journal names the address of everyone who registered or "
 "signed in."

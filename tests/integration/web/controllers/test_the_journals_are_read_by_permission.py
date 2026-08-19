@@ -20,6 +20,8 @@ rules that holds in the service and is bypassed by the surface -- is only
 answerable from here.
 """
 
+from datetime import datetime
+
 import pytest
 
 from tests.integration.conftest import account_with_permissions, auth_headers
@@ -171,13 +173,19 @@ class TestEveryJournalIsClosedToWhoeverHoldsNeitherPermission:
     def test_no_second_endpoint_serves_a_journal(self, app):
         """
         Guards the guard: these checks are worth nothing if a second way in
-        exists. The one endpoint is the one tested; anything else handing
-        out journal content would be untested by construction.
+        exists. The endpoints that exist are the ones tested; anything else
+        handing out journal content would be untested by construction.
+
+        Two now, and the second is not a way to read a journal but a way to
+        count one: `/counters` answers with totals and series drawn from
+        `security_events`, never with a line. It is listed here anyway,
+        because a count is the same information aggregated -- which is why
+        it answers to `audit:view` as well, checked below.
 
         Only the API surface is counted. A dashboard page named after the
         journals serves none of them -- it is a shell that fetches from
-        this endpoint -- so including the page here would make this a check
-        on which pages happen to exist rather than on where journal
+        these endpoints -- so including the page here would make this a
+        check on which pages happen to exist rather than on where journal
         content comes from.
         """
         serving = {
@@ -185,4 +193,42 @@ class TestEveryJournalIsClosedToWhoeverHoldsNeitherPermission:
             if "journal" in str(rule) and str(rule).startswith("/api/")
         }
 
-        assert serving == {"/api/v1/journals/<journal>"}
+        assert serving == {
+            "/api/v1/journals/<journal>",
+            "/api/v1/journals/counters",
+        }
+
+    def test_the_counters_answer_to_the_audit_permission(
+        self, client, administrator, audit_reader
+    ):
+        """The figures summarise the journal, so they close with it.
+
+        An administrator is refused for the same reason they are refused
+        the journal itself: `admin:all` does not carry `audit:view`, and
+        these numbers are the record kept about administrators.
+        """
+        assert client.get(
+            "/api/v1/journals/counters", headers=administrator
+        ).status_code == 403
+        assert client.get(
+            "/api/v1/journals/counters", headers=audit_reader
+        ).status_code == 200
+
+    def test_the_counters_write_their_moments_the_way_everything_else_does(
+        self, client, audit_reader
+    ):
+        """ISO 8601 in UTC, which is what this codebase means by a moment.
+
+        Serialised without `mode="json"` the two bounds leave as
+        `datetime` objects and Flask writes them as RFC 1123 -- "Tue, 18
+        Aug 2026 10:46:53 GMT" -- while the schema this endpoint
+        publishes says `format: date-time` and the visit chart beside it
+        on the same page is handed ISO. A client generated from the
+        document cannot parse what the service sends.
+        """
+        body = client.get(
+            "/api/v1/journals/counters", headers=audit_reader
+        ).get_json()
+
+        for bound in (body["since"], body["until"]):
+            assert datetime.fromisoformat(bound).tzinfo is not None

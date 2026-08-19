@@ -1,4 +1,4 @@
-from link_shortener.application.ports.logger.audit import AuditLogger
+from link_shortener.application.ports.logger.audit import AuditEvent, AuditLogger
 
 
 class NullAuditLogger(AuditLogger):
@@ -27,6 +27,10 @@ class NullAuditLogger(AuditLogger):
         pass
 
     def log_url_deleted(self, short_code: str, original_url: str, **kwargs) -> None:
+        """No-op: do nothing."""
+        pass
+
+    def log_security_event(self, event: AuditEvent, **fields) -> None:
         """No-op: do nothing."""
         pass
 

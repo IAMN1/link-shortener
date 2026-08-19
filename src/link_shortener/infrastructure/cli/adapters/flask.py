@@ -416,6 +416,28 @@ def roll_up_visits():
     folded, swept = container.get_roll_up_visits_use_case().execute(context)
     click.echo(f"Folded {folded} link-days; deleted {swept} raw visits.")
 
+@maintenance_group.command("roll-up-security-events")
+@with_appcontext
+def roll_up_security_events():
+    """Fold finished days of security events, then sweep what is past retention.
+
+    A command of its own rather than a step inside `roll-up-visits`. The
+    two tables fill at different rates -- one with every redirect, the
+    other with every sign-in -- and they keep their history for different
+    lengths of time, a year against ninety days. An operator whose cron
+    line says "roll up visits" should not find it deleting the security
+    history as well, under a name that does not mention it.
+
+    The retention window is `SECURITY_EVENT_RETENTION_DAYS`, not a flag
+    here: a cron line and a running service disagreeing about how long
+    evidence is kept is not a disagreement anybody notices in time.
+    """
+    container = _container()
+    context = RequestContext(request_id="cli-roll-up-security-events")
+    use_case = container.get_roll_up_security_events_use_case()
+    folded, swept = use_case.execute(context)
+    click.echo(f"Folded {folded} event-days; deleted {swept} raw events.")
+
 @maintenance_group.command("clean-sessions")
 @with_appcontext
 def clean_sessions():

@@ -23,11 +23,12 @@ import gzip
 import json
 import os
 import re
+from collections import deque
 from pathlib import Path
-from typing import IO, List, Tuple, cast
+from typing import IO, Deque, List, Optional, Tuple, cast
 
 from link_shortener.application.ports.journal_reader import (
-    Journal, JournalLine, JournalPage, JournalReaderPort,
+    Journal, JournalFilter, JournalLine, JournalPage, JournalReaderPort,
 )
 
 BLOCK = 64 * 1024
@@ -46,6 +47,33 @@ service gets to trust. At the measured 473 bytes a line that is under a
 megabyte of response -- and the ceiling is on lines rather than bytes
 because a line's length is bounded by what the application writes into it,
 while the count is bounded by nothing at all.
+"""
+
+SCAN_LIMIT = 50_000
+"""Most lines one filtered read will look at before giving up.
+
+Without a filter the reader stops as soon as it has the page it was asked
+for, and size stops mattering. With one it has to keep looking, and how far
+is a decision rather than a consequence: a search for something that is not
+there would otherwise walk a gigabyte.
+
+Measured end to end on this tree, against a 46 MB journal of records the
+width the audit journal actually writes: a filtered read costs 117 to 136
+ms whatever it is looking for, and an unfiltered tail of 200 lines costs 2
+ms. The cost is flat across the terms because it is the scan that is paid
+for, not the matching -- most of it is parsing 50 000 records, and a search
+that finds nothing costs exactly what one finding a full page does.
+
+That is a tenth of a second of a worker, on a deployment whose workers are
+`gunicorn --worker-class sync --workers 4`. Doubling the window doubles it:
+at 100 000 lines the buffer alone is 36 MB, and four searches at once would
+be most of a small container.
+
+At ten redirects a second the window is roughly an hour and a half of a
+busy service and weeks of a quiet one. When it runs out the page says so:
+`total_scanned` reaches this number while `reached_start` stays false, and
+the two together are the difference between "there is nothing" and "there
+is nothing in what was looked at".
 """
 
 ARCHIVE = re.compile(r"^(?P<base>.+\.log)\.(?P<generation>\d+)(?P<packed>\.gz)?$")
@@ -112,18 +140,33 @@ def _lines_backwards(path: Path, wanted: int) -> Tuple[List[str], bool]:
         The lines, and whether the read reached the start of the file.
     """
     if path.suffix == ".gz":
-        window: List[str] = []
+        # A deque bounded to the window, rather than a list trimmed with
+        # `pop(0)`: popping the front of a list moves every remaining
+        # entry, once per line of the file, which is the same quadratic
+        # shape the block loop below carries a comment about. It stayed
+        # cheap only while the window was `HARD_LIMIT` -- a filtered read
+        # raised it to `SCAN_LIMIT`, twenty-five times as far to move.
+        # Measured on this tree over 200 000 lines: 0.90 s against 0.03 s
+        # at a window of 50 000.
+        window: Deque[str] = deque(maxlen=wanted)
         with _open(path) as handle:
             for raw in handle:
                 window.append(raw.decode("utf-8", errors="replace").rstrip("\n"))
-                if len(window) > wanted:
-                    window.pop(0)
-        return window, True
+        return list(window), True
 
     with path.open("rb") as handle:
         handle.seek(0, os.SEEK_END)
         position = handle.tell()
-        buffer = b""
+        # Blocks are kept apart and joined once, at the end. Written as
+        # ``buffer = handle.read(step) + buffer`` the loop rebuilds the
+        # whole buffer on every step, which is quadratic in the number of
+        # steps and invisible at a page of 200 lines -- measured on this
+        # tree, 1.6 ms for 2000 lines against 0.3 ms, and then 3144 ms
+        # against 13.9 ms for 100 000, with the peak RSS following the same
+        # curve to 2.3 GB. The page size never reached the second row until
+        # a filter began scanning past what it returns.
+        chunks: List[bytes] = []
+        newlines = 0
         # One newline more than asked for, and that is what keeps a torn
         # line out of the answer. A block boundary lands mid-line nearly
         # always, so the first entry in the buffer is a fragment -- but the
@@ -136,11 +179,17 @@ def _lines_backwards(path: Path, wanted: int) -> Tuple[List[str], bool]:
         # than by the suite going green: line widths of 37 to 5000 bytes
         # against every page size from 1 to one past the end of the file,
         # comparing the result to the tail of the file computed in memory.
-        while position > 0 and buffer.count(b"\n") <= wanted:
+        while position > 0 and newlines <= wanted:
             step = min(BLOCK, position)
             position -= step
             handle.seek(position)
-            buffer = handle.read(step) + buffer
+            chunk = handle.read(step)
+            chunks.append(chunk)
+            newlines += chunk.count(b"\n")
+
+        # Reversed because the file was walked backwards: the last block
+        # read is the earliest in the file.
+        buffer = b"".join(reversed(chunks))
 
     reached_start = position == 0
     text = buffer.decode("utf-8", errors="replace")
@@ -211,6 +260,7 @@ class FileJournalReader(JournalReaderPort):
         journal: Journal,
         limit: int,
         include_archives: bool = False,
+        where: Optional[JournalFilter] = None,
     ) -> JournalPage:
         """Read the most recent lines of a journal.
 
@@ -219,11 +269,13 @@ class FileJournalReader(JournalReaderPort):
             limit: Most lines to return, capped at ``HARD_LIMIT``.
             include_archives: Whether to continue into the rotated files
                 once the live journal is exhausted.
+            where: What to look for, or ``None`` for the plain tail.
 
         Returns:
             The page, oldest line first.
         """
         wanted = max(0, min(limit, HARD_LIMIT))
+        looking_for = where if where and not where.is_empty else None
         live = self._path_of(journal)
         archives = _archives_of(live) if live.parent.is_dir() else []
         oldest = archives[-1].name if archives else None
@@ -237,6 +289,13 @@ class FileJournalReader(JournalReaderPort):
         collected: List[JournalLine] = []
         files_read: List[str] = []
         reached_start = False
+        scanned = 0
+
+        # How far this read may look, as against how much it may return.
+        # They are the same number without a filter -- a line looked at is
+        # a line returned -- and with one the reader keeps going past the
+        # page it is filling, up to the ceiling it owes the deployment.
+        budget = SCAN_LIMIT if looking_for else wanted
 
         # Newest first, and the collection is built backwards for the same
         # reason: the answer is "the last N lines", so a file is only
@@ -245,18 +304,24 @@ class FileJournalReader(JournalReaderPort):
             if not path.exists():
                 continue
 
-            still_wanted = wanted - len(collected)
-            if still_wanted <= 0:
+            room = budget - scanned
+            if room <= 0:
                 break
 
-            lines, hit_start = _lines_backwards(path, still_wanted)
+            lines, hit_start = _lines_backwards(path, room)
             files_read.append(path.name)
-            collected = [_parse(raw, path.name) for raw in lines] + collected
+            scanned += len(lines)
+
+            found = [_parse(raw, path.name) for raw in lines]
+            if looking_for:
+                found = [line for line in found if looking_for.matches(line.fields)]
+            collected = found + collected
             reached_start = hit_start
 
-            if len(collected) >= wanted:
-                # Stopped because the page filled, not because the journal
-                # ran out -- whatever the last file said about its own start.
+            if len(collected) >= wanted or scanned >= budget:
+                # Stopped because the page filled or the window ran out,
+                # not because the journal did -- whatever the last file
+                # said about its own start.
                 reached_start = False
                 break
         else:
@@ -267,7 +332,7 @@ class FileJournalReader(JournalReaderPort):
 
         return JournalPage(
             lines=tuple(collected[-wanted:]),
-            total_scanned=len(collected),
+            total_scanned=scanned,
             reached_start=reached_start,
             files_read=tuple(files_read),
             oldest_available=oldest,

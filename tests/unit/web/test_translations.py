@@ -406,6 +406,14 @@ NOT_PROSE_JS = {
     ' data-token="',
     # How long a preference is kept and where it is sent.
     ";path=/;max-age=31536000;samesite=Lax",
+    # Event types, as the audit journal and the counters endpoint spell
+    # them. They arrive from the API and are compared against it, so a
+    # translated one would match nothing -- the same reason `Enter` is
+    # above. What a reader sees instead is `counts_signed_in` and its
+    # neighbours, which are in the catalogues.
+    "LOGIN_SUCCEEDED",
+    "LOGIN_FAILED",
+    "ROLES_CHANGED",
 }
 """Strings in the scripts that are not sentences.
 

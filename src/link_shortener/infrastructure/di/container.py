@@ -28,7 +28,8 @@ from link_shortener.application import (
     GetUserActivityStatsUseCase, GetUserLinksUseCase,
     GetUserUseCase, ListRolesUseCase, ListUsersUseCase, Logger, LoginUseCase,
     Mailer, RateLimiter, ReadJournalUseCase, RedirectLinkUseCase, RegisterUseCase,
-    ResendVerificationUseCase, RollUpVisitsUseCase, SeedDatabaseUseCase,
+    ResendVerificationUseCase, RollUpSecurityEventsUseCase,
+    RollUpVisitsUseCase, SeedDatabaseUseCase,
     SendAccountExistsEmailUseCase, SendVerificationEmailUseCase, ServiceCache,
     TaskQueue, UnitOfWorkFactory, UpdateLinkStatsUseCase,
     UpdateRolePermissionsUseCase, UpdateUserRolesUseCase, VerifyEmailUseCase,
@@ -46,6 +47,12 @@ from link_shortener.infrastructure.database.unit_of_work import SQLAlchemyUnitOf
 from link_shortener.infrastructure.di.components.logger import LoggerComponent
 from link_shortener.infrastructure.logging.status_reader import (
     ComponentLoggingStatus,
+)
+from link_shortener.application.use_cases.security.get_security_counts import (
+    GetSecurityCountsUseCase,
+)
+from link_shortener.infrastructure.logging.handlers.audit.counting import (
+    CountingAuditLogger,
 )
 from link_shortener.infrastructure.di.components.audit import AuditComponent
 from link_shortener.infrastructure.di.components.database import DatabaseComponent
@@ -99,6 +106,7 @@ class Container:
             logger_type=self.config.LOGGER_TYPE,
             failover_check_interval=self.config.FAILOVER_CHECK_INTERVAL,
         )
+        self._counting_audit: Optional[CountingAuditLogger] = None
         self.audit_component = AuditComponent(
             audit_enabled=self.config.AUDIT_ENABLED,
             audit_type=self.config.AUDIT_TYPE,
@@ -304,7 +312,7 @@ class Container:
                 code_generator=self.policy_component.get_code_generator(),
                 base_url=self.config.BASE_URL,
                 logger=self.logger_component.get_logger(__name__),
-                audit_logger=self.audit_component.get_audit_logger(),
+                audit_logger=self._audit_logger(),
                 task_queue=self.task_queue_component.get_task_queue(),
                 allowed_schemes=self.config.ALLOWED_SCHEMES,
                 max_url_length=self.config.MAX_URL_LENGTH,
@@ -336,7 +344,7 @@ class Container:
                 code_generator=self.policy_component.get_code_generator(),
                 base_url=self.config.BASE_URL,
                 logger=self.logger_component.get_logger(__name__),
-                audit_logger=self.audit_component.get_audit_logger(),
+                audit_logger=self._audit_logger(),
                 allowed_schemes=self.config.ALLOWED_SCHEMES,
                 max_url_length=self.config.MAX_URL_LENGTH,
                 allow_internal_targets=self.config.ALLOW_INTERNAL_TARGETS,
@@ -378,6 +386,7 @@ class Container:
                 uow_factory=self._uow_factory,
                 role_service=self._role_management_service,
                 logger=self.logger_component.get_logger(__name__),
+                audit_logger=self._audit_logger(),
             )
         return self._admin_role_use_cases
 
@@ -391,9 +400,30 @@ class Container:
                 redirect_cache=self.cache_component.get_cache(),
                 stats_cache=self.cache_component.get_cache(),
                 logger=self.logger_component.get_logger(__name__),
-                audit_logger=self.audit_component.get_audit_logger(),
+                audit_logger=self._audit_logger(),
             )
         return self._admin_user_use_cases
+
+    def _audit_logger(self) -> AuditLogger:
+        """
+        The audit logger every use case is given, counting as it writes.
+
+        Wrapped once here rather than in ``AuditComponent``: the component
+        builds loggers out of configuration and knows nothing about a
+        database, while the counting half needs a unit of work. Wrapping at
+        the seam keeps the layering and means no use case is aware that its
+        events are counted at all.
+
+        Returns:
+            The wrapped logger, built once and reused.
+        """
+        if self._counting_audit is None:
+            self._counting_audit = CountingAuditLogger(
+                inner=self.audit_component.get_audit_logger(),
+                uow_factory=self._uow_factory,
+                logger=self.logger_component.get_logger(__name__),
+            )
+        return self._counting_audit
 
     def _init_auth_use_cases(self) -> AuthUseCasesComponent:
         """Ensure ``AuthUseCasesComponent`` is created and return it."""
@@ -402,6 +432,7 @@ class Container:
                 uow_factory=self._uow_factory,
                 authentication_service=self.auth_component.get_authentication_service(),
                 logger=self.logger_component.get_logger(__name__),
+                audit_logger=self._audit_logger(),
                 default_role_name=self.config.DEFAULT_ROLE_NAME,
                 task_queue=self.task_queue_component.get_task_queue(),
                 mailer=self.mail_component.get_mailer(),
@@ -457,6 +488,7 @@ class Container:
                 authorization_service=self.auth_component.get_authorization_service(),
                 uow_factory=self._uow_factory,
                 logger=self.logger_component.get_logger(__name__),
+                audit_logger=self._audit_logger(),
             )
         return self._journal_use_cases
 
@@ -503,6 +535,36 @@ class Container:
     def get_roll_up_visits_use_case(self) -> RollUpVisitsUseCase:
         """Return fully configured ``RollUpVisitsUseCase``."""
         return self._init_admin_link_use_cases().get_roll_up_visits_use_case()
+
+    def get_security_counts_use_case(self) -> GetSecurityCountsUseCase:
+        """Return fully configured ``GetSecurityCountsUseCase``.
+
+        Built here for the reason the roll-up is: a unit of work, the
+        authorization service and a logger, and nothing a component would
+        add beyond a file to keep in step.
+        """
+        return GetSecurityCountsUseCase(
+            uow_factory=self._uow_factory,
+            authorization_service=(
+                self.auth_component.get_authorization_service()
+            ),
+            logger=self.logger_component.get_logger(__name__),
+        )
+
+    def get_roll_up_security_events_use_case(
+        self,
+    ) -> RollUpSecurityEventsUseCase:
+        """Return fully configured ``RollUpSecurityEventsUseCase``.
+
+        Built here rather than in a component of its own: it needs a unit
+        of work, a logger and one setting, and a component holding nothing
+        else would be a file to keep in step for no gain.
+        """
+        return RollUpSecurityEventsUseCase(
+            uow_factory=self._uow_factory,
+            logger=self.logger_component.get_logger(__name__),
+            retention_days=self.config.SECURITY_EVENT_RETENTION_DAYS,
+        )
 
     def get_clean_expired_links_use_case(self) -> CleanExpiredLinksUseCase:
         """Return fully configured ``CleanExpiredLinksUseCase``."""

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from link_shortener.application import (
-    UnitOfWorkFactory, CreateRoleUseCase,
+    UnitOfWorkFactory, AuditLogger, CreateRoleUseCase,
     UpdateRolePermissionsUseCase, DeleteRoleUseCase, ListRolesUseCase,
     GetRoleUseCase, RoleManagementService, Logger
 )
@@ -13,12 +13,13 @@ class AdminRoleUseCasesComponent:
     Provides factory methods for all role administration use cases.
 
     All dependencies (UoW factory, role service, authorization service,
-    logger) are injected at construction time.
+    logger, audit logger) are injected at construction time.
     """
 
     uow_factory: UnitOfWorkFactory
     role_service: RoleManagementService
     logger: Logger
+    audit_logger: AuditLogger
 
     def get_create_role_use_case(self) -> CreateRoleUseCase:
         """
@@ -30,6 +31,7 @@ class AdminRoleUseCasesComponent:
             uow_factory=self.uow_factory,
             role_service=self.role_service,
             logger=self.logger,
+            audit_logger=self.audit_logger,
         )
 
     def get_update_role_permissions_use_case(self) -> UpdateRolePermissionsUseCase:
@@ -42,6 +44,7 @@ class AdminRoleUseCasesComponent:
             uow_factory=self.uow_factory,
             role_service=self.role_service,
             logger=self.logger,
+            audit_logger=self.audit_logger,
         )
 
     def get_delete_role_use_case(self) -> DeleteRoleUseCase:
@@ -54,6 +57,7 @@ class AdminRoleUseCasesComponent:
             uow_factory=self.uow_factory,
             role_service=self.role_service,
             logger=self.logger,
+            audit_logger=self.audit_logger,
         )
 
     def get_list_roles_use_case(self) -> ListRolesUseCase:

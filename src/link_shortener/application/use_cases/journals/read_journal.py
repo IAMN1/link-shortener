@@ -15,14 +15,16 @@ Cloud draws the line in the same place, between ``logging.viewer`` and
 """
 
 from dataclasses import dataclass
+from typing import Optional
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.auth.authorization_service import (
     AuthorizationService,
 )
 from link_shortener.application.ports.journal_reader import (
-    Journal, JournalPage, JournalReaderPort,
+    Journal, JournalFilter, JournalPage, JournalReaderPort,
 )
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.admin.privilege_guard import load_actor
@@ -76,12 +78,15 @@ class ReadJournalUseCase(BaseUseCase):
         authorization_service: Service that answers permission questions.
         uow_factory: Callable that returns a new Unit of Work instance.
         logger: Application logger.
+        audit_logger: Audit logger, where a read that was not a
+            continuation of an earlier one is recorded.
     """
 
     reader: JournalReaderPort
     authorization_service: AuthorizationService
     uow_factory: UnitOfWorkFactory
     logger: Logger
+    audit_logger: AuditLogger
 
     def execute(
         self,
@@ -89,6 +94,8 @@ class ReadJournalUseCase(BaseUseCase):
         context: RequestContext,
         limit: int = DEFAULT_LINES,
         include_archives: bool = False,
+        following: bool = False,
+        where: Optional[JournalFilter] = None,
     ) -> JournalPage:
         """
         Read the most recent lines of a journal.
@@ -103,6 +110,15 @@ class ReadJournalUseCase(BaseUseCase):
                 request whatever route it took to get there.
             include_archives: Whether to continue into the rotated files
                 once the live journal is exhausted.
+            following: Whether this read continues one already recorded --
+                the page polling the tail it is displaying. It decides
+                whether the read leaves a record, and only that; what is
+                read and who may read it are the same either way.
+            where: What the caller is looking for, or ``None`` for the
+                plain tail. The terms describe the read in its record;
+                whether there is a record is ``following`` alone, because
+                a request carrying terms cannot say whether they were
+                just typed or are being polled for the hundredth time.
 
         Returns:
             The page, oldest line first.
@@ -117,7 +133,14 @@ class ReadJournalUseCase(BaseUseCase):
         self._require_may_read(journal, context, log)
 
         page = self.reader.tail(
-            journal, limit=limit, include_archives=include_archives
+            journal,
+            limit=limit,
+            include_archives=include_archives,
+            where=where,
+        )
+
+        self._record_the_read(
+            journal, context, include_archives, following, where
         )
 
         # `debug`, not `info`: this runs on every poll of an open page, and
@@ -131,6 +154,118 @@ class ReadJournalUseCase(BaseUseCase):
         )
 
         return page
+
+    def _record_the_read(
+        self,
+        journal: Journal,
+        context: RequestContext,
+        include_archives: bool,
+        following: bool,
+        where: Optional[JournalFilter] = None,
+    ) -> None:
+        """
+        Leave a record of this read, unless it merely continues one.
+
+        Reading the journals used to leave no trace at all, which is the
+        one thing the journals are for: an account granted ``audit:view``
+        could read every destination address and every account that
+        followed one, and nothing anywhere would say it had happened.
+
+        Not every read, though, and the reason is the shape of this page
+        rather than squeamishness about volume. The viewer polls, so a
+        record per read would put twelve lines a minute into the journal
+        being displayed -- each of which is then displayed, pushing out the
+        lines the reader came for. What is recorded is the act of going to
+        look: opening the page, switching to another journal, reaching back
+        into the archives, asking a search. What is not is the tail
+        refreshing itself, which the caller marks by asking to follow --
+        and every one of those acts reloads the page marked as not
+        following, so the flag is enough on its own to tell them apart.
+
+        A caller marking a first read as a continuation therefore leaves no
+        record. That is the price of deciding from the request alone rather
+        than keeping per-reader state, and it is bounded: the permission
+        itself is granted separately and its granting is recorded, so a
+        reader can hide a reading but not the entitlement that allowed it.
+        Written down in ``docs/decisions.md`` rather than left here.
+
+        Args:
+            journal: The journal that was just read.
+            context: Request context carrying the caller's identity.
+            include_archives: Whether the read reached into the archives.
+            following: Whether the caller says this continues a read
+                already recorded.
+            where: What the caller searched for, if anything.
+        """
+        searching = bool(where and not where.is_empty)
+
+        # The flag decides on its own, and nothing else is consulted.
+        # Reaching into the archives and naming terms were once treated as
+        # deliberate acts that a poll could not be -- but the page polls
+        # whatever is on screen, terms and archives included, so the
+        # exemption was defeated by the two controls it exempted: one open
+        # tab with a term in the box wrote a line every ten seconds, into
+        # the journal it was displaying. The going-to-look is already
+        # marked: every control on the page -- another journal, another
+        # depth, the archives, a search, Refresh -- reloads with
+        # ``follow=false``, and only the timer sends ``true``.
+        if following:
+            return
+
+        audit = self._get_audit_logger(self.audit_logger, context)
+        audit.log_audit_viewed(
+            journal=journal.value,
+            reason=self._why_this_read_is_recorded(searching, include_archives),
+            filters=self._terms_of(where),
+        )
+
+    @staticmethod
+    def _why_this_read_is_recorded(searching: bool, archives: bool) -> str:
+        """Name what made this read worth a record.
+
+        Args:
+            searching: Whether terms were given.
+            archives: Whether the read reached into the archives.
+
+        Returns:
+            The reason, which a later search over the audit journal itself
+            can be filtered by.
+        """
+        if searching:
+            return "searched"
+        return "archives" if archives else "opened"
+
+    @staticmethod
+    def _terms_of(where: Optional[JournalFilter]) -> dict:
+        """What was searched for, as it goes into the record.
+
+        The terms are written down because what somebody went looking for
+        is the part of a reading worth keeping: "read the audit journal"
+        and "read the audit journal for one account's failed logins" are
+        different acts. Empty fields are dropped rather than written as
+        nulls -- a record of a search should say what was asked, not list
+        what was not.
+
+        Args:
+            where: The filter, or ``None``.
+
+        Returns:
+            The terms that were set, as a mapping.
+        """
+        if where is None:
+            return {}
+        return {
+            name: value
+            for name, value in (
+                ("event_type", where.event_type),
+                ("account", where.account),
+                ("remote_addr", where.remote_addr),
+                ("short_code", where.short_code),
+                ("since", where.since),
+                ("until", where.until),
+            )
+            if value
+        }
 
     def _require_may_read(
         self, journal: Journal, context: RequestContext, log: Logger

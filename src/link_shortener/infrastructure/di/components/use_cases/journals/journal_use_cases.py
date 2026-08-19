@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from link_shortener.application import (
-    AuthorizationService, Journal, JournalReaderPort, Logger,
+    AuditLogger, AuthorizationService, Journal, JournalReaderPort, Logger,
     ReadJournalUseCase, UnitOfWorkFactory,
 )
 from link_shortener.infrastructure.logging.journal_reader import FileJournalReader
@@ -26,6 +26,8 @@ class JournalUseCasesComponent:
         authorization_service: Service that answers permission questions.
         uow_factory: Callable that returns a new Unit of Work instance.
         logger: Application logger injected into the use case.
+        audit_logger: Audit logger, where a read of a journal is
+            recorded -- reading them used to leave no trace at all.
     """
 
     log_dir: str
@@ -35,6 +37,7 @@ class JournalUseCasesComponent:
     authorization_service: AuthorizationService
     uow_factory: UnitOfWorkFactory
     logger: Logger
+    audit_logger: AuditLogger
 
     def get_journal_reader(self) -> JournalReaderPort:
         """
@@ -65,4 +68,5 @@ class JournalUseCasesComponent:
             authorization_service=self.authorization_service,
             uow_factory=self.uow_factory,
             logger=self.logger,
+            audit_logger=self.audit_logger,
         )

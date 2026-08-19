@@ -157,9 +157,14 @@ class TestTheQueryStringIsValidatedRatherThanRead:
     ):
         journal_api.get("/api/v1/journals/application")
 
-        assert read_journal.execute.call_args.kwargs == {
-            "limit": 200, "include_archives": False
-        }
+        kwargs = read_journal.execute.call_args.kwargs
+        assert kwargs["limit"] == 200
+        assert kwargs["include_archives"] is False
+        assert kwargs["following"] is False
+        # A filter is always sent and an empty one costs nothing: the
+        # reader reads it as "no filter" rather than "a filter matching
+        # everything", and the difference is whether it scans.
+        assert kwargs["where"].is_empty is True
 
     def test_a_limit_arrives_as_a_number(self, journal_api, read_journal):
         """``limit="50"`` reaches ``min()`` in the reader as a string, where
@@ -293,3 +298,102 @@ class TestARefusalFromTheUseCaseIsPassedOn:
 
         assert response.status_code == status
         assert body_of(response)["error"] == code
+
+
+class TestTheSearchTermsReachTheUseCase:
+    """Six terms in the query string, one filter out the other side.
+
+    The controller's whole job here is that the terms arrive validated
+    rather than as whatever text was in the address: a time bound is
+    compared against the journal as text, so a bound that is not a stamp
+    would sort past every line and answer "nothing found" -- which a caller
+    reads as "the journal is empty".
+    """
+
+    def test_every_term_arrives_in_the_filter(self, journal_api, read_journal):
+        journal_api.get(
+            "/api/v1/journals/audit?event_type=LOGIN_FAILED&account=u-1"
+            "&remote_addr=10.0.0.1&short_code=abc123"
+            "&since=2026-08-18&until=2026-08-19"
+        )
+
+        where = read_journal.execute.call_args.kwargs["where"]
+        assert where.event_type == "LOGIN_FAILED"
+        assert where.account == "u-1"
+        assert where.remote_addr == "10.0.0.1"
+        assert where.short_code == "abc123"
+        assert where.since == "2026-08-18"
+        assert where.until == "2026-08-19"
+
+    def test_a_request_with_no_terms_sends_an_empty_filter(
+        self, journal_api, read_journal
+    ):
+        """Empty rather than absent, so the use case has one shape to
+        handle -- and an empty filter is the one that costs nothing."""
+        journal_api.get("/api/v1/journals/application")
+
+        where = read_journal.execute.call_args.kwargs["where"]
+        assert where.is_empty is True
+
+    @pytest.mark.parametrize(
+        "bound",
+        ["2026-08-1", "yesterday", "2026-13-01", "2026-08-32", "2026-08-18T24"],
+    )
+    def test_a_time_bound_that_is_not_a_stamp_is_refused(
+        self, journal_api, read_journal, bound
+    ):
+        """400 rather than a bound that quietly matches nothing.
+
+        ``2026-08-1`` is the interesting one: it is a prefix of the 1st and
+        of the 10th through 19th at once, so it would answer a range nobody
+        asked for. The others are shaped like stamps and name moments that
+        do not exist.
+        """
+        response = journal_api.get(f"/api/v1/journals/audit?since={bound}")
+
+        assert response.status_code == 400
+        read_journal.execute.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "bound",
+        ["2026", "2026-08", "2026-08-18", "2026-08-18T14", "2026-08-18T14:46:53Z"],
+    )
+    def test_a_prefix_that_ends_on_a_field_is_accepted(
+        self, journal_api, read_journal, bound
+    ):
+        response = journal_api.get(f"/api/v1/journals/audit?since={bound}")
+
+        assert response.status_code == 200
+        assert read_journal.execute.call_args.kwargs["where"].since == bound
+
+    @pytest.mark.parametrize(
+        "bound",
+        ["2026-08-18Z", "2026-08-18T14Z", "2026-08-18T14:46Z"],
+    )
+    def test_a_zone_on_anything_shorter_than_the_seconds_is_refused(
+        self, journal_api, read_journal, bound
+    ):
+        """The designator belongs to a time, and the comparison to a prefix.
+
+        A bound is compared against the stamp cut to the bound's own
+        length, and ``Z`` sorts after every character that can stand at
+        that position -- so ``since=2026-08-18Z`` matched nothing at all
+        while ``since=2026-08-18`` matched the day. Two spellings of one
+        date, one of them silently empty, is worse than a refusal.
+        """
+        response = journal_api.get(f"/api/v1/journals/audit?since={bound}")
+
+        assert response.status_code == 400
+        read_journal.execute.assert_not_called()
+
+    def test_a_term_longer_than_the_ceiling_is_refused(
+        self, journal_api, read_journal
+    ):
+        """The terms reach a scan of fifty thousand records, so their size
+        is not a number this service gets to trust."""
+        response = journal_api.get(
+            "/api/v1/journals/audit?account=" + "x" * 65
+        )
+
+        assert response.status_code == 400
+        read_journal.execute.assert_not_called()

@@ -192,10 +192,32 @@ def upgrade() -> None:
     # chart filters on `day` alone -- which a composite index cannot serve
     # without its leading column. See `LinkVisitDayModel`.
     op.create_index('ix_link_visit_days_day', 'link_visit_days', ['day'], unique=False)
+    # The counting half of the audit journal. No foreign key and no owner:
+    # a security event is about the service, not about a link, and half of
+    # them are about accounts that may since have been deleted -- a
+    # cascade would take the count of "accounts deleted" with them.
+    op.create_table('security_events',
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('event_type', sa.String(length=64), nullable=False),
+    sa.Column('occurred_at', sa.DateTime(timezone=True), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('ix_security_events_occurred_at', 'security_events', ['occurred_at'], unique=False)
+    op.create_index('ix_security_events_type_occurred', 'security_events', ['event_type', 'occurred_at'], unique=False)
+    op.create_table('security_event_days',
+    sa.Column('day', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('event_type', sa.String(length=64), nullable=False),
+    sa.Column('total', sa.Integer(), nullable=False, server_default='0'),
+    sa.PrimaryKeyConstraint('day', 'event_type')
+    )
 
 
 def downgrade() -> None:
     """Remove everything this revision created."""
+    op.drop_table('security_event_days')
+    op.drop_index('ix_security_events_type_occurred', table_name='security_events')
+    op.drop_index('ix_security_events_occurred_at', table_name='security_events')
+    op.drop_table('security_events')
     op.drop_index('ix_link_visit_days_day', table_name='link_visit_days')
     op.drop_table('link_visit_days')
     op.drop_index('ix_link_visits_link_occurred', table_name='link_visits')

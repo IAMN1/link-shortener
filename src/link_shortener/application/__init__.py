@@ -19,7 +19,7 @@ from .ports.cache.link_cache import LinkCache
 from .ports.cache.link_service_stats_cache import StatsCache
 from .ports.cache.service_cache import ServiceCache
 from .ports.cache.redirect_cache import CachedRedirect, RedirectCache
-from .ports.logger.audit import AuditLogger
+from .ports.logger.audit import AuditEvent, AuditLogger
 from .ports.logger.logger import Logger
 from .ports.mail_templates import MailTemplates
 from .ports.mailer import Mailer, MailDeliveryError
@@ -67,6 +67,9 @@ from .use_cases.stats.get_user_activity_stats import GetUserActivityStatsUseCase
 
 from .use_cases.admin.links.clean_expired_links import CleanExpiredLinksUseCase
 from .use_cases.admin.links.roll_up_visits import RollUpVisitsUseCase
+from .use_cases.admin.security.roll_up_security_events import (
+    RollUpSecurityEventsUseCase,
+)
 from .use_cases.admin.links.get_recent_links import GetRecentLinksUseCase
 from .use_cases.admin.database.seed_database import SeedDatabaseUseCase
 
@@ -130,6 +133,7 @@ __all__ = [
     "ServiceCache",
     "CachedRedirect",
     "RedirectCache",
+    "AuditEvent",
     "AuditLogger",
     "Logger",
     "Mailer",
@@ -177,6 +181,7 @@ __all__ = [
 
     "CleanExpiredLinksUseCase",
     "RollUpVisitsUseCase",
+    "RollUpSecurityEventsUseCase",
     "GetRecentLinksUseCase",
     "SeedDatabaseUseCase",
     "CreateRoleUseCase",

@@ -3,6 +3,7 @@ from typing import List
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.user import UserResponse
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.services.user_management_service import UserManagementService
@@ -23,11 +24,18 @@ class UpdateUserRolesUseCase(BaseUseCase):
     Replaces all roles assigned to a user.
 
     Requires ``admin:manage_users`` permission.
+
+    Attributes:
+        uow_factory: Callable factory for creating Unit of Work instances.
+        user_service: Service that writes the new set of roles.
+        logger: Application logger.
+        audit_logger: Audit logger, where both sides of the change go.
     """
 
     uow_factory: UnitOfWorkFactory
     user_service: UserManagementService
     logger: Logger
+    audit_logger: AuditLogger
 
     def execute(
         self,
@@ -52,6 +60,7 @@ class UpdateUserRolesUseCase(BaseUseCase):
                 would leave the system without an administrator.
         """
         log = self._get_logger(self.logger, context)
+        audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
             roles = []
@@ -77,8 +86,22 @@ class UpdateUserRolesUseCase(BaseUseCase):
             if is_administrator(uow, user_id) and not would_keep_admin(roles):
                 require_administrator_remains(uow, user_id)
 
+            # Read before the write, in the transaction the write happens
+            # in: afterwards there is nothing left to read the old set off,
+            # and "what it used to be" is half of what makes this record
+            # worth keeping.
+            existing = uow.users.find_by_id(user_id)
+            roles_before = (
+                [role.name for role in existing.roles] if existing else []
+            )
+
             updated_user = self.user_service.update_roles(uow, user_id, roles)
             uow.commit()
 
             log.info("User roles updated", target_user_id=user_id)
+            audit.log_roles_changed(
+                target_user_id=user_id,
+                roles_before=roles_before,
+                roles_after=[role.name for role in updated_user.roles],
+            )
             return UserResponse.from_user(updated_user)

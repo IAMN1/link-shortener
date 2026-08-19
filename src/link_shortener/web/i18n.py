@@ -329,11 +329,39 @@ def script_strings() -> Dict[str, str]:
         # page in the browser, where `ngettext` cannot follow it. A label
         # takes a number of any size in all three languages.
         "journal_lines_read": gettext("Lines: %(count)s · %(files)s"),
+        # Said instead of `journal_empty` when a search matched nothing:
+        # "nothing has been written to this journal" is a different fact,
+        # and the wrong one to leave a reader with after they searched.
+        "journal_no_matches": gettext("Nothing here matched that search"),
+        # A label with a colon for the reason `journal_lines_read` is one:
+        # both numbers reach the page in the browser, where `ngettext`
+        # cannot follow them, and Russian needs three forms for each.
+        "journal_found": gettext("Found: %(found)s · scanned: %(scanned)s"),
+        # Said when the search stopped because its window ran out rather
+        # than because the journal did. Without it, "nothing found" reads
+        # as "this never happened" when it means "not in what was read".
+        "journal_window_ended": gettext(
+            "Not searched further back than this."
+        ),
         "journal_begins": gettext("This is the start of the journal."),
         "journal_more": gettext("Older lines exist."),
         "journal_archives_reach": gettext(
             "Archives reach back to %(name)s."
         ),
+        # The security counters under the journal viewer. Three series and
+        # everything else summed, because fourteen event types would be
+        # fourteen colours nobody can tell apart.
+        "counts_signed_in": gettext("Signed in"),
+        "counts_refused": gettext("Refused"),
+        "counts_roles": gettext("Roles changed"),
+        "counts_other": gettext("Other events"),
+        # A label with a colon rather than a sentence, for the reason
+        # `journal_lines_read` is one: the dates reach the page in the
+        # browser, and a sentence around them would need agreement no
+        # `gettext` call here can see.
+        "counts_span": gettext("Counted: %(since)s — %(until)s"),
+        "counts_chart_label": gettext("Security events over time"),
+        "counts_failed": gettext("The counters could not be read"),
         "answering": gettext("answering"),
         "not_answering": gettext("not answering"),
         "unknown": gettext("unknown"),

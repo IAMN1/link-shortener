@@ -237,3 +237,37 @@ class TestTheMarkupCarriesWhatTheScriptLooksFor:
 
         assert "js/journals.js" in markup
         assert "js/pages/journals.js" in markup
+
+
+class TestTheCountersAreOfferedOnTheSameTermsAsTheAuditJournal:
+    """The panel is markup, so who sees it is decided in the markup.
+
+    The page itself opens to either journal permission, and the figures on
+    it open to one of them: they are the audit journal counted, and a count
+    is the same information aggregated. Rendered for both, an operational
+    reader would get a panel whose every request answers 403 -- which reads
+    as the service being broken rather than as them being unentitled.
+    """
+
+    def test_audit_view_is_shown_the_panel(self, journals_app):
+        markup = render_page(journals_app, {"audit:view"})
+
+        assert "data-security-counts" in markup
+        assert "data-counts-chart" in markup
+
+    def test_logs_view_alone_is_not(self, journals_app):
+        markup = render_page(journals_app, {"logs:view"})
+
+        assert "data-security-counts" not in markup
+        # And the page is still a page: the viewer above it is what
+        # `logs:view` came for.
+        assert "data-journal-view" in markup
+
+    def test_the_span_buttons_come_with_the_panel(self, journals_app):
+        """All four, and each marked unpressed until the script says which
+        one is chosen -- the attribute this page's other button rows use."""
+        markup = render_page(journals_app, {"audit:view"})
+
+        offered = re.findall(r'data-counts-period="([0-9a-z]+)"', markup)
+        assert offered == ["24h", "7d", "30d", "90d"]
+        assert markup.count('data-counts-period') == 4

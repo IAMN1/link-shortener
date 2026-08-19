@@ -73,6 +73,59 @@
                 aria-pressed="false">{{ _('Include archives') }}</button>
         <button type="button" class="btn btn--sm btn--ghost" data-journal-refresh>{{ _('Refresh now') }}</button>
     </div>
+
+    {# A search costs what a tail does not: the reader stops at the page it
+       was asked for, a filter keeps looking past it -- measured, 2 ms
+       against some 130. So the terms are empty by default and the page
+       goes on polling the plain tail until somebody asks for something.
+
+       A form rather than loose inputs, so Enter searches; the script stops
+       it from submitting, since the answer is fetched rather than
+       navigated to. #}
+    <form class="journal-search" data-journal-search>
+        <div class="journal-search-fields">
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Event') }}</span>
+                <input type="text" class="form-input" data-journal-term="event_type"
+                       placeholder="LOGIN_FAILED" spellcheck="false" maxlength="64">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Account') }}</span>
+                {# One field for both names an event can carry an account
+                   under: who acted, and who was acted upon. Searching one
+                   of them shows half of what happened without saying so. #}
+                <input type="text" class="form-input" data-journal-term="account"
+                       placeholder="{{ _('id of the account') }}" spellcheck="false" maxlength="64">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Address') }}</span>
+                <input type="text" class="form-input" data-journal-term="remote_addr"
+                       placeholder="203.0.113.7" spellcheck="false" maxlength="64">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Code') }}</span>
+                <input type="text" class="form-input" data-journal-term="short_code"
+                       placeholder="abc123" spellcheck="false" maxlength="64">
+            </label>
+            {# A date, an hour or a whole stamp -- any prefix of the shape
+               the journals are written in. Both ends are inclusive, so one
+               date in both fields is that day. #}
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('From') }}</span>
+                <input type="text" class="form-input" data-journal-term="since"
+                       placeholder="2026-08-18" spellcheck="false" maxlength="20">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('To') }}</span>
+                <input type="text" class="form-input" data-journal-term="until"
+                       placeholder="2026-08-18T14" spellcheck="false" maxlength="20">
+            </label>
+        </div>
+        <div class="journal-search-actions">
+            <button type="submit" class="btn btn--sm btn--primary">{{ _('Search') }}</button>
+            <button type="button" class="btn btn--sm btn--ghost" data-journal-clear>{{ _('Clear') }}</button>
+        </div>
+    </form>
 </div>
 
 <div class="card card--flush">
@@ -109,6 +162,43 @@
    usually the point at which the page filled up. #}
 <p class="text-xs text-muted mt-2" data-journal-reach></p>
 
+{# The counted half, and the reason it is on this page rather than beside
+   the visit charts: these figures are this journal counted, they open to
+   the same permission, and an operator asking "is somebody guessing
+   passwords" wants the number and the lines in one place.
+
+   Shown only to a reader who may see them. `audit:view` opens them, and
+   the page itself opens to either journal permission -- so a reader with
+   `logs:view` alone gets the viewer above and nothing here, rather than a
+   panel that answers 403 into the console. #}
+{% if can('audit:view') %}
+<div class="card mt-3" data-security-counts>
+    <div class="card-header">
+        <span class="card-title">{{ _('Security events') }}</span>
+        <div class="chart-bar">
+            <button type="button" class="btn btn--sm" data-counts-period="24h"
+                    aria-pressed="false">{{ _('24 h') }}</button>
+            <button type="button" class="btn btn--sm" data-counts-period="7d"
+                    aria-pressed="false">{{ _('7 days') }}</button>
+            <button type="button" class="btn btn--sm" data-counts-period="30d"
+                    aria-pressed="false">{{ _('30 days') }}</button>
+            <button type="button" class="btn btn--sm" data-counts-period="90d"
+                    aria-pressed="false">{{ _('90 days') }}</button>
+        </div>
+    </div>
+
+    <div id="counts-error" class="alert alert--error hidden mb-2"></div>
+
+    {# The totals as figures and the same numbers over time as a chart.
+       Both, because they answer different questions: "how many" is read
+       at a glance, "when" is what says whether eleven refusals were a
+       week of typing or one minute of guessing. #}
+    <div class="counts-tiles" data-counts-tiles></div>
+    <div class="chart-host" data-counts-chart></div>
+    <p class="text-xs text-muted mt-2" data-counts-note></p>
+</div>
+{% endif %}
+
 <div class="explain mt-2">
     {%- set endpoint %}<code>GET /api/v1/journals/&lt;journal&gt;</code>{% endset -%}
     {% trans name=endpoint %}Read from {{ name }}, from the end of the file, by polling.{% endtrans %}
@@ -130,7 +220,13 @@
     {# In the head for the reason written out at the top of the file: it
        owns a timer, and a timer's owner has to run once per tab. #}
     <script src="{{ url_for('static', filename='js/journals.js') }}" defer></script>
+    {# `charts.js` for the frame, the axis and the tooltip: the security
+       chart is another chart, and a second set of primitives beside it
+       would be two ways for one screen to draw an axis. #}
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/security_counts.js') }}" defer></script>
 {% endblock %}
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/pages/journals.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/pages/security_counts.js') }}" defer></script>
 {% endblock %}

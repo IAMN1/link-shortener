@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from link_shortener.domain import (
     EmailVerificationRepository, LinkRepository, LinkVisitRepository,
     PermissionRepository, RefreshSessionRepository, RoleRepository,
-    UserRepository
+    SecurityEventRepository, UserRepository
 )
 
 class UnitOfWork(ABC):
@@ -66,6 +66,12 @@ class UnitOfWork(ABC):
     @abstractmethod
     def link_visits(self) -> LinkVisitRepository:
         """Return a LinkVisitRepository bound to the current session."""
+        ...
+
+    @property
+    @abstractmethod
+    def security_events(self) -> SecurityEventRepository:
+        """Return a SecurityEventRepository bound to the current session."""
         ...
 
     # ----- Transaction management -----

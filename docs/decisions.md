@@ -1,6 +1,6 @@
 # Decisions
 
-Forty-two write-ups of why something is the way it is. Read this when the
+Forty-seven write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -903,7 +903,276 @@ not yet carry: `LOGIN_SUCCEEDED`, `LOGIN_FAILED`, `USER_CREATED`,
 `ROLES_CHANGED`. They are one piece of work and it is the next one. There
 is also no search and no filter: the page answers "what just happened",
 and "what happened to this account in March" is a question for the branch
-that adds the events worth counting.
+that adds the events worth counting. *Closed by the entry below, except
+for the search.*
+
+### The audit journal records what the service does about accounts, and who read it
+
+**Decided** (2026-08-18): the audit journal carried three events — a link
+created, followed, deleted — and nothing about accounts at all. It now
+carries twelve more, through one method on `AuditLogger`
+(`log_security_event`) and a named wrapper per event above it.
+
+**Which events, by one rule.** An act that changes who may do what leaves a
+record. That admits both sign-in outcomes, the five things that happen to
+an account (`USER_CREATED`, `USER_DELETED`, `USER_ACTIVATED`,
+`USER_DEACTIVATED`, `USER_EMAIL_CONFIRMED`), the roles on an account
+(`ROLES_CHANGED`), the three things that happen to a role itself
+(`ROLE_CREATED`, `ROLE_DELETED`, `ROLE_PERMISSIONS_CHANGED`) and the
+reading of a journal (`AUDIT_VIEWED`). It excludes listing accounts,
+reading one, and seeding the database: they change nothing, and a journal
+that records reads as loudly as writes buries the writes.
+
+`USER_EMAIL_CONFIRMED` is the one this rule caught late. An operator
+marking an address confirmed bypasses the proof that anybody can read that
+mailbox, and what it hands over is the ability to sign in -- the same kind
+of act as suspension and deletion, behind the same permission as both. The
+comment in `confirm_user_email.py` explaining why it wrote to the
+application log and no further cited an audit port that carried link
+events and nothing about accounts; this entry is what made that false, and
+the file was never revisited. Measured against the running stack
+afterwards: of twelve administrative operations driven by hand, it was the
+only one leaving no record. The role events are the ones easiest
+to leave out and the worst to be without — changing what a role grants
+moves what every holder of it may do, at once, with no account touched, so
+an investigator asking why an account could suddenly do something finds
+nothing against that account.
+
+**Why not a method per event.** Five events were asked for and eleven were
+written, which is the argument by itself: on the port's original shape each
+would have cost an abstract method and three adapter implementations — 33
+methods to add eleven events. The abstract method is one, the adapters
+implement it once each, and the typed wrappers sit in the ABC where they
+cost nothing per adapter. What the wrappers buy over calling
+`log_security_event` directly is a signature: a field left out or misspelt
+is a type error rather than a record missing a column nobody notices until
+the search for it comes up empty. A test holds the two sides together — a
+member added to `AuditEvent` with no wrapper reddens the suite.
+
+**`event_type` cannot be overridden, unlike every other field.** On the
+three link events the call site wins over the event's own fields, and that
+is right for a context field: the caller knows its own context. It is not
+right for the event's identity. A login written as `URL_ACCESSED` is not a
+record with a wrong field in it — it is a login that a search for logins
+never returns, answering "none" rather than "cannot say". So the security
+events apply `event_type` last, after the bound fields and after the call's.
+
+**The address is masked, and the whole one stays where it already was.**
+`i***@example.com` in the audit journal; `application.log` keeps the full
+address, as it already did on registration, sign-in and failed sign-in.
+The two journals are read under different permissions, and masking here is
+what stops `audit:view` and `logs:view` being two routes to the same
+personal data — the audit journal is also the one kept longest, at
+`maxsize 1G` and `rotate 200`. What survives the masking is enough for the
+questions the journal is read with: whether failures are landing on one
+account or many, and whether the domain belongs here at all.
+
+**The account an event is about is `target_user_id`, never `user_id`.**
+`user_id` is bound from the request context and means whoever is asking.
+On `USER_CREATED` the two are never the same person, and written under one
+name the new account would overwrite the administrator — leaving a record
+of accounts created and no record of who created them. On the sign-in
+events they are usually the same and usually nobody, since the caller is
+anonymous until it succeeds; but an already signed-in client may post
+credentials for another account, and the collision is the same one.
+
+**The refusals are named in the journal and conflated in the response.** A
+wrong password and a deactivated account are one answer over the wire, so
+that a guesser learns nothing from the difference. They are two records
+here — `invalid_credentials` against `account_deactivated` — because an
+operator needs to tell "somebody is guessing passwords" from "a live
+credential is being used against an account we switched off", and the
+second is the one that may mean the intrusion already happened. The two
+readers are different people, and `audit:view` is what separates them.
+
+**Reading a journal is recorded, but polling it is not.** The viewer polls
+every five seconds. A record per read would put twelve lines a minute into
+the journal being displayed, each of which is then displayed, pushing out
+the lines the reader came for — the same reflection the read's own
+`log.debug` was already dropped to `debug` to avoid. What is recorded is
+the act of going to look: opening the page, switching journals, reaching
+into the archives. The refresh marks itself with `follow=true` and is not
+recorded; a request naming the archives is recorded whatever it says about
+itself, because the page polls its tail and never the rotated files.
+
+**What looking at it changed.** Two things the suite had no opinion about.
+Masking applied only to the call's fields left binding as a way around it:
+an address bound as `email` reached the record whole on the standard
+adapter, whose `_log` merges the bound fields *after* the event's — the
+same defect the link events had been fixed for, reintroduced on the new
+method. And the first live run of the sign-in events recorded four of the
+five outcomes: the fifth request came back `CSRF_TOKEN_INVALID`, because
+the run reused one client and a client that has signed in is no longer
+anonymous.
+
+### The journals can be searched, and a search says how far it looked
+
+**Decided** (2026-08-18): `GET /api/v1/journals/<journal>` takes six terms
+— `event_type`, `account`, `remote_addr`, `short_code`, `since`, `until` —
+and the page carries a form for them. The reader applies them while walking
+backwards, and stops after 50 000 lines whether or not it has found
+anything.
+
+**Why the filter is in the reader.** It is the only part that can stop
+early. Filtering above it means the reader hands up everything it looked at
+and the caller throws most of it away, which costs the memory the reader
+exists to avoid. So `tail` takes the filter, and the page reports
+`total_scanned` beside the lines.
+
+**Why a ceiling at all, and why 50 000.** Without a filter the reader stops
+as soon as it has the lines asked for, and the size of the journal stops
+mattering — that is the property the whole class is built on. A filter
+removes it: a search for something absent would walk to the front of the
+file. Measured end to end against a 46 MB journal of real-width records, a
+filtered read costs 117 to 136 ms whatever it looks for, against 2 ms for
+an unfiltered tail; the cost is the scan and not the matching, so a search
+finding nothing costs what one filling a page does. At 100 000 the buffer
+alone is 36 MB, and four searches at once on `--workers 4` would be most of
+a small container. At ten redirects a second the window is about an hour
+and a half of a busy service and weeks of a quiet one.
+
+**What the two numbers say together.** `total_scanned` reaching the ceiling
+while `reached_start` stays false is the difference between "this account
+is not in the journal" and "this account is not in the last fifty thousand
+lines". The page says the second one — "Not searched further back than
+this" — because the first is a claim the read did not make.
+
+**One account field, not two.** The events carry an account under `user_id`
+when it acted and `target_user_id` when it was acted upon, so a role change
+names the administrator under one and the account under the other.
+Searching one name is a way to see half of what happened to an account and
+not notice, and the question an investigation arrives with is "everything
+about this account".
+
+**Identifiers exactly, times by prefix.** A substring of an identifier is a
+different identifier: `remote_addr` matched by containment answers a search
+for `10.0.0.1` with traffic from `110.0.0.199`. The stamps are ISO 8601 in
+UTC by one constant and therefore sort as text, so a bound is compared as a
+prefix and truncates the stamp to its own length — which is what makes both
+ends inclusive, so one date in both fields is that day. A bound that is not
+a stamp is refused rather than accepted: compared as text it would sort
+past every line and answer "nothing found", which reads as "the journal is
+empty" rather than "that is not a time".
+
+The zone designator is part of that refusal, and was not at first. `Z` was
+allowed after any prefix, and on anything shorter than the seconds it does
+exactly what an unstamped bound does: it sorts after every character a
+stamp can carry at that position, so `since=2026-08-18Z` excluded the whole
+of 18 August while `since=2026-08-18` included it — two spellings of one
+date, one of them silently empty, both accepted by the schema. It is now
+tied to the seconds, which is also where ISO 8601 puts it: a date has no
+zone to name.
+
+**The follow flag decides alone, and the terms only describe.** Recording a
+read was first made conditional on the terms as well: a poll was exempt,
+but a poll carrying a search or reaching into the archives was recorded,
+on the reasoning that naming terms is somebody asking a new question. It
+is not — the page polls whatever is on screen. Nothing in a request tells
+new terms from the same terms polled again, and the archives button is
+remembered across visits, so the exemption was defeated by the two
+controls it exempted: one open tab with a term in the box wrote a line
+every ten seconds into the journal it was displaying, and the search that
+put them there was pushed out by them. Measured before the fix: 35 seconds
+of polling, three lines. The going-to-look is already marked without
+guessing — every control on the page reloads with `follow=false`, and only
+the timer sends `true`. The terms still go into the record, because "read
+the audit journal" and "read the audit journal for one account's failed
+logins" are different acts to find afterwards; terms left unset are absent
+rather than null.
+
+**What the measurement changed.** Two things, neither visible to the suite.
+Walking the file backwards accumulated `buffer = read(step) + buffer`,
+which rebuilds everything read so far on every block — quadratic in the
+number of blocks, invisible at a page of 200 lines, and 3087 ms against
+13.5 ms at 100 000, with the peak RSS following to 2.3 GB. Nothing could
+have caught it, because the lines returned are identical and no caller had
+a reason to scan past what it returns; a filter has exactly that reason.
+And `Refresh now` was bound as `addEventListener('click', load)`, which
+hands `load` the event as its first argument — the argument that says "this
+is a poll" — so the one press on the page that is unmistakably somebody
+going to look was marking itself as a poll and leaving no trace.
+
+The same quadratic shape survived one branch over in the same function.
+An archive cannot be read from the end, so it is walked forwards while a
+window of the wanted lines is held — and that window was a list trimmed
+with `pop(0)`, which moves every entry still in it, once per line of the
+file. It stayed cheap only while the window was `HARD_LIMIT`; the filtered
+read raised it to `SCAN_LIMIT`, twenty-five times as far to move.
+Measured over 200 000 lines at a window of 50 000: 0.89 s against 0.04 s
+for a `deque` bounded to the window, byte for byte the same answer. A
+wall-clock ceiling holds it, beside the one on the plain branch.
+
+### The security events are counted in the database, and charted beside the journal
+
+**Decided** (2026-08-18): every security event is written to
+`security_events` as well as to the audit journal; finished days are folded
+into `security_event_days`; `GET /api/v1/journals/counters` serves the
+figures, and the journal page draws them.
+
+**Why a second place at all.** The journal answers "what happened" and
+cannot answer "how many". It is a file read from its end, and a filtered
+read of fifty thousand lines costs 117 to 136 ms and reaches about an hour
+and a half of a busy service — so "failed sign-ins over ninety days" is not
+a question that file can answer at any price worth paying.
+
+**What the rows hold, and what they deliberately do not.** An event type
+and a moment. Widening them to carry the account, the address and the
+reason would make the same event exist twice in two shapes that can
+disagree, and the one that gets read is the one nobody checks. The journal
+stays the record; this is the count.
+
+**Counted by a wrapper, not by a call at each site.** Fifteen events are
+written from seven use cases, and a counter invoked beside each
+`audit.log_*` is a counter the fifteenth event forgets. `CountingAuditLogger`
+implements `AuditLogger`, counts, and delegates — wrapped once in the
+container, so no use case knows its events are counted.
+
+**Redirects are not counted here.** They already write to `link_visits`,
+through a background task so the redirect itself is not made slower.
+Counting them again would put a synchronous insert on the hottest path in
+the service to reach a number another table holds, and the guard is on the
+event rather than on the method called: `log_security_event` takes any
+member of the vocabulary, and one redirect logged that way would
+double-count against a figure nobody would think to compare.
+
+**The count is taken before the journal line, in its own transaction.** Its
+own, because this logger is handed to use cases that are mid-transaction,
+and joining theirs would let a failed count roll back the work it was
+recording — an account not created because the service could not count it.
+Before, because the journal is what an incident is reconstructed from: a
+database failure loses the count and keeps the record.
+
+**A year of retention, against ninety days for visits.** A visit is
+traffic: last quarter's redirects answer a question this quarter's answer
+better. A sign-in is evidence, and "when did this account last get in, and
+from where" is usually asked long after the fact. They also fill at
+different rates — ten redirects a second is a million rows a day, while
+sign-ins and account changes are counted in thousands. The roll-up is a
+command of its own for the same reason: a cron line saying "roll up visits"
+should not delete the security history under a name that does not mention
+it.
+
+**The figures answer to `audit:view`.** A count is not a weaker version of
+a record — it is the same information aggregated, so "eleven failed
+sign-ins yesterday" summarises lines a caller without that permission may
+not read. `admin:all` still does not carry it, so an administrator is
+refused these numbers, and the panel is not rendered for a reader holding
+`logs:view` alone: a panel whose every request answers 403 reads as the
+service being broken rather than as the reader being unentitled.
+
+**The spans are the visit charts' spans.** Two charts on one screen must be
+about the same week. A test holds the two lists against each other rather
+than trusting that they were copied correctly.
+
+**What looking at it changed.** Two faults the suite had no opinion about,
+both found by opening the page. The axis along the bottom was empty:
+`chartAxis` takes the buckets and reads a moment off each one, and handed a
+count instead its loop runs zero times — a chart that looks drawn and says
+nothing about when. And the span buttons all looked alike, because the
+chosen one was marked with a class of this panel's own invention while
+every other button row on the page uses `aria-pressed` — which is also what
+a screen reader reads, so the panel was silent about its own state in two
+ways at once.
 
 ---
 
@@ -911,6 +1180,32 @@ that adds the events worth counting.
 
 Things that are wrong, understood, and deliberately left. Each says what it
 would cost to fix.
+
+<details>
+<summary><b>Self-registration writes no <code>USER_CREATED</code></b> — accepted 2026-08-19</summary>
+
+`USER_CREATED` is written when an operator makes an account, from
+`CreateUserUseCase`. An account somebody makes for themselves through
+`POST /api/v1/auth/register` is not recorded in the audit journal at all —
+the registration is in `application.log` like any other request, and the
+first audit record about that account is whatever it does next.
+
+The event is shaped for the operator's case and cannot honestly carry the
+other one: `user_id` means whoever is asking and `target_user_id` means the
+account it is about, and on self-registration those are the same person,
+who did not exist when the request began. Written that way, "who created
+this account" is answered with the account itself — which reads as an
+administrator having done it, and is the opposite of what the field is for.
+
+What it would cost to fix: either a second event with its own shape, or a
+convention that `user_id` may equal `target_user_id` and means "nobody
+did". The first is worth doing when the journal is read for account
+provenance rather than for privilege changes; the second buys a record by
+making an existing field ambiguous. Left as is, and stated here, so that a
+reader of the audit journal does not take the absence of a `USER_CREATED`
+as evidence that no account was made.
+
+</details>
 
 <details>
 <summary><b>Unauthenticated deletion reveals whether a code is taken</b> — accepted 2026-08-10</summary>
@@ -966,6 +1261,24 @@ counter rather than raising. Raising would take down the request that
 happened to be in flight — a request that has nothing to do with logging.
 The counter is reported by `/api/v1/admin/health`, which is the only place
 an operator can see it.
+
+</details>
+
+<details>
+<summary><b>A reader who marks a first read as a refresh leaves no record</b> — accepted 2026-08-18</summary>
+
+`AUDIT_VIEWED` is written for every read except one the caller marks
+`follow=true`, which is how the polling viewer avoids writing twelve lines
+a minute into the journal it displays. A caller who sets the flag on a
+first read is therefore not recorded.
+
+Closing it means per-reader state — remembering who last read what, and
+when — which is a store to keep, expire and reason about across four
+`sync` workers, for a gap bounded on its own: `audit:view` is granted
+separately from `admin:all` and its granting is recorded as
+`ROLES_CHANGED`, so a reader can hide a reading but not the entitlement
+that allowed it. The alternative considered was suppressing repeats inside
+a time window, which needs the same store.
 
 </details>
 

@@ -3,6 +3,7 @@ from typing import List, Optional
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.admin.role import RoleResponse
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.services.role_management_service import RoleManagementService
@@ -19,11 +20,19 @@ class CreateRoleUseCase(BaseUseCase):
     Creates a new role with a list of permissions.
 
     Requires the caller to hold the ``admin:manage_roles`` permission.
+
+    Attributes:
+        uow_factory: Callable factory for creating Unit of Work instances.
+        role_service: Service that creates the role itself.
+        logger: Application logger.
+        audit_logger: Audit logger, where the role and what it grants are
+            recorded.
     """
 
     uow_factory: UnitOfWorkFactory
     role_service: RoleManagementService
     logger: Logger
+    audit_logger: AuditLogger
 
     def execute(
             self,
@@ -50,6 +59,7 @@ class CreateRoleUseCase(BaseUseCase):
                 rule is violated.
         """
         log = self._get_logger(self.logger, context)
+        audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
             # A role is a bundle of permissions, and handing one out is
@@ -68,6 +78,14 @@ class CreateRoleUseCase(BaseUseCase):
                 uow.commit()
 
                 log.info("Role created successfully", role_name=role.name)
+                # The permissions as the role ended up holding them, not as
+                # they were asked for: a name the service did not resolve
+                # is not a permission this role grants, and recording the
+                # request would overstate what was created.
+                audit.log_role_created(
+                    role=role.name,
+                    permissions=[p.name for p in role.permissions],
+                )
                 return RoleResponse.from_role(role)
             except ValueError as e:
                 log.error("Role creation failed", error=str(e))

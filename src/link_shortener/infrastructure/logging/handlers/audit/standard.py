@@ -9,8 +9,8 @@ It can be used as a primary or fallback audit logger.
 import logging
 from typing import Optional, Any, Dict
 
-from link_shortener.application import AuditLogger
-from link_shortener.infrastructure.logging.utils import mask_url
+from link_shortener.application import AuditEvent, AuditLogger
+from link_shortener.infrastructure.logging.utils import mask_email, mask_url
 
 
 class StandardAuditLogger(AuditLogger):
@@ -98,7 +98,7 @@ class StandardAuditLogger(AuditLogger):
             **kwargs: Additional context (e.g. batch_id, is_new).
         """
         data = self._build_data(
-            event_type="URL_CREATED",
+            event_type=AuditEvent.URL_CREATED.value,
             short_code=short_code,
             original_url=original_url,
             **kwargs
@@ -114,7 +114,7 @@ class StandardAuditLogger(AuditLogger):
             **kwargs: Additional context (e.g. clicks count).
         """
         data = self._build_data(
-            event_type="URL_ACCESSED",
+            event_type=AuditEvent.URL_ACCESSED.value,
             short_code=short_code,
             original_url=original_url,
             **kwargs
@@ -130,12 +130,46 @@ class StandardAuditLogger(AuditLogger):
             **kwargs: Additional context (e.g. request_id, remote_addr).
         """
         data = self._build_data(
-            event_type="URL_DELETED",
+            event_type=AuditEvent.URL_DELETED.value,
             short_code=short_code,
             original_url=original_url,
             **kwargs
         )
         self._log("Url deleted successfully", **data)
+
+    def log_security_event(self, event: AuditEvent, **fields) -> None:
+        """Log an event about an account rather than about a link.
+
+        ``email`` is masked on its way in, the way ``original_url`` is on
+        the link events, and under the same rule: the field is masked
+        because of the name it arrives under. An address passed as
+        anything else -- or bound with ``bind()`` -- is written as given.
+
+        ``event_type`` is written last and therefore cannot be overridden,
+        which is where this method parts company with the link events above
+        it: there, a caller's keyword wins over the event's own fields.
+        The argument for letting it win is that a caller knows its own
+        context better than the method does, and that holds for a context
+        field. It does not hold for the event's identity. A record filed
+        under the wrong ``event_type`` is not a record with a wrong field
+        in it -- it is a login that a search for logins will never return,
+        and the search will answer "none" rather than "cannot say".
+
+        Args:
+            event: Which event this is.
+            **fields: The event's fields.
+        """
+        # The bound fields are merged in here rather than left to ``_log``,
+        # which merges them too. Left to it, an address bound under
+        # ``email`` would arrive after the masking and reach the record
+        # whole -- binding would be the way around the mask, which is the
+        # defect the link events had and were fixed for.
+        data = {**self._bound_fields, **fields}
+        if "email" in data:
+            data["email"] = mask_email(data["email"])
+        data["event_type"] = event.value
+
+        self._log(f"Security event: {event.value}", **data)
 
     def is_healthy(self) -> bool:
         """Check whether the audit logger is operational.

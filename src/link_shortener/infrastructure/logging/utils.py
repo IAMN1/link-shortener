@@ -179,3 +179,46 @@ def mask_url(url: str) -> str:
     if len(url) > 100:
         return f"{url[:50]}...{url[-20:]}"
     return url
+
+
+def mask_email(email: str) -> str:
+    """
+    Make an address safe to write into the audit journal.
+
+    ``ivanov@example.com`` becomes ``i***@example.com``: the domain and the
+    first character stay, the rest goes. What survives is enough for the
+    questions the audit journal is read with -- whether repeated failures
+    are landing on one account or spread across many, and whether the
+    attempts name a domain that belongs here at all -- and not enough to be
+    a list of this service's users.
+
+    The full address is not lost to an investigator: ``application.log``
+    records it whole on registration and on every sign-in, failed ones
+    included. That journal is read under ``logs:view`` and this one under
+    ``audit:view``, and masking here is what keeps the two permissions from
+    being two routes to the same personal data. The audit journal is also
+    the one that is kept longest -- ``maxsize 1G`` and ``rotate 200`` --
+    which is the second reason not to fill it with addresses.
+
+    A string with no ``@`` is masked whole rather than passed through. Such
+    a value is not an address, and the only thing known about it is that
+    something put it where an address belongs; ``***`` says that without
+    guessing which part of it is safe.
+
+    Args:
+        email: The address as it was given.
+
+    Returns:
+        The address with its local part reduced to one character, or
+        ``***`` if it does not look like an address at all.
+    """
+    if "@" not in email:
+        return "***"
+
+    # The last "@" separates the local part from the domain: a quoted local
+    # part may contain one, a domain may not.
+    local, domain = email.rsplit("@", 1)
+    if not local:
+        return f"***@{domain}"
+
+    return f"{local[0]}***@{domain}"

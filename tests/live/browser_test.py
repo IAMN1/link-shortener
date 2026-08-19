@@ -430,7 +430,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 45
+    expected = 55
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -1545,6 +1545,226 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
 
         raw = page.inner_text(".journal-expanded:not(.hidden) .journal-raw")
         assert raw.strip().startswith("{"), raw[:80]
+
+    @check("a search narrows the journal to what was asked for")
+    def _():
+        # The terms are read off the form by the script and sent as query
+        # parameters; nothing here is server-rendered, so a form that
+        # collected the values and never sent them would look exactly like
+        # a journal with nothing in it.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+        before = page.locator("[data-journal-row]").count()
+        assert before > 1, "the fixture leaves nothing to narrow down"
+
+        page.fill('[data-journal-term="event_type"]', "NOTHING_LIKE_IT")
+        page.click('[data-journal-search] button[type="submit"]')
+        wait_until(
+            page,
+            lambda p: p.locator("[data-journal-row]").count() == 0,
+            what="the journal to be narrowed to nothing",
+        )
+
+        # And it says which of the two things happened: nothing matched,
+        # rather than nothing was ever written here.
+        said = page.inner_text("[data-journal-body]").strip()
+        assert "matched" in said.lower(), said
+
+    @check("a search says how much was looked at, not just what was found")
+    def _():
+        # "None found" and "none found in the last fifty thousand lines"
+        # are different answers, and only the second one is true. The
+        # sentence under the table is where the difference lives.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+
+        page.fill('[data-journal-term="event_type"]', "NOTHING_LIKE_IT")
+        page.click('[data-journal-search] button[type="submit"]')
+        wait_until(
+            page,
+            lambda p: "scanned" in p.inner_text("[data-journal-reach]").lower(),
+            what="the reach line to say how much was scanned",
+        )
+
+        said = page.inner_text("[data-journal-reach]").strip().lower()
+        assert "found: 0" in said, said
+
+    @check("clearing the search brings the whole journal back")
+    def _():
+        # A page left filtered with the terms two scrolls up is a page that
+        # answers every later question with an empty table.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+
+        page.fill('[data-journal-term="event_type"]', "NOTHING_LIKE_IT")
+        page.click('[data-journal-search] button[type="submit"]')
+        wait_until(
+            page,
+            lambda p: p.locator("[data-journal-row]").count() == 0,
+            what="the journal to be narrowed to nothing",
+        )
+        page.click("[data-journal-clear]")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+
+        assert page.input_value('[data-journal-term="event_type"]') == ""
+
+    @check("reading the audit journal leaves a record of the reading")
+    def _():
+        # The event this branch exists for, seen from the only place it can
+        # be seen from: the page reads `audit.log`, and what it shows must
+        # eventually include the reading itself.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+        page.click('[data-journal="audit"]')
+        wait_until(
+            page,
+            lambda p: "audit.log" in p.inner_text("[data-journal-reach]"),
+            what="the audit journal to be read",
+        )
+
+        page.fill('[data-journal-term="event_type"]', "AUDIT_VIEWED")
+        page.click('[data-journal-search] button[type="submit"]')
+        page.wait_for_selector("[data-journal-row]", timeout=5000)
+
+        shown = page.inner_text("[data-journal-body]")
+        assert "AUDIT_VIEWED" in shown, shown[:200]
+
+    @check("the search controls are written in the language of the page")
+    def _():
+        # Six labels and two buttons, all of them added to the catalogues
+        # in the same commit as the form. A string written straight into
+        # the template raises nothing -- the page just comes out half in
+        # English.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-journal-search]", timeout=5000)
+        # Through the cookie, the way `in_russian` does it: the choice a
+        # visitor makes outranks `Accept-Language`, and setting it here
+        # keeps this check about the labels rather than about the switch.
+        page.context.add_cookies([{"name": "lang", "value": "ru", "url": base}])
+        page.reload()
+        page.wait_for_selector("[data-journal-search]", timeout=5000)
+
+        said = page.inner_text("[data-journal-search]")
+        assert "Искать" in said, said
+        assert "Очистить" in said, said
+        assert "Учётная запись" in said, said
+
+    @check("the security counters show figures, not empty tiles")
+    def _():
+        # Drawn by a script from an endpoint, like everything else on this
+        # page: a test client can prove the endpoint answers and nothing
+        # about whether a number reaches the screen.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector(".counts-tile", timeout=5000)
+
+        tiles = page.locator(".counts-tile").count()
+        assert tiles == 4, tiles
+        # This run has signed in several times by now, so the sign-in tile
+        # cannot be zero -- which is what an endpoint answering and a page
+        # dropping the answer would look like.
+        signed_in = page.inner_text(".counts-tile:first-child .counts-tile-value")
+        assert int(signed_in.strip()) > 0, signed_in
+
+    @check("the security chart draws columns and labels its axis")
+    def _():
+        # The axis is the half worth checking. `chartAxis` takes the
+        # buckets and reads a moment off each one; handed a count instead
+        # it writes no labels and the chart still looks drawn, which is
+        # exactly what happened when this was first written.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-counts-chart] svg", timeout=5000)
+        page.wait_for_timeout(500)
+
+        columns = page.locator("[data-counts-chart] svg rect").count()
+        assert columns > 0, columns
+        # More than the numbers up the side: those are the grid ticks, and
+        # a chart with only them has no axis along the bottom.
+        labels = page.locator("[data-counts-chart] .chart-axis").count()
+        numeric = page.locator("[data-counts-chart] .chart-axis--num").count()
+        assert labels > numeric, (labels, numeric)
+
+    @check("the dates along the axis are a whole number of days apart")
+    def _():
+        # The weekly span is drawn in six-hour buckets, and the labels
+        # were spaced by a count of buckets that had nothing to do with
+        # days: every fifth one, which is thirty hours. The dates walked
+        # -- 11, 13, 14, 15, 16, 18 at even spacing -- so equal distances
+        # meant unequal times and two days of the seven were never named.
+        # Read as dates rather than as positions, because the fault is
+        # what the labels say, not where they sit.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-counts-chart] svg", timeout=5000)
+        page.wait_for_timeout(500)
+
+        stamps = page.evaluate(
+            """() => [...document.querySelectorAll(
+                '[data-counts-chart] .chart-axis:not(.chart-axis--num)'
+            )].map(node => Date.parse(node.textContent))"""
+        )
+        assert len(stamps) > 2, stamps
+        assert all(stamp == stamp for stamp in stamps), stamps
+
+        gaps = {stamps[i + 1] - stamps[i] for i in range(len(stamps) - 1)}
+        assert len(gaps) == 1, (stamps, gaps)
+        assert gaps.pop() % 86_400_000 == 0, stamps
+
+    @check("choosing another span redraws the counters for it")
+    def _():
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-counts-note]", timeout=5000)
+        page.wait_for_timeout(500)
+        before = page.inner_text("[data-counts-note]")
+
+        page.click('[data-counts-period="90d"]')
+        wait_until(
+            page,
+            lambda p: p.inner_text("[data-counts-note]") != before,
+            what="the counters to be redrawn for the longer span",
+        )
+
+        # And the button says which one is chosen, through `aria-pressed`
+        # -- the attribute this page's other button rows use, and the one
+        # a screen reader reads. Written with a class of its own it looked
+        # right to the eye and said nothing to anything else.
+        assert page.get_attribute(
+            '[data-counts-period="90d"]', "aria-pressed"
+        ) == "true"
+
+    @check("the counters are written in the language of the page")
+    def _():
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector(".counts-tile", timeout=5000)
+        in_russian(page)
+        page.wait_for_selector(".counts-tile", timeout=5000)
+        page.wait_for_timeout(500)
+
+        said = page.inner_text("[data-counts-tiles]")
+        assert "Входов" in said, said
+        assert "Отказано" in said, said
+        # The axis too: a date under a Russian heading must not read
+        # 8/17/2026.
+        axis = page.inner_text("[data-counts-chart]")
+        assert "/" not in axis, axis
 
     @check("a reader watching the tail is still watching it after a poll")
     def _():

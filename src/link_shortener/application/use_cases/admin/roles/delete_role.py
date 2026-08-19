@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from link_shortener.application.context import RequestContext
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.services.role_management_service import RoleManagementService
@@ -14,10 +15,18 @@ class DeleteRoleUseCase(BaseUseCase):
     Deletes a role that is not marked as a system role.
 
     Requires the caller to have the ``admin:manage_roles`` permission.
+
+    Attributes:
+        uow_factory: Callable factory for creating Unit of Work instances.
+        role_service: Service that removes the role itself.
+        logger: Application logger.
+        audit_logger: Audit logger, where the removal is recorded -- it
+            takes the role's permissions off everyone who wore it.
     """
     uow_factory: UnitOfWorkFactory
     role_service: RoleManagementService
     logger: Logger
+    audit_logger: AuditLogger
 
     def execute(
             self,
@@ -41,6 +50,7 @@ class DeleteRoleUseCase(BaseUseCase):
         """
 
         log = self._get_logger(self.logger, context)
+        audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
             try:
@@ -48,6 +58,7 @@ class DeleteRoleUseCase(BaseUseCase):
                 uow.commit()
 
                 log.info("Role deleted", role_name=role_name)
+                audit.log_role_deleted(role=role_name)
                 return True
             except LookupError as e:
                 # 404, like the neighbouring `delete_user`: a name that is
