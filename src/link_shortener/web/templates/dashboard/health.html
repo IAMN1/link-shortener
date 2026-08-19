@@ -23,6 +23,52 @@
         <span><span class="dot" id="dot-celery"></span>{{ _('Task queue') }}</span>
         <em id="health-celery">&mdash;</em>
     </div>
+    {# The one that fails open. With its backend gone the limiter stops
+       enforcing and every request goes through -- the sign-in endpoints
+       included -- while the service answers normally. No error, no
+       refusal, nothing in a log: this row is where it shows. #}
+    <div class="status-row">
+        <span><span class="dot" id="dot-limiter"></span>{{ _('Rate limiter') }}</span>
+        <em id="health-limiter">&mdash;</em>
+    </div>
+</div>
+
+{# What `FailoverService` counted and nobody read. A logging chain that
+   fell back, or dropped records outright, looked from every other surface
+   exactly like one that was fine -- which for the audit trail is the
+   difference between having evidence and believing you have it. #}
+<div class="card narrow mt-2">
+    <p class="lab mb-1">{{ _('Logging') }}</p>
+    <div class="status-row">
+        <span>{{ _('Application log') }}</span>
+        <em id="logging-logger">&mdash;</em>
+    </div>
+    <div class="status-row">
+        <span>{{ _('Audit log') }}</span>
+        <em id="logging-audit">&mdash;</em>
+    </div>
+</div>
+
+<div class="card narrow mt-2">
+    <p class="lab mb-1">{{ _('Records that did not survive') }}</p>
+    <div class="status-row">
+        <span>{{ _('Calls dropped') }}</span>
+        <em><span id="logger-dropped_calls">&mdash;</span> ·
+            <span id="audit-dropped_calls">&mdash;</span></em>
+    </div>
+    <div class="status-row">
+        <span>{{ _('Health checks that failed') }}</span>
+        <em><span id="logger-failed_checks">&mdash;</span> ·
+            <span id="audit-failed_checks">&mdash;</span></em>
+    </div>
+    <div class="status-row">
+        <span>{{ _('Lines lost') }}</span>
+        <em><span id="logger-lost_log_lines">&mdash;</span> ·
+            <span id="audit-lost_log_lines">&mdash;</span></em>
+    </div>
+    <p class="text-xs text-muted mt-1">
+        {{ _('Application log · audit log.') }}
+    </p>
 </div>
 
 <p class="text-xs text-muted mt-2">

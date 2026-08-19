@@ -10,6 +10,9 @@ from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
 from link_shortener.application import AdminService
+from link_shortener.application.use_cases.auth.resend_verification import (
+    ResendOutcome,
+)
 from link_shortener.domain import DomainError, SystemPermissions
 from link_shortener.web.schemas.admin.admin_request import (
     CreateRoleRequest, CreateUserRequest,
@@ -149,9 +152,38 @@ class AdminApiController:
 
         Answers with the address it went to. That is not a disclosure --
         the caller already reads the whole account list.
+
+        Three answers, because there are three things that can happen and
+        an operator acts differently on each. 202 means a message is on
+        its way. 200 means there was nothing to send: the address is
+        already confirmed, and the account needs no help. 503 means the
+        queue would not take the message -- nothing will arrive, and that
+        is a fault of the service rather than of the account.
+
+        Unlike the public endpoint, which answers 202 to all three on
+        purpose: telling them apart there would say which addresses are
+        registered.
         """
         context = create_request_context()
-        address = self.admin_service.resend_verification(user_id, context)
+        address, outcome = self.admin_service.resend_verification(
+            user_id, context
+        )
+
+        if outcome is ResendOutcome.NOT_HANDED_OFF:
+            raise DomainError(
+                      f"Confirmation for {address} was not handed off",
+                      code="MAIL_NOT_HANDED_OFF",
+                      template=N_(
+                          "Confirmation for %(email)s could not be queued"
+                      ),
+                      params={"email": address},
+                  )
+
+        if outcome is ResendOutcome.NOTHING_TO_SEND:
+            return jsonify({
+                "message": f"{address} is already confirmed; nothing to send"
+            }), 200
+
         return jsonify({"message": f"Confirmation message sent to {address}"}), 202
 
     @require_permission(SystemPermissions.ADMIN_MANAGE_USERS.value)

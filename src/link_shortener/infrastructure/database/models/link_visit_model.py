@@ -87,6 +87,16 @@ class LinkVisitDayModel(Base):
     """
     __tablename__ = "link_visit_days"
 
+    __table_args__ = (
+        # The service-wide chart reads this table by day and by nothing
+        # else. The primary key leads with `link_id`, and a composite
+        # index cannot answer a query that does not name its leading
+        # column -- so every such read scanned the whole table, which is
+        # the one thing this table exists to avoid, and which grows by a
+        # row per link per day for as long as the service runs.
+        Index("ix_link_visit_days_day", "day"),
+    )
+
     link_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("urls.id", ondelete="CASCADE"),
         primary_key=True,

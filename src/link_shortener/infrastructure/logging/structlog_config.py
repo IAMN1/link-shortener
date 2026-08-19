@@ -35,8 +35,11 @@ def configure_structlog(settings: LoggingSettings):
         # The same stamp the standard chain writes, and from the same
         # constant: this side was already UTC while the other was not, and
         # the pair have to agree or a reader cannot tell one journal's
-        # moment from the other's. ``log_date_format`` is not consulted --
-        # it dresses the console line, and this stamp is read by a program.
+        # moment from the other's. ``log_date_format`` is not consulted
+        # here: it dresses the console line of the standard chain, which
+        # has a formatter of its own, and this stamp is read by a program.
+        # This chain's console renders over these same processors, so its
+        # line carries this stamp too.
         structlog.processors.TimeStamper(fmt=UTC_SECONDS, utc=True),
         _replace_logger_name_with_module,
         structlog.processors.StackInfoRenderer(),

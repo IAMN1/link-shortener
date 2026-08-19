@@ -54,6 +54,7 @@ class GetVisitStatsUseCase(BaseUseCase):
         *,
         period: str = DEFAULT_PERIOD,
         short_code: Optional[str] = None,
+        link_id: Optional[str] = None,
         owner_id: Optional[str] = None,
         now: Optional[datetime] = None,
     ) -> VisitSummary:
@@ -63,10 +64,17 @@ class GetVisitStatsUseCase(BaseUseCase):
         Args:
             context: Request context, for logging.
             period: One of ``24h``, ``7d``, ``30d``, ``90d``.
-            short_code: Restrict to one link, by its code.
+            short_code: Restrict to one link, by its code. Looked up here.
+            link_id: Restrict to one link whose id the caller already
+                holds. Both name one link and only one may be given: the
+                web routes check who may see a link before asking for its
+                traffic, which means they have looked it up already, and
+                passing the code as well made the same
+                ``SELECT ... FROM urls`` run twice per request -- on an
+                endpoint a chart polls every ten seconds.
             owner_id: Restrict to the links of one account. Applied with
-                ``short_code`` when both are given, so an owner asking
-                about a link that is not theirs gets zeroes.
+                either of the two above, so an owner asking about a link
+                that is not theirs gets zeroes.
             now: End of the span; defaults to the current time.
 
         Returns:
@@ -90,17 +98,17 @@ class GetVisitStatsUseCase(BaseUseCase):
                   )
         span, buckets = PERIODS[period]
 
-        link_id = None
-        if short_code is not None:
-            try:
-                code = ShortCode(short_code)
-            except ValueError as invalid:
-                raise DomainError(
-                          f"Invalid short code: {short_code}",
-                          code="VALIDATION_ERROR",
-                          template=N_("Invalid short code: %(code)s"),
-                          params={"code": short_code},
-                      ) from invalid
+        if link_id is None and short_code is not None:
+            # No handler around this. It used to be wrapped in one that
+            # caught `ValueError` and re-raised a `DomainError` saying
+            # "Invalid short code"; `ShortCode` raises `ValidationError`,
+            # which descends from `DomainError` rather than `ValueError`,
+            # so the handler never ran and the wording it produced was
+            # never seen. What is raised instead carries the same
+            # `VALIDATION_ERROR` code -- the same status, out of the same
+            # translation catalogue -- and says which lengths are allowed,
+            # which the replacement did not.
+            code = ShortCode(short_code)
             with self.uow_factory(read_only=True) as uow:
                 link = uow.links.find_by_code(code)
             if link is None:
@@ -138,6 +146,7 @@ class GetVisitStatsUseCase(BaseUseCase):
         *,
         days: int = 90,
         short_code: Optional[str] = None,
+        link_id: Optional[str] = None,
         owner_id: Optional[str] = None,
         now: Optional[datetime] = None,
     ) -> list:
@@ -152,7 +161,9 @@ class GetVisitStatsUseCase(BaseUseCase):
         Args:
             context: Request context, for logging.
             days: How many days back to go, at most 730.
-            short_code: Restrict to one link, by its code.
+            short_code: Restrict to one link, by its code. Looked up here.
+            link_id: Restrict to one link whose id the caller holds
+                already. See ``execute`` for why both exist.
             owner_id: Restrict to the links of one account.
             now: End of the span; defaults to the current time.
 
@@ -171,17 +182,17 @@ class GetVisitStatsUseCase(BaseUseCase):
                       params={"days": days},
                   )
 
-        link_id = None
-        if short_code is not None:
-            try:
-                code = ShortCode(short_code)
-            except ValueError as invalid:
-                raise DomainError(
-                          f"Invalid short code: {short_code}",
-                          code="VALIDATION_ERROR",
-                          template=N_("Invalid short code: %(code)s"),
-                          params={"code": short_code},
-                      ) from invalid
+        if link_id is None and short_code is not None:
+            # No handler around this. It used to be wrapped in one that
+            # caught `ValueError` and re-raised a `DomainError` saying
+            # "Invalid short code"; `ShortCode` raises `ValidationError`,
+            # which descends from `DomainError` rather than `ValueError`,
+            # so the handler never ran and the wording it produced was
+            # never seen. What is raised instead carries the same
+            # `VALIDATION_ERROR` code -- the same status, out of the same
+            # translation catalogue -- and says which lengths are allowed,
+            # which the replacement did not.
+            code = ShortCode(short_code)
             with self.uow_factory(read_only=True) as uow:
                 link = uow.links.find_by_code(code)
             link_id = link.id if link is not None else "no-such-link"

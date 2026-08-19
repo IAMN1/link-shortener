@@ -33,6 +33,32 @@ class TestAnAddressIsReducedToItsNetwork:
         """
         assert anonymise_address("198.51.100.7") == anonymise_address("198.51.100.200")
 
+    @pytest.mark.parametrize("address,network", [
+        ("::ffff:203.0.113.5", "203.0.113.0"),
+        ("::ffff:198.51.100.200", "198.51.100.0"),
+        # The same address written the long way: a dual-stack socket may
+        # hand over either spelling.
+        ("::ffff:cb00:7105", "203.0.113.0"),
+    ])
+    def test_an_ipv4_address_behind_a_dual_stack_listener_keeps_its_network(
+        self, address, network
+    ):
+        """
+        A socket bound to `::` reports every IPv4 client in this form.
+
+        Read as an IPv6 address it loses everything below the /64, and the
+        /64 of an IPv4-mapped address is `::` for all of them -- so with
+        `HOST=::`, or nginx passing `ipv6only=off`, every IPv4 visitor in
+        the world was recorded as one network and the chart had a single
+        bar where the traffic was.
+        """
+        assert anonymise_address(address) == network
+
+    def test_two_dual_stack_clients_stay_two_networks(self):
+        assert anonymise_address("::ffff:203.0.113.5") != anonymise_address(
+            "::ffff:198.51.100.7"
+        )
+
     @pytest.mark.parametrize("junk", [
         None, "", "   ", "not-an-address", "999.1.1.1", "1.2.3", "<script>",
     ])
@@ -61,6 +87,43 @@ class TestAUserAgentIsReducedToThreeFacts:
     ])
     def test_the_family_and_the_screen(self, user_agent, device, browser):
         assert classify_client(user_agent) == (device, browser, False)
+
+    @pytest.mark.parametrize("user_agent,device", [
+        # Every iPadOS string carries `Mobile/15E148`, and has since iPadOS
+        # 13 started asking for desktop pages by default. Tried after the
+        # phone rule, `ipad` is unreachable: the token that makes a tablet
+        # a tablet arrives in the same string as the token that makes a
+        # phone a phone.
+        ("Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+         "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+         "tablet"),
+        # The phone the same rule has to keep answering for.
+        ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) "
+         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 "
+         "Mobile/15E148 Safari/604.1", "mobile"),
+        # Android says it the other way round: a tablet is the string with
+        # no `Mobile` in it, so the phone must not be read as one.
+        ("Mozilla/5.0 (Linux; Android 13; SM-X200) AppleWebKit/537.36 "
+         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", "tablet"),
+        ("Mozilla/5.0 (Linux; Android 13; SM-A536B) AppleWebKit/537.36 "
+         "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+         "mobile"),
+        # Firefox names the class outright, and names it in both.
+        ("Mozilla/5.0 (Android 13; Tablet; rv:121.0) Gecko/121.0 "
+         "Firefox/121.0", "tablet"),
+        ("Mozilla/5.0 (Android 13; Mobile; rv:121.0) Gecko/121.0 "
+         "Firefox/121.0", "mobile"),
+    ])
+    def test_a_tablet_is_not_counted_as_a_phone(self, user_agent, device):
+        """
+        Written from strings the devices actually send.
+
+        The case above this one used an iPad string with no `Mobile` token,
+        which no iPad has sent since 2019 -- so it passed while every real
+        iPad was being recorded as a phone, and the chart's tablet column
+        counted only the Android half of them.
+        """
+        assert classify_client(user_agent)[0] == device
 
     def test_edge_is_not_reported_as_chrome(self):
         """

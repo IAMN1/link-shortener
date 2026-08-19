@@ -39,7 +39,14 @@ class JinjaMailTemplates(MailTemplates):
     an apostrophe into ``&#39;``.
 
     Attributes:
-        environment: The Jinja environment loading from ``TEMPLATE_DIR``.
+        default_environment: The environment for the default language.
+            One is kept per language, because a catalogue is installed on
+            an environment rather than passed to a render -- see
+            ``_environment``. Named for what it is: while there was one
+            environment, ``environment`` was the object every render went
+            through, and leaving that name on one of several would invite
+            the next reader to configure it and wonder why three languages
+            ignored them.
     """
 
     def __init__(
@@ -58,14 +65,24 @@ class JinjaMailTemplates(MailTemplates):
         """
         self.catalogue_dir = catalogue_dir
         self.default_language = default_language
-        self._catalogues: dict = {}
-        self.environment = Environment(
+        self.template_dir = template_dir
+        self._environments: dict = {}
+        self.default_environment = self._environment(default_language)
+
+    def _build_environment(self) -> Environment:
+        """
+        One Jinja environment, configured but with no catalogue installed.
+
+        Returns:
+            A fresh environment reading from ``template_dir``.
+        """
+        return Environment(
             # The messages are translated like the pages, and a plain
             # environment has no `{% trans %}` at all -- an untranslated
             # template renders, and one carrying the tag raises
             # TemplateSyntaxError at send time, inside a worker.
             extensions=["jinja2.ext.i18n"],
-            loader=FileSystemLoader(str(template_dir)),
+            loader=FileSystemLoader(str(self.template_dir)),
             # A text/plain body: escaping would break the link the message
             # exists to carry. See the class docstring.
             autoescape=False,  # nosec B701
@@ -77,12 +94,57 @@ class JinjaMailTemplates(MailTemplates):
             keep_trailing_newline=True,
         )
 
-    def _catalogue(self, language: Optional[str]):
+    def _environment(self, language: Optional[str]) -> Environment:
         """
-        Load the catalogue a message is rendered through, once per language.
+        The environment whose catalogue is the one this language needs.
+
+        One per language, built once and never reconfigured after that.
+        The alternative -- installing the catalogue on a shared
+        environment before each render -- is what this replaces, and it
+        was a race rather than a style: ``install_gettext_translations``
+        writes ``gettext`` into ``Environment.globals``, an overlay shares
+        that dictionary rather than copying it, and with
+        ``CELERY_ENABLED=false`` the message goes out on the request
+        thread. Two registrations in different languages then interleave
+        install and render, and one message leaves with the other's
+        catalogue -- measured with two threads of 300 renders each, and
+        the subject and the body of one message can disagree.
+
+        The environment is put in the map only once its catalogue is
+        installed, so a second thread finding it there finds it ready.
+        Two threads racing to build the same one build two and each uses
+        the one it built, which costs a parse and is otherwise the same
+        answer.
 
         Args:
             language: Language tag, or ``None`` for the default.
+
+        Returns:
+            The environment for that language.
+        """
+        tag = (language or self.default_language).strip().lower()
+
+        environment = self._environments.get(tag)
+        if environment is None:
+            environment = self._build_environment()
+            environment.install_gettext_translations(  # type: ignore[attr-defined]
+                self._catalogue(tag), newstyle=True
+            )
+            self._environments[tag] = environment
+
+        return environment
+
+    def _catalogue(self, tag: str):
+        """
+        Load the catalogue a message is rendered through.
+
+        Not memoised: the only caller is ``_environment``, which builds
+        one environment per language and keeps it, so this runs once per
+        language already. A second cache in front of that one could not be
+        reached.
+
+        Args:
+            tag: Language tag, already normalised.
 
         Returns:
             The translations object. ``NullTranslations`` when there is no
@@ -91,13 +153,7 @@ class JinjaMailTemplates(MailTemplates):
             one for a deployment offering a language nobody compiled: the
             message goes out in English rather than not going out.
         """
-        tag = (language or self.default_language).strip().lower()
-
-        if tag not in self._catalogues:
-            found = Translations.load(str(self.catalogue_dir), [tag])
-            self._catalogues[tag] = found or NullTranslations()
-
-        return self._catalogues[tag]
+        return Translations.load(str(self.catalogue_dir), [tag]) or NullTranslations()
 
     def _render(self, name: str, language: Optional[str], **context) -> str:
         """
@@ -111,14 +167,11 @@ class JinjaMailTemplates(MailTemplates):
         Returns:
             The rendered text.
         """
-        # Installed per render rather than once in the constructor: one
-        # worker process sends to people who chose different languages,
-        # and an environment carrying the first of them would answer every
-        # later message in it.
-        self.environment.install_gettext_translations(  # type: ignore[attr-defined]
-            self._catalogue(language), newstyle=True
-        )
-        return self.environment.get_template(name).render(**context)
+        # The language picks the environment; nothing is installed here.
+        # One worker process sends to people who chose different
+        # languages, and a single environment reconfigured per render
+        # cannot hold two of them at once. See `_environment`.
+        return self._environment(language).get_template(name).render(**context)
 
     def verification_email(
         self,

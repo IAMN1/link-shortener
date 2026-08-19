@@ -89,7 +89,7 @@ class TestTheConfirmationMessage:
         from jinja2 import UndefinedError
 
         with pytest.raises(UndefinedError):
-            templates.environment.get_template("verification_body.txt").render()
+            templates.default_environment.get_template("verification_body.txt").render()
 
 
 class TestTheAccountExistsMessage:
@@ -134,7 +134,7 @@ class TestTheAccountExistsMessage:
         from jinja2 import UndefinedError
 
         with pytest.raises(UndefinedError):
-            templates.environment.get_template("account_exists_body.txt").render()
+            templates.default_environment.get_template("account_exists_body.txt").render()
 
 
 class TestTheTemplatesReachTheImage:

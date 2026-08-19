@@ -242,6 +242,51 @@ class ApiController:
             response_data.popular_links = []
         return jsonify(response_data.model_dump())
 
+    def _require_may_read_one_links_traffic(self, short_code, context):
+        """
+        Check that this caller may see the traffic of one named link.
+
+        ``scope=mine`` is scoped by the account behind the request, and a
+        service-wide answer is a count nobody owns -- but a ``code``
+        names somebody's link, and its traffic is that link's private
+        detail in exactly the sense ``can_view_link_details`` was written
+        for. Without this the two endpoints below handed an anonymous
+        caller the totals, the timeline and the device split of any code
+        they could guess, while the neighbouring endpoints refused the
+        same caller the same figures: ``/links/<code>`` nulls its
+        counters and ``/links/<code>/extended`` answers 401.
+
+        The lookup happens before the check, so a refusal tells the
+        caller the code exists -- which the redirect and the basic
+        endpoint already answer publicly, and which is the same trade
+        ``/extended`` makes.
+
+        The link it looked up is handed back rather than dropped. Both
+        endpoints below need that link's id to read its traffic, and
+        finding it a second time meant the same
+        ``SELECT ... FROM urls`` ran twice for every request -- measured,
+        two identical selects and four pool checkouts per call, on an
+        endpoint the chart polls every ten seconds.
+
+        Args:
+            short_code: The code named in the query string, or ``None``.
+            context: The request context to look the link up with.
+
+        Returns:
+            The link, or ``None`` when no code was named.
+
+        Raises:
+            DomainError: ``UNAUTHENTICATED`` or ``FORBIDDEN`` when the
+                caller may not see that link's details, and whatever the
+                lookup raises when no such link exists.
+        """
+        if not short_code:
+            return None
+
+        link = self.link_service.get_link_info(short_code, context)
+        require_can_view_link_details(link.owner_id, self.authorization_service)
+        return link
+
     # ------------------------------------------------------------------
     # GET /api/v1/stats/visits
     # ------------------------------------------------------------------
@@ -268,10 +313,14 @@ class ApiController:
                 )
             owner_id = g.current_user.id
 
+        named = self._require_may_read_one_links_traffic(
+            request.args.get("code"), context
+        )
+
         summary = self.link_service.get_visit_stats(
             context,
             period=period,
-            short_code=request.args.get("code"),
+            link_id=named.link_id if named else None,
             owner_id=owner_id,
         )
         response = VisitStatsResponse.from_domain(summary)
@@ -312,10 +361,14 @@ class ApiController:
                 N_("days must be a whole number"), code="VALIDATION_ERROR"
             ) from invalid
 
+        named = self._require_may_read_one_links_traffic(
+            request.args.get("code"), context
+        )
+
         buckets = self.link_service.get_daily_visits(
             context,
             days=days,
-            short_code=request.args.get("code"),
+            link_id=named.link_id if named else None,
             owner_id=owner_id,
         )
         return jsonify(

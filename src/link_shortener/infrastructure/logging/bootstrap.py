@@ -99,7 +99,15 @@ def _setup_console_handler(settings: LoggingSettings, root_logger: logging.Logge
     if settings.logger_type == "standard":
         handler = _stream_handler_class(settings)()
         handler.setLevel(settings.get_log_level_int())
-        formatter = ConsoleFormatter()
+        # `LOG_DATE_FORMAT` reaches the line it was always documented to
+        # dress. `ConsoleFormatter` takes a `datefmt` and stamps with it,
+        # and was built here with none, so the setting was read from the
+        # environment, carried on `LoggingSettings` and consulted by
+        # nothing -- whatever a deployment set, the console kept the
+        # formatter's own default. The journals are unaffected: they are
+        # stamped by `UTC_SECONDS`, which is not a setting, so a format
+        # written for a person cannot make a file unreadable by a program.
+        formatter = ConsoleFormatter(datefmt=settings.log_date_format)
         handler.setFormatter(formatter)
         root_logger.addHandler(handler)
     else:
@@ -184,7 +192,9 @@ def _setup_audit_handler(settings: LoggingSettings):
         if settings.logger_type == "standard":
             handler = _stream_handler_class(settings)()
             handler.setLevel(logging.INFO)
-            formatter = ConsoleFormatter()
+            # The same setting on the audit chain's console, for the same
+            # reason: one deployment, one console, one clock on it.
+            formatter = ConsoleFormatter(datefmt=settings.log_date_format)
             handler.setFormatter(formatter)
             audit_logger.addHandler(handler)
         else:

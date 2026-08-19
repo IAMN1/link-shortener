@@ -231,10 +231,10 @@ def confirm_email(page, mail: MailCatcher, email: str) -> None:
         f"the mailed link answered {response and response.status}: {link}"
     )
     page.click("#verify-btn")
-    page.wait_for_function(
-        "document.getElementById('verify-done').textContent.trim() !== ''"
-        " || document.getElementById('verify-error').textContent.trim() !== ''",
-        timeout=5000,
+    wait_until(
+        page,
+        lambda p: has_text(p, "#verify-done", "#verify-error"),
+        what="the confirmation page to answer",
     )
     assert page.inner_text("#verify-error").strip() == "", (
         page.inner_text("#verify-error")
@@ -430,13 +430,73 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 41
+    expected = 45
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
         return 1
 
     return 0 if result.failed == 0 else 1
+
+
+INJECTED_SCRIPT_REFUSAL = "Executing inline script violates"
+"""What the browser says about the script this run injects on purpose.
+
+Named once because two checks filter on it: the one that proves the
+content policy refuses an unnamed script, and the one that asserts no
+page reported anything else. Spelled twice, a change in the browser's
+wording would have been caught by one of them and not the other.
+"""
+
+
+def wait_until(page, condition, timeout: int = 5000, what: str = ""):
+    """
+    Poll the page until a condition holds.
+
+    Written instead of `page.wait_for_function`, and the reason is the
+    application rather than a preference: that call evaluates a string as
+    JavaScript inside the page, which `script-src` without `'unsafe-eval'`
+    refuses. The run measured it -- every wait died with *"Evaluating a
+    string as JavaScript violates the following Content Security Policy
+    directive"* -- and loosening the policy to let the test through would
+    have been the wrong repair. Reading the page through Playwright's own
+    protocol asks nothing of the page's policy.
+
+    Args:
+        page: The page to poll.
+        condition: Callable taking the page and answering True when the
+            wait is over.
+        timeout: How long to wait, in milliseconds.
+        what: What was being waited for, for the failure message.
+
+    Raises:
+        AssertionError: If the condition never held.
+    """
+    for _ in range(max(1, timeout // 50)):
+        if condition(page):
+            return
+        page.wait_for_timeout(50)
+
+    raise AssertionError(f"timed out waiting for {what or 'the page'}")
+
+
+def has_text(page, *selectors) -> bool:
+    """
+    Whether any of these elements carries text.
+
+    Args:
+        page: The page to read.
+        *selectors: CSS selectors, tried in order.
+
+    Returns:
+        True as soon as one of them is not empty.
+    """
+    for selector in selectors:
+        found = page.query_selector(selector)
+        if found and found.inner_text().strip():
+            return True
+
+    return False
 
 
 def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
@@ -516,9 +576,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         # comes from the policy rather than from the browser.
         page.fill("#password", "password")
         page.click("#register-form button[type=submit]")
-        page.wait_for_function(
-            "document.getElementById('reg-error').textContent.trim() !== ''",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: has_text(p, "#reg-error"),
+            what="#reg-error to say something",
         )
         message = page.inner_text("#reg-error").strip()
 
@@ -536,9 +597,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         page.fill("#email", "browser-user@example.test")
         page.fill("#password", PASSWORD)
         page.click("#register-form button[type=submit]")
-        page.wait_for_function(
-            "document.getElementById('reg-sent').textContent.trim() !== ''",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: has_text(p, "#reg-sent"),
+            what="#reg-sent to say something",
         )
         message = page.inner_text("#reg-sent").strip()
 
@@ -556,9 +618,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         page.fill("#email", "browser-user@example.test")
         page.fill("#password", PASSWORD)
         page.click("#login-form button[type=submit]")
-        page.wait_for_function(
-            "document.getElementById('login-error').textContent.trim() !== ''",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: has_text(p, "#login-error"),
+            what="#login-error to say something",
         )
         message = page.inner_text("#login-error").strip()
 
@@ -577,9 +640,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         page.fill("#email", "browser-user@example.test")
         page.fill("#password", "Wr0ng!Passw0rd")
         page.click("#login-form button[type=submit]")
-        page.wait_for_function(
-            "document.getElementById('login-error').textContent.trim() !== ''",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: has_text(p, "#login-error"),
+            what="#login-error to say something",
         )
         message = page.inner_text("#login-error").strip()
 
@@ -692,10 +756,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         page.goto(f"{base}/dashboard/create-link")
         page.fill("#url", "https://example.com/from-the-dashboard")
         page.click("#create-link-form button[type=submit]")
-        page.wait_for_function(
-            "document.getElementById('create-result').textContent.trim() !== ''"
-            " || document.getElementById('create-error').textContent.trim() !== ''",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: has_text(p, "#create-result", "#create-error"),
+            what="#create-result or #create-error to say something",
         )
 
         assert page.inner_text("#create-error").strip() == "", (
@@ -714,9 +778,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         page.fill("#email", "browser-verify@example.test")
         page.fill("#password", PASSWORD)
         page.click("#register-form button[type=submit]")
-        page.wait_for_function(
-            "document.getElementById('reg-sent').textContent.trim() !== ''",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: has_text(p, "#reg-sent"),
+            what="#reg-sent to say something",
         )
 
         link = mail.confirmation_link("browser-verify@example.test")
@@ -738,10 +803,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         page.goto(link)
         page.goto(link)
         page.click("#verify-btn")
-        page.wait_for_function(
-            "document.getElementById('verify-done').textContent.trim() !== ''"
-            " || document.getElementById('verify-error').textContent.trim() !== ''",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: has_text(p, "#verify-done", "#verify-error"),
+            what="#verify-done or #verify-error to say something",
         )
 
         assert page.inner_text("#verify-error").strip() == "", (
@@ -759,10 +824,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         page = page_for("/login")
         page.fill("#email", "browser-user@example.test")
         page.click("#resend-link")
-        page.wait_for_function(
-            "document.getElementById('resend-done').textContent.trim() !== ''"
-            " || document.getElementById('resend-error').textContent.trim() !== ''",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: has_text(p, "#resend-done", "#resend-error"),
+            what="#resend-done or #resend-error to say something",
         )
 
         assert page.inner_text("#resend-error").strip() == "", (
@@ -823,9 +888,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
             body='{"error": "FORBIDDEN", "message": "Not authorized"}',
         ))
         page.goto(f"{base}/dashboard/links")
-        page.wait_for_function(
-            "document.getElementById('links-tbody').textContent.indexOf('Loading') === -1",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: "Loading" not in p.inner_text("#links-tbody"),
+            what="the links table to finish loading",
         )
         shown = page.inner_text("#links-tbody").strip()
 
@@ -905,10 +971,16 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         # "some text exists" is satisfied by the chart that was already
         # there. Written the loose way first, and it failed against a
         # working page -- the drawing was right and the check was early.
-        page.wait_for_function(
-            "Array.from(document.querySelectorAll('[data-visit-columns] svg text'))"
-            ".some(node => node.textContent.indexOf(':') !== -1)",
+        wait_until(
+            page,
+            # `text_content`, not `inner_text`: these are SVG `<text>`
+            # nodes, and `inner_text` is defined on HTML elements only.
+            lambda p: any(
+                ":" in (node.text_content() or "")
+                for node in p.query_selector_all("[data-visit-columns] svg text")
+            ),
             timeout=8000,
+            what="the chart axis to be labelled",
         )
         # The axis is the honest witness here: 24 hourly buckets are
         # labelled with clock times, and a chart that ignored the press
@@ -1224,8 +1296,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         )
 
         page.click('.lang-btn[data-lang="ru"]')
-        page.wait_for_function(
-            "document.documentElement.lang === 'ru'", timeout=5000,
+        wait_until(
+            page,
+            lambda p: p.get_attribute("html", "lang") == "ru",
+            what="the page to be redrawn in Russian",
         )
 
         assert page.get_attribute("html", "lang") == "ru"
@@ -1268,8 +1342,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         )
 
         page.click('.lang-btn[data-lang="ru"]')
-        page.wait_for_function(
-            "document.documentElement.lang === 'ru'", timeout=5000,
+        wait_until(
+            page,
+            lambda p: p.get_attribute("html", "lang") == "ru",
+            what="the page to be redrawn in Russian",
         )
 
         assert page.get_attribute("html", "lang") == "ru"
@@ -1316,9 +1392,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         page.context.add_cookies([{"name": "lang", "value": "ru", "url": base}])
         page.route("**/api/v1/links/mine", lambda route: route.abort())
         page.goto(f"{base}/dashboard/links")
-        page.wait_for_function(
-            "document.getElementById('links-error').textContent.trim() !== ''",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: has_text(p, "#links-error"),
+            what="#links-error to say something",
         )
         shown = page.inner_text("#links-error").strip()
 
@@ -1424,6 +1501,12 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         # screen from reading as the beginning of history.
         said = page.inner_text("[data-journal-reach]").strip()
         assert "application.log" in said, said
+        # The label is a list of pieces, and they used to be joined by a
+        # space: the first ends in a file name rather than a full stop, so
+        # it read "Lines: 200 · application.log Older lines exist." -- two
+        # sentences run together, in Russian as well.
+        assert "log Older" not in said, said
+        assert " · " in said, said
 
     @check("choosing another journal reads that journal")
     def _():
@@ -1436,10 +1519,10 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         page.goto(f"{base}/dashboard/service/journals")
         page.wait_for_selector("[data-journal-row]", timeout=5000)
         page.click('[data-journal="audit"]')
-        page.wait_for_function(
-            "document.querySelector('[data-journal-reach]')"
-            ".textContent.indexOf('audit.log') !== -1",
-            timeout=5000,
+        wait_until(
+            page,
+            lambda p: "audit.log" in p.inner_text("[data-journal-reach]"),
+            what="the audit journal to be read",
         )
 
         assert page.inner_text("[data-journal-title]").strip().lower() == "audit"
@@ -1498,13 +1581,84 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
 
         assert behind < 40, f"the tail ran {behind} pixels ahead of the reader"
 
+    @check("the browser is told what it may do with the page")
+    def _():
+        # Read off a real response rather than the test client's, because
+        # what matters is what a browser is handed: the headers travel
+        # through gunicorn, the compression hook and the error handler
+        # before they get here.
+        page = page_for("/")
+        answer = page.request.get(f"{base}/")
+        headers = answer.headers
+
+        assert headers.get("x-content-type-options") == "nosniff", headers
+        assert headers.get("x-frame-options") == "DENY", headers
+        assert headers.get("referrer-policy") == "same-origin", headers
+        assert "content-security-policy" in headers, headers
+
+    @check("the policy admits the page's own script and nothing more")
+    def _():
+        # The strings block is inline and is admitted by nonce. If the
+        # browser refused it, `t()` would answer every key with the key --
+        # so this asks the page for a sentence rather than for the tag.
+        page = page_for("/")
+        strings = page.evaluate(
+            "JSON.parse("
+            "document.getElementById('script-strings').textContent)"
+        )
+
+        assert strings.get("working"), strings
+        assert strings["working"] != "working", strings
+
+    @check("a script the policy did not name does not run")
+    def _():
+        # The measurement that makes the header more than a string: an
+        # injected inline script is exactly what `script-src` exists to
+        # stop, and with `'unsafe-inline'` in the policy this would run.
+        page = page_for("/")
+        page.evaluate(
+            "var s = document.createElement('script');"
+            "s.textContent = 'window.__policy_was_ignored = true;';"
+            "document.body.appendChild(s);"
+        )
+        page.wait_for_timeout(200)
+
+        assert page.evaluate("window.__policy_was_ignored === true") is False
+
+    @check("no page was refused a resource by its own policy")
+    def _():
+        # A blocked stylesheet, font or fetch is reported to the console
+        # and to nothing else: the page renders, unstyled or half-working,
+        # and the server sees a clean 200. Every page this run has opened
+        # is covered, since the collector is shared.
+        # The one refusal this run causes on purpose is the injected
+        # script above, which is the check next door proving the policy
+        # bites. Everything else is the page being denied something it
+        # needs.
+        refusals = [
+            message for message in console_errors
+            if "Content Security Policy" in message
+            and INJECTED_SCRIPT_REFUSAL not in message
+        ]
+
+        assert refusals == [], refusals
+
     @check("no page reported a script error to the console")
     def _():
         # Anything the browser itself could not run, and any answer a
         # script asked for and did not get. A 401 from a probe the page
         # makes on purpose would show up here too, which is why the sign-in
         # checks above go through the form rather than the API.
-        assert console_errors == [], console_errors
+        #
+        # The one exception is the script this run injects on purpose to
+        # prove the policy refuses it. Its refusal is the evidence, and it
+        # is asserted where it is made.
+        unexpected = [
+            message for message in console_errors
+            if INJECTED_SCRIPT_REFUSAL not in message
+        ]
+
+        assert unexpected == [], unexpected
 
 
 if __name__ == "__main__":

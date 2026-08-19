@@ -274,6 +274,12 @@ class ErrorHandlerMiddleware:
                 # request, their fix -- and 409 says which kind of fix.
                 "LINK_CODE_TAKEN": 409,
                 "CONFIGURATION_ERROR": 500,
+                # The queue would not take a confirmation message. The
+                # request was fine and the account is fine; what failed is
+                # the service's own machinery, and 503 is what says so --
+                # answered 500 by the default below, it would have read as
+                # a bug in handling the request instead.
+                "MAIL_NOT_HANDED_OFF": 503,
                 "ROLE_CREATION_FAILED": 400,
                 "ROLE_DELETION_FAILED": 400,
                 "ROLE_UPDATE_FAILED": 400,

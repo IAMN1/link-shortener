@@ -13,17 +13,28 @@
             // leave three dashes on screen, which reads as "unmeasured"
             // when the truthful answer is "the check itself failed".
             showLoadError('health-error', await apiErrorText(resp));
-            render('db', null);
-            render('redis', null);
-            render('celery', null);
+            paint(null);
             return;
         }
-        var data = await resp.json();
-        render('db', data.database);
-        render('redis', data.cache);
-        render('celery', data.task_queue);
+        paint(await resp.json());
     } catch(e) {
         showLoadError('health-error', t('unreachable'));
+    }
+
+    // Both paths through this page draw the same surfaces, so they are
+    // listed once. Written as two branches, each naming five rows, a
+    // sixth added to one and forgotten in the other left a stale value on
+    // screen exactly when the page was reporting a failure. `null && x`
+    // is `null`, which is the "unknown" value `render` already takes.
+    function paint(data) {
+        render('db', data && data.database);
+        render('redis', data && data.cache);
+        render('celery', data && data.task_queue);
+        // The limiter fails open: with its backend gone it enforces
+        // nothing and the service answers normally, so this row is the
+        // only place the failure appears.
+        render('limiter', data && data.rate_limiter);
+        renderLogging(data && data.logging);
     }
 
     // State is written as a class rather than as a colour in a style
@@ -40,13 +51,40 @@
         // reports as unused -- which would train the next reader to ignore
         // it.
         if (word) {
-            if (ok === null) {
+            if (ok === null || ok === undefined) {
                 word.textContent = t('unknown');
             } else {
                 word.textContent = ok ? t('answering') : t('not_answering');
             }
         }
         if (!dot) return;
-        dot.className = 'dot' + (ok === null ? '' : (ok ? ' dot--ok' : ' dot--danger'));
+        dot.className = 'dot' + (
+            ok === null || ok === undefined
+                ? '' : (ok ? ' dot--ok' : ' dot--danger')
+        );
+    }
+
+    // The counters `FailoverService` keeps. They were published by the
+    // endpoint and read by nobody, which is how an audit trail that had
+    // stopped being written looked, from every surface an operator has,
+    // exactly like one that was fine.
+    //
+    // `active` names the implementation actually doing the work -- the
+    // primary, or the fallback it failed over to -- and until this page
+    // read it, the only word about which one holds the work was a single
+    // line at startup.
+    function renderLogging(logging) {
+        ['logger', 'audit'].forEach(function(chain) {
+            var state = logging ? logging[chain] : null;
+            var name = document.getElementById('logging-' + chain);
+            if (name) name.textContent = state ? state.active : t('unknown');
+
+            ['dropped_calls', 'failed_checks', 'lost_log_lines']
+                .forEach(function(counter) {
+                    var cell = document.getElementById(chain + '-' + counter);
+                    if (!cell) return;
+                    cell.textContent = state ? state[counter] : '\u2014';
+                });
+        });
     }
 })();

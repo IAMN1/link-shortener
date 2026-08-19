@@ -14,9 +14,12 @@ different things depending on ``LOGGER_TYPE``.
 
 The format was read from ``LOG_DATE_FORMAT`` as well, so a deployment could
 set it to anything and leave the file unparseable by whatever reads it
-back. ``LOG_DATE_FORMAT`` still shapes the console line, which is written
-for a person; this stamp is written for a program, and ISO 8601 in UTC is
-what a program can sort as text and parse with ``fromisoformat``.
+back. ``LOG_DATE_FORMAT`` shapes the console line instead, which is written
+for a person -- in the standard chain, whose console has a formatter of its
+own; the structlog chain renders its console over the one processor chain
+it shares with the file, so there the two carry the same stamp. This one is
+written for a program, and ISO 8601 in UTC is what a program can sort as
+text and parse with ``fromisoformat``.
 
 It lives in this module because three chains have to agree on it and this
 is the one place all three can reach: ``json_formatter`` for the standard

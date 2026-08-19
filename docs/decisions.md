@@ -1,6 +1,6 @@
 # Decisions
 
-Thirty-nine write-ups of why something is the way it is. Read this when the
+Forty-two write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -119,6 +119,32 @@ away from a production configuration.
 
 ## Database and migrations
 
+### One revision, edited in place
+
+**Decided** (2026-08-07, written down 2026-08-19): the repository keeps a
+single Alembic revision. A change to the models is edited into that
+baseline; a second revision is not added.
+
+**Why.** Nothing is deployed from this repository yet, and until something
+is, a chain of revisions records the history of a schema nobody ran. One
+baseline is read as the schema, which is what a reader wants from it, and
+`tests/integration/infrastructure/database/test_migrations.py` can then
+assert what a fresh database actually contains rather than what a sequence
+of edits ought to have produced.
+
+**What it costs, and it is not free.** A database created by an older
+baseline is not caught up: the revision is already applied under the same
+id, so `upgrade head` does nothing and the missing column stays missing.
+Recreating the database is the ordinary answer, and that is only ordinary
+while there is no production data. Measured on a database built before
+`security_events` existed: the application starts, the event goes to the
+audit journal, the counter logs a warning and the request is answered --
+the failure is contained, but the table is still not there.
+
+**When it stops holding.** The first deployment somebody else runs. From
+then on the baseline is history and a change is a new revision, because a
+revision already applied elsewhere cannot be edited.
+
 ### `increment_clicks` returns nothing
 
 **Decided** (2026-08-12): the repository counts a click with a single
@@ -202,6 +228,30 @@ mistake has been made in Kubernetes (`system:unauthenticated` as an ordinary
 RoleBinding subject) and in PostgreSQL (`PUBLIC`, CVE-2018-1058). Full
 reasoning: [Architecture](architecture.md#the-anonymous-request-and-the-ceiling-over-it).
 
+### One link's traffic belongs to whoever owns the link
+
+**Decided** (2026-08-19): `?code=` on `/api/v1/stats/visits` and
+`/api/v1/stats/visits/daily` is checked against `can_view_link_details`,
+the same gate the extended link endpoint uses.
+
+**Why.** Both endpoints hold `stats:view_basic`, which the `guest` role
+carries — that is deliberate, because the service-wide answer is a count
+nobody owns. A named code is not that answer. Measured against the running
+stack: an anonymous caller who knew a seven-character code was given the
+link's total, its bucketed timeline and its device and browser split,
+while the same caller asking `/api/v1/links/<code>` got `clicks: null` and
+asking `/api/v1/links/<code>/extended` got `401`. Three endpoints, one
+question, two answers.
+
+The ownership check only ran when `scope=mine` set an `owner_id`, so the
+parameter that names somebody else's link was the one path through these
+endpoints with no check on it at all.
+
+**What it costs.** A code that no link carries now answers `404` rather
+than a span of zeroes, for everybody. The existence of a code is public
+anyway — the redirect and the basic endpoint answer it — and it is only
+the traffic behind it that is not.
+
 ### An account's responses are not stored by the browser
 
 **Decided** (2026-08-15): `Cache-Control: no-store` on every response that
@@ -227,6 +277,55 @@ signed-in visitor: the stylesheet, the font and the vendored navigation
 library are the same bytes for everyone and are asked for on every page.
 Marking them would re-fetch a quarter of a megabyte per navigation to
 protect files handed to anyone who asks.
+
+### The browser is told what it may do with the page
+
+**Decided** (2026-08-19): every response carries `X-Content-Type-Options`,
+`X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a
+`Content-Security-Policy` whose `script-src` admits one inline block by a
+per-response nonce.
+
+**Why at all.** None of them was sent, so each of those decisions was left
+to the browser's default — whether to guess a body's type against its
+declared one, whether another site may frame this one, and how much of the
+address to hand to whatever an outbound link leads to. A short link's own
+page carries its code in the address, which is the one that matters here.
+
+**Why a nonce and not `'unsafe-inline'`.** The application serves one
+inline `<script>`, the JSON block carrying the translated strings. Excusing
+it with `'unsafe-inline'` excuses every injected script along with it, which
+is the same as having no `script-src` at all. The nonce is 128 bits from
+`secrets.token_urlsafe`, minted in `before_request` so the markup and the
+header cannot disagree — a page whose nonce the header does not name is a
+page whose script is refused silently, in the browser and nowhere else.
+
+**What `style-src` keeps, and why.** `'unsafe-inline'`, alone among the
+directives. The charts position a tooltip, size a bar and colour a swatch
+by assigning to `element.style`, which Chromium reports as an inline style
+and refuses: measured, the browser run went to 36 failures of 45 and the
+console filled with *"Applying inline style violates..."* on every page
+that draws anything. Removing it means rewriting how the charts draw, which
+is a change to the charts. The narrow half is conceded — an injection that
+already runs can restyle the page — and the wide half is not, since
+`script-src` is what decides whether it runs.
+
+**What the markup gave up.** The five `style="..."` attributes in the
+templates are classes now, including the two that coloured the chart
+legend: a refused style attribute renders as an unstyled element rather
+than as an error, so the legend would have quietly lost the only thing it
+is for.
+
+**What this does not claim.** It does not close cross-site scripting; it
+narrows what a successful injection reaches. The consequence that would
+hurt most — a script reading the session — was already closed better, by
+cookies carrying `httponly`, `secure` and `samesite="Strict"`.
+
+**What it cost the test run.** `browser_test.py` waited on pages with
+`page.wait_for_function`, which evaluates a string as JavaScript inside the
+page — `script-src` without `'unsafe-eval'` refuses it, and every one of
+the fifteen waits died. They poll through Playwright's own protocol now.
+Loosening the policy to let the run through was the other way, and it would
+have meant the run measuring a policy no deployment would use.
 
 ### You cannot grant more than you hold
 
@@ -662,6 +761,16 @@ and leave the file unreadable by any program. A journal that will be
 filtered by time, ordered against another journal, or shipped to a
 collector is read by programs; the console line is read by a person, and
 only that line keeps the setting.
+
+Keeping it there took a second fix, on 2026-08-19: `ConsoleFormatter` takes
+a `datefmt` and stamps with it, and `bootstrap` built one with no arguments
+in both places, so the setting was read from the environment, carried on
+`LoggingSettings` and consulted by nothing — whatever a deployment set, the
+console showed the formatter's own default. It is now handed the setting on
+both consoles the standard chain writes. The structlog chain renders its
+console over the one processor chain it shares with the file, so its console
+line carries the same ISO stamp the journal does, and that is stated in
+`utils.py` rather than left to be found.
 
 **Why to the second and not finer.** That is what both chains already
 wrote, and the change is meant to fix the zone rather than quietly raise

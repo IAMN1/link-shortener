@@ -269,7 +269,14 @@ function mountJournals(root) {
         if (page.oldest_available && !archives) {
             said.push(t('journal_archives_reach', { name: page.oldest_available }));
         }
-        reach.textContent = said.join(' ');
+        // Joined by a separator, not by a space. The first piece is a
+        // label -- "Lines: 200 · application.log" -- and it ends in a file
+        // name rather than in a full stop, so a space ran it straight into
+        // the sentence after it: "Lines: 200 · application.log Older lines
+        // exist." The same middot the label already uses inside itself
+        // keeps the whole line one list rather than a label with sentences
+        // stuck to it, and it reads the same in every language.
+        reach.textContent = said.join(' · ');
     }
 
     function paint(page) {

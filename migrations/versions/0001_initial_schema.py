@@ -188,10 +188,15 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['link_id'], ['urls.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('link_id', 'day')
     )
+    # The primary key leads with `link_id`, and the service-wide daily
+    # chart filters on `day` alone -- which a composite index cannot serve
+    # without its leading column. See `LinkVisitDayModel`.
+    op.create_index('ix_link_visit_days_day', 'link_visit_days', ['day'], unique=False)
 
 
 def downgrade() -> None:
     """Remove everything this revision created."""
+    op.drop_index('ix_link_visit_days_day', table_name='link_visit_days')
     op.drop_table('link_visit_days')
     op.drop_index('ix_link_visits_link_occurred', table_name='link_visits')
     op.drop_index('ix_link_visits_occurred_at', table_name='link_visits')

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-17 16:23+0300\n"
+"POT-Creation-Date: 2026-08-19 14:31+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -19,13 +19,13 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: src/link_shortener/application/services/admin_service.py:219
+#: src/link_shortener/application/services/admin_service.py:228
 #: src/link_shortener/application/services/user_management_service.py:115
 #: src/link_shortener/application/services/user_management_service.py:138
 #: src/link_shortener/application/services/user_management_service.py:161
 #: src/link_shortener/application/use_cases/admin/users/confirm_user_email.py:63
-#: src/link_shortener/web/controllers/admin_api_controller.py:108
-#: src/link_shortener/web/controllers/admin_api_controller.py:182
+#: src/link_shortener/web/controllers/admin_api_controller.py:111
+#: src/link_shortener/web/controllers/admin_api_controller.py:214
 #, python-format
 msgid "User with id %(id)s not found"
 msgstr "找不到 id 为 %(id)s 的账户"
@@ -104,13 +104,7 @@ msgstr "您无权删除此链接"
 msgid "Unknown period '%(period)s'. Choose one of: %(choices)s"
 msgstr "未知的时间段「%(period)s」。请从以下选择：%(choices)s"
 
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:101
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:182
-#, python-format
-msgid "Invalid short code: %(code)s"
-msgstr "无效的短代码：%(code)s"
-
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:170
+#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:171
 #, python-format
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr "days 必须在 1 到 730 之间，收到的是 %(days)s"
@@ -577,8 +571,13 @@ msgstr "无响应"
 msgid "unknown"
 msgstr "未知"
 
-#: src/link_shortener/web/controllers/admin_api_controller.py:241
-#: src/link_shortener/web/controllers/admin_api_controller.py:279
+#: src/link_shortener/web/controllers/admin_api_controller.py:177
+#, python-format
+msgid "Confirmation for %(email)s could not be queued"
+msgstr "无法将发往 %(email)s 的确认邮件加入队列"
+
+#: src/link_shortener/web/controllers/admin_api_controller.py:273
+#: src/link_shortener/web/controllers/admin_api_controller.py:311
 #, python-format
 msgid "Role %(name)s not found"
 msgstr "找不到角色 %(name)s"
@@ -591,12 +590,12 @@ msgstr "请求体嵌套过深"
 msgid "Request body must be a JSON object"
 msgstr "请求体必须是 JSON 对象"
 
-#: src/link_shortener/web/controllers/api_controller.py:267
-#: src/link_shortener/web/controllers/api_controller.py:304
+#: src/link_shortener/web/controllers/api_controller.py:301
+#: src/link_shortener/web/controllers/api_controller.py:341
 msgid "Sign in to see your own statistics"
 msgstr "登录后可查看自己的统计"
 
-#: src/link_shortener/web/controllers/api_controller.py:312
+#: src/link_shortener/web/controllers/api_controller.py:349
 msgid "days must be a whole number"
 msgstr "days 必须是整数"
 
@@ -681,20 +680,20 @@ msgstr "不允许使用 %(method)s 方法"
 msgid "Request validation failed"
 msgstr "请求校验未通过"
 
-#: src/link_shortener/web/middleware/error_handler.py:308
-#: src/link_shortener/web/middleware/error_handler.py:376
+#: src/link_shortener/web/middleware/error_handler.py:314
+#: src/link_shortener/web/middleware/error_handler.py:382
 msgid "An internal error occurred"
 msgstr "发生了内部错误"
 
-#: src/link_shortener/web/middleware/error_handler.py:340
+#: src/link_shortener/web/middleware/error_handler.py:346
 msgid "Bad request"
 msgstr "错误的请求"
 
-#: src/link_shortener/web/middleware/error_handler.py:344
+#: src/link_shortener/web/middleware/error_handler.py:350
 msgid "Malformed request body"
 msgstr "请求体格式有误"
 
-#: src/link_shortener/web/middleware/error_handler.py:371
+#: src/link_shortener/web/middleware/error_handler.py:377
 msgid "Internal server error"
 msgstr "服务器内部错误"
 
@@ -946,11 +945,7 @@ msgstr "1 小时"
 msgid "1 day"
 msgstr "1 天"
 
-#: src/link_shortener/web/templates/dashboard/create_link.html:21
-msgid "Links made without an account expire after 7 days."
-msgstr "未注册创建的链接 7 天后过期。"
-
-#: src/link_shortener/web/templates/dashboard/create_link.html:24
+#: src/link_shortener/web/templates/dashboard/create_link.html:30
 msgid "Create"
 msgstr "创建"
 
@@ -1083,7 +1078,43 @@ msgstr "数据库"
 msgid "Task queue"
 msgstr "任务队列"
 
-#: src/link_shortener/web/templates/dashboard/health.html:30
+#: src/link_shortener/web/templates/dashboard/health.html:31
+msgid "Rate limiter"
+msgstr "限流器"
+
+#: src/link_shortener/web/templates/dashboard/health.html:41
+msgid "Logging"
+msgstr "日志记录"
+
+#: src/link_shortener/web/templates/dashboard/health.html:43
+msgid "Application log"
+msgstr "应用日志"
+
+#: src/link_shortener/web/templates/dashboard/health.html:47
+msgid "Audit log"
+msgstr "审计日志"
+
+#: src/link_shortener/web/templates/dashboard/health.html:53
+msgid "Records that did not survive"
+msgstr "未能留存的记录"
+
+#: src/link_shortener/web/templates/dashboard/health.html:55
+msgid "Calls dropped"
+msgstr "丢弃的调用"
+
+#: src/link_shortener/web/templates/dashboard/health.html:60
+msgid "Health checks that failed"
+msgstr "失败的健康检查"
+
+#: src/link_shortener/web/templates/dashboard/health.html:65
+msgid "Lines lost"
+msgstr "丢失的行数"
+
+#: src/link_shortener/web/templates/dashboard/health.html:70
+msgid "Application log · audit log."
+msgstr "应用日志 · 审计日志。"
+
+#: src/link_shortener/web/templates/dashboard/health.html:76
 #, python-format
 msgid "Reported by %(name)s, read once when this page opens."
 msgstr "由 %(name)s 提供，打开本页时读取一次。"
@@ -1737,4 +1768,10 @@ msgstr "请到%(link)s重新申请一个。"
 #~ "read here, and reading them is "
 #~ "itself a privilege somebody granted."
 #~ msgstr ""
+
+#~ msgid "Invalid short code: %(code)s"
+#~ msgstr "无效的短代码：%(code)s"
+
+#~ msgid "Links made without an account expire after 7 days."
+#~ msgstr "未注册创建的链接 7 天后过期。"
 

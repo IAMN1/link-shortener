@@ -274,6 +274,30 @@ class TestTaskQueue:
         check = InfrastructureHealthCheck(_db_manager(), cache=None, task_queue=queue)
         assert check.check_task_queue() is False
 
+    def test_it_stops_at_the_first_worker_that_answers(self):
+        """
+        ``control.ping`` is a broadcast: without ``limit`` it collects
+        replies until the timeout expires, however fast the first one
+        arrives. One live worker is the whole question here, so the answer
+        is complete as soon as one replies.
+
+        Measured in the container against a running worker: 1.027 s
+        without the limit, 0.004 s with it, the same verdict either way --
+        paid on every observation that missed the two-second cache, on an
+        endpoint an orchestrator probes on a schedule.
+
+        A broker with no worker is unchanged: both forms wait out the
+        timeout and return nothing, so nothing about detecting the failure
+        moves.
+        """
+        queue = Mock()
+        queue.celery_app.control.ping.return_value = [{"worker@host": {"ok": "pong"}}]
+        check = InfrastructureHealthCheck(_db_manager(), cache=None, task_queue=queue)
+
+        check.check_task_queue()
+
+        assert queue.celery_app.control.ping.call_args.kwargs.get("limit") == 1
+
 
 class FakeClock:
     """A monotonic clock the test moves by hand."""

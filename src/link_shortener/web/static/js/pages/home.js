@@ -38,7 +38,7 @@
     // arrives, and comes back when the card is cleared.
     function clear(el) {
         var r = resultOf(el);
-        if (r) r.style.display = 'none';
+        if (r) r.classList.add('hidden');
         var hint = hintOf(el);
         if (hint) hint.classList.remove('hidden');
     }
@@ -302,7 +302,7 @@
         bindDeleteButtons(r);
     }
     function reveal(from, r) {
-        r.style.display = 'block';
+        r.classList.remove('hidden');
         var hint = hintOf(from);
         if (hint) hint.classList.add('hidden');
     }

@@ -22,8 +22,12 @@ activated the prefix is unnecessary; with neither, you get
 
 ## Migrations
 
-The schema is owned by Alembic. A committed baseline creates everything from
-nothing, and later changes to the models arrive as new revisions.
+The schema is owned by Alembic, and this repository keeps **one** revision.
+A change to the models is edited into the baseline rather than followed by a
+second revision, so a deployment always builds the current schema from
+nothing. What that costs is stated where it is decided: a database created
+by an older baseline is not caught up, and recreating it is the ordinary
+answer.
 
 ```bash
 flask alembic upgrade head        # apply

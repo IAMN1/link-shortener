@@ -90,6 +90,12 @@ but it is not news:
   own timeout.
 - **`ALL_SERVICES_FAILED` is set and read by nobody.** It is counted, not
   acted on.
+- **`style-src` allows `'unsafe-inline'`.** The charts position and colour
+  their elements by assigning to `element.style`, which a browser reports
+  as an inline style. `script-src` carries no such allowance: the one
+  inline block on a page is admitted by a per-response nonce, and an
+  injected script is refused. Measured — see
+  [Decisions → The browser is told what it may do with the page](docs/decisions.md).
 
 Also out of scope, as they are for most projects:
 

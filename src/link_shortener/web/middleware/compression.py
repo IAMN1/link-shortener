@@ -104,6 +104,24 @@ class CompressionMiddleware:
             # already encoded must not be encoded twice.
             if response.status_code < 200 or response.status_code in (204, 304):
                 return response
+
+            # A partial answer is a slice of the identity body, and the
+            # headers around it say so in identity bytes: `Content-Range`
+            # counts them, and the client stitches the file back together
+            # from the offsets it asked for. Compressed, the range header
+            # describes bytes that were never sent -- measured on the
+            # static route, `Range: bytes=0-19999` came back at
+            # `Content-Length: 93` with `Content-Range` still claiming
+            # twenty thousand. The ETag makes it worse rather than
+            # catching it: it names the whole entity, so a shared cache
+            # can hand a slice to a caller who asked for the file.
+            #
+            # `Content-Range` as well as the status, because that is the
+            # header the rule is really about -- a 206 is how it arrives
+            # today, and a partial answer under any other status is the
+            # same mistake.
+            if response.status_code == 206 or "Content-Range" in response.headers:
+                return response
             if response.headers.get("Content-Encoding"):
                 return response
 
