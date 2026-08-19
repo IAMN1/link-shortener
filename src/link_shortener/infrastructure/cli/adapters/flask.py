@@ -50,6 +50,65 @@ def _container() -> Container:
     return current_app.container  # type: ignore[attr-defined]
 
 
+def _asked_for_or_refused(email, password, non_interactive):
+    """
+    Get an address and a password, by asking or by refusing to ask.
+
+    The prompting three commands share -- ``create-admin``,
+    ``create-user`` and ``security reset-password``. Written once, because
+    it was written three times and only one of the three was right: the
+    other two declared ``--email`` and ``--password`` as
+    ``click.option(prompt=...)``, which asks before the body runs, so
+    ``--non-interactive`` could not be consulted and did not exist. Run
+    from a provisioning script with stdin closed they printed
+    ``Password:``, warned that the input may be echoed, and exited 1 with
+    ``Aborted!``.
+
+    Args:
+        email: Value of ``--email``, or ``None``.
+        password: Value of ``--password``, or ``None``.
+        non_interactive: Whether to refuse rather than ask.
+
+    Returns:
+        The pair, each either as given or as typed in.
+
+    Raises:
+        SystemExit: With code 1 when something is missing and asking is
+            not allowed.
+    """
+    missing = [
+        name
+        for name, value in (("--email", email), ("--password", password))
+        if not value
+    ]
+    if missing and non_interactive:
+        # Named together, not one per run: a script fixed on the first
+        # complaint would come back only to be stopped by the second.
+        click.echo(
+            f"{' and '.join(missing)} required with --non-interactive",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    if not email:
+        email = click.prompt("Email")
+    if not password:
+        # Asked twice. The input is hidden, so a typo is invisible and
+        # nothing downstream can catch one: the account is created or the
+        # password is changed, the command reports success, and what was
+        # meant is not what was stored.
+        #
+        # Only the prompted path confirms. A `--password` on the command
+        # line was read from a script or a secret store, is visible to
+        # whoever wrote it, and asking a script to type it twice is how
+        # `--non-interactive` gets stuck at a prompt again.
+        password = click.prompt(
+            "Password", hide_input=True, confirmation_prompt=True
+        )
+
+    return email, password
+
+
 # ------------------------------------------------------------------
 # Database commands group
 # ------------------------------------------------------------------
@@ -430,28 +489,55 @@ def check_redis():
 @maintenance_group.command("health")
 @with_appcontext
 def maintenance_health():
-    """Run all health checks (database + Redis)."""
-    container = _container()
+    """Report the state of every dependency, as /health reports it.
 
-    # Check database
-    db_ok = check_db_logic(container.get_db_manager()) is None
-    click.echo(f"Database: {'OK' if db_ok else 'FAILED'}")
+    One observation, read by both surfaces. This used to ask the database
+    and the cache directly and say nothing about the other two, under a
+    line that called itself "all health checks": with the worker stopped
+    it printed `Database: OK / Redis: SKIPPED` and exited 0 while
+    `/health` answered `task_queue: unavailable, status: degraded` in the
+    same second. `HealthSnapshot` was written so that the surfaces cannot
+    drift like that -- an operator on the shell and a probe in the
+    orchestrator now read one answer.
 
-    # Check Redis. A deliberately disabled cache is not a failure: the
-    # documented local setup runs with REDIS_ENABLED=false and an in-memory
-    # cache, and reporting FAILED there made a healthy install look broken
-    # (and any exit-code based monitoring go red).
-    redis_expected = current_app.config.get("REDIS_ENABLED", False) and \
-        current_app.config.get("CACHE_ENABLED", True)
+    The exit code is what a cron line reads, so it follows the same rule
+    the endpoint's status does: anything unhealthy is a failure, and a
+    cache nobody configured is not one.
+    """
+    state = _container().health_check.snapshot()
 
-    if not redis_expected:
-        click.echo("Redis: SKIPPED (disabled by configuration)")
-        redis_ok = True
+    # A cache that is switched off is not a broken cache. The documented
+    # local setup runs with REDIS_ENABLED=false, and reporting FAILED
+    # there made a healthy install look broken -- and any exit-code based
+    # monitoring go red.
+    if state.cache_configured:
+        cache_line = "OK" if state.cache else "FAILED"
     else:
-        redis_ok = check_redis_logic(container.get_cache())
-        click.echo(f"Redis: {'OK' if redis_ok else 'FAILED'}")
+        cache_line = "not configured"
 
-    if not (db_ok and redis_ok):
+    lines = [
+        ("Database", "OK" if state.database else "FAILED"),
+        ("Cache", cache_line),
+        ("Task queue", "OK" if state.task_queue else "FAILED"),
+        ("Rate limiter", "OK" if state.rate_limiter else "FAILED"),
+    ]
+    width = max(len(name) for name, _ in lines)
+    for name, verdict in lines:
+        click.echo(f"{name + ':':<{width + 1}} {verdict}")
+
+    # Named separately, because "did not answer in time" is a different
+    # finding from "answered no" and the snapshot keeps them apart. Which
+    # dependency is hanging is the first thing worth knowing.
+    if state.timed_out:
+        click.echo(f"Timed out: {', '.join(state.timed_out)}")
+
+    healthy = (
+        state.database
+        and (state.cache or not state.cache_configured)
+        and state.task_queue
+        and state.rate_limiter
+    )
+    if not healthy:
         raise SystemExit(1)
 
 # ------------------------------------------------------------------
@@ -746,11 +832,26 @@ def security_list_roles():
         click.echo(f"{role['id']:<36} {role['name']:<20} {(role['description'] or ''):<30} {perms_str}")
 
 @security_group.command("reset-password")
-@click.option("--email", prompt=True, help="User email")
-@click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True, help="New password")
+@click.option("--email", default=None, help="User email")
+@click.option("--password", default=None, help="New password")
+@click.option(
+    "--non-interactive",
+    is_flag=True,
+    help="Refuse rather than prompt when --email or --password is missing",
+)
 @with_appcontext
-def security_reset_password(email, password):
-    """Reset a user's password."""
+def security_reset_password(email, password, non_interactive):
+    """Reset a user's password.
+
+    Asks for --email and --password if they are not given, unless
+    --non-interactive is passed, in which case it refuses instead. A
+    password it asks for is typed twice; one given as --password is not.
+    """
+    # The command with the most reason to run from a runbook: a password
+    # is reset at the point somebody has lost theirs. See create-user
+    # above for why the prompting happens here rather than in the option.
+    email, password = _asked_for_or_refused(email, password, non_interactive)
+
     from link_shortener.infrastructure.cli.commands.security import reset_password
     container = _container()
     user_service = container.get_user_management_service()
@@ -819,44 +920,11 @@ def create_admin(email, password, non_interactive):
     #
     # The prompts are issued in the body rather than by
     # `click.option(prompt=...)`, which is what makes `--non-interactive`
-    # mean anything. Declared as a prompting option, `--email` is asked for
-    # before the body runs and before any flag can be consulted: the flag
-    # was read by nothing at all, and a provisioning script that passed it
-    # stops at "Email:" and dies on the closed stdin with
-    # `Aborted!` -- the one situation it exists to prevent. Its help said
-    # "Skip confirmation prompts", which named something that was never
-    # here either: this command asks for values, and confirms nothing.
-    missing = [
-        name
-        for name, value in (("--email", email), ("--password", password))
-        if not value
-    ]
-    if missing and non_interactive:
-        # Named together, not one per run: a script fixed on the first
-        # complaint would come back only to be stopped by the second.
-        click.echo(
-            f"{' and '.join(missing)} required with --non-interactive",
-            err=True,
-        )
-        raise SystemExit(1)
-
-    if not email:
-        email = click.prompt("Email")
-    if not password:
-        # Asked twice, like `create-user` and `security reset-password`
-        # next door. The input is hidden, so a typo is invisible and
-        # nothing downstream can catch one: the account is created, the
-        # command reports success, and the password that was meant is not
-        # the password that was stored. There is no recovery either --
-        # signing in needs the password, and resetting it needs an admin.
-        #
-        # Only the prompted path confirms. A `--password` on the command
-        # line was read from a script or a secret store, is visible to
-        # whoever wrote it, and asking a script to type it twice is how
-        # `--non-interactive` gets stuck at a prompt again.
-        password = click.prompt(
-            "Password", hide_input=True, confirmation_prompt=True
-        )
+    # mean anything -- see `_asked_for_or_refused`, which is where that
+    # shape now lives for all three commands that take a secret. Its help
+    # used to say "Skip confirmation prompts", which named something that
+    # was never here: this command asks for values, and confirms nothing.
+    email, password = _asked_for_or_refused(email, password, non_interactive)
 
     container = _container()
     user_service = container.get_user_management_service()
@@ -876,12 +944,30 @@ def create_admin(email, password, non_interactive):
 
 
 @click.command("create-user")
-@click.option("--email", prompt=True, help="User email")
-@click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True, help="User password")
+@click.option("--email", default=None, help="User email")
+@click.option("--password", default=None, help="User password")
 @click.option("--role", required=True, help="Role name to assign (e.g., admin, user, analyst)")
+@click.option(
+    "--non-interactive",
+    is_flag=True,
+    help="Refuse rather than prompt when --email or --password is missing",
+)
 @with_appcontext
-def create_user(email, password, role):
-    """Create a new user with a specified role."""
+def create_user(email, password, role, non_interactive):
+    """Create a new user with a specified role.
+
+    Asks for --email and --password if they are not given, unless
+    --non-interactive is passed, in which case it refuses instead. A
+    password it asks for is typed twice; one given as --password is not.
+    """
+    # Prompted in the body, like create-admin next door and for the same
+    # reason -- see the decision "`--non-interactive` refuses instead of
+    # asking". Declared as prompting options these were asked for before
+    # the body ran, so nothing could refuse: with stdin closed the command
+    # printed "Password:", warned that the input may be echoed, and died
+    # with `Aborted!`.
+    email, password = _asked_for_or_refused(email, password, non_interactive)
+
     from link_shortener.infrastructure.cli.commands.admin import create_user as create_user_logic
     container = _container()
     user_service = container.get_user_management_service()

@@ -1,4 +1,6 @@
 """Integration tests for CLI commands."""
+import re
+
 import pytest
 from datetime import timedelta
 from flask.testing import FlaskCliRunner
@@ -277,10 +279,16 @@ class TestMaintenanceCommands:
         # `in [0, 1]` accepted the failing exit code the command uses to
         # report an unhealthy service, so it could not tell the two apart.
         assert result.exit_code == 0
-        # "Database: OK", not just "database": the line is printed either
-        # way, with OK or FAILED after it, so the word alone asserts only
-        # that the command produced its usual output.
-        assert "Database: OK" in result.output
+        # The verdict, not just the word: the line is printed either way,
+        # with OK or FAILED after it, so the name alone asserts only that
+        # the command produced its usual output. The names are padded to
+        # one column now, so the space between is not fixed.
+        assert re.search(r"^Database: +OK$", result.output, re.M), result.output
+        # Every dependency the probe reads, which is what the command
+        # promises and what it used not to do -- see
+        # `test_the_health_command_and_the_probe_agree.py`.
+        for name in ("Cache", "Task queue", "Rate limiter"):
+            assert re.search(rf"^{name}: ", result.output, re.M), result.output
 
     def test_maintenance_check_redis(self, runner, app):
         result = runner.invoke(app.cli, ["maintenance", "check-redis"])

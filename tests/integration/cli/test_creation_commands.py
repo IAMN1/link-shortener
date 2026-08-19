@@ -453,6 +453,131 @@ class TestCreateAdminWithoutATerminal:
         assert _stored_user(app, "asked@example.test") is not None
 
 
+class TestTheOtherTwoCommandsThatTakeASecret:
+    """``create-user`` and ``security reset-password``, from a script.
+
+    Both declared ``--email`` and ``--password`` as prompting options,
+    which is the shape ``create-admin`` was taken out of and the reason
+    ``--non-interactive`` exists at all: a prompting option is asked for
+    before the body runs, so no flag can be consulted and no branch can
+    refuse. Run with stdin closed they printed ``Password:``, warned
+    "Password input may be echoed", and died with ``Aborted!`` and exit
+    code 1 -- the one situation the decision in ``docs/decisions.md``
+    ("`--non-interactive` refuses instead of asking") was written about.
+
+    Every case supplies no input, which is what makes it a test of the
+    flag rather than of the prompt.
+    """
+
+    def test_create_user_refuses_a_missing_password_instead_of_asking(
+        self, runner, app
+    ):
+        result = runner.invoke(
+            app.cli,
+            ["create-user", "--non-interactive", "--role", "user",
+             "--email", "scripted-user@example.test"],
+            input="",
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "--password" in result.output
+        assert "Password:" not in result.output
+        assert _stored_user(app, "scripted-user@example.test") is None
+
+    def test_create_user_names_both_missing_values_at_once(self, runner, app):
+        result = runner.invoke(
+            app.cli,
+            ["create-user", "--non-interactive", "--role", "user"],
+            input="",
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "--email" in result.stderr
+        assert "--password" in result.stderr
+        assert result.stdout == ""
+
+    def test_create_user_creates_the_account_when_both_are_given(
+        self, runner, app
+    ):
+        result = runner.invoke(
+            app.cli,
+            ["create-user", "--non-interactive", "--role", "user",
+             "--email", "provisioned@example.test",
+             "--password", "Str0ng!Passw0rd"],
+            input="",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert _stored_user(app, "provisioned@example.test") is not None
+
+    def test_create_user_without_the_flag_still_asks(self, runner, app):
+        result = runner.invoke(
+            app.cli,
+            ["create-user", "--role", "user"],
+            input="asked-user@example.test\nStr0ng!Passw0rd\nStr0ng!Passw0rd\n",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Email:" in result.output
+        assert _stored_user(app, "asked-user@example.test") is not None
+
+    def test_reset_password_refuses_instead_of_asking(self, runner, app):
+        """
+        The command with the most reason to be scriptable: a password is
+        reset from a runbook, at the point somebody has lost theirs.
+        """
+        result = runner.invoke(
+            app.cli,
+            ["security", "reset-password", "--non-interactive",
+             "--email", "someone@example.test"],
+            input="",
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "--password" in result.output
+        assert "Password:" not in result.output
+
+    def test_reset_password_changes_the_password_when_both_are_given(
+        self, runner, app
+    ):
+        runner.invoke(
+            app.cli,
+            ["create-user", "--non-interactive", "--role", "user",
+             "--email", "resets@example.test",
+             "--password", "Str0ng!Passw0rd"],
+            input="",
+        )
+
+        result = runner.invoke(
+            app.cli,
+            ["security", "reset-password", "--non-interactive",
+             "--email", "resets@example.test",
+             "--password", "An0ther!Passw0rd"],
+            input="",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "resets@example.test" in result.output
+
+    def test_reset_password_without_the_flag_still_asks(self, runner, app):
+        runner.invoke(
+            app.cli,
+            ["create-user", "--non-interactive", "--role", "user",
+             "--email", "asked-reset@example.test",
+             "--password", "Str0ng!Passw0rd"],
+            input="",
+        )
+
+        result = runner.invoke(
+            app.cli,
+            ["security", "reset-password"],
+            input="asked-reset@example.test\nAn0ther!Passw0rd\nAn0ther!Passw0rd\n",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Email:" in result.output
+
+
 class TestLinkCreate:
     """``flask link create`` must report the link it made."""
 
