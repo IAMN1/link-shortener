@@ -687,6 +687,16 @@ filtered by time, ordered against another journal, or shipped to a
 collector is read by programs; the console line is read by a person, and
 only that line keeps the setting.
 
+Keeping it there took a second fix, on 2026-08-19: `ConsoleFormatter` takes
+a `datefmt` and stamps with it, and `bootstrap` built one with no arguments
+in both places, so the setting was read from the environment, carried on
+`LoggingSettings` and consulted by nothing — whatever a deployment set, the
+console showed the formatter's own default. It is now handed the setting on
+both consoles the standard chain writes. The structlog chain renders its
+console over the one processor chain it shares with the file, so its console
+line carries the same ISO stamp the journal does, and that is stated in
+`utils.py` rather than left to be found.
+
 **Why to the second and not finer.** That is what both chains already
 wrote, and the change is meant to fix the zone rather than quietly raise
 the resolution. Ordering within a file is by time of write, not time of

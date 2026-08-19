@@ -60,6 +60,16 @@ def refuse(*_args, **_kwargs):
     raise OSError(28, "No space left on device")
 
 
+ODD_DATE_FORMAT = "%d %B %Y, %H:%M local"
+"""What the fixture sets ``LOG_DATE_FORMAT`` to.
+
+Deliberately unlike the stamp the journals must carry and deliberately
+useless to a parser: the setting dresses the console line for a person,
+and it must reach that line and no file. Both halves are checked, and the
+word ``local`` cannot arrive from any other format.
+"""
+
+
 @pytest.fixture
 def journals(tmp_path):
     """
@@ -80,7 +90,7 @@ def journals(tmp_path):
     )
     built = []
 
-    def configure(mode: str = "auto"):
+    def configure(mode: str = "auto", to_console: bool = False):
         settings = LoggingSettings(
             log_dir=str(tmp_path),
             log_file_name="application",
@@ -92,8 +102,8 @@ def journals(tmp_path):
             # ``TestBothChainsWriteOneClock`` asserts that it reaches no
             # file. Handed the ISO format here, that assertion would pass
             # while the setting was wired straight back into the formatter.
-            log_date_format="%d %B %Y, %H:%M local",
-            log_to_console=False,
+            log_date_format=ODD_DATE_FORMAT,
+            log_to_console=to_console,
             log_to_file=True,
             log_level_str="INFO",
             debug=False,
@@ -350,6 +360,37 @@ class TestBothChainsWriteOneClock:
         )
         assert record["timestamp"].endswith("Z")
         assert "T" in record["timestamp"]
+
+    def test_log_date_format_does_reach_the_console_line(
+        self, journals, capsys
+    ):
+        """The other half of the same sentence, which was not true.
+
+        Three comments and a `decisions.md` entry said the setting
+        "dresses the console line" -- and `ConsoleFormatter`, which takes
+        a `datefmt` and stamps with it, was constructed with no arguments
+        in both places `bootstrap` builds one. The setting was read from
+        the environment, carried on `LoggingSettings`, and consulted by
+        nothing at all: whatever a deployment set, the console showed the
+        formatter's own default.
+
+        The standard chain, because that is the chain with a formatter of
+        its own. The structlog chain renders the console through
+        `ConsoleRenderer` over one processor chain shared with the file,
+        so its console line carries the same stamp the journal does --
+        stated here rather than left to be discovered.
+        """
+        _directory, manager, _audit = journals("standard", to_console=True)
+
+        manager.get_logger("live.check").info("a line for a person")
+
+        printed = [
+            line for line in capsys.readouterr().err.splitlines()
+            if "a line for a person" in line
+        ]
+
+        assert printed, "the console handler wrote nothing"
+        assert "local" in printed[0], printed[0]
 
     @pytest.mark.parametrize("mode", ("structlog", "standard"))
     def test_a_record_from_another_library_is_stamped_too(self, mode, journals):
