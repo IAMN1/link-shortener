@@ -73,24 +73,6 @@ bypass into a recorded one -- and which now exists: see
 
 ---
 
-## Find out where the service stops
-
-**Now.** `tests/load/locustfile.py` is 181 lines and has never been run
-against anything. The only measured ceiling is a partial one: link
-statistics answer in 18.6 ms over a week and 80.8 ms over 90 days, on
-PostgreSQL holding 225 000 recorded visits.
-
-**Why.** Several numbers in this documentation are stated per redirect and
-extrapolated per second — 473 bytes of audit a redirect, 389 MB a day at
-ten a second. What the service actually sustains is unknown, so the rate
-in those sentences is an assumption rather than a measurement.
-
-**What it would take.** A run against the Docker stack rather than a
-laptop, with the database on its own container, and a written note of what
-saturated first — worker count, database connections, or Redis.
-
----
-
 ## The retention arithmetic has an edge
 
 **Now.** `audit.log` is rotated weekly or at 1 GB, whichever comes first,

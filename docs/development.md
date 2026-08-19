@@ -111,11 +111,15 @@ until it was caught.
 
 ## Load profile
 
-Measured once, on one machine, and recorded together with it — without that
-the numbers would be opinions again.
+Measured twice, on one machine, and recorded together with it — without
+that the numbers would be opinions again. The first set was taken on
+2026-08-14, before a redirect recorded anything; this one on 2026-08-19,
+on a tree where every redirect writes a visit. Both are printed where they
+differ, because the difference is the point.
 
 **Where.** Apple M5, 10 cores, 16 GB; Docker Desktop 29.6.2 limited to 10
-CPUs and 8 GB; macOS 26.5. The production form of the stack
+CPUs and 8 GB; macOS 26.5. Identical to the first run, which is what makes
+the two comparable. The production form of the stack
 (`docker compose -f dockers/docker-compose.yml`), that is gunicorn with
 `--worker-class sync`, PostgreSQL 15 and Redis 7 as containers of the same
 stack, `FLASK_ENV=development`, Celery on.
@@ -137,47 +141,76 @@ Four scenarios to choose from as the last argument: `RedirectUser`,
 > measuring the rate limiter, not the service: it counts per address, and
 > twenty users behind one address returned `429` for 85% of requests.
 
+> [!IMPORTANT]
+> `CreateUser` is only repeatable against a database that has just been
+> built. The addresses come from a counter that starts at one every run,
+> and a guest may hold ten links per address — so the same addresses,
+> reused across runs, exhaust the allowance and the run then measures the
+> refusal. Measured: on a database holding 204 186 guest links, 13 299 of
+> 20 600 requests came back `429`, and the throughput that produced looked
+> like a *result*. Between `CreateUser` points, `docker compose ... down -v`
+> and up again — and then `flask db load-base-roles`, or the guest has no
+> `link:create` and every request is a `401` instead.
+
+The redirect scenarios need none of that: an address is used once per run
+there, and the ceiling is 200 a minute.
+
 ### Gunicorn workers
 
-Redirect, 50 concurrent users, milliseconds:
+Redirect, 50 concurrent users, milliseconds. Taken twice, once with the
+worker count rising and once with it falling, so that a drift over the
+series would show as a disagreement between the two:
 
 | `GUNICORN_WORKERS` | req/s | p50 | p95 | p99 |
 |---|---|---|---|---|
-| 1 | 743 | 62 | 77 | 93 |
-| 2 | 973 | 47 | 61 | 78 |
-| 4 | 1313 | 34 | 49 | 65 |
-| 8 | **1519** | 29 | 45 | 58 |
-| 16 | 1406 | 28 | 51 | 86 |
+| 1 | 444 | 100 | 120 | 130 |
+| 2 | 761 | 61 | 74 | 100 |
+| 4 | 1094 | 43 | 51 | 57 |
+| 8 | 1375 | 34 | 43 | 54 |
+| 16 | **1523** | 31 | 38 | 42 |
 
-The mixed scenario, same 50 users: 2 → 542 req/s at p99 990 ms, 4 → 791 at
-p99 410, 8 → 1027 at p99 85.
+The first series, taken in the opposite order, gave 470, 750, 1176, 1469
+and 1524 — no point disagrees by more than 7%. The mixed scenario, same 50
+users: 2 → 482 and 447 req/s, 4 → 762 and 715, 8 → 1109 and 1044.
 
-**What follows.** The ceiling here is eight workers on ten cores, and
-sixteen is worse than eight on both throughput and tail. The old rule of
-thumb "2 × cores + 1" would have given twenty-one, well past the knee; the
-template and the reference now say "about the number of cores, and no more".
+**What follows.** Recording a visit costs a third of the redirect path on
+one worker — 743 before, 444 and 470 after — and almost nothing on eight:
+1519 before, 1375 and 1469 after. The write waits on the database, and
+waiting is what more processes overlap; the machine's ceiling is where it
+was.
 
-The default is **4** rather than 8: it yields 86% of this machine's ceiling
-and stays sensible on a two-core box.
+What did change is the shape at the top. The first run found sixteen
+workers worse than eight on both throughput and tail, and that is no longer
+so: sixteen leads on both, and the two series agree on it. Both runs still
+refuse the old "2 × cores + 1", which would have given twenty-one — but the
+knee is now at or past the number of cores rather than below it.
+
+The default stays **4**: it yields 72% of this machine's ceiling, keeps p99
+under 60 ms, and stays sensible on a two-core box, which is what a default
+is for.
 
 ### Connection pool
 
-Link creation, 4 workers, 50 users; the last column is how many connections
-PostgreSQL counted:
+Link creation, 4 workers, 50 users, on a database rebuilt before each point;
+the last column is how many connections PostgreSQL counted:
 
 | `DATABASE_POOL_SIZE` | req/s | p50 | p99 | connections |
 |---|---|---|---|---|
-| 1 | 631 | 73 | 110 | 15 |
-| 2 | 605 | 73 | 260 | 15 |
-| 5 | 609 | 75 | 150 | 15 |
-| 20 | 615 | 74 | 130 | 15 |
+| 1 | 622 | 75 | 98 | 5 |
+| 2 | 627 | 75 | 90 | 5 |
+| 5 | 615 | 76 | 99 | 5 |
+| 20 | 617 | 76 | 94 | 5 |
 
-On the redirect path the same: 1245, 1277 and 1306 req/s at pool 1, 5 and 20.
+Both ends were taken a second time and landed on the same number, 629 each.
+On the redirect path the same flatness: 1142, 1139 and 1138 req/s at pool 1,
+5 and 20.
 
 **What follows.** Pool size decides nothing here, and the reason is the
 worker class: `sync` carries one request at a time, so a process holds one
 connection however many it is allowed. The pool is a ceiling, not a
-reserve, and the ceiling was never reached.
+reserve, and the ceiling was never reached — the connection count says so
+outright: five, whether the pool allows one or twenty, which is one per
+worker and one for the beat.
 
 The value was lowered from 20 to 5 (and `DATABASE_MAX_OVERFLOW` from 10 to
 5) not for speed but because the ceiling multiplies by the number of
@@ -191,10 +224,11 @@ Redirect, 4 workers:
 
 | `CACHE_ENABLED` | req/s | p50 | p95 | p99 |
 |---|---|---|---|---|
-| `true` | 1320 | 35 | 45 | 64 |
-| `false` | 897 | 51 | 65 | 97 |
+| `true` | 1128 | 42 | 50 | 56 |
+| `false` | 823 | 58 | 67 | 75 |
 
-The cache is worth 47% of the hot path's throughput — which is why
+Each row was taken twice, alternating, and repeated within 1%. The cache is
+worth 37% of the hot path's throughput — which is why
 `CACHE_LINK_TTL` and `CACHE_STATS_TTL` deserve non-zero values. The
 particular 3600 and 300 are a freshness-versus-hit-rate choice rather than a
 performance one, and this run does not measure them.

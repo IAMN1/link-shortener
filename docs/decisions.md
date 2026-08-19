@@ -1,6 +1,6 @@
 # Decisions
 
-Forty-seven write-ups of why something is the way it is. Read this when the
+Forty-eight write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -114,6 +114,46 @@ supported only as a full URL, not assembled from parts.
 **Why.** It is a test fixture, not a deployment. Making it reachable from
 `DATABASE_NAME` would put a database that vanishes with the process one typo
 away from a production configuration.
+
+---
+
+### The worker count and the pool size were measured, not guessed
+
+**Decided** (2026-08-19): `GUNICORN_WORKERS` defaults to 4 and
+`DATABASE_POOL_SIZE` to 5, and both numbers come from a run against the
+production form of the stack rather than from a rule of thumb. The tables
+are in [Development → Load profile](development.md).
+
+**Why.** `tests/load/locustfile.py` existed for weeks without being run
+against anything, and several numbers in this documentation are stated per
+redirect and extrapolated per second — 473 bytes of audit a redirect, 389
+MB a day at ten a second. What the service sustains was an assumption
+holding up those sentences. It is now measured: about 1500 redirects a
+second on ten cores, which puts 389 MB a day at roughly 0.7% of the
+ceiling.
+
+The run was made twice, in opposite orders, because a series drifts: a
+point taken late sits on a fuller database than one taken early. No point
+disagrees with its twin by more than 7%, which is what makes the shape of
+the curve — not any single number — the thing to read off it.
+
+Three things the measurement changed. Recording a visit costs a third of
+the redirect path on one worker and almost nothing on eight, because the
+write waits on the database and waiting is what more processes overlap.
+Sixteen workers are no longer worse than eight — the first run found them
+worse on both throughput and tail, and after the write they lead on both.
+And the pool decides nothing at all: 622, 627, 615 and 617 req/s at pool 1,
+2, 5 and 20, with PostgreSQL counting five connections in every case, one
+per worker and one for the beat. `sync` carries one request at a time, so a
+process holds one connection however many it is allowed.
+
+**What was left open.** The ceiling is one machine's, and the saturating
+resource was not isolated: at sixteen workers on ten cores the curve is
+flattening, but whether it flattens against the CPU, the database or Redis
+was not established. The `CreateUser` scenario is only repeatable against a
+freshly built database — the guest allowance is ten links per address and
+the profile reuses its addresses — which is written where the run is
+described rather than here, because it is a property of the profile.
 
 ---
 
