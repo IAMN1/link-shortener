@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.logger.logger import Logger
@@ -11,6 +12,31 @@ from link_shortener.domain.value_objects.verification_token import (
     issue_token,
     token_digest,
 )
+
+
+class ResendOutcome(Enum):
+    """What became of a request to send the confirmation again.
+
+    Three values rather than a boolean, because "no message went out" has
+    two causes that call for opposite reactions. An address that is
+    already confirmed needs nothing from anybody; a queue that would not
+    take the message needs somebody woken up. Collapsed into one flag, the
+    second reads as the first -- which is how a broken broker comes out as
+    "that address is already confirmed".
+
+    The public route ignores all three and answers the same either way:
+    which of them happened is exactly what it must not disclose. The
+    operator's route is looking at a named account and reports each.
+    """
+
+    SENT = "sent"
+    """A token was issued and the message handed to the queue."""
+
+    NOTHING_TO_SEND = "nothing_to_send"
+    """No such address, or one that is already confirmed."""
+
+    NOT_HANDED_OFF = "not_handed_off"
+    """The queue refused the message. Nothing will arrive."""
 
 
 @dataclass
@@ -50,13 +76,19 @@ class ResendVerificationUseCase(BaseUseCase):
     logger: Logger
     ttl_hours: int
 
-    def execute(self, email: str, context: RequestContext) -> None:
+    def execute(self, email: str, context: RequestContext) -> ResendOutcome:
         """
         Send a new confirmation message, if there is anything to confirm.
 
         Args:
             email: Address to send to.
             context: Request context.
+
+        Returns:
+            Which of the three things happened. The public route discards
+            it -- telling the caller apart from the address is the thing
+            that route exists not to do -- and the operator's route turns
+            it into a status.
 
         Raises:
             ValidationError: If the address is not an address. The format
@@ -96,13 +128,14 @@ class ResendVerificationUseCase(BaseUseCase):
             # walking a list of addresses, and answered exactly like a
             # success.
             log.info("Verification resend had nothing to send")
-            return
+            return ResendOutcome.NOTHING_TO_SEND
 
         # The normalised address, matching the row the token belongs to.
         if not self.task_queue.enqueue_verification_email(
             email_vo.value, token, context
         ):
             log.error("Verification resend was not handed off")
-            return
+            return ResendOutcome.NOT_HANDED_OFF
 
         log.info("Verification resent")
+        return ResendOutcome.SENT

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 from link_shortener.application.context import RequestContext
@@ -15,7 +15,9 @@ from link_shortener.application.use_cases.admin.roles.update_role_permissions im
 from link_shortener.application.use_cases.admin.users.activate_user import ActivateUserUseCase
 from link_shortener.application.use_cases.admin.users.create_user import CreateUserUseCase
 from link_shortener.application.use_cases.admin.users.confirm_user_email import ConfirmUserEmailUseCase
-from link_shortener.application.use_cases.auth.resend_verification import ResendVerificationUseCase
+from link_shortener.application.use_cases.auth.resend_verification import (
+    ResendOutcome, ResendVerificationUseCase,
+)
 from link_shortener.application.use_cases.admin.users.deactivate_user import DeactivateUserUseCase
 from link_shortener.application.use_cases.admin.users.delete_user import DeleteUserUseCase
 from link_shortener.application.use_cases.admin.users.get_user import GetUserUseCase
@@ -193,7 +195,9 @@ class AdminService:
         """
         return self.confirm_user_email_uc.execute(user_id, context)
 
-    def resend_verification(self, user_id: str, context: RequestContext) -> str:
+    def resend_verification(
+        self, user_id: str, context: RequestContext
+    ) -> Tuple[str, ResendOutcome]:
         """Send the confirmation message again, to a known account.
 
         Takes an id rather than an address, unlike the public endpoint:
@@ -205,7 +209,12 @@ class AdminService:
             context: Request context.
 
         Returns:
-            The address the message went to, for the answer.
+            The address, and what became of the request. The outcome used
+            to be dropped here: this returned the address whatever
+            happened, and the route read that as proof of sending, so a
+            confirmed account -- for which the use case writes no token
+            and queues no message -- was answered ``202 Confirmation
+            message sent to ...`` with nothing sent.
 
         Raises:
             DomainError: With code ``USER_NOT_FOUND`` when no account
@@ -220,8 +229,9 @@ class AdminService:
                       params={"id": user_id},
                   )
 
-        self.resend_verification_uc.execute(user.email, context)
-        return user.email
+        return user.email, self.resend_verification_uc.execute(
+            user.email, context
+        )
 
     def activate_user(self, user_id: str, context: RequestContext) -> UserResponse:
         """Reactivate a previously deactivated user account.

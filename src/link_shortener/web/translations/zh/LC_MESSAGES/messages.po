@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-19 14:08+0300\n"
+"POT-Creation-Date: 2026-08-19 14:12+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -19,13 +19,13 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: src/link_shortener/application/services/admin_service.py:219
+#: src/link_shortener/application/services/admin_service.py:228
 #: src/link_shortener/application/services/user_management_service.py:115
 #: src/link_shortener/application/services/user_management_service.py:138
 #: src/link_shortener/application/services/user_management_service.py:161
 #: src/link_shortener/application/use_cases/admin/users/confirm_user_email.py:63
-#: src/link_shortener/web/controllers/admin_api_controller.py:108
-#: src/link_shortener/web/controllers/admin_api_controller.py:182
+#: src/link_shortener/web/controllers/admin_api_controller.py:111
+#: src/link_shortener/web/controllers/admin_api_controller.py:214
 #, python-format
 msgid "User with id %(id)s not found"
 msgstr "找不到 id 为 %(id)s 的账户"
@@ -571,8 +571,13 @@ msgstr "无响应"
 msgid "unknown"
 msgstr "未知"
 
-#: src/link_shortener/web/controllers/admin_api_controller.py:241
-#: src/link_shortener/web/controllers/admin_api_controller.py:279
+#: src/link_shortener/web/controllers/admin_api_controller.py:177
+#, python-format
+msgid "Confirmation for %(email)s could not be queued"
+msgstr "无法将发往 %(email)s 的确认邮件加入队列"
+
+#: src/link_shortener/web/controllers/admin_api_controller.py:273
+#: src/link_shortener/web/controllers/admin_api_controller.py:311
 #, python-format
 msgid "Role %(name)s not found"
 msgstr "找不到角色 %(name)s"
@@ -675,20 +680,20 @@ msgstr "不允许使用 %(method)s 方法"
 msgid "Request validation failed"
 msgstr "请求校验未通过"
 
-#: src/link_shortener/web/middleware/error_handler.py:308
-#: src/link_shortener/web/middleware/error_handler.py:376
+#: src/link_shortener/web/middleware/error_handler.py:314
+#: src/link_shortener/web/middleware/error_handler.py:382
 msgid "An internal error occurred"
 msgstr "发生了内部错误"
 
-#: src/link_shortener/web/middleware/error_handler.py:340
+#: src/link_shortener/web/middleware/error_handler.py:346
 msgid "Bad request"
 msgstr "错误的请求"
 
-#: src/link_shortener/web/middleware/error_handler.py:344
+#: src/link_shortener/web/middleware/error_handler.py:350
 msgid "Malformed request body"
 msgstr "请求体格式有误"
 
-#: src/link_shortener/web/middleware/error_handler.py:371
+#: src/link_shortener/web/middleware/error_handler.py:377
 msgid "Internal server error"
 msgstr "服务器内部错误"
 

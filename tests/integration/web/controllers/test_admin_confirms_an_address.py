@@ -180,6 +180,72 @@ class TestSendingTheMessageAgain:
         assert response.status_code == 202, response.get_json()
         assert email in response.get_json()["message"]
 
+    def test_an_address_already_confirmed_is_not_reported_as_sent(
+        self, app, operator
+    ):
+        """
+        Nothing is sent for a confirmed account, and the answer used to
+        claim otherwise.
+
+        ``ResendVerificationUseCase`` writes no token and queues no message
+        when the address is already confirmed -- it cannot, there is
+        nothing left to confirm. The service returned the address anyway
+        and the route dressed that as ``202 Confirmation message sent to
+        ...``. Measured against a live mailbox: one message before the
+        request, one after, and a 202 in between.
+
+        200 rather than 202: nothing was accepted for delivery. The
+        address still comes back, because the operator is looking at an
+        account and the answer should name it.
+        """
+        client, token, _ = operator
+        email = "already-confirmed@example.test"
+        user_id = unconfirmed_account(app, email)
+        client.post(
+            f"/api/v1/admin/users/{user_id}/verify-email",
+            headers=auth_headers(token),
+        )
+
+        response = client.post(
+            f"/api/v1/admin/users/{user_id}/resend-verification",
+            headers=auth_headers(token),
+        )
+
+        assert response.status_code == 200, response.get_json()
+        message = response.get_json()["message"]
+        assert email in message
+        assert "sent" not in message.lower()
+
+    def test_a_queue_that_refuses_the_message_is_not_reported_as_sent(
+        self, app, operator, monkeypatch
+    ):
+        """
+        The other way nothing goes out, and the one worth an alarm.
+
+        ``enqueue_verification_email`` reports its failures -- its own port
+        docstring says why: "the only way anyone finds out is if the
+        service says so". Collapsed into one boolean with the case above,
+        a broker that stopped accepting work would read as "that address
+        is already confirmed", which is the same defect one level down.
+        """
+        client, token, _ = operator
+        email = "queue-refuses@example.test"
+        user_id = unconfirmed_account(app, email)
+
+        with app.app_context():
+            queue = app.container.get_task_queue()
+            monkeypatch.setattr(
+                queue, "enqueue_verification_email",
+                lambda *args, **kwargs: False,
+            )
+
+            response = client.post(
+                f"/api/v1/admin/users/{user_id}/resend-verification",
+                headers=auth_headers(token),
+            )
+
+        assert response.status_code == 503, response.get_json()
+
     def test_an_account_that_is_not_there_is_a_404(self, operator):
         """
         Unlike the public endpoint, which answers the same for every
