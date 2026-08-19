@@ -13,7 +13,10 @@ all, and a template carrying the tag raises ``TemplateSyntaxError`` at
 send time, inside a worker, on a registration that already committed.
 """
 
+import threading
+
 import pytest
+from jinja2 import Environment
 
 from link_shortener.infrastructure.mail.jinja_templates import JinjaMailTemplates
 
@@ -131,3 +134,55 @@ class TestOneWorkerServesEveryLanguage:
         assert russian == "Подтвердите адрес почты"
         assert chinese == "确认您的邮箱地址"
         assert english == "Confirm your email address"
+
+
+class TestTwoMessagesAtOnceKeepTheirOwnLanguages:
+    """
+    What happens when two registrations are rendered at the same time.
+
+    With ``CELERY_ENABLED=false`` the message goes out on the request
+    thread, so two people registering in different languages render
+    concurrently in one process. The catalogue used to be installed on one
+    shared environment -- ``install_gettext_translations`` writes
+    ``gettext`` into ``Environment.globals``, and an overlay shares that
+    dictionary rather than copying it -- so the second install replaced the
+    first between its install and its render, and a message came out in a
+    language its reader never chose. Reproduced with two threads of 300
+    renders each; pinned here without a race, by holding one render open
+    at the moment the other one installs.
+
+    The hold is placed on ``jinja2.Environment.get_template`` itself, one
+    class every implementation of this has to go through, so the test says
+    what must be true rather than how the renderer arranges it.
+    """
+
+    def test_a_message_is_not_finished_in_a_language_nobody_chose(
+        self, templates, monkeypatch
+    ):
+        holding = threading.Event()
+        released = threading.Event()
+        answers = {}
+        original = Environment.get_template
+
+        def get_template(self, name, *args, **kwargs):
+            """Stop the first render between its install and its lookup."""
+            if threading.current_thread() is russian and not holding.is_set():
+                holding.set()
+                released.wait(timeout=5)
+            return original(self, name, *args, **kwargs)
+
+        monkeypatch.setattr(Environment, "get_template", get_template)
+
+        def in_russian():
+            answers["ru"] = templates.verification_email("https://x/y", 24, "ru")[0]
+
+        russian = threading.Thread(target=in_russian)
+        russian.start()
+        assert holding.wait(timeout=5), "the first render never started"
+
+        answers["en"] = templates.verification_email("https://x/y", 24, "en")[0]
+        released.set()
+        russian.join(timeout=5)
+
+        assert answers["en"] == "Confirm your email address"
+        assert answers["ru"] == "Подтвердите адрес почты"
