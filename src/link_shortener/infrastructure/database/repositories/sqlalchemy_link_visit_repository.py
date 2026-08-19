@@ -15,6 +15,11 @@ dividing integers, while casting a fractional result to an integer
 bucket boundary in the wrong column, which is the kind of defect that
 never looks like a defect -- the chart just draws a slightly different
 shape.
+
+The arithmetic itself is in ``sql_time``, next door: it is a property of
+the dialect rather than of this table, and while it was a private method
+here the security-event repository grew a byte-identical copy -- along
+with the same rounding defect, which then had to be found twice.
 """
 
 import math
@@ -24,9 +29,7 @@ from datetime import datetime, timedelta, timezone
 # value already is. Sharing the name would make every use ambiguous.
 from typing import Dict, List, Optional, cast as as_type
 
-from sqlalchemy import (
-    CursorResult, Integer, cast, delete, extract, func, select,
-)
+from sqlalchemy import CursorResult, Integer, cast, delete, func, select
 from sqlalchemy.orm import Session
 
 from link_shortener.domain import (
@@ -37,26 +40,9 @@ from link_shortener.infrastructure.database.models.link_model import LinkModel
 from link_shortener.infrastructure.database.models.link_visit_model import (
     LinkVisitDayModel, LinkVisitModel,
 )
-
-DAY = 86400
-
-
-def _as_utc(moment: datetime) -> datetime:
-    """
-    Give a moment a timezone if the database handed it back without one.
-
-    SQLite stores no offset, so every datetime read from it is naive and
-    comparing one against an aware datetime raises. The values written
-    are UTC, so reading them back as UTC is a restoration rather than an
-    assumption.
-
-    Args:
-        moment: Datetime from the database or from a caller.
-
-    Returns:
-        The same moment, marked UTC when it carried no zone.
-    """
-    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+from link_shortener.infrastructure.database.repositories.sql_time import (
+    DAY, as_utc as _as_utc, epoch_seconds,
+)
 
 
 class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
@@ -97,27 +83,6 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
         )
 
     # ----- reading -----
-
-    def _epoch(self, column):
-        """
-        Seconds since 1970 as a whole number, in whichever dialect is in use.
-
-        Args:
-            column: A datetime column.
-
-        Returns:
-            An integer-valued SQL expression, truncated rather than
-            rounded on both engines.
-        """
-        if self.session.get_bind().dialect.name == "sqlite":
-            return cast(func.strftime("%s", column), Integer)
-        # `floor` before the cast, and this module's docstring says why:
-        # `extract` yields the fraction of a second too, and casting a
-        # fractional value to an integer *rounds* in PostgreSQL while
-        # `strftime` truncates. Rounded, a visit at 23:59:59.7 became a
-        # visit on the next day -- folded into tomorrow's row, and missing
-        # from the day it was made, on the engine every deployment runs.
-        return cast(func.floor(extract("epoch", column)), Integer)
 
     def _scoped(self, statement, link_id: Optional[str], owner_id: Optional[str]):
         """
@@ -256,7 +221,7 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
         # and one day folds into several rows. Measured: two visits four
         # hours apart produced two rows for the same date.
         index = (
-            (self._epoch(LinkVisitModel.occurred_at) - int(since.timestamp()))
+            (epoch_seconds(self.session, LinkVisitModel.occurred_at) - int(since.timestamp()))
             // width
         ).label("bucket")
 
@@ -498,11 +463,10 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
         what the docstring promised ("runs once a day on a handful of
         rows") nor a cost that stops growing.
 
-        Written as delete-then-insert rather than an upsert, because the
-        two engines spell upserts differently. The delete is one statement
-        over the span being folded rather than one per ``(link, day)``
-        pair: a night that touched a thousand links was a thousand round
-        trips before the insert.
+        Written as a plain insert. It was delete-then-insert, one delete
+        per ``(link, day)`` pair -- a night touching a thousand links was
+        a thousand round trips before the insert -- and with the lower
+        bound in place there is nothing for a delete to find.
 
         Args:
             before: Fold days earlier than this instant.
@@ -511,7 +475,7 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
             Number of day-rows written.
         """
         before = _as_utc(before)
-        day_start = self._epoch(LinkVisitModel.occurred_at) // DAY
+        day_start = epoch_seconds(self.session, LinkVisitModel.occurred_at) // DAY
 
         grouped = select(
             LinkVisitModel.link_id,
@@ -540,19 +504,16 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
         if not rows:
             return 0
 
-        # One statement over the days being written. They are the days
-        # nothing has folded yet, so this normally deletes nothing at all
-        # -- it is what keeps a repeated run from doubling a day, and what
-        # lets a run started against a hand-edited table finish cleanly.
-        days = [day for _link_id, day, _total, _bots in rows]
-        self.session.execute(
-            delete(LinkVisitDayModel).where(
-                LinkVisitDayModel.day >= min(days),
-                LinkVisitDayModel.day <= max(days),
-            )
-        )
-        self.session.flush()
-
+        # Nothing is deleted first. This was delete-then-insert while the
+        # scan had no lower bound and every night rewrote days it had
+        # already written; with the bound, every day produced here is
+        # strictly later than every row in the table, so the delete could
+        # not match one -- two guards for one invariant, and a comment
+        # pointing at the guard that had stopped doing the work. What
+        # keeps a day from being folded twice is the bound; what keeps two
+        # runs at once from writing the same day twice is the primary key
+        # on `(link_id, day)`, which refuses the second rather than
+        # doubling the total.
         self.session.add_all([
             LinkVisitDayModel(link_id=link_id, day=day, total=total, bots=bots)
             for link_id, day, total, bots in rows

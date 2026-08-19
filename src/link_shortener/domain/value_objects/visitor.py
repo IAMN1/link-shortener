@@ -80,8 +80,17 @@ _BROWSERS = (
     ("safari", re.compile(r"safari/", re.I)),
 )
 
-_MOBILE = re.compile(r"mobile|iphone|ipod|android.*mobile|windows phone", re.I)
-_TABLET = re.compile(r"ipad|tablet|android(?!.*mobile)", re.I)
+# Matched in the order written, like `_BROWSERS` above and for a sharper
+# reason: every iPadOS string carries `Mobile/15E148` -- it has since
+# iPadOS 13 made "request desktop site" the default -- so a phone rule
+# tried first matches every iPad ever sold and the tablet rule below it
+# can never be reached. Written as a tuple rather than as two constants
+# consulted by an `if/elif` further down, so that the precedence sits with
+# the patterns instead of in the order of two branches fifty lines away.
+_DEVICES = (
+    ("tablet", re.compile(r"ipad|tablet|android(?!.*mobile)", re.I)),
+    ("mobile", re.compile(r"mobile|iphone|ipod|windows phone", re.I)),
+)
 
 
 def classify_client(user_agent: Optional[str]) -> tuple[str, str, bool]:
@@ -127,21 +136,15 @@ def classify_client(user_agent: Optional[str]) -> tuple[str, str, bool]:
         # operator chose to imitate.
         return "unknown", browser, True
 
-    # The tablet rule is tried first, and the order is the whole rule.
-    # Every iPadOS string carries `Mobile/15E148` -- it has since iPadOS 13
-    # made "request desktop site" the default -- so a phone rule that runs
-    # first matches every iPad ever sold and `ipad` below it can never be
-    # reached. Tried in this order, each pattern is asked the question it
-    # can answer: `_TABLET` names the tablet outright (`ipad`, `tablet`) or
-    # by an Android string with no `Mobile` in it, and whatever it does not
-    # claim is left for `_MOBILE`, which no tablet string reaches.
-    if _TABLET.search(user_agent):
-        device = "tablet"
-    elif _MOBILE.search(user_agent):
-        device = "mobile"
-    elif browser == "unknown":
-        device = "unknown"
-    else:
-        device = "desktop"
+    # Each pattern is asked the question it can answer, in the order
+    # `_DEVICES` states: the tablet rule names its class outright (`ipad`,
+    # `tablet`) or by an Android string with no `Mobile` in it, and
+    # whatever it does not claim is left to the phone rule, which no
+    # tablet string reaches.
+    for name, pattern in _DEVICES:
+        if pattern.search(user_agent):
+            return name, browser, is_bot
 
-    return device, browser, is_bot
+    # Neither rule claimed it. A string no browser pattern matched either
+    # is not a screen size we can name; one that did is a desktop.
+    return ("unknown" if browser == "unknown" else "desktop"), browser, is_bot

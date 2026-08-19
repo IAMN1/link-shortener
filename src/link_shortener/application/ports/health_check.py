@@ -37,6 +37,32 @@ class HealthSnapshot:
     rate_limiter: bool = True
     timed_out: Tuple[str, ...] = field(default=())
 
+    @property
+    def healthy(self) -> bool:
+        """
+        Whether every dependency that exists is answering.
+
+        Here rather than at each surface, and that is the point of this
+        object: the verdict was written twice, as a conjunction naming
+        four fields in the CLI and as a check over the rendered strings in
+        the endpoint. They agreed, and the fifth dependency would have had
+        to be added to both in two unlike shapes -- with nothing failing
+        if only one was.
+
+        A cache nobody configured is not a broken cache: the documented
+        local setup runs with ``REDIS_ENABLED=false``, and reporting that
+        as a failure made a healthy install look broken.
+
+        Returns:
+            True when nothing is down.
+        """
+        return (
+            self.database
+            and (self.cache or not self.cache_configured)
+            and self.task_queue
+            and self.rate_limiter
+        )
+
 
 class HealthCheck(ABC):
     """

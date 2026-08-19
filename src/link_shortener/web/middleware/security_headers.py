@@ -58,22 +58,40 @@ was a decision before it was a policy.
 ``img-src`` also allows ``data:``: the favicon and the inline SVG icons are
 written into the markup, and a document's own bytes are not a third party.
 
-``style-src`` is the one directive that keeps ``'unsafe-inline'``, and it
-is a measurement rather than a shrug. The charts position a tooltip, size
-a bar and colour a swatch by assigning to ``element.style``, which Chromium
-reports as an inline style and refuses: run without it, 36 of 45 browser
-checks failed and the console filled with *"Applying inline style
-violates..."* on every page that draws anything. Removing it for real means
-rewriting how the charts draw, which is a change to the charts and not to
-this policy. What it costs is the narrow half: an injection that already
-runs can style the page. What it does not cost is the wide half --
-``script-src`` carries no ``'unsafe-inline'``, so the injection has to run
-first, and that is what the nonce is for.
+``style-src`` is the one directive that keeps ``'unsafe-inline'``, and the
+reason was measured rather than assumed. Chromium refuses an assignment to
+``element.style`` under a strict ``style-src``, CSSOM or not, and two
+things in every page do exactly that. Turbo's progress bar is the wider of
+the two: ``turbo-8.0.23.js`` sets ``progressElement.style.width`` and
+``.opacity`` and inserts a ``<style>`` of its own, on every navigation of
+every page. The charts are the second: a tooltip's position, a bar's width
+and a swatch's colour are all assignments to ``element.style``.
+
+Measured twice, and the second time after the templates had been cleaned
+of every ``style="..."`` attribute: without ``'unsafe-inline'`` the browser
+run still failed, and the console still filled with *"Applying inline style
+violates..."* on ``/login`` and ``/register``, which draw no chart at all.
+So the markup was never the whole of it, and removing the allowance means
+giving up Turbo's progress bar and rewriting how the charts draw.
+
+What it costs is the narrow half: an injection that already runs can
+restyle the page. What it does not cost is the wide half -- ``script-src``
+carries no ``'unsafe-inline'``, so an injection has to run first, and that
+is what the nonce is for.
 
 ``frame-ancestors 'none'`` says what ``X-Frame-Options`` says, for the
 browsers that read the newer of the two; ``base-uri 'none'`` stops an
 injection from moving every relative URL on the page by writing a
 ``<base>``; ``object-src 'none'`` retires the plugin surface.
+"""
+
+POLICY_WITHOUT_SCRIPT = POLICY.format(nonce="").replace(" 'nonce-'", "")
+"""The same policy for a response that rendered no template.
+
+Built once at import. A static file, a redirect or a JSON error carries no
+markup, so there is no inline script to admit and no nonce to name -- and
+naming one anyway put 261 bytes on every asset of every page load to
+describe an allowance nothing could use.
 """
 
 HEADERS = {
@@ -114,19 +132,6 @@ class SecurityHeadersMiddleware:
     def _register_handlers(self):
         """Mint a nonce per request, and write the headers after it."""
 
-        @self.app.before_request
-        def mint_nonce() -> None:
-            """
-            Put this request's nonce where the templates can reach it.
-
-            Before the request rather than after, because the markup is
-            rendered inside the request and has to carry the same value
-            the header will name. A page whose nonce does not match its
-            policy is a page whose script is refused, silently, in the
-            browser and nowhere else.
-            """
-            g.csp_nonce = secrets.token_urlsafe(NONCE_BYTES)
-
         @self.app.after_request
         def add_headers(response: Response) -> Response:
             """
@@ -144,18 +149,34 @@ class SecurityHeadersMiddleware:
             # `setdefault` here too: a view that needs its own policy --
             # none does today -- says so by setting one, and this must not
             # overwrite that decision.
+            #
+            # A response that rendered no template asked for no nonce, and
+            # naming one there would be 261 bytes of header describing an
+            # allowance nothing can use. Most requests in a page load are
+            # exactly that: `base.html` references five static assets, and
+            # a redirect's body is werkzeug's own stub.
+            minted = g.get("csp_nonce")
             response.headers.setdefault(
                 "Content-Security-Policy",
-                POLICY.format(nonce=g.get("csp_nonce", "")),
+                POLICY.format(nonce=minted) if minted else POLICY_WITHOUT_SCRIPT,
             )
             return response
 
         @self.app.context_processor
         def offer_nonce() -> dict:
             """
-            Make the nonce available to every template as ``csp_nonce``.
+            Mint this response's nonce, for the template that asks.
+
+            Minted here rather than in a ``before_request`` because only a
+            rendered page can carry one: the header written afterwards
+            reads the same value out of ``g``, so the two cannot disagree,
+            and a response with no markup pays neither the randomness nor
+            the bytes.
 
             Returns:
                 The one name the layout needs.
             """
-            return {"csp_nonce": g.get("csp_nonce", "")}
+            if "csp_nonce" not in g:
+                g.csp_nonce = secrets.token_urlsafe(NONCE_BYTES)
+
+            return {"csp_nonce": g.csp_nonce}

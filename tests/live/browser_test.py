@@ -439,6 +439,16 @@ def main() -> int:
     return 0 if result.failed == 0 else 1
 
 
+INJECTED_SCRIPT_REFUSAL = "Executing inline script violates"
+"""What the browser says about the script this run injects on purpose.
+
+Named once because two checks filter on it: the one that proves the
+content policy refuses an unnamed script, and the one that asserts no
+page reported anything else. Spelled twice, a change in the browser's
+wording would have been caught by one of them and not the other.
+"""
+
+
 def wait_until(page, condition, timeout: int = 5000, what: str = ""):
     """
     Poll the page until a condition holds.
@@ -1628,7 +1638,7 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         refusals = [
             message for message in console_errors
             if "Content Security Policy" in message
-            and "Executing inline script" not in message
+            and INJECTED_SCRIPT_REFUSAL not in message
         ]
 
         assert refusals == [], refusals
@@ -1645,7 +1655,7 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         # is asserted where it is made.
         unexpected = [
             message for message in console_errors
-            if "Executing inline script violates" not in message
+            if INJECTED_SCRIPT_REFUSAL not in message
         ]
 
         assert unexpected == [], unexpected

@@ -39,10 +39,14 @@ class JinjaMailTemplates(MailTemplates):
     an apostrophe into ``&#39;``.
 
     Attributes:
-        environment: The environment for the default language. One is kept
-            per language, because a catalogue is installed on an
-            environment rather than passed to a render -- see
-            ``_environment``.
+        default_environment: The environment for the default language.
+            One is kept per language, because a catalogue is installed on
+            an environment rather than passed to a render -- see
+            ``_environment``. Named for what it is: while there was one
+            environment, ``environment`` was the object every render went
+            through, and leaving that name on one of several would invite
+            the next reader to configure it and wonder why three languages
+            ignored them.
     """
 
     def __init__(
@@ -62,9 +66,8 @@ class JinjaMailTemplates(MailTemplates):
         self.catalogue_dir = catalogue_dir
         self.default_language = default_language
         self.template_dir = template_dir
-        self._catalogues: dict = {}
         self._environments: dict = {}
-        self.environment = self._environment(default_language)
+        self.default_environment = self._environment(default_language)
 
     def _build_environment(self) -> Environment:
         """
@@ -131,12 +134,17 @@ class JinjaMailTemplates(MailTemplates):
 
         return environment
 
-    def _catalogue(self, language: Optional[str]):
+    def _catalogue(self, tag: str):
         """
-        Load the catalogue a message is rendered through, once per language.
+        Load the catalogue a message is rendered through.
+
+        Not memoised: the only caller is ``_environment``, which builds
+        one environment per language and keeps it, so this runs once per
+        language already. A second cache in front of that one could not be
+        reached.
 
         Args:
-            language: Language tag, or ``None`` for the default.
+            tag: Language tag, already normalised.
 
         Returns:
             The translations object. ``NullTranslations`` when there is no
@@ -145,13 +153,7 @@ class JinjaMailTemplates(MailTemplates):
             one for a deployment offering a language nobody compiled: the
             message goes out in English rather than not going out.
         """
-        tag = (language or self.default_language).strip().lower()
-
-        if tag not in self._catalogues:
-            found = Translations.load(str(self.catalogue_dir), [tag])
-            self._catalogues[tag] = found or NullTranslations()
-
-        return self._catalogues[tag]
+        return Translations.load(str(self.catalogue_dir), [tag]) or NullTranslations()
 
     def _render(self, name: str, language: Optional[str], **context) -> str:
         """

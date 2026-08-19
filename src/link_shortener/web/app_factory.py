@@ -342,9 +342,14 @@ def create_app(config=None) -> Flask:
         # failed cache or broker the answer is no: a restart does not fix
         # them and does take down a service that still works. The body
         # answers the operator's question, which the code cannot.
+        # `state.healthy`, not a second reading of the rendered strings:
+        # the same verdict is what `flask maintenance health` exits on,
+        # and it is the snapshot's to give -- a component added to one
+        # expression and not the other is a surface disagreeing with a
+        # surface, which is what this object exists to prevent.
         if not state.database:
             status = "unhealthy"
-        elif all(value in ("ok", "disabled", "enforcing") for value in components.values()):
+        elif state.healthy:
             status = "healthy"
         else:
             status = "degraded"

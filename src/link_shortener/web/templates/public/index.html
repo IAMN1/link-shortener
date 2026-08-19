@@ -85,7 +85,7 @@
         {# The answer has a place before there is one, so the page says what
            is about to happen instead of growing a card out of nothing. #}
         <p data-result-hint class="text-sm text-muted mt-2">{{ _('Your short link appears here.') }}</p>
-        <div id="result" data-result class="out-of-view"></div>
+        <div id="result" data-result class="hidden"></div>
     </section>
 </div>
 
@@ -129,7 +129,7 @@
             {# This block's own answer slot. Sharing one with the section
                above printed a looked-up link several hundred pixels higher
                up the page, over whatever had just been shortened. #}
-            <div data-result class="out-of-view mt-1"></div>
+            <div data-result class="hidden mt-1"></div>
         </div>
 
         <div>

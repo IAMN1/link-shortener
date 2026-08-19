@@ -13,24 +13,28 @@
             // leave three dashes on screen, which reads as "unmeasured"
             // when the truthful answer is "the check itself failed".
             showLoadError('health-error', await apiErrorText(resp));
-            render('db', null);
-            render('redis', null);
-            render('celery', null);
-            render('limiter', null);
-            renderLogging(null);
+            paint(null);
             return;
         }
-        var data = await resp.json();
-        render('db', data.database);
-        render('redis', data.cache);
-        render('celery', data.task_queue);
+        paint(await resp.json());
+    } catch(e) {
+        showLoadError('health-error', t('unreachable'));
+    }
+
+    // Both paths through this page draw the same surfaces, so they are
+    // listed once. Written as two branches, each naming five rows, a
+    // sixth added to one and forgotten in the other left a stale value on
+    // screen exactly when the page was reporting a failure. `null && x`
+    // is `null`, which is the "unknown" value `render` already takes.
+    function paint(data) {
+        render('db', data && data.database);
+        render('redis', data && data.cache);
+        render('celery', data && data.task_queue);
         // The limiter fails open: with its backend gone it enforces
         // nothing and the service answers normally, so this row is the
         // only place the failure appears.
-        render('limiter', data.rate_limiter);
-        renderLogging(data.logging);
-    } catch(e) {
-        showLoadError('health-error', t('unreachable'));
+        render('limiter', data && data.rate_limiter);
+        renderLogging(data && data.logging);
     }
 
     // State is written as a class rather than as a colour in a style
@@ -47,14 +51,17 @@
         // reports as unused -- which would train the next reader to ignore
         // it.
         if (word) {
-            if (ok === null) {
+            if (ok === null || ok === undefined) {
                 word.textContent = t('unknown');
             } else {
                 word.textContent = ok ? t('answering') : t('not_answering');
             }
         }
         if (!dot) return;
-        dot.className = 'dot' + (ok === null ? '' : (ok ? ' dot--ok' : ' dot--danger'));
+        dot.className = 'dot' + (
+            ok === null || ok === undefined
+                ? '' : (ok ? ' dot--ok' : ' dot--danger')
+        );
     }
 
     // The counters `FailoverService` keeps. They were published by the

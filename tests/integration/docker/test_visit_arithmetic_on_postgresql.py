@@ -74,15 +74,8 @@ def a_visit_at(link_id, moment):
     Returns:
         The visit, unsaved.
     """
-    visit = LinkVisit.record(link_id=link_id, remote_addr="203.0.113.9")
-    return LinkVisit(
-        id=visit.id,
-        link_id=link_id,
-        occurred_at=moment,
-        visitor_network=visit.visitor_network,
-        device=visit.device,
-        browser=visit.browser,
-        is_bot=False,
+    return LinkVisit.record(
+        link_id=link_id, remote_addr="203.0.113.9", now=moment
     )
 
 

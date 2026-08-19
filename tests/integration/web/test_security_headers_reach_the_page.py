@@ -21,17 +21,11 @@ PAGES = ["/", "/login", "/register", "/verify"]
 """Pages served to a browser, rendered from the real templates."""
 
 
-@pytest.fixture()
-def browser(app):
-    """A client over the integration application, with its real templates."""
-    return app.test_client()
-
-
 class TestTheNonceIsTheSameOnBothSides:
 
     @pytest.mark.parametrize("path", PAGES)
-    def test_the_page_carries_the_nonce_its_policy_names(self, browser, path):
-        response = browser.get(path)
+    def test_the_page_carries_the_nonce_its_policy_names(self, client, path):
+        response = client.get(path)
         policy = response.headers["Content-Security-Policy"]
         markup = response.get_data(as_text=True)
 
@@ -41,12 +35,12 @@ class TestTheNonceIsTheSameOnBothSides:
         assert f'nonce="{named.group(1)}"' in markup, path
 
     @pytest.mark.parametrize("path", PAGES)
-    def test_every_inline_script_carries_it(self, browser, path):
+    def test_every_inline_script_carries_it(self, client, path):
         """
         One inline block is admitted by name; a second one added later and
         left without a nonce would simply not run.
         """
-        markup = browser.get(path).get_data(as_text=True)
+        markup = client.get(path).get_data(as_text=True)
 
         inline = [
             tag for tag in re.findall(r"<script\b[^>]*>", markup)
@@ -60,13 +54,13 @@ class TestTheNonceIsTheSameOnBothSides:
 class TestThePagesCarryNoStyleThePolicyRefuses:
 
     @pytest.mark.parametrize("path", PAGES)
-    def test_no_style_attribute_survives_in_the_markup(self, browser, path):
-        markup = browser.get(path).get_data(as_text=True)
+    def test_no_style_attribute_survives_in_the_markup(self, client, path):
+        markup = client.get(path).get_data(as_text=True)
 
         assert 'style="' not in markup, path
 
     @pytest.mark.parametrize("path", PAGES)
-    def test_no_style_block_survives_either(self, browser, path):
-        markup = browser.get(path).get_data(as_text=True)
+    def test_no_style_block_survives_either(self, client, path):
+        markup = client.get(path).get_data(as_text=True)
 
         assert "<style" not in markup, path

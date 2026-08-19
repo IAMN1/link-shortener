@@ -25,14 +25,6 @@ from pathlib import Path
 
 import pytest
 
-from link_shortener.application.ports.logging_status import LoggingStatus
-from link_shortener.application.use_cases.stats.get_service_health import (
-    ServiceHealthStatus,
-)
-
-
-HEALTH_PATH = "/api/v1/admin/health"
-
 SCRIPT = (
     Path(__file__).resolve().parents[4]
     / "src" / "link_shortener" / "web" / "static" / "js" / "pages" / "health.js"
@@ -43,47 +35,11 @@ TEMPLATE = (
     / "src" / "link_shortener" / "web" / "templates" / "dashboard" / "health.html"
 )
 
-LOGGING = LoggingStatus(
-    logger_active="structlog",
-    logger_dropped_calls=11,
-    logger_failed_checks=12,
-    logger_lost_log_lines=13,
-    audit_active="standard_audit",
-    audit_dropped_calls=21,
-    audit_failed_checks=22,
-    audit_lost_log_lines=23,
-)
-
-
-def admin_controller(app):
-    """
-    Find the ``AdminApiController`` behind the registered routes.
-
-    Args:
-        app: The application under test.
-
-    Returns:
-        The controller instance, whose ``admin_service`` is a mock.
-    """
-    for view in app.view_functions.values():
-        if (
-            hasattr(view, "__self__")
-            and view.__self__.__class__.__name__ == "AdminApiController"
-        ):
-            return view.__self__
-    raise AssertionError("the admin controller is not registered")
-
-
 @pytest.fixture
-def body(app, client):
+def body(client, health_of):
     """The body the endpoint answers with everything up."""
-    admin_controller(app).admin_service.get_service_health.return_value = (
-        ServiceHealthStatus(
-            database=True, redis=True, task_queue=True,
-            rate_limiter=True, logging=LOGGING,
-        )
-    )
-    return client.get(HEALTH_PATH).get_json()
+    health_of()
+    return client.get("/api/v1/admin/health").get_json()
 
 
 class TestNothingTheEndpointReportsIsDroppedOnTheWay:

@@ -1177,13 +1177,6 @@ select.form-input {
 
 /* ===== Utilities ===== */
 .hidden { display: none !important; }
-
-/* Hidden until a script shows it, and *not* `!important`: the scripts
-   reveal these boxes by writing `style.display = 'block'`, and an
-   important rule would win over that. It exists at all because the
-   markup used to carry `style="display: none"`, which `style-src 'self'`
-   refuses -- silently, leaving the box on screen and empty. */
-.out-of-view { display: none; }
 .text-muted { color: var(--c-text-2); }
 .text-sm { font-size: calc(var(--d-fs) - 1px); }
 .text-xs { font-size: calc(var(--d-fs) - 2px); }

@@ -54,6 +54,7 @@ class GetVisitStatsUseCase(BaseUseCase):
         *,
         period: str = DEFAULT_PERIOD,
         short_code: Optional[str] = None,
+        link_id: Optional[str] = None,
         owner_id: Optional[str] = None,
         now: Optional[datetime] = None,
     ) -> VisitSummary:
@@ -63,10 +64,17 @@ class GetVisitStatsUseCase(BaseUseCase):
         Args:
             context: Request context, for logging.
             period: One of ``24h``, ``7d``, ``30d``, ``90d``.
-            short_code: Restrict to one link, by its code.
+            short_code: Restrict to one link, by its code. Looked up here.
+            link_id: Restrict to one link whose id the caller already
+                holds. Both name one link and only one may be given: the
+                web routes check who may see a link before asking for its
+                traffic, which means they have looked it up already, and
+                passing the code as well made the same
+                ``SELECT ... FROM urls`` run twice per request -- on an
+                endpoint a chart polls every ten seconds.
             owner_id: Restrict to the links of one account. Applied with
-                ``short_code`` when both are given, so an owner asking
-                about a link that is not theirs gets zeroes.
+                either of the two above, so an owner asking about a link
+                that is not theirs gets zeroes.
             now: End of the span; defaults to the current time.
 
         Returns:
@@ -90,8 +98,7 @@ class GetVisitStatsUseCase(BaseUseCase):
                   )
         span, buckets = PERIODS[period]
 
-        link_id = None
-        if short_code is not None:
+        if link_id is None and short_code is not None:
             # No handler around this. It used to be wrapped in one that
             # caught `ValueError` and re-raised a `DomainError` saying
             # "Invalid short code"; `ShortCode` raises `ValidationError`,
@@ -139,6 +146,7 @@ class GetVisitStatsUseCase(BaseUseCase):
         *,
         days: int = 90,
         short_code: Optional[str] = None,
+        link_id: Optional[str] = None,
         owner_id: Optional[str] = None,
         now: Optional[datetime] = None,
     ) -> list:
@@ -153,7 +161,9 @@ class GetVisitStatsUseCase(BaseUseCase):
         Args:
             context: Request context, for logging.
             days: How many days back to go, at most 730.
-            short_code: Restrict to one link, by its code.
+            short_code: Restrict to one link, by its code. Looked up here.
+            link_id: Restrict to one link whose id the caller holds
+                already. See ``execute`` for why both exist.
             owner_id: Restrict to the links of one account.
             now: End of the span; defaults to the current time.
 
@@ -172,8 +182,7 @@ class GetVisitStatsUseCase(BaseUseCase):
                       params={"days": days},
                   )
 
-        link_id = None
-        if short_code is not None:
+        if link_id is None and short_code is not None:
             # No handler around this. It used to be wrapped in one that
             # caught `ValueError` and re-raised a `DomainError` saying
             # "Invalid short code"; `ShortCode` raises `ValidationError`,

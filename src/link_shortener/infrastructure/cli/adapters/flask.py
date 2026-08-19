@@ -34,6 +34,7 @@ from link_shortener.infrastructure.cli.commands.cache import get_cache_info as c
 from link_shortener.infrastructure.cli.commands.cache import clear_cache as clear_cache_logic
 from link_shortener.infrastructure.cli.commands.admin import create_admin as create_admin_logic
 from link_shortener.infrastructure.di.container import Container
+from link_shortener.infrastructure.logging.utils import UTC_SECONDS
 
 
 def _container() -> Container:
@@ -79,7 +80,7 @@ def _as_moment(epoch):
         return "unknown"
 
     return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
+        UTC_SECONDS
     )
 
 
@@ -99,6 +100,51 @@ def _within(text, width):
         return f"{text:<{width}}"
 
     return text[: width - 1] + "\u2026"
+
+
+def credentials(email_help: str, password_help: str):
+    """
+    Declare the three options ``_asked_for_or_refused`` consumes.
+
+    The options and the code that reads them are one thing, and they were
+    three unlinked copies: the defect this exists to prevent was a
+    *declaration* -- ``prompt=True`` on ``--email`` -- so leaving the
+    declarations copied would have left the fault free to come back one
+    command at a time. Applied as a decorator, adding the flag to a fourth
+    command is one line and cannot be half-done.
+
+    Args:
+        email_help: What ``--email`` means for this command.
+        password_help: What ``--password`` means for this command.
+
+    Returns:
+        A decorator applying all three options.
+    """
+    def apply(command):
+        """
+        Args:
+            command: The function being decorated.
+
+        Returns:
+            The same function, carrying the three options.
+        """
+        for option in reversed([
+            click.option("--email", default=None, help=email_help),
+            click.option("--password", default=None, help=password_help),
+            click.option(
+                "--non-interactive",
+                is_flag=True,
+                help=(
+                    "Refuse rather than prompt when --email or --password "
+                    "is missing"
+                ),
+            ),
+        ]):
+            command = option(command)
+
+        return command
+
+    return apply
 
 
 def _asked_for_or_refused(email, password, non_interactive):
@@ -572,9 +618,9 @@ def maintenance_health():
         ("Task queue", "OK" if state.task_queue else "FAILED"),
         ("Rate limiter", "OK" if state.rate_limiter else "FAILED"),
     ]
-    width = max(len(name) for name, _ in lines)
+    width = max(len(name) for name, _ in lines) + 1
     for name, verdict in lines:
-        click.echo(f"{name + ':':<{width + 1}} {verdict}")
+        click.echo(f"{_within(name + ':', width)} {verdict}")
 
     # Named separately, because "did not answer in time" is a different
     # finding from "answered no" and the snapshot keeps them apart. Which
@@ -582,13 +628,10 @@ def maintenance_health():
     if state.timed_out:
         click.echo(f"Timed out: {', '.join(state.timed_out)}")
 
-    healthy = (
-        state.database
-        and (state.cache or not state.cache_configured)
-        and state.task_queue
-        and state.rate_limiter
-    )
-    if not healthy:
+    # The snapshot's own verdict, which `/health` reads as well. Spelled
+    # out here it was a second expression naming each dependency, and the
+    # next dependency added would have had to be remembered in both.
+    if not state.healthy:
         raise SystemExit(1)
 
 # ------------------------------------------------------------------
@@ -863,7 +906,7 @@ def security_list_users():
     click.echo("=" * 100)
     for user in users:
         roles_str = ", ".join(user["roles"]) if user["roles"] else "none"
-        click.echo(f"{user['id']:<36} {user['email']:<30} {str(user['is_active']):<8} {roles_str}")
+        click.echo(f"{user['id']:<36} {_within(user['email'], 30)} {str(user['is_active']):<8} {roles_str}")
 
 @security_group.command("list-roles")
 @with_appcontext
@@ -891,13 +934,7 @@ def security_list_roles():
         )
 
 @security_group.command("reset-password")
-@click.option("--email", default=None, help="User email")
-@click.option("--password", default=None, help="New password")
-@click.option(
-    "--non-interactive",
-    is_flag=True,
-    help="Refuse rather than prompt when --email or --password is missing",
-)
+@credentials("User email", "New password")
 @with_appcontext
 def security_reset_password(email, password, non_interactive):
     """Reset a user's password.
@@ -962,13 +999,7 @@ def security_validate_token(token):
 # Top-level commands
 # ------------------------------------------------------------------
 @click.command("create-admin")
-@click.option("--email", default=None, help="Admin email")
-@click.option("--password", default=None, help="Admin password")
-@click.option(
-    "--non-interactive",
-    is_flag=True,
-    help="Refuse rather than prompt when --email or --password is missing",
-)
+@credentials("Admin email", "Admin password")
 @with_appcontext
 def create_admin(email, password, non_interactive):
     """Create an admin user.
@@ -1006,14 +1037,8 @@ def create_admin(email, password, non_interactive):
 
 
 @click.command("create-user")
-@click.option("--email", default=None, help="User email")
-@click.option("--password", default=None, help="User password")
+@credentials("User email", "User password")
 @click.option("--role", required=True, help="Role name to assign (e.g., admin, user, analyst)")
-@click.option(
-    "--non-interactive",
-    is_flag=True,
-    help="Refuse rather than prompt when --email or --password is missing",
-)
 @with_appcontext
 def create_user(email, password, role, non_interactive):
     """Create a new user with a specified role.

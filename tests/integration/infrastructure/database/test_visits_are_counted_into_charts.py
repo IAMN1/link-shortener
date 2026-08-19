@@ -416,6 +416,11 @@ class TestKeepingTheShapeOfThePastAfterTheRowsAreGone:
         With a thousand links carrying a quarter each, a night of folding
         was a thousand round trips before the insert -- and it grew with
         the table rather than with the work.
+
+        None at all now: with the lower bound in place every day produced
+        is later than every row already stored, so there was never
+        anything for a delete to match. What keeps two runs at once from
+        writing one day twice is the primary key.
         """
         for index in range(4):
             link = make_link(uow_factory, f"rollq{index}")
@@ -428,7 +433,7 @@ class TestKeepingTheShapeOfThePastAfterTheRowsAreGone:
                 uow.commit()
 
         deletes = [text for text in seen if text.lstrip().upper().startswith("DELETE")]
-        assert len(deletes) <= 1, deletes
+        assert deletes == [], deletes
 
     def test_the_daily_chart_survives_the_rows_being_deleted(self, uow_factory):
         """
