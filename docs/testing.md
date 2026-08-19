@@ -1,6 +1,6 @@
 # Testing
 
-**3171 tests**, 95.28% coverage against a floor of 88%, plus two live runs
+**3287 tests**, 95.60% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -237,7 +237,7 @@ Both now raise `tests/live/mail_catcher.py`, an SMTP server on the loopback,
 point the mailer at it, and take the link out of the delivered message.
 
 Measured by pointing `VERIFY_PATH` at a path nothing answers: the HTTP run
-gives 85/141, the browser run 14/55.
+gives 87/141, the browser run 14/55.
 
 The link has to be **opened**, not parsed. The message now leads to a page
 whose button posts the token, which tempted the HTTP run into extracting the
@@ -400,7 +400,7 @@ catch tests that read configuration nobody gave them.
 flowchart TD
     subgraph clean["clean"]
         C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
-        C2 --> C3[count collected tests<br/>minimum 2793] --> C4[pytest --error-for-skips]
+        C2 --> C3[count collected tests<br/>minimum 3279] --> C4[pytest --error-for-skips]
         C4 --> C5[smoke_test.py<br/>141 checks] --> C6[browser_test.py<br/>55 checks]
     end
     subgraph hostile["hostile"]
@@ -423,5 +423,5 @@ The browser run is on the clean half only: it reads nothing from the
 environment, and Chromium is a hundred megabytes to download.
 
 Linters are a separate job, one pass, with a step each so the summary says
-which tool objected: `flake8`, `pylint` (floor 9.0, currently 9.20),
+which tool objected: `flake8`, `pylint` (floor 9.0, currently 9.24),
 `bandit`, `mypy` (floor: zero errors).
