@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-19 14:12+0300\n"
+"POT-Creation-Date: 2026-08-19 14:23+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -945,11 +945,7 @@ msgstr ""
 msgid "1 day"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/create_link.html:21
-msgid "Links made without an account expire after 7 days."
-msgstr ""
-
-#: src/link_shortener/web/templates/dashboard/create_link.html:24
+#: src/link_shortener/web/templates/dashboard/create_link.html:30
 msgid "Create"
 msgstr ""
 

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-19 14:12+0300\n"
+"POT-Creation-Date: 2026-08-19 14:23+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -958,11 +958,7 @@ msgstr "1 час"
 msgid "1 day"
 msgstr "1 день"
 
-#: src/link_shortener/web/templates/dashboard/create_link.html:21
-msgid "Links made without an account expire after 7 days."
-msgstr "Ссылки без учётной записи живут 7 дней."
-
-#: src/link_shortener/web/templates/dashboard/create_link.html:24
+#: src/link_shortener/web/templates/dashboard/create_link.html:30
 msgid "Create"
 msgstr "Создать"
 
@@ -1776,4 +1772,7 @@ msgstr "Запросите новую со %(link)s."
 
 #~ msgid "Invalid short code: %(code)s"
 #~ msgstr "Неверный короткий код: %(code)s"
+
+#~ msgid "Links made without an account expire after 7 days."
+#~ msgstr "Ссылки без учётной записи живут 7 дней."
 

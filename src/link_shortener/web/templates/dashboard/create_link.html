@@ -18,7 +18,13 @@
                 <option value="604800" selected>{{ _('7 days') }}</option>
                 <option value="2592000">{{ _('30 days') }}</option>
             </select>
-            <span class="form-hint">{{ _('Links made without an account expire after 7 days.') }}</span>
+            {# No hint under this control. The one that stood here quoted
+               the guest lifetime -- on a page nobody reaches without an
+               account, with the number written into the markup where
+               `DEFAULT_GUEST_TTL_SECONDS` could not reach it. The guest
+               allowance is stated on the landing page, to guests, out of
+               the configuration. What governs the link being made here is
+               the control above. #}
         </div>
         <div id="create-error" class="form-error hidden"></div>
         <button type="submit" class="btn btn--primary btn--block">{{ _('Create') }}</button>
