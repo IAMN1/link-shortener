@@ -1,6 +1,6 @@
 # Decisions
 
-Thirty-nine write-ups of why something is the way it is. Read this when the
+Forty-two write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -118,6 +118,32 @@ away from a production configuration.
 ---
 
 ## Database and migrations
+
+### One revision, edited in place
+
+**Decided** (2026-08-07, written down 2026-08-19): the repository keeps a
+single Alembic revision. A change to the models is edited into that
+baseline; a second revision is not added.
+
+**Why.** Nothing is deployed from this repository yet, and until something
+is, a chain of revisions records the history of a schema nobody ran. One
+baseline is read as the schema, which is what a reader wants from it, and
+`tests/integration/infrastructure/database/test_migrations.py` can then
+assert what a fresh database actually contains rather than what a sequence
+of edits ought to have produced.
+
+**What it costs, and it is not free.** A database created by an older
+baseline is not caught up: the revision is already applied under the same
+id, so `upgrade head` does nothing and the missing column stays missing.
+Recreating the database is the ordinary answer, and that is only ordinary
+while there is no production data. Measured on a database built before
+`security_events` existed: the application starts, the event goes to the
+audit journal, the counter logs a warning and the request is answered --
+the failure is contained, but the table is still not there.
+
+**When it stops holding.** The first deployment somebody else runs. From
+then on the baseline is history and a change is a new revision, because a
+revision already applied elsewhere cannot be edited.
 
 ### `increment_clicks` returns nothing
 
