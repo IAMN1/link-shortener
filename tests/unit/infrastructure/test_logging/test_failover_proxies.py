@@ -515,3 +515,28 @@ class TestTheAuditProxyForwardsSecurityEvents:
         _, args, kwargs = service.calls[0]
         assert args == (AuditEvent.LOGIN_FAILED,)
         assert "event" not in kwargs
+
+    @pytest.mark.parametrize("field", ["short_code", "original_url"])
+    def test_a_field_of_the_event_survives_a_name_the_link_events_pass(
+        self, field
+    ):
+        """
+        The guard is against a *bound* field colliding, not against a
+        field of the call.
+
+        ``short_code`` and ``original_url`` are passed positionally by the
+        three link events, so a binding carrying either would reach the
+        implementation twice and be refused. This method passes neither:
+        they arrive as ordinary fields, and dropping them took a value the
+        caller asked to record out of the trail without saying so. On the
+        link events the collision cannot arise from a call at all --
+        Python refuses two values for one parameter before the proxy is
+        entered.
+        """
+        service = RecordingService()
+        proxy = FailoverAuditLoggerProxy(service)
+
+        proxy.log_security_event(AuditEvent.LOGIN_FAILED, **{field: "kept"})
+
+        _, _, kwargs = service.calls[0]
+        assert kwargs[field] == "kept"

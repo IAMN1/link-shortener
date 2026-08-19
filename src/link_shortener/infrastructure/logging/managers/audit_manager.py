@@ -279,16 +279,26 @@ class FailoverAuditLoggerProxy(AuditLogger):
         anything but "override the event with context", and that would put
         a different code in the audit trail than the one that was created.
 
+        Dropped from the binding only. A field the *caller* passed under
+        one of these names is theirs to record: on the three link events
+        it cannot collide, since Python refuses two values for one
+        parameter before this method is entered, and on
+        ``log_security_event`` -- which passes only ``event``
+        positionally -- ``short_code`` and ``original_url`` are ordinary
+        fields. Dropping those took a value the caller asked to record out
+        of the trail, and said nothing about it.
+
         Args:
             **kwargs: Fields supplied by the caller of the event method.
 
         Returns:
-            The context to forward, with no name the event passes
+            The context to forward, with no bound name the event passes
             positionally.
         """
         merged = {**self._bound_fields, **kwargs}
         for name in self.POSITIONAL_FIELDS:
-            merged.pop(name, None)
+            if name not in kwargs:
+                merged.pop(name, None)
 
         return merged
 
