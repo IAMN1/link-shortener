@@ -1,6 +1,6 @@
 # Decisions
 
-Thirty-nine write-ups of why something is the way it is. Read this when the
+Forty-four write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -1071,6 +1071,32 @@ ways at once.
 
 Things that are wrong, understood, and deliberately left. Each says what it
 would cost to fix.
+
+<details>
+<summary><b>Self-registration writes no <code>USER_CREATED</code></b> — accepted 2026-08-19</summary>
+
+`USER_CREATED` is written when an operator makes an account, from
+`CreateUserUseCase`. An account somebody makes for themselves through
+`POST /api/v1/auth/register` is not recorded in the audit journal at all —
+the registration is in `application.log` like any other request, and the
+first audit record about that account is whatever it does next.
+
+The event is shaped for the operator's case and cannot honestly carry the
+other one: `user_id` means whoever is asking and `target_user_id` means the
+account it is about, and on self-registration those are the same person,
+who did not exist when the request began. Written that way, "who created
+this account" is answered with the account itself — which reads as an
+administrator having done it, and is the opposite of what the field is for.
+
+What it would cost to fix: either a second event with its own shape, or a
+convention that `user_id` may equal `target_user_id` and means "nobody
+did". The first is worth doing when the journal is read for account
+provenance rather than for privilege changes; the second buys a record by
+making an existing field ambiguous. Left as is, and stated here, so that a
+reader of the audit journal does not take the absence of a `USER_CREATED`
+as evidence that no account was made.
+
+</details>
 
 <details>
 <summary><b>Unauthenticated deletion reveals whether a code is taken</b> — accepted 2026-08-10</summary>

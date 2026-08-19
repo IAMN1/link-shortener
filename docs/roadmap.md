@@ -53,28 +53,6 @@ it — without a log pipeline for the traffic journals.
 
 ---
 
-## Record the events that make an audit an audit
-
-**Now.** `AuditLogger` has three methods: `log_url_created`,
-`log_url_accessed`, `log_url_deleted`. Nothing else reaches `audit.log`.
-Logins, failed logins, registrations, role changes and account deletions
-are written by the ordinary logger into `application.log`, mixed with
-everything else and carrying the account's email address in the clear.
-
-**Why.** An audit journal that cannot answer "who signed in, and who gave
-them that role" is a journal of link operations wearing the word audit.
-[PCI DSS 10.2](https://pcidssguide.com/pci-dss-requirement-10/) names
-authentication and privilege changes first among the events to record.
-
-**What it would take.** New methods on the port and its three
-implementations, calls from the auth and admin use cases, and the tests
-that hold them. Two of these are worth more than the rest: `ROLES_CHANGED`,
-because it is how an administrator granting themselves audit access becomes
-visible, and `AUDIT_VIEWED`, because reading the journal is itself an event
-once the journal is readable from the web.
-
----
-
 ## Let the administrator role stop passing every check
 
 **Now.** The `admin` role holds one permission, `admin:all`, and the
@@ -89,8 +67,9 @@ adds around the audit journal is subject to it.
 **What it would take.** A named set of permissions that `admin:all` does
 not cover, and a decision about who grants them. It does not remove the
 bypass — an administrator can still assign themselves the role — so it is
-worth doing only together with `ROLES_CHANGED` above, which is what turns a
-silent bypass into a recorded one.
+worth doing together with `ROLES_CHANGED`, which is what turns a silent
+bypass into a recorded one -- and which now exists: see
+[Decisions → The audit journal records what the service does about accounts, and who read it](decisions.md).
 
 ---
 
