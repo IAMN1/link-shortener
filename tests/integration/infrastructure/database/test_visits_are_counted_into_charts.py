@@ -13,6 +13,7 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import text
 
 from link_shortener.domain import (
     Link, LinkVisit, OriginalUrl, OwnerID, ShortCode, UrlHash,
@@ -21,6 +22,41 @@ from tests.integration.conftest import ensure_user
 
 
 NOON = datetime(2026, 3, 10, 12, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture()
+def statements(app):
+    """
+    Record the SQL a block of code sends, for counting round trips.
+
+    Cost is the point of two checks below, and cost is not visible in a
+    return value: a method folding the right numbers with one statement
+    per row is correct and unusable.
+
+    Returns:
+        A context manager yielding the list the statements land in.
+    """
+    from contextlib import contextmanager
+
+    from sqlalchemy import event
+
+    engine = app.container.get_db_manager().engine
+
+    @contextmanager
+    def recording():
+        seen = []
+
+        def note(conn, cursor, statement, parameters, context, executemany):
+            seen.append(statement)
+
+        event.listen(engine, "before_cursor_execute", note)
+        try:
+            yield seen
+        finally:
+            event.remove(engine, "before_cursor_execute", note)
+
+    with app.app_context():
+        yield recording
 
 
 @pytest.fixture()
@@ -252,6 +288,25 @@ class TestWhoIsAllowedToSeeWhat:
 
 class TestKeepingTheShapeOfThePastAfterTheRowsAreGone:
 
+    @pytest.fixture(autouse=True)
+    def nothing_folded_yet(self, app):
+        """
+        Start each of these from an empty visit history.
+
+        The roll-up is global: it folds every link at once and starts from
+        the day after the latest row in ``link_visit_days``, because that
+        is the day nothing has folded yet. The ``app`` fixture is
+        session-scoped and these tables are not scoped by owner, so
+        without this a day folded by a neighbouring test moves the
+        boundary and the test under it silently folds nothing.
+        """
+        with app.app_context():
+            with app.container.get_db_manager().session() as session:
+                session.execute(text("DELETE FROM link_visit_days"))
+                session.execute(text("DELETE FROM link_visits"))
+                session.commit()
+        yield
+
     def test_days_that_ended_are_folded_into_one_row_each(self, uow_factory):
         link = make_link(uow_factory, "roll01")
         day_one = NOON - timedelta(days=3)
@@ -291,6 +346,89 @@ class TestKeepingTheShapeOfThePastAfterTheRowsAreGone:
             )
 
         assert [d.total for d in days] == [1]
+
+    def test_a_second_night_folds_only_what_the_first_one_left(
+        self, uow_factory
+    ):
+        """
+        The nightly task used to re-fold the whole table every time.
+
+        ``roll_up_days`` selected every raw visit before ``before`` with no
+        lower bound at all, so each night it grouped the entire retention
+        window -- ninety days of raw rows -- and rewrote every day row it
+        had already written, to the same numbers. Its own docstring says
+        the opposite: "this runs once a day on a handful of rows".
+
+        Counted as day-rows written, which is what the method returns and
+        what the operator's line reports.
+        """
+        link = make_link(uow_factory, "roll10")
+        for day in (4, 3, 2):
+            visit(uow_factory, link, NOON - timedelta(days=day))
+
+        with uow_factory() as uow:
+            first = uow.link_visits.roll_up_days(before=NOON - timedelta(days=1))
+            uow.commit()
+
+        # A day nobody had folded yet, arriving after the first night.
+        visit(uow_factory, link, NOON - timedelta(days=1, hours=2))
+
+        with uow_factory() as uow:
+            second = uow.link_visits.roll_up_days(before=NOON)
+            uow.commit()
+
+        assert first == 3
+        assert second == 1
+
+    def test_the_second_night_leaves_the_first_night_s_totals_alone(
+        self, uow_factory
+    ):
+        """
+        Folding less must not mean losing what was folded before.
+        """
+        link = make_link(uow_factory, "roll11")
+        visit(uow_factory, link, NOON - timedelta(days=3))
+        visit(uow_factory, link, NOON - timedelta(days=3, hours=1))
+
+        with uow_factory() as uow:
+            uow.link_visits.roll_up_days(before=NOON - timedelta(days=2))
+            uow.commit()
+
+        visit(uow_factory, link, NOON - timedelta(days=1))
+
+        with uow_factory() as uow:
+            uow.link_visits.roll_up_days(before=NOON)
+            uow.commit()
+
+        with uow_factory() as uow:
+            days = uow.link_visits.rolled_days(
+                link, since=NOON - timedelta(days=5), until=NOON
+            )
+
+        assert [d.total for d in days] == [2, 1]
+
+    def test_it_does_not_issue_one_statement_per_day_it_rewrites(
+        self, uow_factory, statements
+    ):
+        """
+        The other half of the cost: one ``DELETE`` per ``(link, day)``.
+
+        With a thousand links carrying a quarter each, a night of folding
+        was a thousand round trips before the insert -- and it grew with
+        the table rather than with the work.
+        """
+        for index in range(4):
+            link = make_link(uow_factory, f"rollq{index}")
+            for day in (4, 3, 2):
+                visit(uow_factory, link, NOON - timedelta(days=day))
+
+        with statements() as seen:
+            with uow_factory() as uow:
+                uow.link_visits.roll_up_days(before=NOON - timedelta(days=1))
+                uow.commit()
+
+        deletes = [text for text in seen if text.lstrip().upper().startswith("DELETE")]
+        assert len(deletes) <= 1, deletes
 
     def test_the_daily_chart_survives_the_rows_being_deleted(self, uow_factory):
         """

@@ -59,6 +59,30 @@ def tables(path):
         connection.close()
 
 
+def indexes(path, table):
+    """Return the indexes a table carries, with the columns of each.
+
+    Args:
+        path: Path to the SQLite file.
+        table: Table to inspect.
+
+    Returns:
+        Mapping of index name to the list of columns it covers, in order.
+    """
+    connection = sqlite3.connect(path)
+    try:
+        found = {}
+        for row in connection.execute(f"PRAGMA index_list('{table}')"):
+            name = row[1]
+            found[name] = [
+                column[2]
+                for column in connection.execute(f"PRAGMA index_info('{name}')")
+            ]
+        return found
+    finally:
+        connection.close()
+
+
 def foreign_keys(path, table):
     """Return the foreign keys a table declares.
 
@@ -108,6 +132,31 @@ class TestMigrationChain:
             "role_permissions", "user_roles", "refresh_sessions",
             "email_verifications",
         } <= tables(path)
+
+    def test_the_folded_days_can_be_read_by_day_without_a_link(self, database):
+        """
+        The service-wide daily chart filters ``link_visit_days`` on ``day``
+        alone, and the primary key leads with ``link_id`` -- which a
+        composite index cannot serve without its leading column. Every such
+        read was a full scan of the table that exists to make the long
+        range cheap, and it grows by one row per link per day forever.
+
+        Asserted against the built schema rather than the model, because
+        the two are separately written and have disagreed before: this
+        project keeps one revision and edits it in place, so a column or
+        an index added to a model reaches a deployment only if the
+        revision is edited too.
+        """
+        path, url = database
+        ok, output = AlembicCommands.upgrade("head", database_url=url)
+        assert ok, output
+
+        covering_day = [
+            name for name, columns in indexes(path, "link_visit_days").items()
+            if columns[:1] == ["day"]
+        ]
+
+        assert covering_day, indexes(path, "link_visit_days")
 
     def test_links_are_left_pointing_at_their_owner_s_deletion(self, database):
         """The cascade is a decision about data, not a detail of the schema.

@@ -468,14 +468,41 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
 
     # ----- maintenance -----
 
+    def _first_unfolded_day(self) -> Optional[datetime]:
+        """
+        Midnight of the first day the roll-up has not written yet.
+
+        Every day is folded for all links in one statement, so the latest
+        day present is the boundary: everything up to it is done, and the
+        day after it is where tonight's work starts.
+
+        Returns:
+            The day to start from, or ``None`` when nothing has been
+            folded yet and the whole table is the work.
+        """
+        latest = self.session.execute(
+            select(func.max(LinkVisitDayModel.day))
+        ).scalar()
+
+        return None if latest is None else _as_utc(latest) + timedelta(days=1)
+
     def roll_up_days(self, before: datetime) -> int:
         """
         Fold whole days of raw visits into one row per link per day.
 
+        Only the days that are not folded yet: the scan starts at the day
+        after the latest row in ``link_visit_days``, and the first run --
+        which has none -- takes everything. Without that lower bound this
+        grouped the entire retention window every night and rewrote every
+        day row it had ever written, to the same numbers, which is neither
+        what the docstring promised ("runs once a day on a handful of
+        rows") nor a cost that stops growing.
+
         Written as delete-then-insert rather than an upsert, because the
-        two engines spell upserts differently and this runs once a day on
-        a handful of rows -- the cost of the simpler statement is nothing,
-        and the behaviour is identical on both.
+        two engines spell upserts differently. The delete is one statement
+        over the span being folded rather than one per ``(link, day)``
+        pair: a night that touched a thousand links was a thousand round
+        trips before the insert.
 
         Args:
             before: Fold days earlier than this instant.
@@ -493,7 +520,13 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
             func.sum(cast(LinkVisitModel.is_bot, Integer)),
         ).where(
             LinkVisitModel.occurred_at < before
-        ).group_by(LinkVisitModel.link_id, day_start)
+        )
+
+        since = self._first_unfolded_day()
+        if since is not None:
+            grouped = grouped.where(LinkVisitModel.occurred_at >= since)
+
+        grouped = grouped.group_by(LinkVisitModel.link_id, day_start)
 
         rows = [
             (
@@ -507,13 +540,17 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
         if not rows:
             return 0
 
-        for link_id, day, _total, _bots in rows:
-            self.session.execute(
-                delete(LinkVisitDayModel).where(
-                    LinkVisitDayModel.link_id == link_id,
-                    LinkVisitDayModel.day == day,
-                )
+        # One statement over the days being written. They are the days
+        # nothing has folded yet, so this normally deletes nothing at all
+        # -- it is what keeps a repeated run from doubling a day, and what
+        # lets a run started against a hand-edited table finish cleanly.
+        days = [day for _link_id, day, _total, _bots in rows]
+        self.session.execute(
+            delete(LinkVisitDayModel).where(
+                LinkVisitDayModel.day >= min(days),
+                LinkVisitDayModel.day <= max(days),
             )
+        )
         self.session.flush()
 
         self.session.add_all([
