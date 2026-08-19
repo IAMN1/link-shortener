@@ -89,11 +89,18 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
             column: A datetime column.
 
         Returns:
-            An integer-valued SQL expression.
+            An integer-valued SQL expression, truncated rather than
+            rounded on both engines.
         """
         if self.session.get_bind().dialect.name == "sqlite":
             return cast(func.strftime("%s", column), Integer)
-        return cast(extract("epoch", column), Integer)
+        # `floor` before the cast: `extract` yields the fraction of a
+        # second too, and casting a fractional value to an integer
+        # *rounds* in PostgreSQL while `strftime` truncates. Rounded, an
+        # event at 23:59:59.7 became an event on the next day -- folded
+        # under tomorrow's date, and then laid over tomorrow's column of
+        # the chart, on the engine every deployment runs.
+        return cast(func.floor(extract("epoch", column)), Integer)
 
     def record(self, event_type: str, occurred_at: datetime) -> None:
         """
