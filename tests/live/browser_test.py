@@ -1424,6 +1424,12 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         # screen from reading as the beginning of history.
         said = page.inner_text("[data-journal-reach]").strip()
         assert "application.log" in said, said
+        # The label is a list of pieces, and they used to be joined by a
+        # space: the first ends in a file name rather than a full stop, so
+        # it read "Lines: 200 · application.log Older lines exist." -- two
+        # sentences run together, in Russian as well.
+        assert "log Older" not in said, said
+        assert " · " in said, said
 
     @check("choosing another journal reads that journal")
     def _():
