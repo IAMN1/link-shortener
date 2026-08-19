@@ -214,3 +214,53 @@ class TestStreamedResponses:
 
         assert "Content-Encoding" not in response.headers
         assert response.data.decode() == LONG
+
+
+class TestAPartOfAFileIsNotAWholeOne:
+    """
+    ``206 Partial Content`` and compression cannot both be true at once.
+
+    A range response describes bytes of the *identity* body: its
+    ``Content-Range`` counts them, and the client reassembles the file
+    from the offsets it asked for. Compressing what comes back leaves
+    that header describing bytes nobody sent -- and the ETag, being the
+    entity's, then names the whole file while the body holds a
+    re-encoded slice of it, so a cache can serve the part as the whole.
+
+    Reproduced against Flask's own static route before the fix:
+    ``Range: bytes=0-19999`` came back gzipped at ``Content-Length: 93``
+    with ``Content-Range`` still claiming twenty thousand bytes.
+    """
+
+    def test_a_range_request_comes_back_uncompressed(self, client):
+        response = client.get(
+            "/static/css/main.css",
+            headers={**GZIP, "Range": "bytes=0-19999"},
+        )
+
+        assert response.status_code == 206
+        assert "Content-Encoding" not in response.headers
+
+    def test_the_range_header_still_describes_the_body_that_arrived(
+        self, client
+    ):
+        """
+        The check the header exists for: what it counts is what was sent.
+        """
+        response = client.get(
+            "/static/css/main.css",
+            headers={**GZIP, "Range": "bytes=0-99"},
+        )
+
+        assert response.status_code == 206
+        assert response.headers["Content-Range"].startswith("bytes 0-99/")
+        assert len(response.data) == 100
+
+    def test_a_whole_file_is_still_compressed(self, client):
+        """
+        The rule is about partial answers, not about this file.
+        """
+        response = client.get("/static/css/main.css", headers=GZIP)
+
+        assert response.status_code == 200
+        assert response.headers.get("Content-Encoding") == "gzip"
