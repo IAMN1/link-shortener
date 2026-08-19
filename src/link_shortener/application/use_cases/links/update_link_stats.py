@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 
-from link_shortener.domain import LinkVisit, ShortCode, LinkNotFoundError
+from link_shortener.domain import (
+    LinkNotFoundError, LinkVisit, ShortCode, ValidationError,
+)
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.logger.logger import Logger
@@ -55,7 +57,14 @@ class UpdateLinkStatsUseCase(BaseUseCase):
 
         try:
             short_code = ShortCode(short_code_str)
-        except ValueError as e:
+        except ValidationError as e:
+            # `ValidationError`, not `ValueError`: it descends from
+            # `DomainError`, so the `ValueError` this used to name never
+            # matched and the error left the use case instead. The task
+            # calling it retries on any exception, which turned a code no
+            # link can carry -- a truncated path, a scanner walking the
+            # space -- into three attempts a minute apart, none of which
+            # could have succeeded.
             log.error("Invalid short code format", short_code=short_code_str, error=str(e))
             return
 

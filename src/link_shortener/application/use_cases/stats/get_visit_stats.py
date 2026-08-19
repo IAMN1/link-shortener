@@ -92,15 +92,16 @@ class GetVisitStatsUseCase(BaseUseCase):
 
         link_id = None
         if short_code is not None:
-            try:
-                code = ShortCode(short_code)
-            except ValueError as invalid:
-                raise DomainError(
-                          f"Invalid short code: {short_code}",
-                          code="VALIDATION_ERROR",
-                          template=N_("Invalid short code: %(code)s"),
-                          params={"code": short_code},
-                      ) from invalid
+            # No handler around this. It used to be wrapped in one that
+            # caught `ValueError` and re-raised a `DomainError` saying
+            # "Invalid short code"; `ShortCode` raises `ValidationError`,
+            # which descends from `DomainError` rather than `ValueError`,
+            # so the handler never ran and the wording it produced was
+            # never seen. What is raised instead carries the same
+            # `VALIDATION_ERROR` code -- the same status, out of the same
+            # translation catalogue -- and says which lengths are allowed,
+            # which the replacement did not.
+            code = ShortCode(short_code)
             with self.uow_factory(read_only=True) as uow:
                 link = uow.links.find_by_code(code)
             if link is None:
@@ -173,15 +174,16 @@ class GetVisitStatsUseCase(BaseUseCase):
 
         link_id = None
         if short_code is not None:
-            try:
-                code = ShortCode(short_code)
-            except ValueError as invalid:
-                raise DomainError(
-                          f"Invalid short code: {short_code}",
-                          code="VALIDATION_ERROR",
-                          template=N_("Invalid short code: %(code)s"),
-                          params={"code": short_code},
-                      ) from invalid
+            # No handler around this. It used to be wrapped in one that
+            # caught `ValueError` and re-raised a `DomainError` saying
+            # "Invalid short code"; `ShortCode` raises `ValidationError`,
+            # which descends from `DomainError` rather than `ValueError`,
+            # so the handler never ran and the wording it produced was
+            # never seen. What is raised instead carries the same
+            # `VALIDATION_ERROR` code -- the same status, out of the same
+            # translation catalogue -- and says which lengths are allowed,
+            # which the replacement did not.
+            code = ShortCode(short_code)
             with self.uow_factory(read_only=True) as uow:
                 link = uow.links.find_by_code(code)
             link_id = link.id if link is not None else "no-such-link"

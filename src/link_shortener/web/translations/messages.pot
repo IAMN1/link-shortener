@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-17 16:23+0300\n"
+"POT-Creation-Date: 2026-08-19 14:08+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -103,13 +103,7 @@ msgstr ""
 msgid "Unknown period '%(period)s'. Choose one of: %(choices)s"
 msgstr ""
 
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:101
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:182
-#, python-format
-msgid "Invalid short code: %(code)s"
-msgstr ""
-
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:170
+#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:171
 #, python-format
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr ""
@@ -590,12 +584,12 @@ msgstr ""
 msgid "Request body must be a JSON object"
 msgstr ""
 
-#: src/link_shortener/web/controllers/api_controller.py:267
-#: src/link_shortener/web/controllers/api_controller.py:304
+#: src/link_shortener/web/controllers/api_controller.py:301
+#: src/link_shortener/web/controllers/api_controller.py:341
 msgid "Sign in to see your own statistics"
 msgstr ""
 
-#: src/link_shortener/web/controllers/api_controller.py:312
+#: src/link_shortener/web/controllers/api_controller.py:349
 msgid "days must be a whole number"
 msgstr ""
 

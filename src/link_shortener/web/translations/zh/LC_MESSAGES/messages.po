@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-17 16:23+0300\n"
+"POT-Creation-Date: 2026-08-19 14:08+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -104,13 +104,7 @@ msgstr "您无权删除此链接"
 msgid "Unknown period '%(period)s'. Choose one of: %(choices)s"
 msgstr "未知的时间段「%(period)s」。请从以下选择：%(choices)s"
 
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:101
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:182
-#, python-format
-msgid "Invalid short code: %(code)s"
-msgstr "无效的短代码：%(code)s"
-
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:170
+#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:171
 #, python-format
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr "days 必须在 1 到 730 之间，收到的是 %(days)s"
@@ -591,12 +585,12 @@ msgstr "请求体嵌套过深"
 msgid "Request body must be a JSON object"
 msgstr "请求体必须是 JSON 对象"
 
-#: src/link_shortener/web/controllers/api_controller.py:267
-#: src/link_shortener/web/controllers/api_controller.py:304
+#: src/link_shortener/web/controllers/api_controller.py:301
+#: src/link_shortener/web/controllers/api_controller.py:341
 msgid "Sign in to see your own statistics"
 msgstr "登录后可查看自己的统计"
 
-#: src/link_shortener/web/controllers/api_controller.py:312
+#: src/link_shortener/web/controllers/api_controller.py:349
 msgid "days must be a whole number"
 msgstr "days 必须是整数"
 
@@ -1737,4 +1731,7 @@ msgstr "请到%(link)s重新申请一个。"
 #~ "read here, and reading them is "
 #~ "itself a privilege somebody granted."
 #~ msgstr ""
+
+#~ msgid "Invalid short code: %(code)s"
+#~ msgstr "无效的短代码：%(code)s"
 
