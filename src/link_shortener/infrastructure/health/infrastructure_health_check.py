@@ -291,6 +291,14 @@ class InfrastructureHealthCheck(HealthCheck):
         ``control.ping()``: without a worker the tasks are silently never
         run, which is exactly what a health check exists to surface.
 
+        ``limit=1`` because one live worker is the whole question. The
+        call is a broadcast, and without a limit it goes on collecting
+        replies until the timeout expires however quickly the first one
+        arrives -- measured in the container, 1.027 s against 0.004 s for
+        the same verdict, on every observation that missed the cache. With
+        no worker at all both forms wait out the timeout and return
+        nothing, so the failure is detected exactly as before.
+
         Returns:
             ``True`` if the queue can accept work.
         """
@@ -303,7 +311,9 @@ class InfrastructureHealthCheck(HealthCheck):
             return True
 
         try:
-            replies = celery_app.control.ping(timeout=self.PING_TIMEOUT_SECONDS)
+            replies = celery_app.control.ping(
+                timeout=self.PING_TIMEOUT_SECONDS, limit=1
+            )
             return bool(replies)
         except Exception:
             return False
