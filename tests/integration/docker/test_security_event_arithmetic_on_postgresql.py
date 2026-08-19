@@ -1,12 +1,14 @@
 """The seconds arithmetic behind the security counts, on the real engine.
 
-``SQLAlchemySecurityEventRepository._epoch`` is the visit repository's
-method under another name and carried the same fault: ``strftime('%s', ...)``
-truncates on SQLite, and casting ``extract(epoch from ...)`` to an integer
-*rounds* on PostgreSQL. Rounded, an event at 23:59:59.7 belongs to the next
-day -- ``fold_days_before`` writes its total under tomorrow's date, and
-``_lay_the_folded_days_over`` then lays that total on the wrong column of
-the chart, replacing what the raw rows said rather than adding to it.
+Both repositories now count seconds through ``sql_time.epoch_seconds``;
+this file used to say ``_epoch``, a copy of the visit repository's method
+under another name, and the copy carried the same fault: ``strftime('%s',
+...)`` truncates on SQLite, and casting ``extract(epoch from ...)`` to an
+integer *rounds* on PostgreSQL. Rounded, an event at 23:59:59.7 belongs
+to the next day -- ``fold_days_before`` writes its total under tomorrow's
+date, and ``_lay_the_folded_days_over`` then lays that total on the wrong
+column of the chart, replacing what the raw rows said rather than adding
+to it.
 
 Only PostgreSQL can show it. Every other test of this repository runs on
 SQLite, where the arithmetic is right by accident.

@@ -1,17 +1,20 @@
 """Counting security events, and folding the days that are over.
 
 The shape and the dialect problems are the ones ``LinkVisitRepository``
-already solved, and the solutions are the same ones for the same reasons --
-integer division for the bucket index, `strftime` against `extract` for the
-epoch. What differs is that there is no owner and no link to scope by: a
-security event is about the service.
+already solved, and the arithmetic behind them is shared rather than
+solved twice: ``sql_time`` holds the epoch and the day, because they are
+properties of the dialect rather than of either table. This file used to
+carry a byte-identical copy, and the copy carried the same rounding
+defect -- which had to be found and fixed on two branches, in two
+commits. What differs here is that there is no owner and no link to scope
+by: a security event is about the service.
 """
 
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple, cast as as_type
 
-from sqlalchemy import Integer, cast, delete, extract, func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
@@ -21,36 +24,9 @@ from link_shortener.domain.repositories.security_event_repository import (
 from link_shortener.infrastructure.database.models.security_event_model import (
     SecurityEventDayModel, SecurityEventModel,
 )
-
-
-SECONDS_IN_A_DAY = 86400
-"""Length of a day, which is exact because the stamps are UTC.
-
-No offset change ever makes a UTC day longer or shorter, so folding by
-``epoch // 86400`` is folding by date -- and it is arithmetic both
-dialects do the same way, unlike ``date()`` against ``date_trunc()``.
-"""
-
-
-def _as_utc(moment: datetime) -> datetime:
-    """
-    Give a moment a timezone if it arrived without one.
-
-    SQLite stores no offset, so every datetime read back from it is
-    naive, and comparing one against an aware datetime raises. What was
-    written is UTC, so reading it back as UTC restores rather than
-    assumes. A naive bound from a caller is read the same way, for the
-    same reason the visit repository does it: ``timestamp()`` on a naive
-    datetime asks the host what zone it is in, and the answer moves every
-    bucket by the machine's offset.
-
-    Args:
-        moment: Datetime from the database or from a caller.
-
-    Returns:
-        The same moment, marked UTC when it carried no zone.
-    """
-    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+from link_shortener.infrastructure.database.repositories.sql_time import (
+    DAY, as_utc as _as_utc, epoch_seconds,
+)
 
 
 def _midnight_of(moment: datetime) -> datetime:
@@ -80,27 +56,6 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
             session: Active session, owned by the unit of work.
         """
         self.session = session
-
-    def _epoch(self, column):
-        """
-        Seconds since 1970 as a whole number, in whichever dialect is in use.
-
-        Args:
-            column: A datetime column.
-
-        Returns:
-            An integer-valued SQL expression, truncated rather than
-            rounded on both engines.
-        """
-        if self.session.get_bind().dialect.name == "sqlite":
-            return cast(func.strftime("%s", column), Integer)
-        # `floor` before the cast: `extract` yields the fraction of a
-        # second too, and casting a fractional value to an integer
-        # *rounds* in PostgreSQL while `strftime` truncates. Rounded, an
-        # event at 23:59:59.7 became an event on the next day -- folded
-        # under tomorrow's date, and then laid over tomorrow's column of
-        # the chart, on the engine every deployment runs.
-        return cast(func.floor(extract("epoch", column)), Integer)
 
     def record(self, event_type: str, occurred_at: datetime) -> None:
         """
@@ -145,7 +100,8 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
         # visits, where two visits four hours apart produced two rows for
         # the same day.
         index = (
-            (self._epoch(SecurityEventModel.occurred_at) - int(since.timestamp()))
+            (epoch_seconds(self.session, SecurityEventModel.occurred_at)
+             - int(since.timestamp()))
             // width
         ).label("bucket")
 
@@ -207,7 +163,7 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
             width: Seconds in one bucket.
             buckets: How many buckets the span holds.
         """
-        if width != SECONDS_IN_A_DAY or since != _midnight_of(since):
+        if width != DAY or since != _midnight_of(since):
             return
 
         until = since + timedelta(seconds=width * buckets)
@@ -243,7 +199,7 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
         # Days are exact seconds here because the stamps are UTC: no
         # offset changes length, so `epoch // 86400` is the date.
         day_index = (
-            self._epoch(SecurityEventModel.occurred_at) // SECONDS_IN_A_DAY
+            epoch_seconds(self.session, SecurityEventModel.occurred_at) // DAY
         ).label("day_index")
 
         statement = (
@@ -259,7 +215,7 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
         totals: Dict[Tuple[datetime, str], int] = {}
         for event_type, index, count in self.session.execute(statement):
             midnight = datetime.fromtimestamp(
-                int(index) * SECONDS_IN_A_DAY, tz=timezone.utc
+                int(index) * DAY, tz=timezone.utc
             )
             totals[(midnight, str(event_type))] = int(count)
 
