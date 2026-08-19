@@ -194,7 +194,11 @@
        The list lives in `web/i18n.py:script_strings`, not here: the
        scripts ask for keys, and a second copy of the keys in this file is
        a second thing to keep in step. #}
-    <script id="script-strings" type="application/json">{{ script_strings()|tojson }}</script>
+    {# Carries the nonce the response's `Content-Security-Policy` names.
+       A data block is not executed and most browsers do not check it
+       against `script-src`, but the ones that do would drop the strings
+       and leave every sentence a script writes in its key form. #}
+    <script id="script-strings" type="application/json" nonce="{{ csp_nonce }}">{{ script_strings()|tojson }}</script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

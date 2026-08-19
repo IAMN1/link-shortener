@@ -30,6 +30,7 @@ from link_shortener.web.middleware.rate_limit import (
     check_rate_limit_targets,
 )
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
+from link_shortener.web.middleware.security_headers import SecurityHeadersMiddleware
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.template_access import register_template_access
 
@@ -180,6 +181,17 @@ def create_app(config=None) -> Flask:
     # serves it directly, with no nginx and no CDN, and whoever runs it may
     # not put one there either.
     CompressionMiddleware(app)
+    ## 0.5 Security headers
+    #
+    # After compression and before everything else, which puts its
+    # `after_request` second-to-last: the headers are written onto whatever
+    # response finally leaves, including the one the error handler
+    # replaced, and compression still sees the body afterwards.
+    #
+    # Its `before_request` mints the nonce, and it has to run before any
+    # view renders a template -- a page carrying a nonce the header does
+    # not name is a page whose script the browser refuses.
+    SecurityHeadersMiddleware(app)
     ## 1. Request logging (generates request_id)
     RequestLoggingMiddleware(app, container.get_logger(RequestLoggingMiddleware.__module__))
     ## 2. Authentication (loads current_user into g)

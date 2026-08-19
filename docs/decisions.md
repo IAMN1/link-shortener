@@ -252,6 +252,55 @@ library are the same bytes for everyone and are asked for on every page.
 Marking them would re-fetch a quarter of a megabyte per navigation to
 protect files handed to anyone who asks.
 
+### The browser is told what it may do with the page
+
+**Decided** (2026-08-19): every response carries `X-Content-Type-Options`,
+`X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a
+`Content-Security-Policy` whose `script-src` admits one inline block by a
+per-response nonce.
+
+**Why at all.** None of them was sent, so each of those decisions was left
+to the browser's default — whether to guess a body's type against its
+declared one, whether another site may frame this one, and how much of the
+address to hand to whatever an outbound link leads to. A short link's own
+page carries its code in the address, which is the one that matters here.
+
+**Why a nonce and not `'unsafe-inline'`.** The application serves one
+inline `<script>`, the JSON block carrying the translated strings. Excusing
+it with `'unsafe-inline'` excuses every injected script along with it, which
+is the same as having no `script-src` at all. The nonce is 128 bits from
+`secrets.token_urlsafe`, minted in `before_request` so the markup and the
+header cannot disagree — a page whose nonce the header does not name is a
+page whose script is refused silently, in the browser and nowhere else.
+
+**What `style-src` keeps, and why.** `'unsafe-inline'`, alone among the
+directives. The charts position a tooltip, size a bar and colour a swatch
+by assigning to `element.style`, which Chromium reports as an inline style
+and refuses: measured, the browser run went to 36 failures of 45 and the
+console filled with *"Applying inline style violates..."* on every page
+that draws anything. Removing it means rewriting how the charts draw, which
+is a change to the charts. The narrow half is conceded — an injection that
+already runs can restyle the page — and the wide half is not, since
+`script-src` is what decides whether it runs.
+
+**What the markup gave up.** The five `style="..."` attributes in the
+templates are classes now, including the two that coloured the chart
+legend: a refused style attribute renders as an unstyled element rather
+than as an error, so the legend would have quietly lost the only thing it
+is for.
+
+**What this does not claim.** It does not close cross-site scripting; it
+narrows what a successful injection reaches. The consequence that would
+hurt most — a script reading the session — was already closed better, by
+cookies carrying `httponly`, `secure` and `samesite="Strict"`.
+
+**What it cost the test run.** `browser_test.py` waited on pages with
+`page.wait_for_function`, which evaluates a string as JavaScript inside the
+page — `script-src` without `'unsafe-eval'` refuses it, and every one of
+the fifteen waits died. They poll through Playwright's own protocol now.
+Loosening the policy to let the run through was the other way, and it would
+have meant the run measuring a policy no deployment would use.
+
 ### You cannot grant more than you hold
 
 **Decided**: every path that hands out permissions checks that the caller

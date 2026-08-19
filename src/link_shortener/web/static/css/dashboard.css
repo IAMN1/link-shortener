@@ -300,6 +300,13 @@
     flex: none;
 }
 
+/* The two series' colours, as classes. They were written into the markup
+   as `style="background: var(--c-humans)"`, which the content policy
+   refuses -- and a refused style attribute is an unstyled element rather
+   than an error, so the legend would have lost the very thing it is for. */
+.chart-swatch--humans { background: var(--c-humans); }
+.chart-swatch--bots { background: var(--c-bots); }
+
 /* Bars: label, track, value. A grid rather than three floats, so the
    tracks line up whatever the labels are -- and the labels come from the
    data, so their width is not ours to decide. */

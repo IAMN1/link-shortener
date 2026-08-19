@@ -40,7 +40,7 @@ Plus the two live runs, if your change touches HTTP or the frontend:
 
 ```bash
 uv run python tests/live/smoke_test.py    # 137 checks
-uv run python tests/live/browser_test.py  # 41 checks, needs --group browser
+uv run python tests/live/browser_test.py  # 45 checks, needs --group browser
 ```
 
 CI runs all of it, twice — once in a clean environment and once in a
