@@ -4,6 +4,7 @@ import re
 import pytest
 from datetime import timedelta
 from flask.testing import FlaskCliRunner
+from link_shortener.application.context import RequestContext
 from link_shortener.domain.entities.user import User
 from link_shortener.domain.value_objects.email import Email
 from link_shortener.domain.value_objects.password_hash import PasswordHash
@@ -215,6 +216,41 @@ class TestSecurityCommands:
         assert "access" in access_result.output
         assert "authenticates no request" not in access_result.output
 
+    def test_validate_token_prints_the_expiry_as_a_date(self, runner, app):
+        """
+        `Expires: 1787072048` is a number, not a moment.
+
+        Everything else this service writes about time is ISO 8601 in
+        UTC -- the journals, the API, the charts -- and an operator
+        checking a token had to convert an epoch by hand to answer the one
+        question they asked it: how long is this good for.
+        """
+        with app.app_context():
+            auth_service = app.container.get_authentication_service()
+            user = User(
+                id="cli-expiry-user",
+                email=Email("expiry-check@example.com"),
+                password_hash=PasswordHash(
+                    auth_service.hash_password("CliCheck123!")
+                ),
+                roles=[],
+            )
+            token = auth_service._create_token(
+                user, timedelta(minutes=5), "access", session_id="cli-exp"
+            )
+
+            result = runner.invoke(app.cli, ["security", "validate-token", token])
+
+        assert result.exit_code == 0, result.output
+        expires = [
+            line for line in result.output.splitlines()
+            if line.startswith("Expires:")
+        ]
+        assert expires, result.output
+        assert re.search(
+            r"Expires: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", expires[0]
+        ), expires[0]
+
     def test_security_generate_secrets(self, runner, app):
         result = runner.invoke(app.cli, ["security", "generate-secrets"])
         assert result.exit_code == 0
@@ -225,6 +261,44 @@ class TestSecurityCommands:
         with app.app_context():
             result = runner.invoke(app.cli, ["security", "list-roles"])
             assert result.exit_code == 0
+
+    def test_list_roles_keeps_its_columns_under_a_long_description(
+        self, runner, app
+    ):
+        """
+        A table is a table only while the columns line up.
+
+        `{description:<30}` pads a short value and does nothing at all to
+        a long one, so one wordy role pushed its own permissions column
+        past every other row's and the table stopped being readable at the
+        row that mattered most.
+        """
+        with app.app_context():
+            admin = app.container.get_admin_service()
+            context = RequestContext(request_id="cli-test")
+            admin.create_role("terse", "Short", [], context)
+            admin.create_role(
+                "wordy",
+                "A description long enough to run past the column it was "
+                "given, which is the whole point of this row",
+                [],
+                context,
+            )
+
+            result = runner.invoke(app.cli, ["security", "list-roles"])
+
+        assert result.exit_code == 0, result.output
+        columns = {
+            name: line.index("none")
+            for name in ("terse", "wordy")
+            for line in result.output.splitlines()
+            if f" {name} " in line and "none" in line
+        }
+
+        assert set(columns) == {"terse", "wordy"}, result.output
+        # Two rows, one column. Both are asserted because a check reading
+        # only the long row passes on a table with one row in it.
+        assert columns["terse"] == columns["wordy"], result.output
 
     def test_security_list_users(self, runner, app):
         with app.app_context():

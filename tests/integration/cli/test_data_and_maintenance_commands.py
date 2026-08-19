@@ -153,6 +153,24 @@ class TestLinkCommands:
         assert "cli-one - 7 clicks" in result.output
         assert "cli-two - 3 clicks" in result.output
 
+    def test_one_click_is_not_written_as_one_clicks(self, runner, app):
+        """
+        The count and the noun have to agree.
+
+        Both lines that print a click count wrote "1 clicks", and so did
+        the header when exactly one link came back. It is the smallest
+        possible defect and it is on the first screen an operator sees.
+        """
+        _create_link(runner, app, "https://example.com/single", "cli-uno")
+        _set_clicks(app, "cli-uno", 1)
+
+        result = runner.invoke(app.cli, ["link", "list"])
+
+        assert result.exit_code == 0, result.output
+        assert "cli-uno - 1 click -" in result.output
+        assert "1 clicks" not in result.output
+        assert "Recent 1 links" not in result.output
+
     def test_list_says_so_when_there_is_nothing(self, runner, app):
         """An empty database is reported, not printed as an empty table."""
         result = runner.invoke(app.cli, ["link", "list"])

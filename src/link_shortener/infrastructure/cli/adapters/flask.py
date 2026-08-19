@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 import click
@@ -48,6 +49,56 @@ def _container() -> Container:
         The container built for the current application.
     """
     return current_app.container  # type: ignore[attr-defined]
+
+
+def _counted(number, noun):
+    """
+    A count and its noun, in agreement.
+
+    Args:
+        number: How many.
+        noun: The singular form.
+
+    Returns:
+        ``"1 click"``, ``"2 clicks"``.
+    """
+    return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
+
+
+def _as_moment(epoch):
+    """
+    An epoch claim written the way this service writes every moment.
+
+    Args:
+        epoch: Seconds since 1970, or ``None``.
+
+    Returns:
+        ISO 8601 in UTC, or ``"unknown"`` when the claim was absent.
+    """
+    if epoch is None:
+        return "unknown"
+
+    return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+
+def _within(text, width):
+    """
+    A column value padded to a width and clipped to it.
+
+    Args:
+        text: The value.
+        width: Column width in characters.
+
+    Returns:
+        Exactly ``width`` characters, ending in an ellipsis when the value
+        did not fit.
+    """
+    if len(text) <= width:
+        return f"{text:<{width}}"
+
+    return text[: width - 1] + "\u2026"
 
 
 def _asked_for_or_refused(email, password, non_interactive):
@@ -254,7 +305,7 @@ def stats_show():
     click.echo(f"\t\t\tAvg clicks/URL:  {stats.avg_clicks_per_url}")
     click.echo("\n\t\t\tTOP 5 POPULAR LINKS:")
     for i, link in enumerate(stats.popular_links[:5], 1):
-        click.echo(f"\t\t\t{i}. {link.short_code} - {link.clicks} clicks")
+        click.echo(f"\t\t\t{i}. {link.short_code} - {_counted(link.clicks, 'click')}")
     click.echo("=" * 80)
 
 @stats_group.command("refresh")
@@ -643,12 +694,13 @@ def link_list(limit):
         click.echo("=" * 80)
         click.echo("\t\t\tNo links found.")
     else:
-        click.echo(f"\n\t\t\tRecent {len(links)} links:")
+        click.echo(f"\n\t\t\tRecent {_counted(len(links), 'link')}:")
         click.echo("=" * 80)
         for link in links:
             created = link.created_at.date().isoformat()
             click.echo(
-                f"\t\t\t{link.short_code.value} - {link.clicks} clicks - {created}"
+                f"\t\t\t{link.short_code.value} - "
+                f"{_counted(link.clicks, 'click')} - {created}"
             )
     click.echo("=" * 80)
 
@@ -829,7 +881,14 @@ def security_list_roles():
     click.echo("=" * 120)
     for role in roles:
         perms_str = ", ".join(role["permissions"]) if role["permissions"] else "none"
-        click.echo(f"{role['id']:<36} {role['name']:<20} {(role['description'] or ''):<30} {perms_str}")
+        # Padded *and* clipped. `:<30` widens a short value and leaves a
+        # long one whole, so one wordy role pushed its permissions past
+        # every other row's and the table stopped lining up at the row an
+        # operator was reading it for.
+        click.echo(
+            f"{role['id']:<36} {role['name']:<20} "
+            f"{_within(role['description'] or '', 30)} {perms_str}"
+        )
 
 @security_group.command("reset-password")
 @click.option("--email", default=None, help="User email")
@@ -885,7 +944,10 @@ def security_validate_token(token):
         click.echo(f"User ID: {result.get('user_id')}")
         click.echo(f"Email: {result.get('email')}")
         click.echo(f"Roles: {', '.join(result.get('roles', []))}")
-        click.echo(f"Expires: {result.get('exp')}")
+        # ISO 8601 in UTC, like every other moment this service writes.
+        # It printed the raw `exp` claim, so the answer to "how long is
+        # this good for" was an epoch an operator had to convert by hand.
+        click.echo(f"Expires: {_as_moment(result.get('exp'))}")
         # A token kind, not a password.
         if token_type != "access":  # nosec B105
             click.echo(
