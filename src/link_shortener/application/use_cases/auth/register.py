@@ -11,6 +11,7 @@ from link_shortener.domain import (
     Email, PasswordHash
 )
 from link_shortener.domain.entities.email_verification import EmailVerification
+from link_shortener.domain.i18n import N_
 from link_shortener.domain.value_objects.verification_token import (
     issue_token,
     token_digest,
@@ -128,8 +129,12 @@ class RegisterUseCase(BaseUseCase):
                     # a deployment missing its default role answers 400 for
                     # a free address and 202 for a taken one. That is a
                     # deployment which cannot register anybody at all.
+                    # Marked, unlike the sentences behind a 5xx: the
+                    # controller answers every DomainError on this route
+                    # with 400, so this one is read by whoever tried to
+                    # register rather than by an operator reading a log.
                     raise DomainError(
-                        "Registration is unavailable",
+                        N_("Registration is unavailable"),
                         code="CONFIGURATION_ERROR",
                     )
 

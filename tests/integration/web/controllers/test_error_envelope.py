@@ -238,6 +238,50 @@ class TestAdminRefusalsPastTheDoor:
         assert_envelope(response, f"{method} {path}")
         assert response.get_json()["error"] == code
 
+    def test_updating_a_role_that_is_not_there_is_a_missing_one(self, client):
+        """The update route answers the delete route's answer.
+
+        A name nothing carries used to come back 400 from here and 404
+        from ``DELETE`` beside it -- one question, two answers, because
+        the service raised a bare ``ValueError`` that the use case
+        flattened into ``ROLE_UPDATE_FAILED``.
+        """
+        response = client.put(
+            "/api/v1/admin/roles/no-such-role/permissions",
+            json={"permissions": ["link:create"]},
+            headers=auth_headers(self.token),
+        )
+
+        assert response.status_code == 404, response.get_json()
+        assert_envelope(response, "PUT /api/v1/admin/roles/no-such-role")
+        assert response.get_json()["error"] == "ROLE_NOT_FOUND"
+
+    def test_a_name_somebody_already_holds_is_a_conflict(self, client):
+        """409, for the reason ``LINK_CODE_TAKEN`` is.
+
+        The caller asked for one particular name and the fix is theirs to
+        make. Answered 400 under ``ROLE_CREATION_FAILED``, it was the same
+        status as a malformed request body, and the only thing telling the
+        two apart was an English sentence.
+        """
+        body = {
+            "name": "envelope-taken",
+            "description": "a name to take",
+            "permissions": ["link:create"],
+        }
+        first = client.post(
+            "/api/v1/admin/roles", json=body, headers=auth_headers(self.token)
+        )
+        assert first.status_code == 201, first.get_json()
+
+        response = client.post(
+            "/api/v1/admin/roles", json=body, headers=auth_headers(self.token)
+        )
+
+        assert response.status_code == 409, response.get_json()
+        assert_envelope(response, "POST /api/v1/admin/roles")
+        assert response.get_json()["error"] == "ROLE_ALREADY_EXISTS"
+
     def test_a_protected_role_is_a_bad_request_and_not_a_missing_one(
         self, client
     ):
@@ -254,7 +298,7 @@ class TestAdminRefusalsPastTheDoor:
         )
 
         assert response.status_code == 400, response.get_json()
-        assert response.get_json()["error"] == "ROLE_DELETION_FAILED"
+        assert response.get_json()["error"] == "ROLE_IS_SYSTEM"
 
 
 class TestTheThrottlesOwnRefusal:

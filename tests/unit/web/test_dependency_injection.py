@@ -20,7 +20,7 @@ class TestContainer:
     def test_get_link_service(self, config):
         """Container should provide a LinkService instance."""
         container = Container(config)
-        from link_shortener.application.services.link_service import LinkService
+        from link_shortener.application.facades.link_service import LinkService
         assert isinstance(container.get_link_service(), LinkService)
 
     def test_get_admin_service(self, config):

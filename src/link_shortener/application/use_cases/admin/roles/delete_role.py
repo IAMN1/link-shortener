@@ -6,7 +6,6 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.services.role_management_service import RoleManagementService
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import DomainError
 
 
 @dataclass
@@ -44,29 +43,26 @@ class DeleteRoleUseCase(BaseUseCase):
             ``True`` if the role was successfully deleted.
 
         Raises:
-            DomainError: ``ROLE_NOT_FOUND`` when there is no such role, which
-                the status table answers 404; ``ROLE_DELETION_FAILED`` when
-                the role exists but is a system role, answered 400.
+            RoleNotFoundError: When there is no such role, which the status
+                table answers 404.
+            RoleIsSystemError: When the role exists but is a system role,
+                answered 400 -- the request named something real and asked
+                for something the service does not do.
         """
 
         log = self._get_logger(self.logger, context)
         audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
-            try:
-                self.role_service.delete_role(uow, role_name)
-                uow.commit()
+            # The two refusals -- no such role, and a role the service owns
+            # -- are raised by the service as domain errors of their own.
+            # They used to arrive as ``LookupError`` and ``ValueError`` and
+            # be translated here into codes; the vocabulary is now one, and
+            # the status table keeps deciding: 404 for the first, like the
+            # neighbouring `delete_user`, and 400 for the second.
+            self.role_service.delete_role(uow, role_name)
+            uow.commit()
 
-                log.info("Role deleted", role_name=role_name)
-                audit.log_role_deleted(role=role_name)
-                return True
-            except LookupError as e:
-                # 404, like the neighbouring `delete_user`: a name that is
-                # not there is not a bad request.
-                log.info("Role deletion: no such role", role_name=role_name)
-                raise DomainError(str(e), code="ROLE_NOT_FOUND")
-            except ValueError as e:
-                # The role exists and is protected -- that *is* a bad
-                # request, and stays 400.
-                log.error("Role deletion failed", error=str(e))
-                raise DomainError(str(e), code="ROLE_DELETION_FAILED")
+            log.info("Role deleted", role_name=role_name)
+            audit.log_role_deleted(role=role_name)
+            return True

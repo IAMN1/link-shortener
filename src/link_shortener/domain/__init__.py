@@ -39,7 +39,9 @@ from .exceptions import (
     DomainError, LinkNotFoundError, ValidationError,
     CodeGenerationError, LinkCodeTakenError, LinkConflictError,
     LinkExpiredError,
-    GuestLinkLimitExceededError
+    GuestLinkLimitExceededError,
+    RoleNotFoundError, RoleAlreadyExistsError, RoleIsSystemError,
+    PermissionsNotFoundError
 )
 
 from .system_permissions import SystemPermissions
@@ -96,6 +98,10 @@ __all__ = [
     "LinkConflictError",
     "LinkExpiredError",
     "GuestLinkLimitExceededError",
+    "RoleNotFoundError",
+    "RoleAlreadyExistsError",
+    "RoleIsSystemError",
+    "PermissionsNotFoundError",
 
     # System permissions
     "SystemPermissions"

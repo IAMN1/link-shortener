@@ -19,7 +19,10 @@ from link_shortener.domain import (
     DedupScope, Link, OriginalUrl, ShortCode, UrlHash,
     HashCalculator, CodeGenerator, OwnerID,
     ValidationError, CodeGenerationError, LinkCodeTakenError,
-    LinkConflictError, GuestLinkLimitExceededError
+    LinkConflictError
+)
+from link_shortener.domain.policies.guest_quota_policy import (
+    guest_quota_spent, links_left_for_guest,
 )
 from link_shortener.domain.policies.reserved_codes import is_reserved
 from link_shortener.domain.i18n import N_
@@ -348,15 +351,10 @@ class CreateShortLinkUseCase(BaseUseCase):
                 count = uow.links.count_guest_links_by_identifier(
                     guest_id, self.guest_link_window_days
                 )
-                if count >= self.guest_link_limit:
-                    raise GuestLinkLimitExceededError(
-                              f"Guest link limit of {self.guest_link_limit} exceeded.",
-                              retry_after_seconds=(
-                                  self.guest_link_window_days * 24 * 3600
-                              ),
-                              template=N_("Guest link limit of %(limit)s exceeded."),
-                              params={"limit": self.guest_link_limit},
-                          )
+                if not links_left_for_guest(count, self.guest_link_limit):
+                    raise guest_quota_spent(
+                        self.guest_link_limit, self.guest_link_window_days
+                    )
 
             # ---- Pick a code and store -----------------------
             if chosen_code is not None:

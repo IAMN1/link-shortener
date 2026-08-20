@@ -11,7 +11,6 @@ from link_shortener.application.use_cases.admin.privilege_guard import (
     require_may_grant_permissions,
 )
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import DomainError
 
 
 @dataclass
@@ -53,9 +52,12 @@ class UpdateRolePermissionsUseCase(BaseUseCase):
             RoleResponse reflecting the updated role.
 
         Raises:
-            DomainError: If the user is not authorized, if a requested
-                permission exceeds what the caller holds, or if the role
-                update fails.
+            RoleNotFoundError: If there is no role under that name,
+                answered 404 -- the same answer `delete_role` gives the
+                same question.
+            RoleIsSystemError: If the role is one the service owns.
+            PermissionsNotFoundError: If a named permission does not exist.
+            DomainError: If the caller may not confer what they asked for.
         """
         log = self._get_logger(self.logger, context)
         audit = self._get_audit_logger(self.audit_logger, context)
@@ -74,17 +76,19 @@ class UpdateRolePermissionsUseCase(BaseUseCase):
                 [p.name for p in existing.permissions] if existing else []
             )
 
-            try:
-                role = self.role_service.update_role_permissions(uow, role_name, permission_names)
-                uow.commit()
+            # Raised by the service and left alone, for the reason written
+            # in `create_role`: a generic ``ROLE_UPDATE_FAILED`` answered
+            # 400 to a role that is simply not there, while the delete
+            # route beside it answered 404 to the very same question.
+            role = self.role_service.update_role_permissions(
+                uow, role_name, permission_names
+            )
+            uow.commit()
 
-                log.info("Role updated", role_name=role.name)
-                audit.log_role_permissions_changed(
-                    role=role.name,
-                    permissions_before=permissions_before,
-                    permissions_after=[p.name for p in role.permissions],
-                )
-                return RoleResponse.from_role(role)
-            except ValueError as e:
-                log.error("Role update failed", error=str(e))
-                raise DomainError(str(e), code="ROLE_UPDATE_FAILED")
+            log.info("Role updated", role_name=role.name)
+            audit.log_role_permissions_changed(
+                role=role.name,
+                permissions_before=permissions_before,
+                permissions_after=[p.name for p in role.permissions],
+            )
+            return RoleResponse.from_role(role)

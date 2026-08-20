@@ -2,7 +2,10 @@ from typing import List, Optional
 import uuid
 
 from link_shortener.application.ports.uow import UnitOfWork
-from link_shortener.domain import Role
+from link_shortener.domain import (
+    PermissionsNotFoundError, Role, RoleAlreadyExistsError, RoleIsSystemError,
+    RoleNotFoundError
+)
 
 
 class RoleManagementService:
@@ -26,11 +29,12 @@ class RoleManagementService:
         the request is not mistaken for an unknown one.
 
         Raises:
-            ValueError: If any requested name has no permission behind it.
+            PermissionsNotFoundError: If any requested name has no
+                permission behind it.
         """
         missing = set(requested) - {permission.name for permission in found}
         if missing:
-            raise ValueError(f"Permissions not found: {sorted(missing)}")
+            raise PermissionsNotFoundError(missing)
 
     def create_role(self,
                     uow: UnitOfWork,
@@ -52,11 +56,12 @@ class RoleManagementService:
             The newly created Role entity.
 
         Raises:
-            ValueError: If the role name already exists or any permission is missing.
+            RoleAlreadyExistsError: If the name is already taken.
+            PermissionsNotFoundError: If any permission is missing.
         """
         existing = uow.roles.get_by_name(name)
         if existing:
-            raise ValueError(f"Role '{name}' already exists")
+            raise RoleAlreadyExistsError(name)
         permissions = uow.permissions.get_by_names(permission_names)
         self._refuse_unknown_permissions(permission_names, permissions)
 
@@ -82,14 +87,16 @@ class RoleManagementService:
             Updated Role entity.
 
         Raises:
-            ValueError: If the role does not exist, is a system role, or any
-                requested permission does not exist.
+            RoleNotFoundError: If there is no role under that name.
+            RoleIsSystemError: If the role is one the service owns.
+            PermissionsNotFoundError: If any requested permission does not
+                exist.
         """
         role = uow.roles.get_by_name(role_name)
         if not role:
-            raise ValueError(f"Role '{role_name}' not found")
+            raise RoleNotFoundError(role_name)
         if role.is_system:
-            raise ValueError("Cannot modify system roles")
+            raise RoleIsSystemError(role_name)
 
         permissions = uow.permissions.get_by_names(permission_names)
         self._refuse_unknown_permissions(permission_names, permissions)
@@ -112,17 +119,19 @@ class RoleManagementService:
             role_name: Name of the role to delete.
 
         Raises:
-            LookupError: If the role does not exist.
-            ValueError: If the role exists but may not be deleted.
+            RoleNotFoundError: If there is no role under that name.
+            RoleIsSystemError: If the role exists but may not be deleted.
         """
         # Two different answers, and they were one exception: "no such
         # role" and "that role is protected" both came back as ValueError,
         # so the endpoint answered 400 to a name that simply is not there
         # -- while the user endpoint next to it answered 404 for exactly
-        # the same question.
+        # the same question. They are two domain errors now, which is what
+        # carries the distinction past the use case without a translation
+        # from one exception vocabulary into another.
         role = uow.roles.get_by_name(role_name)
         if not role:
-            raise LookupError(f"Role '{role_name}' not found")
+            raise RoleNotFoundError(role_name)
         if role.is_system:
-            raise ValueError("Cannot delete system roles")
+            raise RoleIsSystemError(role_name)
         uow.roles.delete(role.id)

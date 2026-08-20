@@ -280,9 +280,15 @@ class ErrorHandlerMiddleware:
                 # answered 500 by the default below, it would have read as
                 # a bug in handling the request instead.
                 "MAIL_NOT_HANDED_OFF": 503,
-                "ROLE_CREATION_FAILED": 400,
-                "ROLE_DELETION_FAILED": 400,
-                "ROLE_UPDATE_FAILED": 400,
+                # The caller asked for a name somebody already holds --
+                # the same shape as LINK_CODE_TAKEN, and answered the same
+                # way: their request, and a fix only they can make.
+                "ROLE_ALREADY_EXISTS": 409,
+                # The role is there and the service owns it. 400 rather
+                # than 403: the caller holds `admin:manage_roles` and is
+                # refused by what they named, not by who they are.
+                "ROLE_IS_SYSTEM": 400,
+                "PERMISSIONS_NOT_FOUND": 400,
             }
 
             # An unmapped code is a code nobody classified, and the safe
