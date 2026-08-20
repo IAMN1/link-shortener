@@ -37,6 +37,31 @@ class MailTemplates(ABC):
         ...
 
     @abstractmethod
+    def password_reset_email(
+        self,
+        reset_url: str,
+        ttl_minutes: int,
+        language: Optional[str] = None,
+    ) -> Tuple[str, str]:
+        """
+        Render the message that carries a password reset link.
+
+        Args:
+            reset_url: Absolute URL that opens the reset form.
+            ttl_minutes: How long that URL stays usable, so the message can
+                say so. Stated in minutes rather than hours because this
+                link is short-lived on purpose, and a reader who is not
+                told that comes back to it in the evening.
+            language: Language tag the request that asked for this message
+                was answered in. ``None`` means nobody chose, and the
+                configured default is used.
+
+        Returns:
+            Tuple of (subject, body), both plain text.
+        """
+        ...
+
+    @abstractmethod
     def account_exists_email(
         self, sign_in_url: str, language: Optional[str] = None
     ) -> Tuple[str, str]:
@@ -49,11 +74,11 @@ class MailTemplates(ABC):
         without this the time it takes would not be.
 
         Args:
-            sign_in_url: Absolute URL of the sign-in page, which is all
-                this message can offer: the service has no password
-                recovery a person can use on their own. An operator can
-                reset one with ``flask security reset-password``, and
-                that is not something to put in a mail to a stranger.
+            sign_in_url: Absolute URL of the sign-in page. That page
+                carries the way on to password recovery, which is where
+                this message's likeliest reader is going: somebody
+                registering an address they already hold is usually
+                somebody who forgot they hold it.
             language: Language tag, as above.
 
         Returns:

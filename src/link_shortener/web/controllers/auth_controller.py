@@ -11,9 +11,12 @@ from flask_babel import gettext
 
 from link_shortener.application import (
     AuthenticationService,
+    ChangePasswordUseCase,
     LoginUseCase,
     RegisterUseCase,
+    RequestPasswordResetUseCase,
     ResendVerificationUseCase,
+    ResetPasswordUseCase,
     VerifyEmailUseCase,
 )
 from link_shortener.domain import DomainError, ValidationError
@@ -23,6 +26,7 @@ from link_shortener.web.middleware.csrf import (
 from link_shortener.web.i18n import translate_error
 from link_shortener.web.responses import error_response
 from link_shortener.web.security.context import create_request_context
+from link_shortener.web.security.decorators import login_required
 from link_shortener.domain.i18n import N_
 
 
@@ -115,6 +119,44 @@ def _refresh_cookie_max_age() -> int:
     return current_app.config.get("JWT_REFRESH_TOKEN_EXPIRE_DAYS", 7) * 24 * 3600
 
 
+def _set_token_cookies(resp, access_token: str, refresh_token: str) -> None:
+    """
+    Write both authentication cookies onto a response.
+
+    One place rather than three. Sign-in, refresh and the password change
+    all hand the browser the same pair under the same flags, and the flags
+    are the security of the scheme: a ``samesite`` or an ``httponly``
+    dropped from one copy is a hole in one route that reads exactly like
+    the two beside it.
+
+    Args:
+        resp: The response to write the cookies onto.
+        access_token: Freshly issued access token.
+        refresh_token: Freshly issued refresh token. Rotated on every
+            issue, so the cookie always carries the newest one -- an
+            earlier value is spent and would be read as a replay.
+    """
+    cookie_secure = current_app.config.get("COOKIE_SECURE", False)
+    resp.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=cookie_secure,
+        samesite="Strict",
+        max_age=_access_cookie_max_age(),
+        path="/",
+    )
+    resp.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=cookie_secure,
+        samesite="Strict",
+        max_age=_refresh_cookie_max_age(),
+        path="/",
+    )
+
+
 class AuthController:
     """
     Controller for authentication endpoints (login, token refresh, logout, register).
@@ -127,12 +169,18 @@ class AuthController:
         register_use_case: RegisterUseCase,
         verify_email_use_case: VerifyEmailUseCase,
         resend_verification_use_case: ResendVerificationUseCase,
+        change_password_use_case: ChangePasswordUseCase,
+        request_password_reset_use_case: RequestPasswordResetUseCase,
+        reset_password_use_case: ResetPasswordUseCase,
     ):
         self.authentication_service = authentication_service
         self.login_use_case = login_use_case
         self.register_use_case = register_use_case
         self.verify_email_use_case = verify_email_use_case
         self.resend_verification_use_case = resend_verification_use_case
+        self.change_password_use_case = change_password_use_case
+        self.request_password_reset_use_case = request_password_reset_use_case
+        self.reset_password_use_case = reset_password_use_case
         self.bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
         self._register_routes()
 
@@ -157,6 +205,26 @@ class AuthController:
         self.bp.add_url_rule(
             "/resend-verification",
             view_func=self.resend_verification,
+            methods=["POST"],
+        )
+        self.bp.add_url_rule(
+            "/change-password",
+            view_func=self.change_password,
+            methods=["POST"],
+        )
+        self.bp.add_url_rule(
+            "/forgot-password",
+            view_func=self.forgot_password,
+            methods=["POST"],
+        )
+        # POST only, unlike `/verify`, which still answers GET so that
+        # links mailed before its page existed keep working. This one has
+        # no such history and cannot acquire it: the new password does not
+        # exist until somebody types it, so there is nothing a GET could
+        # carry.
+        self.bp.add_url_rule(
+            "/reset-password",
+            view_func=self.reset_password,
             methods=["POST"],
         )
 
@@ -221,24 +289,7 @@ class AuthController:
 
         cookie_secure = current_app.config.get("COOKIE_SECURE", False)
 
-        resp.set_cookie(
-            key="refresh_token",
-            value=result.refresh_token,
-            httponly=True,
-            secure=cookie_secure,
-            samesite="Strict",
-            max_age=_refresh_cookie_max_age(),
-            path="/"
-        )
-        resp.set_cookie(
-            key="access_token",
-            value=result.access_token,
-            httponly=True,
-            secure=cookie_secure,
-            samesite="Strict",
-            max_age=_access_cookie_max_age(),
-            path="/"
-        )
+        _set_token_cookies(resp, result.access_token, result.refresh_token)
         # The browser authenticates with cookies, so every write it makes
         # needs a CSRF token to go with them. The token is bound to this
         # user, so logging in as someone else replaces it.
@@ -357,6 +408,144 @@ class AuthController:
         }), 202
 
     # ------------------------------------------------------------------
+    # POST /api/v1/auth/change-password
+    # ------------------------------------------------------------------
+    @login_required
+    def change_password(self):
+        """
+        Replace the caller's own password.
+
+        Takes ``current_password`` and ``new_password``. The account is the
+        one the request is authenticated as and is never read from the
+        body: an endpoint that took an id there would let anyone signed in
+        change anybody's password, which is the whole authorization of this
+        route in one field.
+
+        Every session the account had is revoked, this one included, and a
+        new pair is issued to the caller in the same response -- so the
+        browser that made the change stays signed in and every other device
+        does not. The refusals are named rather than generalised: the
+        caller is already inside the account, so there is nothing left for
+        a vague answer to protect, and "something was wrong" would send
+        somebody to re-read a new password they typed correctly.
+
+        Returns:
+            200 with a fresh pair of tokens, 400 if the current password is
+            wrong or the new one is refused, 401 if the caller is not
+            signed in.
+        """
+        data = _decoded_body()
+        current_password = data.get("current_password") if isinstance(data, dict) else None
+        new_password = data.get("new_password") if isinstance(data, dict) else None
+        if not isinstance(current_password, str) or not current_password:
+            raise ValidationError(
+                N_("Current password is required"), field="current_password"
+            )
+        if not isinstance(new_password, str) or not new_password:
+            raise ValidationError(
+                N_("New password is required"), field="new_password"
+            )
+
+        context = create_request_context()
+        tokens = self.change_password_use_case.execute(
+            user_id=g.current_user.id,
+            current_password=current_password,
+            new_password=new_password,
+            context=context,
+        )
+
+        # The same body the refresh route gives, and for the same reason:
+        # what came back is a new pair. No sentence beside it -- the page
+        # says what happened in the reader's own language, out of the
+        # catalogue, and a second sentence here would be an English one
+        # nothing displays.
+        resp = make_response(jsonify({
+            "access_token": tokens.access_token,
+            "refresh_token": tokens.refresh_token,
+        }), 200)
+        # Required, not a convenience: the access token in the browser
+        # names a session this request has just revoked, so without the new
+        # pair the page that made the change is signed out by it.
+        _set_token_cookies(resp, tokens.access_token, tokens.refresh_token)
+        return resp
+
+    # ------------------------------------------------------------------
+    # POST /api/v1/auth/forgot-password
+    # ------------------------------------------------------------------
+    def forgot_password(self):
+        """
+        Mail a password reset link to an address.
+
+        Answers 202 with the same sentence whether the address is
+        registered, unconfirmed, deactivated or unknown. OWASP's Forgot
+        Password Cheat Sheet gives this response by name -- "If that email
+        address is in our database, we will send you an email to reset your
+        password" -- because a route that mails on request and answers
+        honestly tells anyone who asks who is registered.
+
+        Returns:
+            202, always, unless the address is not an address.
+        """
+        data = _decoded_body()
+        email = data.get("email") if isinstance(data, dict) else None
+        if not isinstance(email, str) or not email:
+            raise ValidationError(N_("Email is required"), field="email")
+
+        context = create_request_context()
+        # The outcome is deliberately dropped. Which of the three things
+        # happened is what this route exists not to say; the journal has
+        # it.
+        self.request_password_reset_use_case.execute(email, context)
+
+        return jsonify({
+            "message": (
+                "If that address has an account, a link to reset its "
+                "password has been sent to it."
+            )
+        }), 202
+
+    # ------------------------------------------------------------------
+    # POST /api/v1/auth/reset-password
+    # ------------------------------------------------------------------
+    def reset_password(self):
+        """
+        Set a new password from the link that was mailed.
+
+        Takes ``token`` and ``new_password``. Answers the same for every
+        way a token can fail -- unknown, spent, expired, or naming an
+        account that is gone or switched off -- because telling them apart
+        would make this route say whether an address is registered and
+        whether somebody has already used their link.
+
+        Nobody is signed in by this. The person goes to the sign-in page
+        and uses the password they just chose, which is what OWASP asks
+        for: the account was opened by a link out of a mailbox, and the
+        first thing it should ask for is the credential.
+
+        Returns:
+            200 on success, 400 for a token that cannot be spent or a
+            password the policy refuses.
+        """
+        data = _decoded_body()
+        token = data.get("token") if isinstance(data, dict) else None
+        new_password = data.get("new_password") if isinstance(data, dict) else None
+        if not isinstance(token, str) or not token:
+            raise ValidationError(
+                N_("This reset link is not valid"), field="token"
+            )
+        if not isinstance(new_password, str) or not new_password:
+            raise ValidationError(
+                N_("New password is required"), field="new_password"
+            )
+
+        context = create_request_context()
+        self.reset_password_use_case.execute(token, new_password, context)
+
+        return jsonify({
+            "message": "Password changed. You can sign in now."
+        }), 200
+
+    # ------------------------------------------------------------------
     # POST /api/v1/auth/logout
     # ------------------------------------------------------------------
     def logout(self):
@@ -418,29 +607,9 @@ class AuthController:
             resp.delete_cookie(CSRF_COOKIE_NAME, path="/")
             return resp, status
 
-        cookie_secure = current_app.config.get("COOKIE_SECURE", False)
         resp = make_response(jsonify({
             "access_token": tokens.access_token,
             "refresh_token": tokens.refresh_token,
         }), 200)
-        resp.set_cookie(
-            key="access_token",
-            value=tokens.access_token,
-            httponly=True,
-            secure=cookie_secure,
-            samesite="Strict",
-            max_age=_access_cookie_max_age(),
-            path="/"
-        )
-        # The refresh token is rotated, so the cookie has to carry the new
-        # one: the old value is spent and would be read as a replay.
-        resp.set_cookie(
-            key="refresh_token",
-            value=tokens.refresh_token,
-            httponly=True,
-            secure=cookie_secure,
-            samesite="Strict",
-            max_age=_refresh_cookie_max_age(),
-            path="/"
-        )
+        _set_token_cookies(resp, tokens.access_token, tokens.refresh_token)
         return resp

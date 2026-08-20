@@ -54,6 +54,34 @@ class TaskQueue(ABC):
         ...
 
     @abstractmethod
+    def enqueue_password_reset_email(
+        self, email: str, token: str, context: RequestContext
+    ) -> bool:
+        """
+        Hand off the password reset message for an address.
+
+        Carries a token, like the confirmation above, and the token is
+        worth more: it opens the account rather than proving a mailbox.
+        The same trade applies and costs more -- a live way into the
+        account sits in the broker for as long as the task waits there,
+        which is the price of sending this in the background. The token's
+        own lifetime is the bound on it.
+
+        Args:
+            email: Address to send to.
+            token: The reset token as it goes into the link.
+            context: Request context with audit metadata.
+
+        Returns:
+            True if the message was handed over -- published to the broker,
+            or sent outright where there is no broker. False if it was not,
+            in which case nothing was sent and nothing will be. The public
+            route records the difference and does not report it: which of
+            the two happened is what that route exists not to disclose.
+        """
+        ...
+
+    @abstractmethod
     def enqueue_account_exists_email(
         self, email: str, context: RequestContext
     ) -> bool:

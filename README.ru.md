@@ -9,7 +9,7 @@
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![тестов: 3287](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-3287-0b5d3b)](docs/testing.md)
+[![тестов: 3372](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-3372-0b5d3b)](docs/testing.md)
 [![покрытие: 95%](https://img.shields.io/badge/%D0%BF%D0%BE%D0%BA%D1%80%D1%8B%D1%82%D0%B8%D0%B5-95%25-0b5d3b)](docs/testing.md)
 [![mypy: 0](https://img.shields.io/badge/mypy-0%20%D0%BE%D1%88%D0%B8%D0%B1%D0%BE%D0%BA-0b5d3b)](docs/testing.md)
 [![лицензия: Apache 2.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-Apache%202.0-blue)](LICENSE)
@@ -164,6 +164,9 @@ flowchart LR
 | `POST` | `/api/v1/auth/login` | — | Токены; неподтверждённый адрес получает `EMAIL_NOT_VERIFIED` |
 | `POST` | `/api/v1/auth/refresh` | refresh-токен | Ротировать пару |
 | `POST` | `/api/v1/auth/logout` | сессия | Отозвать её на сервере |
+| `POST` | `/api/v1/auth/change-password` | сессия | Сменить свой пароль; все сессии гаснут, текущая открывается заново |
+| `POST` | `/api/v1/auth/forgot-password` | — | `202`, и одинаковый ответ, есть у адреса учётная запись или нет |
+| `POST` | `/api/v1/auth/reset-password` | — | Потратить высланный токен и задать новый пароль; все сессии гаснут |
 | `GET`, `POST` | `/api/v1/admin/users` | `admin:view_users` / `admin:manage_users` | Список, создание |
 | `PUT` | `/api/v1/admin/users/{id}/roles` | `admin:manage_users` | Заменить роли |
 | `POST` | `/api/v1/admin/users/{id}/deactivate` | `admin:manage_users` | Приостановить; последнему администратору отказано |
@@ -199,9 +202,9 @@ flowchart LR
 ## Тестирование
 
 ```bash
-uv run pytest tests/                      # 3287 тестов
-uv run python tests/live/smoke_test.py    # 141 проверка по HTTP
-uv run python tests/live/browser_test.py  # 55 проверок настоящим браузером
+uv run pytest tests/                      # 3372 теста
+uv run python tests/live/smoke_test.py    # 156 проверок по HTTP
+uv run python tests/live/browser_test.py  # 59 проверок настоящим браузером
 ```
 
 Четыре уровня — unit, интеграционные на SQLite, интеграционные на настоящих

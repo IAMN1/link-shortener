@@ -51,6 +51,14 @@ they are not quietly undone later:
   uniqueness is not decoration either: two accounts sharing a digest would
   be two accounts sharing a token.
 
+* ``password_resets`` is a second table beside it rather than a ``purpose``
+  column on the first, and the reason is not tidiness. The two rows carry
+  the same shape and buy different things: a confirmation proves a mailbox
+  is readable, a reset opens the account. Behind one column they are told
+  apart by a ``WHERE`` clause in every query, and the query that forgets it
+  accepts a confirmation link as a reset link. Two tables cannot be
+  confused by omission.
+
 Revision ID: 0001
 Revises:
 Create Date: 2026-08-07 00:00:00.000000
@@ -112,6 +120,18 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_email_verifications_token_hash'), 'email_verifications', ['token_hash'], unique=True)
     op.create_index(op.f('ix_email_verifications_user_id'), 'email_verifications', ['user_id'], unique=False)
+    op.create_table('password_resets',
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('user_id', sa.String(length=36), nullable=False),
+    sa.Column('token_hash', sa.String(length=64), nullable=False),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('used_at', sa.DateTime(timezone=True), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_password_resets_token_hash'), 'password_resets', ['token_hash'], unique=True)
+    op.create_index(op.f('ix_password_resets_user_id'), 'password_resets', ['user_id'], unique=False)
     op.create_table('refresh_sessions',
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('user_id', sa.String(length=36), nullable=False),
@@ -237,6 +257,9 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_refresh_sessions_token_id'), table_name='refresh_sessions')
     op.drop_index(op.f('ix_refresh_sessions_chain_id'), table_name='refresh_sessions')
     op.drop_table('refresh_sessions')
+    op.drop_index(op.f('ix_password_resets_user_id'), table_name='password_resets')
+    op.drop_index(op.f('ix_password_resets_token_hash'), table_name='password_resets')
+    op.drop_table('password_resets')
     op.drop_index(op.f('ix_email_verifications_user_id'), table_name='email_verifications')
     op.drop_index(op.f('ix_email_verifications_token_hash'), table_name='email_verifications')
     op.drop_table('email_verifications')

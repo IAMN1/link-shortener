@@ -118,6 +118,13 @@
             {% endif %}
         {% endif %}
 
+        {# Ungated, like Overview and for the same reason: what is on the
+           page belongs to the account reading it. A permission here would
+           be a permission to hold your own password, which nothing in the
+           model grants or withholds. #}
+        <div class="dash-side-section">{{ _('Account') }}</div>
+        {{ nav('dashboard.security', 'security', _('Security')) }}
+
         <div class="dash-side-bottom">
             {{ nav('frontend.index', 'home', _('Back to Home')) }}
             <button class="dash-side-logout" id="logout-btn" data-title="{{ _('Log out') }}">

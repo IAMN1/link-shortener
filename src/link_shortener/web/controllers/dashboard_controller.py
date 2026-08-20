@@ -38,6 +38,7 @@ class DashboardController:
             "/links/<short_code>/stats", view_func=self.link_stats, methods=["GET"]
         )
         self.bp.add_url_rule("/create-link", view_func=self.create_link_form, methods=["GET"])
+        self.bp.add_url_rule("/security", view_func=self.security, methods=["GET"])
         self.bp.add_url_rule("/service/stats", view_func=self.service_stats, methods=["GET"])
         self.bp.add_url_rule("/service/health", view_func=self.service_health, methods=["GET"])
         self.bp.add_url_rule("/service/journals", view_func=self.journals, methods=["GET"])
@@ -55,6 +56,15 @@ class DashboardController:
     @login_required
     def home(self):
         return render_template("dashboard/home.html")
+
+    # No permission beside the sign-in check, unlike the pages below. What
+    # is on this page belongs to the account looking at it and to nobody
+    # else, so there is no permission that could open or close it: any
+    # account that can sign in can change its own password, and none can
+    # change another's from here.
+    @login_required
+    def security(self):
+        return render_template("dashboard/security.html")
 
     # These pages are shells; their data comes from the API endpoints that
     # ask for the same permissions. Gating the page too keeps a caller who

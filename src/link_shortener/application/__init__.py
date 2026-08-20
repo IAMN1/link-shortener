@@ -88,10 +88,16 @@ from .use_cases.admin.users.list_user import ListUsersUseCase
 from .use_cases.admin.users.get_user import GetUserUseCase
 from .use_cases.admin.users.delete_user import DeleteUserUseCase
 
+from .use_cases.auth.change_password import ChangePasswordUseCase
 from .use_cases.auth.login import LoginUseCase
 from .use_cases.auth.register import RegisterUseCase
+from .use_cases.auth.request_password_reset import (
+    PasswordResetOutcome, RequestPasswordResetUseCase,
+)
+from .use_cases.auth.reset_password import ResetPasswordUseCase
 from .use_cases.auth.resend_verification import ResendVerificationUseCase
 from .use_cases.auth.send_account_exists_email import SendAccountExistsEmailUseCase
+from .use_cases.auth.send_password_reset_email import SendPasswordResetEmailUseCase
 from .use_cases.auth.send_verification_email import SendVerificationEmailUseCase
 from .use_cases.auth.verify_email import VerifyEmailUseCase
 
@@ -198,10 +204,15 @@ __all__ = [
     "GetUserUseCase",
     "DeleteUserUseCase",
 
+    "ChangePasswordUseCase",
     "LoginUseCase",
+    "PasswordResetOutcome",
     "RegisterUseCase",
+    "RequestPasswordResetUseCase",
+    "ResetPasswordUseCase",
     "ResendVerificationUseCase",
     "SendAccountExistsEmailUseCase",
+    "SendPasswordResetEmailUseCase",
     "SendVerificationEmailUseCase",
     "VerifyEmailUseCase",
     "CleanUnverifiedAccountsUseCase",

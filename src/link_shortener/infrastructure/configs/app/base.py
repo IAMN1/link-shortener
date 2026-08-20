@@ -710,6 +710,23 @@ class BaseConfig:
         # -- and a way to bury a real user's inbox under confirmations
         # they did not ask for.
         "auth.resend_verification": (3, 3600),
+        # Changing a password takes the current one, so this route answers
+        # whether a guess at it was right -- to a caller who is already
+        # signed in, and therefore only useful to somebody working from a
+        # session they took rather than an account they own. Five a minute
+        # is the sign-in limit, for the same reason the sign-in has one.
+        "auth.change_password": (5, 60),
+        # Mail on demand to whatever address is named, so the same limit
+        # as `resend_verification` and for the same two reasons: without
+        # it this is a way to have the service deliver mail to strangers,
+        # and a way to bury a real user's inbox under reset links they did
+        # not ask for.
+        "auth.forgot_password": (3, 3600),
+        # The only thing between a stranger and unlimited guesses at a
+        # reset token, which OWASP asks for by name. A 256-bit token will
+        # not be guessed either way; the limit is what stops the attempt
+        # from costing the service anything.
+        "auth.reset_password": (10, 60),
     }
     """
     Per-endpoint rate limit configurations.
@@ -1273,6 +1290,22 @@ class BaseConfig:
     appropriate is a trade rather than a number: shorter is less time for
     a link sitting in a mailbox to be worth stealing, longer is fewer
     people who open their mail the next morning and find a dead link.
+    """
+
+    PASSWORD_RESET_TTL_MINUTES: int = env_int("PASSWORD_RESET_TTL_MINUTES", 60)
+    """
+    Minutes a password reset link stays usable.
+
+    Minutes rather than hours, and a shorter default than the confirmation
+    above, because the two tokens are not worth the same. A confirmation
+    proves somebody can read a mailbox; a reset link is a working way into
+    the account, and it sits in that mailbox for its whole lifetime. OWASP's
+    Forgot Password Cheat Sheet asks for "a short expiration time" and names
+    20 minutes to an hour as the usual range.
+
+    The floor is what the trade is made against: a link too short-lived is
+    one that dies while its owner is still walking to their computer, and
+    every one of those is a second request and a second live token.
     """
 
     UNVERIFIED_ACCOUNT_TTL_HOURS: int = env_int("UNVERIFIED_ACCOUNT_TTL_HOURS", 72)
@@ -1970,6 +2003,15 @@ class BaseConfig:
                 errors.append(
                     f"{name} must be a positive number of hours, got {value}"
                 )
+
+        # Checked apart from the two above because its unit is different,
+        # and a message saying "positive number of hours" about a value in
+        # minutes sends the reader to change the wrong variable.
+        if self.PASSWORD_RESET_TTL_MINUTES < 1:
+            errors.append(
+                "PASSWORD_RESET_TTL_MINUTES must be a positive number of "
+                f"minutes, got {self.PASSWORD_RESET_TTL_MINUTES}"
+            )
 
         if self.UNVERIFIED_ACCOUNT_TTL_HOURS < self.EMAIL_VERIFICATION_TTL_HOURS:
             errors.append(

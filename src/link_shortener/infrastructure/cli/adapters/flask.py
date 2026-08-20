@@ -18,6 +18,7 @@ from link_shortener.infrastructure.cli.commands.stats import refresh_stats as re
 from link_shortener.infrastructure.cli.commands.stats import get_stats as get_stats_logic
 from link_shortener.infrastructure.cli.commands.maintenance import clean_expired_links as clean_expired_logic
 from link_shortener.infrastructure.cli.commands.maintenance import clean_expired_sessions as clean_sessions_logic
+from link_shortener.infrastructure.cli.commands.maintenance import clean_expired_password_resets as clean_reset_tokens_logic
 from link_shortener.infrastructure.cli.commands.maintenance import (
     clean_unverified_accounts as clean_unverified_logic,
 )
@@ -445,6 +446,20 @@ def clean_sessions():
     container = _container()
     deleted = clean_sessions_logic(container.get_uow_factory())
     click.echo(f"Deleted {deleted} expired refresh sessions.")
+
+@maintenance_group.command("clean-reset-tokens")
+@with_appcontext
+def clean_reset_tokens():
+    """Delete password reset tokens that are expired or already used.
+
+    A command of its own rather than a step inside `clean-sessions`. The
+    two tables hold different things and an operator whose cron line says
+    "clean sessions" should not find it deleting something else under a
+    name that does not mention it.
+    """
+    container = _container()
+    deleted = clean_reset_tokens_logic(container.get_uow_factory())
+    click.echo(f"Deleted {deleted} spent or expired password reset tokens.")
 
 @maintenance_group.command("normalize-emails")
 @click.option(

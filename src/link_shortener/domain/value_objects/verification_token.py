@@ -4,7 +4,8 @@ Two of the five rules OWASP's Forgot Password Cheat Sheet states for a
 token mailed to a user live here: generate it with a cryptographically
 secure source, and make it long enough to resist brute force. (The other
 three -- linked to a user, invalidated after use, expiring -- are
-properties of a stored row and belong to ``EmailVerification``.)
+properties of a stored row and belong to ``EmailVerification`` and
+``PasswordReset``, which is why both keep one.)
 
 On storage the cheat sheet says "Stored in a secure manner, as discussed
 in the Password Storage Cheat Sheet", and this deliberately does something
@@ -22,7 +23,7 @@ import secrets
 
 
 TOKEN_BYTES = 32
-"""Bytes of entropy in a confirmation token.
+"""Bytes of entropy in a mailed token, of either kind.
 
 256 bits, which is not a number to be tuned. It is what makes the digest
 below safe as a plain hash, and what makes brute force meaningless against

@@ -204,6 +204,34 @@ class JinjaMailTemplates(MailTemplates):
         )
         return subject.strip(), body
 
+    def password_reset_email(
+        self,
+        reset_url: str,
+        ttl_minutes: int,
+        language: Optional[str] = None,
+    ) -> Tuple[str, str]:
+        """
+        Render the message that carries a password reset link.
+
+        Args:
+            reset_url: Absolute URL that opens the reset form.
+            ttl_minutes: How long that URL stays usable.
+            language: Language tag chosen by the request that asked for
+                this message.
+
+        Returns:
+            Tuple of (subject, body), both plain text. The subject is
+            stripped for the same reason as above.
+        """
+        subject = self._render("password_reset_subject.txt", language)
+        body = self._render(
+            "password_reset_body.txt",
+            language,
+            reset_url=reset_url,
+            ttl_minutes=ttl_minutes,
+        )
+        return subject.strip(), body
+
     def account_exists_email(
         self, sign_in_url: str, language: Optional[str] = None
     ) -> Tuple[str, str]:

@@ -315,22 +315,25 @@ def grant_role(email: str, role_name: str) -> None:
             )
             session.commit()
 
-def mailed_confirmation(email: str) -> str:
+def mailed_link(email: str) -> str:
     """
-    Take the confirmation link out of the message the service sent.
+    Take the last link with a token in it out of what was mailed.
 
-    Nothing here mints it and nothing here spells the path. Registration
-    issues the token, the template builds the link, the mailer submits the
-    message over SMTP, and this reads back exactly what was delivered --
-    so a token that stopped being issued, a link built on a path nothing
-    answers, and a message that never left all fail here.
+    Serves both kinds of message, and the name says so: the confirmation
+    and the password reset are the same problem read the same way, and the
+    reader matches on the token rather than on a path. Which one comes
+    back is decided by which message was delivered last, which is why the
+    reset checks register their own account.
+
+    Nothing here mints a token and nothing here spells the path. The use
+    case issues the token, the template builds the link, the mailer
+    submits the message over SMTP, and this reads back exactly what was
+    delivered -- so a token that stopped being issued, a link built on a
+    path nothing answers, and a message that never left all fail here.
 
     Rebuilding the path from a known constant would undo that: measured --
     with the path written out here, a ``VERIFY_PATH`` changed to
     ``/auth/verify`` still gave 114/114.
-
-    Args:
-        email: Address the confirmation was sent to.
 
     Only the path is handed back, and the origin is deliberately not
     checked here. A test client can be given a path and nothing else, so
@@ -346,19 +349,19 @@ def mailed_confirmation(email: str) -> str:
     URL in a browser.
 
     Args:
-        email: Address the confirmation was sent to.
+        email: Address the message was sent to.
 
     Returns:
         Path with query string, as the link carries them.
     """
     target = mail.confirmation_target(email)
-    assert target is not None, f"no confirmation message was delivered to {email}"
+    assert target is not None, f"no message carrying a link reached {email}"
     return target
 
 
 def token_from(link: str) -> str:
     """
-    Take the confirmation token out of a mailed link.
+    Take the token out of a mailed link, of either kind.
 
     Args:
         link: Path with query string, as the message carries it.
@@ -388,7 +391,7 @@ def confirm_email(email: str) -> None:
     Args:
         email: Address of the account to confirm.
     """
-    link = mailed_confirmation(email)
+    link = mailed_link(email)
 
     # The link is followed, not just parsed. Reading the token out and
     # posting it to a path written here would confirm the address whatever
@@ -491,7 +494,7 @@ def _():
     # not confirm anything: mail scanners follow links, and a load that
     # spent the token would leave its owner told that their confirmation
     # is invalid.
-    link = mailed_confirmation("test@example.com")
+    link = mailed_link("test@example.com")
     r = new_client("10.0.0.32").get(link)
     assert r.status_code == 200, r.status_code
     assert r.headers["Content-Type"].startswith("text/html"), r.headers["Content-Type"]
@@ -500,7 +503,7 @@ def _():
 @test("POST /api/v1/auth/verify (the real token)")
 def _():
     # What the button on that page sends.
-    token = token_from(mailed_confirmation("test@example.com"))
+    token = token_from(mailed_link("test@example.com"))
     r = new_client("10.0.0.37").post("/api/v1/auth/verify", json={"token": token})
     assert r.status_code == 200, r.get_json()
 
@@ -701,6 +704,237 @@ def _():
     r = bare.post("/api/v1/auth/refresh", json={"refresh_token": handed_out})
     assert r.status_code == 200
     assert r.get_json()["refresh_token"] != handed_out
+
+
+# ─── 4b. Auth: Password change ────────────────────────────────────────
+print("\n=== AUTH: PASSWORD CHANGE ===")
+
+# Its own account, registered here and used nowhere else. The checks below
+# replace its password, and an account shared with a later section would
+# be a section that stops being able to sign in halfway through the run.
+CHANGER = "changer@example.com"
+CHANGER_OLD = "Test1234!"
+CHANGER_NEW = "Changed5678!"
+
+changer = new_client("10.0.0.60")
+changer_second = new_client("10.0.0.61")
+changer_second_token = None
+
+@test("An account of its own to change the password of")
+def _():
+    global changer_second_token
+    r = changer.post("/api/v1/auth/register", json={
+        "email": CHANGER, "password": CHANGER_OLD
+    })
+    assert r.status_code == 202, r.get_json()
+    confirm_email(CHANGER)
+    r = changer.post("/api/v1/auth/login", json={
+        "email": CHANGER, "password": CHANGER_OLD
+    })
+    assert r.status_code == 200, r.get_json()
+    # A second sign-in from its own client: this is the device the change
+    # is supposed to throw out, and it has to exist before the change.
+    r = changer_second.post("/api/v1/auth/login", json={
+        "email": CHANGER, "password": CHANGER_OLD
+    })
+    assert r.status_code == 200, r.get_json()
+    changer_second_token = r.get_json()["access_token"]
+
+@test("POST /api/v1/auth/change-password (nobody signed in)")
+def _():
+    r = new_client("10.0.0.62").post("/api/v1/auth/change-password", json={
+        "current_password": CHANGER_OLD, "new_password": CHANGER_NEW
+    })
+    assert r.status_code == 401, r.get_json()
+
+@test("POST /api/v1/auth/change-password (the wrong current password)")
+def _():
+    r = changer.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "not-it", "new_password": CHANGER_NEW},
+        headers=csrf(changer),
+    )
+    assert r.status_code == 400, r.get_json()
+    # Named rather than generalised: the caller is already inside the
+    # account, so there is nothing left for a vague answer to protect.
+    assert r.get_json()["details"][0]["field"] == "current_password", r.get_json()
+
+@test("POST /api/v1/auth/change-password (the password it already has)")
+def _():
+    r = changer.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": CHANGER_OLD, "new_password": CHANGER_OLD},
+        headers=csrf(changer),
+    )
+    assert r.status_code == 400, r.get_json()
+
+@test("POST /api/v1/auth/change-password (a password the policy refuses)")
+def _():
+    r = changer.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": CHANGER_OLD, "new_password": "123"},
+        headers=csrf(changer),
+    )
+    assert r.status_code == 400, r.get_json()
+
+@test("POST /api/v1/auth/change-password (the change takes)")
+def _():
+    r = changer.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": CHANGER_OLD, "new_password": CHANGER_NEW},
+        headers=csrf(changer),
+    )
+    assert r.status_code == 200, r.get_json()
+    assert set(r.get_json()) == {"access_token", "refresh_token"}
+
+    # The password afterwards is the new one and not the old one, asked
+    # from a client that was never signed in as anybody.
+    refused = new_client("10.0.0.63").post("/api/v1/auth/login", json={
+        "email": CHANGER, "password": CHANGER_OLD
+    })
+    assert refused.status_code == 401, refused.get_json()
+    accepted = new_client("10.0.0.64").post("/api/v1/auth/login", json={
+        "email": CHANGER, "password": CHANGER_NEW
+    })
+    assert accepted.status_code == 200, accepted.get_json()
+
+@test("A password change signs out the other devices, not this one")
+def _():
+    # The other device's token is still a validly signed claim; what
+    # stopped it is that the session it names has been revoked.
+    r = changer_second.get(
+        "/api/v1/links/mine",
+        headers={"Authorization": f"Bearer {changer_second_token}"},
+    )
+    assert r.status_code == 401, r.status_code
+    # And it cannot refresh its way back in.
+    r = changer_second.post(
+        "/api/v1/auth/refresh", headers=csrf(changer_second)
+    )
+    assert r.status_code == 401, r.status_code
+    # The client that made the change kept working, on the cookies the
+    # answer replaced -- with no token echoed here at all.
+    r = changer.get("/api/v1/links/mine")
+    assert r.status_code == 200, r.status_code
+
+
+# ─── 4c. Auth: Password reset by mail ─────────────────────────────────
+print("\n=== AUTH: PASSWORD RESET ===")
+
+# Its own account again, and for the same reason: these checks replace its
+# password, so an account shared with a later section would be one that
+# stops being able to sign in halfway through the run.
+FORGETFUL = "forgetful@example.com"
+FORGETFUL_OLD = "Test1234!"
+FORGETFUL_NEW = "Remembered9!"
+
+forgetful = new_client("10.0.0.70")
+forgetful_second = new_client("10.0.0.71")
+forgetful_second_token = None
+reset_link = None
+
+@test("An account of its own to reset the password of")
+def _():
+    global forgetful_second_token
+    r = forgetful.post("/api/v1/auth/register", json={
+        "email": FORGETFUL, "password": FORGETFUL_OLD
+    })
+    assert r.status_code == 202, r.get_json()
+    confirm_email(FORGETFUL)
+    # A device that is signed in when the reset happens, so that "every
+    # session goes" is a claim about something that existed.
+    r = forgetful_second.post("/api/v1/auth/login", json={
+        "email": FORGETFUL, "password": FORGETFUL_OLD
+    })
+    assert r.status_code == 200, r.get_json()
+    forgetful_second_token = r.get_json()["access_token"]
+
+@test("GET /forgot-password (the page that asks for a link)")
+def _():
+    r = new_client("10.0.0.72").get("/forgot-password")
+    assert r.status_code == 200, r.status_code
+    assert b"forgot-form" in r.data, "the page carries no form to submit"
+
+@test("POST /api/v1/auth/forgot-password (an address nobody holds)")
+def _():
+    # Answers the same as for a registered one, word for word. A route
+    # that mails on request and answers honestly says who is registered.
+    unknown = new_client("10.0.0.73").post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "nobody-here@example.com"},
+    )
+    known = new_client("10.0.0.74").post(
+        "/api/v1/auth/forgot-password", json={"email": FORGETFUL}
+    )
+    assert unknown.status_code == 202, unknown.get_json()
+    assert known.status_code == unknown.status_code
+    assert known.get_json()["message"] == unknown.get_json()["message"]
+
+@test("GET /reset-password (the mailed link lands on a page, and spends nothing)")
+def _():
+    global reset_link
+    # Read back out of the message that was delivered, path and all. A
+    # path written here instead would pass a `RESET_PATH` pointing
+    # anywhere -- which is exactly how the confirmation link was measured.
+    reset_link = mailed_link(FORGETFUL)
+    r = new_client("10.0.0.75").get(reset_link)
+    assert r.status_code == 200, r.status_code
+    assert r.headers["Content-Type"].startswith("text/html"), r.headers["Content-Type"]
+    assert b"reset-form" in r.data, "the page carries no form to submit"
+
+@test("POST /api/v1/auth/reset-password (a token nobody issued)")
+def _():
+    r = new_client("10.0.0.76").post(
+        "/api/v1/auth/reset-password",
+        json={"token": "never-issued", "new_password": FORGETFUL_NEW},
+    )
+    assert r.status_code == 400, r.get_json()
+
+@test("POST /api/v1/auth/reset-password (the real token)")
+def _():
+    token = token_from(reset_link)
+    r = new_client("10.0.0.77").post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": FORGETFUL_NEW},
+    )
+    assert r.status_code == 200, r.get_json()
+    # Nobody was signed in by it: the account was just opened by a link
+    # out of a mailbox, and the first thing it should ask for is the
+    # password that was chosen.
+    assert "access_token" not in r.get_json()
+
+    # And once only. The same token again is refused in the same words as
+    # one that never existed -- "already used" would say an account exists
+    # and somebody reset it.
+    again = new_client("10.0.0.78").post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "Third1234!"},
+    )
+    unknown = new_client("10.0.0.79").post(
+        "/api/v1/auth/reset-password",
+        json={"token": "no-such-token", "new_password": "Third1234!"},
+    )
+    assert again.status_code == unknown.status_code == 400
+    assert again.get_json()["message"] == unknown.get_json()["message"]
+
+@test("A reset replaces the password and signs out every device")
+def _():
+    refused = new_client("10.0.0.80").post("/api/v1/auth/login", json={
+        "email": FORGETFUL, "password": FORGETFUL_OLD
+    })
+    assert refused.status_code == 401, refused.get_json()
+    accepted = new_client("10.0.0.81").post("/api/v1/auth/login", json={
+        "email": FORGETFUL, "password": FORGETFUL_NEW
+    })
+    assert accepted.status_code == 200, accepted.get_json()
+
+    # The device that was signed in before the reset. Its access token is
+    # still a validly signed claim; the session it names is gone.
+    r = forgetful_second.get(
+        "/api/v1/links/mine",
+        headers={"Authorization": f"Bearer {forgetful_second_token}"},
+    )
+    assert r.status_code == 401, r.status_code
 
 
 # ─── 5. Shorten: Guest ────────────────────────────────────────────────
@@ -1691,6 +1925,9 @@ DASHBOARD_PAGES = (
     # to somebody else answers with zeroes rather than with a refusal.
     ("/dashboard/links/<short_code>/stats", 200),
     ("/dashboard/create-link", 200),
+    # Open to every signed-in account and guarded by no permission: what
+    # is on it belongs to whoever is reading it.
+    ("/dashboard/security", 200),
     ("/dashboard/service/stats", 200),
     ("/dashboard/service/health", 403),
     # Neither `audit:view` nor `logs:view` is in the plain role, so the
@@ -1714,12 +1951,13 @@ Listed in full rather than sampled: a partial transcription leaves out the
 parameterised rules, which are exactly the ones a new page is most likely
 to be added beside.
 
-The second column is what makes these fourteen checks fourteen checks.
+The second column is what makes these fifteen checks fifteen checks.
 ``@login_required`` is the outer decorator, so asking as an anonymous
 caller measures one thing over and over -- that nobody is logged in -- and
 every ``@require_permission`` behind it could be deleted with this file
-still green. Six of these pages are the plain role's to open and eight are
-not, and that difference is the only evidence those decorators are there.
+still green. Seven of these pages are the plain role's to open and eight
+are not, and that difference is the only evidence those decorators are
+there.
 """
 
 for _page, _signed_in in DASHBOARD_PAGES:
@@ -1984,7 +2222,7 @@ success = result.summary()
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 141
+EXPECTED_CHECKS = 156
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")

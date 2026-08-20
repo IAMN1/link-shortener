@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 
 from link_shortener.domain import (
     EmailVerificationRepository, LinkRepository, LinkVisitRepository,
-    PermissionRepository, RefreshSessionRepository, RoleRepository,
-    SecurityEventRepository, UserRepository
+    PasswordResetRepository, PermissionRepository, RefreshSessionRepository,
+    RoleRepository, SecurityEventRepository, UserRepository
 )
 
 class UnitOfWork(ABC):
@@ -60,6 +60,12 @@ class UnitOfWork(ABC):
     @abstractmethod
     def email_verifications(self) -> EmailVerificationRepository:
         """Return an EmailVerificationRepository bound to the current session."""
+        ...
+
+    @property
+    @abstractmethod
+    def password_resets(self) -> PasswordResetRepository:
+        """Return a PasswordResetRepository bound to the current session."""
         ...
 
     @property

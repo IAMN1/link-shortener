@@ -177,6 +177,9 @@ the same endpoint sends its own cookie and gets the language on screen.
 | `auth.logout` | 20 | 60 s | |
 | `auth.verify_email` | 10 | 60 s | Guessing a confirmation token |
 | `auth.resend_verification` | 3 | 3600 s | Mail on demand |
+| `auth.change_password` | 5 | 60 s | Guessing the current password |
+| `auth.forgot_password` | 3 | 3600 s | Mail on demand |
+| `auth.reset_password` | 10 | 60 s | Guessing a reset token |
 | `api.create_short_link` | 30 | 60 s | Creating links |
 | `api.batch_create` | 5 | 60 s | Creating in bulk |
 | `api.get_link_info` | 100 | 60 s | Reading a link |
@@ -252,7 +255,9 @@ guessing is gone while the configuration says it is there.
 | `MAIL_HOST`, `MAIL_PORT` | `localhost`, 1025 in development | Aimed at the Mailpit catcher |
 | `MAIL_USE_TLS` / `MAIL_USE_SSL` | `false` in development | `production` requires one of them |
 | `MAIL_FROM` | — | Mandatory when mail is on |
-| `UNVERIFIED_ACCOUNT_TTL_HOURS` | 24 | How long an unconfirmed account is kept before `maintenance clean-unverified` removes it |
+| `EMAIL_VERIFICATION_TTL_HOURS` | 24 | Hours a confirmation link stays usable |
+| `PASSWORD_RESET_TTL_MINUTES` | 60 | Minutes a password reset link stays usable. Minutes, and shorter than the line above, because this link is a way into the account rather than proof of a mailbox |
+| `UNVERIFIED_ACCOUNT_TTL_HOURS` | 72 | How long an unconfirmed account is kept before `maintenance clean-unverified` removes it. Must not be shorter than `EMAIL_VERIFICATION_TTL_HOURS` |
 
 ## Compose-only variables
 

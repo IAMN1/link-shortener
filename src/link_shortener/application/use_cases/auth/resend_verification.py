@@ -58,7 +58,8 @@ class ResendVerificationUseCase(BaseUseCase):
     has something to do issues a token and commits. Closing that would
     mean doing equal work either way, as ``JwtAuthenticationService`` does
     when it hashes against a dummy for an account that does not exist. It
-    is not done here, and it is written down in the developer guide.
+    is not done here, and it is written down under "Known limits" in
+    ``docs/decisions.md``.
 
     Issuing a new token retires the ones outstanding. Otherwise every
     request leaves another working link in the mailbox, and an address is
@@ -103,8 +104,8 @@ class ResendVerificationUseCase(BaseUseCase):
         # 0.82 ms for a registered one, and the three ranges do not
         # overlap. The status differs too, so the shape of the address was
         # never the secret -- what the ranges do leak is which addresses
-        # are registered, and that is written down in the guide rather
-        # than papered over here.
+        # are registered, and that is written down under "Known limits" in
+        # docs/decisions.md rather than papered over here.
         email_vo = Email(email)
 
         token = None

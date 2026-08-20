@@ -46,6 +46,12 @@
     <rect x="8.8" y="2.6" width="4.6" height="4.6" rx="1"/>
     <rect x="2.6" y="8.8" width="4.6" height="4.6" rx="1"/>
     <rect x="8.8" y="8.8" width="4.6" height="4.6" rx="1"/>
+{%- elif name == 'security' -%}
+    {# A padlock, shackle closed: the account's own credentials. Not the
+       key that stands for `roles` -- a key is what opens somebody else's
+       doors, and this entry is about the lock on your own. #}
+    <rect x="3.4" y="7" width="9.2" height="6.2" rx="1.2"/>
+    <path d="M5.8 7V5.4a2.2 2.2 0 0 1 4.4 0V7"/>
 {%- elif name == 'home' -%}
     <path d="M2.8 7.2 8 2.8l5.2 4.4V13H2.8z"/>
 {%- elif name == 'logout' -%}

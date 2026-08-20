@@ -430,7 +430,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 55
+    expected = 59
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -766,6 +766,190 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
             page.inner_text("#create-error")
         )
         assert base.split("//")[1] in page.inner_text("#create-result")
+
+    @check("the security page catches two new passwords that differ")
+    def _():
+        # Nothing is sent: the second field never reaches the service, so
+        # this refusal exists only in the browser and only this run can
+        # see it. The account's password is untouched, which is what makes
+        # it safe to make this check with the shared one.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/security")
+        page.fill("#current-password", PASSWORD)
+        page.fill("#new-password", "An0ther!Passw0rd")
+        page.fill("#repeat-password", "An0ther!Passw0rdX")
+        page.click("#change-password-form button[type=submit]")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#password-error", "#password-result"),
+            what="#password-error or #password-result to say something",
+        )
+
+        assert page.inner_text("#password-result").strip() == "", (
+            "a mismatched pair was accepted"
+        )
+        assert page.inner_text("#password-error").strip() != ""
+
+    @check("the dashboard changes a password through its own form")
+    def _():
+        # Its own account, registered here: the checks around this one
+        # sign in with the shared one, and this is the check that replaces
+        # a password.
+        changed = "browser-password@example.test"
+        after = "Ch4nged!Passw0rd"
+
+        page = page_for("/register")
+        page.fill("#email", changed)
+        page.fill("#password", PASSWORD)
+        page.click("#register-form button[type=submit]")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#reg-sent"),
+            what="#reg-sent to say something",
+        )
+        link = mail.confirmation_link(changed)
+        assert link is not None, "no confirmation message was delivered"
+        page.goto(link)
+        page.click("#verify-btn")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#verify-done", "#verify-error"),
+            what="#verify-done or #verify-error to say something",
+        )
+
+        page = page_for("/login")
+        page.fill("#email", changed)
+        page.fill("#password", PASSWORD)
+        page.click("#login-form button[type=submit]")
+        page.wait_for_url(f"{base}/dashboard/", timeout=5000)
+
+        page.goto(f"{base}/dashboard/security")
+        page.fill("#current-password", PASSWORD)
+        page.fill("#new-password", after)
+        page.fill("#repeat-password", after)
+        page.click("#change-password-form button[type=submit]")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#password-result", "#password-error"),
+            what="#password-result or #password-error to say something",
+        )
+
+        assert page.inner_text("#password-error").strip() == "", (
+            page.inner_text("#password-error")
+        )
+        assert page.inner_text("#password-result").strip() != ""
+
+        # The page that made the change is still inside the account. Its
+        # session was revoked with the rest and replaced by the cookies
+        # the answer carried; without that replacement this navigation
+        # would land on the login form.
+        page.goto(f"{base}/dashboard/")
+        assert page.url.rstrip("/") == f"{base}/dashboard", page.url
+
+        # And the account now signs in with the new password and not the
+        # old one, asked from a browser that was never signed in.
+        fresh = page_for("/login")
+        fresh.fill("#email", changed)
+        fresh.fill("#password", PASSWORD)
+        fresh.click("#login-form button[type=submit]")
+        wait_until(
+            fresh,
+            lambda p: has_text(p, "#login-error"),
+            what="#login-error to say something",
+        )
+        assert fresh.url.endswith("/login"), fresh.url
+
+        fresh.fill("#password", after)
+        fresh.click("#login-form button[type=submit]")
+        fresh.wait_for_url(f"{base}/dashboard/", timeout=5000)
+
+    @check("the forgotten-password form answers without saying who is registered")
+    def _():
+        # An address nobody registered. The sentence written under the
+        # form is the one a registered address gets, and this is the only
+        # run that sees it rendered -- the page draws it from the
+        # catalogue after the answer arrives.
+        page = page_for("/forgot-password")
+        page.fill("#email", "nobody-at-all@example.test")
+        page.click("#forgot-form button[type=submit]")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#forgot-done", "#forgot-error"),
+            what="#forgot-done or #forgot-error to say something",
+        )
+
+        assert page.inner_text("#forgot-error").strip() == "", (
+            page.inner_text("#forgot-error")
+        )
+        assert page.inner_text("#forgot-done").strip() != ""
+
+    @check("a password is reset from the link in the message")
+    def _():
+        # Its own account, registered and confirmed here: this check
+        # replaces a password, and the shared one is signed in with by
+        # every check around it.
+        forgetful = "browser-forgot@example.test"
+        after = "Rememb3red!Pass"
+
+        page = page_for("/register")
+        page.fill("#email", forgetful)
+        page.fill("#password", PASSWORD)
+        page.click("#register-form button[type=submit]")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#reg-sent"),
+            what="#reg-sent to say something",
+        )
+        confirmation = mail.confirmation_link(forgetful)
+        assert confirmation is not None, "no confirmation message was delivered"
+        page.goto(confirmation)
+        page.click("#verify-btn")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#verify-done", "#verify-error"),
+            what="#verify-done or #verify-error to say something",
+        )
+
+        # Asked for through the form, not through the API: this is the
+        # request the page makes, headers and all.
+        page = page_for("/forgot-password")
+        page.fill("#email", forgetful)
+        page.click("#forgot-form button[type=submit]")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#forgot-done", "#forgot-error"),
+            what="#forgot-done or #forgot-error to say something",
+        )
+
+        # Read back out of the delivered message, whole URL and all. The
+        # HTTP run can only follow a path; this one opens the address the
+        # message actually carries, which is what checks the host the link
+        # was built on.
+        link = mail.confirmation_link(forgetful)
+        assert link is not None, "no reset message was delivered"
+        page.goto(link)
+        page.fill("#new-password", after)
+        page.fill("#repeat-password", after)
+        page.click("#reset-form button[type=submit]")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#reset-done", "#reset-error"),
+            what="#reset-done or #reset-error to say something",
+        )
+
+        assert page.inner_text("#reset-error").strip() == "", (
+            page.inner_text("#reset-error")
+        )
+        assert page.inner_text("#reset-done").strip() != ""
+
+        # The account now signs in with the password chosen on that page,
+        # from a browser that was never signed in.
+        fresh = page_for("/login")
+        fresh.fill("#email", forgetful)
+        fresh.fill("#password", after)
+        fresh.click("#login-form button[type=submit]")
+        fresh.wait_for_url(f"{base}/dashboard/", timeout=5000)
 
     @check("the confirmation link opens a page rather than a JSON body")
     def _():

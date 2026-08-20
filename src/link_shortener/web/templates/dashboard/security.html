@@ -1,0 +1,39 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{{ _('Security — Linkr') }}{% endblock %}
+{% block dashboard_content %}
+<h1 class="dash-title">{{ _('Security') }}</h1>
+
+<div class="card narrow">
+    <span class="card-title">{{ _('Change password') }}</span>
+    {# Said before the form rather than after the change, because it is
+       what the person needs in order to decide whether to make it now.
+       Told afterwards, it is news about something they can no longer
+       choose. #}
+    <p class="text-sm text-muted">
+        {{ _('Changing your password signs out every device except this one.') }}
+    </p>
+    <form id="change-password-form">
+        <div class="form-group">
+            <label class="form-label" for="current-password">{{ _('Current password') }}</label>
+            <input type="password" id="current-password" class="form-input"
+                   autocomplete="current-password" required>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="new-password">{{ _('New password') }}</label>
+            <input type="password" id="new-password" class="form-input"
+                   autocomplete="new-password" required>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="repeat-password">{{ _('Repeat the new password') }}</label>
+            <input type="password" id="repeat-password" class="form-input"
+                   autocomplete="new-password" required>
+        </div>
+        <div id="password-error" class="form-error hidden"></div>
+        <button type="submit" class="btn btn--primary btn--block">{{ _('Change password') }}</button>
+    </form>
+    <div id="password-result" class="hidden mt-2"></div>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/pages/security.js') }}" defer></script>
+{% endblock %}

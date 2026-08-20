@@ -125,6 +125,7 @@ group.
 | `maintenance clean-sessions` | Remove `refresh_sessions` rows whose tokens have expired |
 | `maintenance clean-expired` | Remove links past `expires_at` |
 | `maintenance clean-unverified` | Remove accounts nobody confirmed within `UNVERIFIED_ACCOUNT_TTL_HOURS`, and their dead tokens |
+| `maintenance clean-reset-tokens` | Remove `password_resets` rows that are spent or expired |
 | `maintenance normalize-emails --apply` | One-off, on an existing database |
 | `maintenance health` | A dependency report on the terminal |
 | `stats refresh` | Rebuild the statistics cache |
@@ -138,6 +139,7 @@ flowchart LR
     D([Daily]) --> S[clean-sessions<br/>expired refresh tokens]
     D --> E[clean-expired<br/>expired links]
     D --> U[clean-unverified<br/>unconfirmed accounts]
+    D --> P[clean-reset-tokens<br/>spent reset links]
     W([Weekly]) --> R[stats refresh]
     O([Once, on an existing database]) --> N[normalize-emails --apply]
 ```
@@ -147,6 +149,7 @@ flowchart LR
 | `clean-sessions` | One row per refresh token ever issued; without the job the table only grows. It removes only rows that already grant nothing |
 | `clean-expired` | Removes only links that already answer `410 Gone`. Not just space: while an expired row sits in the database it occupies a place in its owner's statistics and in `/links/mine` |
 | `clean-unverified` | **Not cosmetic.** An unconfirmed account holds an address: it cannot be registered again (taken) and cannot be signed into (unconfirmed). Without this job anyone can squat addresses in bulk, permanently, and their owners are told "already registered". Confirmed accounts are never touched, whatever their age |
+| `clean-reset-tokens` | One row per reset asked for, and the accounts they belong to are staying — so nothing else ever prunes them. It removes only rows that already grant nothing: spent, or past `PASSWORD_RESET_TTL_MINUTES` |
 
 > [!WARNING]
 > **A behaviour change.** `clean-expired` used to delete anything untouched

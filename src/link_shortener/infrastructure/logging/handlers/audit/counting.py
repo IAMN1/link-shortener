@@ -6,9 +6,9 @@ measured at some 130 ms on this tree -- reaches about an hour and a half of
 a busy service. A chart of the last ninety days has to come from somewhere
 else, and this is the seam where the same event reaches both.
 
-A wrapper rather than a call in each use case: the vocabulary has fourteen
-events written from seven use cases, and a counter invoked beside each
-`audit.log_*` is a counter that the fifteenth event forgets. Here, every
+A wrapper rather than a call in each use case: the vocabulary has seventeen
+events written from seventeen use cases, and a counter invoked beside each
+`audit.log_*` is a counter that the eighteenth event forgets. Here, every
 event is counted by construction, and the next one is counted without a
 line of proof being needed anywhere.
 """

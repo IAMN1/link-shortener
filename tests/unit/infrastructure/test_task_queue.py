@@ -46,6 +46,61 @@ class TestNullTaskQueue:
         fn.assert_called_once_with("xyz789", ctx)
 
 
+class TestNullTaskQueueCarriesTheResetMessage:
+    """The mail half, where a failure must not pass for a success.
+
+    The click counter above swallows what it hits, because a lost counter
+    is a lost counter. This one reports: a reset message that never went
+    out is somebody locked out of their account, waiting.
+    """
+
+    def test_it_says_so_when_nothing_is_wired(self):
+        # The state a deployment is in when the fallback was never
+        # connected. Answering True here would have `forgot-password`
+        # store a token, answer 202 and send nothing.
+        assert NullTaskQueue().enqueue_password_reset_email(
+            "user@example.com", "TOKEN", RequestContext(request_id="test")
+        ) is False
+
+    def test_it_sends_on_the_calling_thread(self):
+        send = Mock()
+        queue = NullTaskQueue(send_password_reset_fn=send)
+        ctx = RequestContext(request_id="test")
+
+        assert queue.enqueue_password_reset_email(
+            "user@example.com", "TOKEN", ctx
+        ) is True
+        send.assert_called_once_with("user@example.com", "TOKEN", ctx)
+
+    def test_a_failure_is_reported_rather_than_swallowed(self):
+        logger = Mock()
+        queue = NullTaskQueue(
+            send_password_reset_fn=Mock(side_effect=RuntimeError("smtp down")),
+            logger=logger,
+        )
+
+        assert queue.enqueue_password_reset_email(
+            "user@example.com", "TOKEN", RequestContext(request_id="test")
+        ) is False
+        logger.error.assert_called_once()
+        # And the token is not in what was written: a log is read by more
+        # people, and kept longer, than a mailbox.
+        assert "TOKEN" not in str(logger.error.call_args)
+
+    def test_it_can_be_wired_after_construction(self):
+        # Which is how the container does it: the queue exists before the
+        # use case that sends the message can be built.
+        queue = NullTaskQueue()
+        send = Mock()
+        queue.set_send_password_reset_fn(send)
+        ctx = RequestContext(request_id="test")
+
+        assert queue.enqueue_password_reset_email(
+            "user@example.com", "TOKEN", ctx
+        ) is True
+        send.assert_called_once_with("user@example.com", "TOKEN", ctx)
+
+
 @pytest.fixture
 def dispatch():
     """Replace the Celery task so no broker is involved."""

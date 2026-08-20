@@ -742,6 +742,76 @@ PATHS: Dict[str, Any] = {
             },
         }
     },
+    "/api/v1/auth/forgot-password": {
+        "post": {
+            "summary": "Ask for a password reset link",
+            "description": (
+                "Answers 202 whether the address is registered, "
+                "unconfirmed, deactivated or unknown, with one sentence "
+                "that fits all four. A link is mailed only to an address "
+                "that has a live, confirmed account behind it; an "
+                "unconfirmed one is not a mailbox this service has any "
+                "evidence about."
+            ),
+            "tags": ["auth"],
+            "responses": {
+                "202": {
+                    "description": "Accepted, whatever was found",
+                    **_json("MessageResponse"),
+                },
+                "400": _error("Malformed body or malformed email"),
+                "429": _error("Too many requests from this address"),
+            },
+        }
+    },
+    "/api/v1/auth/reset-password": {
+        "post": {
+            "summary": "Set a new password from a mailed token",
+            "description": (
+                "Takes token and new_password. Answers the same whether "
+                "the token is unknown, already spent, expired, or names "
+                "an account that is gone -- telling them apart would say "
+                "who is registered. Nobody is signed in by it: the new "
+                "password is used on the sign-in page. Every session the "
+                "account held is revoked."
+            ),
+            "tags": ["auth"],
+            "responses": {
+                "200": {"description": "Changed", **_json("MessageResponse")},
+                "400": _error(
+                    "The token cannot be spent, or the password policy "
+                    "refuses the new password"
+                ),
+                "429": _error("Too many attempts from this address"),
+            },
+        }
+    },
+    "/api/v1/auth/change-password": {
+        "post": {
+            "summary": "Change the signed-in account's own password",
+            "description": (
+                "Takes current_password and new_password. The account is "
+                "the one the request is authenticated as and is never read "
+                "from the body. Every session the account had is revoked, "
+                "the caller's included, and the new pair in the answer is "
+                "opened after that -- so the client that made the change "
+                "stays signed in and no other device does."
+            ),
+            "tags": ["auth"],
+            "responses": {
+                "200": {
+                    "description": "Changed; a new pair for this client",
+                    **_json("RefreshResponse"),
+                },
+                "400": _error(
+                    "The current password is wrong, the new one repeats it, "
+                    "or the password policy refuses it"
+                ),
+                "401": _error("Nobody is authenticated"),
+                "429": _error("Too many attempts from this address"),
+            },
+        }
+    },
     "/api/v1/auth/refresh": {
         "post": {
             "summary": "Rotate the refresh token",

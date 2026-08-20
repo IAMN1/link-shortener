@@ -18,6 +18,7 @@ from link_shortener.application import (
     # it builds ``Any`` at the call site, however carefully the components
     # themselves are typed.
     ActivateUserUseCase, AuditLogger, BatchCreateLinksUseCase,
+    ChangePasswordUseCase,
     CleanExpiredLinksUseCase, CleanUnverifiedAccountsUseCase,
     CreateRoleUseCase, CreateShortLinkUseCase, CreateUserUseCase,
     ConfirmUserEmailUseCase, DeactivateUserUseCase, DeleteLinkUseCase,
@@ -28,9 +29,11 @@ from link_shortener.application import (
     GetUserActivityStatsUseCase, GetUserLinksUseCase,
     GetUserUseCase, ListRolesUseCase, ListUsersUseCase, Logger, LoginUseCase,
     Mailer, RateLimiter, ReadJournalUseCase, RedirectLinkUseCase, RegisterUseCase,
-    ResendVerificationUseCase, RollUpSecurityEventsUseCase,
+    RequestPasswordResetUseCase,
+    ResendVerificationUseCase, ResetPasswordUseCase, RollUpSecurityEventsUseCase,
     RollUpVisitsUseCase, SeedDatabaseUseCase,
-    SendAccountExistsEmailUseCase, SendVerificationEmailUseCase, ServiceCache,
+    SendAccountExistsEmailUseCase, SendPasswordResetEmailUseCase,
+    SendVerificationEmailUseCase, ServiceCache,
     TaskQueue, UnitOfWorkFactory, UpdateLinkStatsUseCase,
     UpdateRolePermissionsUseCase, UpdateUserRolesUseCase, VerifyEmailUseCase,
 )
@@ -431,6 +434,7 @@ class Container:
             self._auth_use_cases = AuthUseCasesComponent(
                 uow_factory=self._uow_factory,
                 authentication_service=self.auth_component.get_authentication_service(),
+                user_service=self._user_management_service,
                 logger=self.logger_component.get_logger(__name__),
                 audit_logger=self._audit_logger(),
                 default_role_name=self.config.DEFAULT_ROLE_NAME,
@@ -439,6 +443,7 @@ class Container:
                 templates=JinjaMailTemplates(),
                 base_url=self.config.BASE_URL,
                 verification_ttl_hours=self.config.EMAIL_VERIFICATION_TTL_HOURS,
+                password_reset_ttl_minutes=self.config.PASSWORD_RESET_TTL_MINUTES,
                 unverified_ttl_hours=self.config.UNVERIFIED_ACCOUNT_TTL_HOURS,
             )
             # Wire the synchronous fallback for NullTaskQueue, the same way
@@ -451,6 +456,17 @@ class Container:
                 # notice were only sent when a broker happens to be
                 # configured, registration would take one length with
                 # Celery on and two lengths with it off.
+                # And the reset message, for the third time and the
+                # same reason. Left unwired, `forgot-password` would take
+                # the token, store it, answer 202 and send nothing --
+                # which is indistinguishable, from outside, from an
+                # address nobody registered.
+                reset_uc = (
+                    self._auth_use_cases.get_send_password_reset_email_use_case()
+                )
+                self.task_queue_component.set_send_password_reset_fn(
+                    reset_uc.execute
+                )
                 exists_uc = (
                     self._auth_use_cases.get_send_account_exists_email_use_case()
                 )
@@ -633,9 +649,25 @@ class Container:
         return self._init_admin_user_use_cases().get_delete_user_use_case()
 
     # Authentication use cases
+    def get_change_password_use_case(self) -> ChangePasswordUseCase:
+        """Return fully configured ``ChangePasswordUseCase``."""
+        return self._init_auth_use_cases().get_change_password_use_case()
+
     def get_login_use_case(self) -> LoginUseCase:
         """Return fully configured ``LoginUseCase``."""
         return self._init_auth_use_cases().get_login_use_case()
+
+    def get_request_password_reset_use_case(self) -> RequestPasswordResetUseCase:
+        """Return fully configured ``RequestPasswordResetUseCase``."""
+        return self._init_auth_use_cases().get_request_password_reset_use_case()
+
+    def get_reset_password_use_case(self) -> ResetPasswordUseCase:
+        """Return fully configured ``ResetPasswordUseCase``."""
+        return self._init_auth_use_cases().get_reset_password_use_case()
+
+    def get_send_password_reset_email_use_case(self) -> SendPasswordResetEmailUseCase:
+        """Return fully configured ``SendPasswordResetEmailUseCase``."""
+        return self._init_auth_use_cases().get_send_password_reset_email_use_case()
 
     def get_register_use_case(self) -> RegisterUseCase:
         """Return fully configured ``RegisterUseCase``."""

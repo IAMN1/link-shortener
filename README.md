@@ -9,7 +9,7 @@ suite that fails when the documentation starts lying.
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests: 3287](https://img.shields.io/badge/tests-3287-0b5d3b)](docs/testing.md)
+[![tests: 3372](https://img.shields.io/badge/tests-3372-0b5d3b)](docs/testing.md)
 [![coverage: 95%](https://img.shields.io/badge/coverage-95%25-0b5d3b)](docs/testing.md)
 [![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
 [![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -165,6 +165,9 @@ Thirty-four operations. Full description: `/api/openapi.json`, rendered at
 | `POST` | `/api/v1/auth/login` | — | Tokens; an unconfirmed address gets `EMAIL_NOT_VERIFIED` |
 | `POST` | `/api/v1/auth/refresh` | refresh token | Rotate the pair |
 | `POST` | `/api/v1/auth/logout` | session | Revoke it server-side |
+| `POST` | `/api/v1/auth/change-password` | session | Replace your own password; every session goes, this one is reopened |
+| `POST` | `/api/v1/auth/forgot-password` | — | `202`, and the same answer whether or not the address has an account |
+| `POST` | `/api/v1/auth/reset-password` | — | Spend a mailed token and set a new password; every session goes |
 | `GET`, `POST` | `/api/v1/admin/users` | `admin:view_users` / `admin:manage_users` | List, create |
 | `PUT` | `/api/v1/admin/users/{id}/roles` | `admin:manage_users` | Replace roles |
 | `POST` | `/api/v1/admin/users/{id}/deactivate` | `admin:manage_users` | Suspend; refused for the last administrator |
@@ -201,9 +204,9 @@ Thirty-four operations. Full description: `/api/openapi.json`, rendered at
 ## Testing
 
 ```bash
-uv run pytest tests/                      # 3287 tests
-uv run python tests/live/smoke_test.py    # 141 checks over HTTP
-uv run python tests/live/browser_test.py  # 55 checks in a real browser
+uv run pytest tests/                      # 3372 tests
+uv run python tests/live/smoke_test.py    # 156 checks over HTTP
+uv run python tests/live/browser_test.py  # 59 checks in a real browser
 ```
 
 Four levels — unit, integration on SQLite, integration on real PostgreSQL and

@@ -73,6 +73,29 @@ def clean_expired_sessions(uow_factory: UnitOfWorkFactory) -> int:
         return deleted
 
 
+def clean_expired_password_resets(uow_factory: UnitOfWorkFactory) -> int:
+    """
+    Delete reset tokens that can no longer be spent.
+
+    Both halves go: expired, and already used. A spent token is as dead as
+    an expired one, and neither grants anything -- what they do is
+    accumulate, one row per request, in a table nothing else prunes.
+    Confirmation tokens are swept by ``clean-unverified``, alongside the
+    accounts they belong to; these belong to accounts that are staying, so
+    they need a job of their own.
+
+    Args:
+        uow_factory: Factory for creating Unit of Work instances.
+
+    Returns:
+        Number of deleted tokens.
+    """
+    with uow_factory() as uow:
+        deleted = uow.password_resets.delete_expired()
+        uow.commit()
+        return deleted
+
+
 def clean_unverified_accounts(
     use_case: CleanUnverifiedAccountsUseCase, context: RequestContext
 ) -> int:

@@ -1,6 +1,6 @@
 # Decisions
 
-Forty-eight write-ups of why something is the way it is. Read this when the
+Fifty-one write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -248,6 +248,106 @@ character.
 
 **Why.** A password of spaces passes a length check, cannot be typed back
 reliably, and is not what anybody meant.
+
+### A password change takes the current password and closes every session
+
+**Decided** (2026-08-20): `POST /api/v1/auth/change-password` requires
+`current_password`, revokes every refresh session the account holds — the
+caller's included — and only then opens a new one, handed back in the same
+answer.
+
+**Why the current password.** The route is reached with a session, and a
+session is what somebody who borrowed the laptop or landed a script on the
+page already holds. Without the check, that is enough to change the
+password, which locks the owner out of their own account: the one move that
+turns a borrowed session into a taken one. ASVS 2.1.5 asks for it by name,
+and the cost is one bcrypt comparison on a route nobody calls twice.
+
+**Why every session, and why in that order.** A password is usually changed
+because somebody else may know the old one, and a change that leaves their
+device signed in has not done the thing it was for. Measured on the live
+run: the second device's access token — still a validly signed claim —
+answers `401` after the change, and its refresh token answers `401` too.
+
+The order is the part that is easy to get wrong and invisible afterwards.
+Opened first, the new session is one of the sessions the next line revokes,
+and the caller is signed out by their own change; the end state looks the
+same either way, which is why
+`tests/unit/application/test_use_cases/test_password_change_closes_every_session.py`
+asserts the call order rather than the outcome. Measured by writing it the
+wrong way round: one test of the nine reddens, and it is that one.
+
+**Why the answer carries a new pair.** The browser authenticates by cookie,
+and the cookie names a session this request has just revoked. Without the
+replacement the page that made the change is signed out by it — which reads
+to the person in front of it as the change having failed.
+
+**Why the page asks for no permission.** What is on `/dashboard/security`
+belongs to the account reading it. There is no permission that could open
+or close it: every account that can sign in may change its own password,
+and none may change another's from there. The operator's path
+(`flask security reset-password`) is unchanged and still exists for the
+account that cannot sign in at all.
+
+**What was left open.** Recovery by email. An account whose password is
+forgotten still needs an operator, and that is the other half of this
+feature rather than a decision against it.
+
+### A reset link lives in a table of its own, for an hour
+
+**Decided** (2026-08-20): `password_resets` is a second table beside
+`email_verifications` rather than the same table with a `purpose` column.
+`PASSWORD_RESET_TTL_MINUTES` defaults to 60. A new request retires the
+links outstanding, and so does any password change.
+
+**Why a second table.** The two rows carry identical columns and buy
+different things: a confirmation proves a mailbox is readable, a reset
+opens the account. Behind one column they are told apart by a `WHERE` in
+every query that touches them — `claim`, `invalidate_for_user`,
+`delete_expired` — and the one place that clause is left off is a place
+where a confirmation link is accepted as a reset link. That is an account
+taken over by following a link its owner asked for, from a diff that looks
+like a missing filter. Two tables cannot be confused by omission: the
+query names one of them. The cost is about two hundred lines of repeated
+shape, and the token itself is not repeated — `issue_token` and
+`token_digest` were already shared.
+
+**Why an hour, in minutes.** OWASP's Forgot Password Cheat Sheet asks for
+"a short expiration time" and names 20 minutes to an hour. The confirmation
+token gets 24 hours because losing it costs somebody a second registration
+message; this one is a working credential sitting in a mailbox, and the
+unit is minutes so that the sentence in the message says so — a reader told
+"1 hour" comes back to it in the evening.
+
+**Why a new request retires the old links rather than being refused.**
+Refusing while an earlier link lives sounds safer and hands a stranger a
+denial of service: anyone who asks for a reset on your address blocks your
+own request for the rest of the hour. Retiring instead means the newest
+link is the only working one, which is the property that actually matters.
+
+**Why a password change retires them too.** The likeliest reason somebody
+changes their password in a hurry is that a reset they did not ask for
+turned up in their mailbox. A link that outlives the change is that
+stranger still holding the account. Measured by removing that one line:
+`test_password_reset.py::test_a_link_mailed_before_the_change_stops_working`
+turns red and nothing else in the suite moves.
+
+**Who gets nothing, and one case that is not obvious.** No account, and a
+deactivated one — neither can sign in, so a new password buys nothing. And
+an **unconfirmed** address: this service has no evidence that mailbox
+belongs to whoever typed it into the registration form, so mailing a way
+into the account there means mailing it on a stranger's word. That account
+already has a road, and it is the confirmation message. All four answer
+`202` with one sentence.
+
+**Nobody is signed in by a reset.** OWASP asks for it, and the order is the
+honest one: the account has just been opened by a link out of a mailbox,
+so the first thing it should ask for is the credential.
+
+**What was left open.** The timing is not level. The branch with something
+to do issues a token and commits, so a registered, confirmed address takes
+measurably longer than an unknown one — the same leak the confirmation
+resend has, and recorded with it under [Known limits](#known-limits).
 
 ### A role name is bounded by its character set, not only its length
 
@@ -1220,6 +1320,34 @@ ways at once.
 
 Things that are wrong, understood, and deliberately left. Each says what it
 would cost to fix.
+
+<details>
+<summary><b>The mail-on-request routes answer at two speeds</b> — accepted 2026-08-20</summary>
+
+`POST /api/v1/auth/resend-verification` and
+`POST /api/v1/auth/forgot-password` return the same status and the same
+sentence for every address. They do not take the same time. The branch with
+something to do issues a token and commits a transaction; the branch with
+nothing to do returns after one lookup. Measured on the resend route: a
+malformed address comes back in 0.12 ms, an unknown one in 0.26 ms, and a
+registered one in 0.82 ms, and the three ranges do not overlap. So the body
+says nothing about who is registered and the clock says it anyway, to
+anybody willing to time a few hundred requests.
+
+What it would cost to fix: doing equal work either way, as
+`JwtAuthenticationService` already does at sign-in, where it hashes against
+a dummy for an account that does not exist. Here that means issuing and
+storing a token for an address with no account behind it, or sleeping to a
+fixed budget — the first writes rows for strangers, the second makes every
+real request as slow as the slowest one. Neither is worth it while the
+throttle stands at three requests an hour per address, which is what the
+timing attack would have to be run through.
+
+Stated here because the code used to say it was "written down in the
+developer guide", where it was not: a docstring pointing at a note nobody
+wrote reads exactly like a documented decision.
+
+</details>
 
 <details>
 <summary><b>Self-registration writes no <code>USER_CREATED</code></b> — accepted 2026-08-19</summary>

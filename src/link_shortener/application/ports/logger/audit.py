@@ -44,6 +44,14 @@ class AuditEvent(Enum):
     USER_DEACTIVATED = "USER_DEACTIVATED"
     ROLES_CHANGED = "ROLES_CHANGED"
 
+    # The name of an event, not a password. bandit reads any string
+    # assigned to a name containing PASSWORD as a credential; the value
+    # here is what a reader filters the journal by, and it has to be
+    # this word.
+    PASSWORD_CHANGED = "PASSWORD_CHANGED"  # nosec B105
+    # The same mark and the same reason as the line above.
+    PASSWORD_RESET = "PASSWORD_RESET"  # nosec B105
+
     ROLE_CREATED = "ROLE_CREATED"
     ROLE_DELETED = "ROLE_DELETED"
     ROLE_PERMISSIONS_CHANGED = "ROLE_PERMISSIONS_CHANGED"
@@ -303,6 +311,70 @@ class AuditLogger(ABC):
         """
         self.log_security_event(
             AuditEvent.USER_DEACTIVATED,
+            target_user_id=target_user_id,
+            sessions_revoked=sessions_revoked,
+            **fields,
+        )
+
+    def log_password_changed(self, target_user_id: str, sessions_revoked: int, **fields) -> None:
+        """
+        Record a password replaced by the account holder.
+
+        Belongs here by the rule the vocabulary is built on: the password
+        is what proves who may act as this account, so replacing it
+        changes who may do what. It is also the event an investigation
+        starts from -- an account taken over is an account whose password
+        changed at a time its owner cannot account for, and without a
+        record there is nothing to put a time against.
+
+        ``sessions_revoked`` for the same reason it is carried on
+        deactivation: a change made while four sessions were open closed
+        four of them, and if one of those belonged to an intruder, the
+        count is the only trace that anything was thrown out.
+
+        The old and the new password are not fields here and must not
+        become fields. Neither is the fact that this went through the
+        forgotten-password route rather than the settings page -- that is
+        a separate event, because the two are entered from different
+        places and one of them needs no password at all.
+
+        Args:
+            target_user_id: The account whose password was replaced.
+            sessions_revoked: How many refresh sessions were closed with it.
+            **fields: Additional context.
+        """
+        self.log_security_event(
+            AuditEvent.PASSWORD_CHANGED,
+            target_user_id=target_user_id,
+            sessions_revoked=sessions_revoked,
+            **fields,
+        )
+
+    def log_password_reset(self, target_user_id: str, sessions_revoked: int, **fields) -> None:
+        """
+        Record a password replaced through the forgotten-password route.
+
+        Its own event rather than a ``reason`` field on
+        ``PASSWORD_CHANGED``, because the two are entered from different
+        places and only one of them was made by somebody who knew the old
+        password. An investigator asking "was this account taken over"
+        reads them as different facts: a change is somebody who was
+        already inside, a reset is somebody who proved they can read the
+        mailbox and nothing else. Folded into one event, the question is
+        answered by filtering on a field, and a filter written by hand is
+        a filter that can be left off.
+
+        No ``email`` field. The address is what the message went to and is
+        already in the record of the request; repeating it here would put
+        it in the audit trail once per reset for no question it answers.
+
+        Args:
+            target_user_id: The account whose password was replaced.
+            sessions_revoked: How many refresh sessions were closed with it.
+            **fields: Additional context.
+        """
+        self.log_security_event(
+            AuditEvent.PASSWORD_RESET,
             target_user_id=target_user_id,
             sessions_revoked=sessions_revoked,
             **fields,

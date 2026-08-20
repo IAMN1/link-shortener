@@ -13,12 +13,13 @@ from sqlalchemy.orm import Session
 from link_shortener.application import Logger, UnitOfWork
 from link_shortener.domain import (
     EmailVerificationRepository, LinkRepository, LinkVisitRepository,
-    PermissionRepository,
+    PasswordResetRepository, PermissionRepository,
     RefreshSessionRepository, RoleRepository, SecurityEventRepository,
     UserRepository
 )
 from link_shortener.infrastructure.database.manager import DatabaseManager
 from link_shortener.infrastructure.database.repositories.sqlalchemy_email_verification_repository import SQLAlchemyEmailVerificationRepository
+from link_shortener.infrastructure.database.repositories.sqlalchemy_password_reset_repository import SQLAlchemyPasswordResetRepository
 from link_shortener.infrastructure.database.repositories.sqlalchemy_link_visit_repository import SQLAlchemyLinkVisitRepository
 from link_shortener.infrastructure.database.repositories.sqlalchemy_security_event_repository import (
     SQLAlchemySecurityEventRepository,
@@ -72,6 +73,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         self._permissions: Optional[PermissionRepository] = None
         self._refresh_sessions: Optional[RefreshSessionRepository] = None
         self._email_verifications: Optional[EmailVerificationRepository] = None
+        self._password_resets: Optional[PasswordResetRepository] = None
         self._link_visits: Optional[LinkVisitRepository] = None
         self._security_events: Optional[SecurityEventRepository] = None
         self._committed = False
@@ -111,6 +113,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         self._permissions = SQLAlchemyPermissionRepository(self._session)
         self._refresh_sessions = SQLAlchemyRefreshSessionRepository(self._session)
         self._email_verifications = SQLAlchemyEmailVerificationRepository(self._session)
+        self._password_resets = SQLAlchemyPasswordResetRepository(self._session)
         self._link_visits = SQLAlchemyLinkVisitRepository(self._session)
         self._security_events = SQLAlchemySecurityEventRepository(self._session)
         self._committed = False
@@ -145,6 +148,7 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         self._permissions = None
         self._refresh_sessions = None
         self._email_verifications = None
+        self._password_resets = None
         self._link_visits = None
 
     # ------------------------------------------------------------------
@@ -261,6 +265,17 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         if self._email_verifications is None:
             raise RuntimeError("Unit of Work not entered")
         return self._email_verifications
+
+    @property
+    def password_resets(self) -> PasswordResetRepository:
+        """Return the ``PasswordResetRepository`` bound to the current session.
+
+        Raises:
+            RuntimeError: If the context has not been entered.
+        """
+        if self._password_resets is None:
+            raise RuntimeError("Unit of Work not entered")
+        return self._password_resets
 
     @property
     def link_visits(self) -> LinkVisitRepository:

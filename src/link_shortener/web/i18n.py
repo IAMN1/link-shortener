@@ -248,6 +248,29 @@ def script_strings() -> Dict[str, str]:
         "confirm_delete_link_of_account": gettext(
             "Delete link %(code)s? It belongs to this account."
         ),
+        # The security page. Both are said after the form has been
+        # submitted, so neither can come from the template it was rendered
+        # from.
+        "password_changed": gettext(
+            "Password changed. Your other devices have been signed out."
+        ),
+        # Checked in the browser, because the second field never reaches
+        # the service: it exists so that a password typed wrong twice is
+        # caught before it becomes the password.
+        "passwords_do_not_match": gettext("The two passwords are not the same."),
+        # The two public password-reset pages. Both are said after the
+        # form has been submitted, so neither can come from the template.
+        # The service's own answer is not shown in their place: it is one
+        # sentence for every address by design, so there is nothing in it
+        # worth reading, and out of the catalogue it is in the reader's
+        # language.
+        "reset_link_sent": gettext(
+            "If that address has an account, a link to reset its password "
+            "has been sent to it."
+        ),
+        "password_reset_done": gettext(
+            "Password changed. You can sign in now."
+        ),
         "no_links": gettext("No links"),
         "no_links_yet": gettext("No links yet"),
         "no_links_visited": gettext("No links have been visited yet"),
@@ -349,8 +372,8 @@ def script_strings() -> Dict[str, str]:
             "Archives reach back to %(name)s."
         ),
         # The security counters under the journal viewer. Three series and
-        # everything else summed, because fourteen event types would be
-        # fourteen colours nobody can tell apart.
+        # everything else summed, because seventeen event types would be
+        # seventeen colours nobody can tell apart.
         "counts_signed_in": gettext("Signed in"),
         "counts_refused": gettext("Refused"),
         "counts_roles": gettext("Roles changed"),

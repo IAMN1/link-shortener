@@ -22,11 +22,15 @@
         </form>
 
         <div class="auth-foot">
+            {# A destination, unlike the entry below it: the address is
+               typed on that page, not on this one, so there is nothing
+               here to send. #}
+            <p><a href="{{ url_for('frontend.forgot_password_page') }}">{{ _('Forgotten your password?') }}</a></p>
             {# An account that never confirmed its address cannot sign in,
                and the service will mail a fresh link on request -- which
                had no button anywhere. Someone whose message never arrived
                was simply stuck. #}
-            {# Not a destination either -- it asks for another message and
+            {# Not a destination -- it asks for another message and
                writes the answer beneath itself. See the note on the logout
                entry in `layout/base.html` for why no `data-turbo` attribute
                is needed to keep Turbo out of it. #}

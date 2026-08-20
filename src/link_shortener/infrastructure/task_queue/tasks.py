@@ -57,6 +57,42 @@ def send_verification_email(self, email: str, token: str, context_dict: dict):
 
 
 @celery_app.task(bind=True, max_retries=3)
+def send_password_reset_email(self, email: str, token: str, context_dict: dict):
+    """
+    Celery task to send one password reset message.
+
+    This task is triggered by ``CeleryTaskQueue.enqueue_password_reset_email``.
+
+    Retried like the confirmation message, and bounded for the same
+    reason. What is different is the clock it races: the token expires in
+    minutes, so a message that only goes out on the third attempt may
+    arrive with little of its life left. That is still better than not
+    arriving -- the person asks again and gets a fresh one -- and it is
+    why the retry delay is not lengthened here.
+
+    Args:
+        email: Address to send to.
+        token: The reset token as it goes into the link.
+        context_dict: Serialized ``RequestContext`` fields.
+
+    Raises:
+        Exception: On failure, the task is retried up to 3 times with a
+            60s delay. Neither the token nor the message body is logged.
+    """
+    try:
+        context = RequestContext(**context_dict)
+        container = get_container()
+        use_case = container.get_send_password_reset_email_use_case()
+        use_case.execute(email, token, context)
+        logger.info("Password reset email sent", email=email)
+    except Exception as exc:
+        logger.error(
+            "Error sending password reset email", email=email, error=str(exc)
+        )
+        self.retry(exc=exc, countdown=60)
+
+
+@celery_app.task(bind=True, max_retries=3)
 def send_account_exists_email(self, email: str, context_dict: dict):
     """
     Celery task to tell an address that somebody tried to register it.

@@ -260,6 +260,9 @@ def create_app(config=None) -> Flask:
         register_uc,
         container.get_verify_email_use_case(),
         container.get_resend_verification_use_case(),
+        container.get_change_password_use_case(),
+        container.get_request_password_reset_use_case(),
+        container.get_reset_password_use_case(),
     )
 
     app.register_blueprint(api_controller.bp)

@@ -1,6 +1,6 @@
 # Testing
 
-**3287 tests**, 95.60% coverage against a floor of 88%, plus two live runs
+**3372 tests**, 95.49% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -60,14 +60,14 @@ tests/
 Neither is collected by pytest — `python_files = "test_*.py"` does not match
 their names.
 
-### smoke_test.py — 141 checks over HTTP
+### smoke_test.py — 156 checks over HTTP
 
 ```bash
 uv run python tests/live/smoke_test.py
 ```
 
 The exit code is non-zero if any check failed **or if the number of checks
-is not 141**: "everything passed" is a statement about the checks that ran,
+is not 156**: "everything passed" is a statement about the checks that ran,
 and says nothing about the ones that stopped running.
 
 Route coverage is not claimed but counted: the run records which rule
@@ -86,7 +86,7 @@ on its own, and demanding a check for each would ask this run to prove
 Werkzeug works.
 
 <details>
-<summary>Why the run needs five separate clients</summary>
+<summary>Why the run needs nine separate clients</summary>
 
 A Flask test client keeps a cookie jar, so after any request logs in, *every*
 later request on that client is cookie-authenticated — and the CSRF layer
@@ -105,6 +105,16 @@ signed-in caller: 32 of 56.
   Without it the file has only an owner and an anonymous caller, and every
   per-object authorization check could be deleted from the application with
   this run still green.
+- `changer` and `changer_second` are two devices of one further account, and
+  they exist because the password-change section replaces that account's
+  password. Sharing an account with the sections around it would leave them
+  unable to sign in halfway through the run; sharing a client between the
+  two devices would make "the other device was signed out" a claim about the
+  device that made the change.
+- `forgetful` and `forgetful_second` are the same pair for the reset
+  section, which replaces a password too — and reads the link out of a
+  delivered message, so its account also has to be the only one that was
+  mailed anything recently.
 
 Each client answers from its own address: registration is limited to three
 per hour per address, so a fourth scenario from one address would measure
@@ -112,7 +122,7 @@ the throttle instead of what it is named after.
 
 </details>
 
-### browser_test.py — 55 checks in a real browser
+### browser_test.py — 59 checks in a real browser
 
 ```bash
 uv sync --group browser
@@ -237,7 +247,7 @@ Both now raise `tests/live/mail_catcher.py`, an SMTP server on the loopback,
 point the mailer at it, and take the link out of the delivered message.
 
 Measured by pointing `VERIFY_PATH` at a path nothing answers: the HTTP run
-gives 87/141, the browser run 14/55.
+gives 91/156, the browser run 15/59.
 
 The link has to be **opened**, not parsed. The message now leads to a page
 whose button posts the token, which tempted the HTTP run into extracting the
@@ -400,8 +410,8 @@ catch tests that read configuration nobody gave them.
 flowchart TD
     subgraph clean["clean"]
         C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
-        C2 --> C3[count collected tests<br/>minimum 3279] --> C4[pytest --error-for-skips]
-        C4 --> C5[smoke_test.py<br/>141 checks] --> C6[browser_test.py<br/>55 checks]
+        C2 --> C3[count collected tests<br/>minimum 3364] --> C4[pytest --error-for-skips]
+        C4 --> C5[smoke_test.py<br/>156 checks] --> C6[browser_test.py<br/>59 checks]
     end
     subgraph hostile["hostile"]
         H1[the same, plus a polluted .env<br/>and exported variables] --> H2[pytest --error-for-skips]
@@ -423,5 +433,5 @@ The browser run is on the clean half only: it reads nothing from the
 environment, and Chromium is a hundred megabytes to download.
 
 Linters are a separate job, one pass, with a step each so the summary says
-which tool objected: `flake8`, `pylint` (floor 9.0, currently 9.24),
+which tool objected: `flake8`, `pylint` (floor 9.0, currently 9.25),
 `bandit`, `mypy` (floor: zero errors).

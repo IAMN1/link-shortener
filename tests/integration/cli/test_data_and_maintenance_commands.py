@@ -24,6 +24,7 @@ import pytest
 from flask.testing import FlaskCliRunner
 from sqlalchemy import text
 
+from link_shortener.domain.entities.password_reset import PasswordReset
 from link_shortener.domain.entities.refresh_session import RefreshSession
 from link_shortener.domain.entities.user import User
 from link_shortener.domain.value_objects.email import Email
@@ -302,7 +303,13 @@ class TestCacheCommands:
 
 
 class TestMaintenanceSweeps:
-    """``clean-expired`` and ``clean-sessions``: the two periodic deletions."""
+    """``clean-expired``, ``clean-sessions`` and ``clean-reset-tokens``.
+
+    The three periodic deletions. Each removes only rows that already
+    grant nothing, and each is a command of its own: an operator whose
+    cron line names one of them must not find it deleting another's table
+    under a name that does not mention it.
+    """
 
     def test_expired_links_go_and_live_ones_stay(self, runner, app):
         """The sweep is keyed on the expiry, not on age or on count."""
@@ -355,6 +362,52 @@ class TestMaintenanceSweeps:
             with app.container.get_uow_factory()(read_only=True) as uow:
                 assert uow.refresh_sessions.find_by_token_id("token-expired") is None
                 assert uow.refresh_sessions.find_by_token_id("token-live") is not None
+
+
+    def test_spent_and_expired_reset_tokens_go_and_live_ones_stay(
+        self, runner, app
+    ):
+        """Both halves are dead weight, and nothing else prunes them.
+
+        A confirmation token leaves with the unconfirmed account it
+        belongs to; these belong to accounts that are staying, so without
+        this command the table only grows -- one row per reset ever asked
+        for.
+        """
+        user_id = _make_user(app, "resetter@example.com")
+        now = datetime.now(timezone.utc)
+        with app.app_context():
+            with app.container.get_uow_factory()() as uow:
+                for name, ttl, spent in (
+                    ("expired", -60, False),
+                    ("spent", 60, True),
+                    ("live", 60, False),
+                ):
+                    reset = PasswordReset.issue(
+                        user_id=user_id,
+                        token_hash=name.ljust(64, "d"),
+                        ttl_minutes=ttl,
+                        now=now,
+                    )
+                    if spent:
+                        reset.used_at = now
+                    uow.password_resets.save(reset)
+                uow.commit()
+
+        result = runner.invoke(app.cli, ["maintenance", "clean-reset-tokens"])
+
+        assert result.exit_code == 0, result.output
+        assert "Deleted 2 spent or expired password reset tokens" in result.output
+        with app.app_context():
+            with app.container.get_db_manager().session() as session:
+                left = session.execute(
+                    text(
+                        "SELECT token_hash FROM password_resets "
+                        "WHERE user_id = :user_id"
+                    ),
+                    {"user_id": user_id},
+                ).scalars().all()
+        assert [value.rstrip("d") for value in left] == ["live"]
 
 
 class TestPasswordReset:

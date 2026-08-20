@@ -23,6 +23,12 @@ class FrontendController:
         self.bp.add_url_rule('/register', view_func=self.register_form, methods=['GET'])
         self.bp.add_url_rule('/login', view_func=self.login_page, methods=['GET'])
         self.bp.add_url_rule('/verify', view_func=self.verify_page, methods=['GET'])
+        self.bp.add_url_rule(
+            '/forgot-password', view_func=self.forgot_password_page, methods=['GET']
+        )
+        self.bp.add_url_rule(
+            '/reset-password', view_func=self.reset_password_page, methods=['GET']
+        )
         self.bp.add_url_rule('/api/docs', view_func=self.api_docs, methods=['GET'])
         self.bp.add_url_rule(
             '/api/openapi.json', view_func=self.openapi, methods=['GET']
@@ -63,6 +69,29 @@ class FrontendController:
         """
         return render_template(
             'public/verify.html', token=request.args.get('token')
+        )
+
+    def forgot_password_page(self):
+        """
+        Show the form that asks for a password reset link.
+
+        Nothing is passed to it. The page says the same thing to everyone
+        and the answer it shows says the same thing about every address.
+        """
+        return render_template('public/forgot_password.html')
+
+    def reset_password_page(self):
+        """
+        Show the page the reset link in the mail points at.
+
+        The token is handed to the markup and spent by the form on it, not
+        by this request. That is not merely the polite arrangement it is
+        for confirmation -- it is the only possible one, because the new
+        password does not exist until somebody types it. A mail scanner
+        following the link renders a form and spends nothing.
+        """
+        return render_template(
+            'public/reset_password.html', token=request.args.get('token')
         )
 
     def api_docs(self):

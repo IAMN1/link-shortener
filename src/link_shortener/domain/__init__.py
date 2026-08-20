@@ -4,6 +4,7 @@ from .entities.role import Role
 from .entities.permission import Permission
 from .entities.refresh_session import RefreshSession
 from .entities.email_verification import EmailVerification
+from .entities.password_reset import PasswordReset
 from .entities.link_visit import (
     LinkVisit, VisitBreakdown, VisitBucket, VisitSummary, VisitsOnADay,
 )
@@ -21,6 +22,7 @@ from .repositories.link_repository import (
 )
 from .repositories.refresh_session_repository import RefreshSessionRepository
 from .repositories.email_verification_repository import EmailVerificationRepository
+from .repositories.password_reset_repository import PasswordResetRepository
 from .repositories.link_visit_repository import LinkVisitRepository
 from .repositories.security_event_repository import SecurityEventRepository
 
@@ -50,6 +52,7 @@ __all__ = [
     "Permission",
     "RefreshSession",
     "EmailVerification",
+    "PasswordReset",
     "LinkVisit",
     "VisitsOnADay",
     "VisitBucket",
@@ -66,6 +69,7 @@ __all__ = [
     "UserLinkStats",
     "RefreshSessionRepository",
     "EmailVerificationRepository",
+    "PasswordResetRepository",
     "LinkVisitRepository",
     "SecurityEventRepository",
     "UserRepository",

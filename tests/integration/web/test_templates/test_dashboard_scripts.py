@@ -43,6 +43,7 @@ PAGES = [
     # into the charts' requests.
     ("dashboard/link_stats.html", {"short_code": "abc123"}),
     ("dashboard/create_link.html", {}),
+    ("dashboard/security.html", {}),
     ("dashboard/service_stats.html", {}),
     ("dashboard/health.html", {}),
     ("dashboard/journals.html", {}),
