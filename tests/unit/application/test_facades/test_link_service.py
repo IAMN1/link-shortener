@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 from link_shortener.application.dtos.link import ShortLinkResponse
-from link_shortener.application.services.link_service import LinkService
+from link_shortener.application.facades.link_service import LinkService
 import pytest
 
 

@@ -46,11 +46,12 @@ class UserManagementService:
             ValidationError: If email is invalid or already registered.
         """
 
-        # Validate email format via value object
-        try:
-            email_vo = Email(email)
-        except ValueError as e:
-            raise ValidationError(str(e), field="email")
+        # Validated by the value object, and left to raise. The wrap that
+        # used to be here caught ``ValueError`` -- which a ``ValidationError``
+        # is not, so it never ran -- and had it run it would have replaced a
+        # marked sentence with a finished one, costing the address error its
+        # translation on the way out.
+        email_vo = Email(email)
         
         # Check uniqueness
         if uow.users.find_by_email(email_vo):

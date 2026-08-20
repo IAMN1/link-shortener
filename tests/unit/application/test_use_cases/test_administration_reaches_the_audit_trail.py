@@ -585,10 +585,10 @@ class TestNothingIsRecordedWhenNothingHappened:
         self, uow_factory, audit, context
     ):
         """The record would say a role exists that does not."""
-        from link_shortener.domain import DomainError
+        from link_shortener.domain import RoleAlreadyExistsError
 
         service = Mock()
-        service.create_role.side_effect = ValueError("name already taken")
+        service.create_role.side_effect = RoleAlreadyExistsError("editor")
         use_case = CreateRoleUseCase(
             uow_factory=uow_factory,
             role_service=service,
@@ -596,7 +596,7 @@ class TestNothingIsRecordedWhenNothingHappened:
             audit_logger=audit,
         )
 
-        with pytest.raises(DomainError):
+        with pytest.raises(RoleAlreadyExistsError):
             use_case.execute("editor", None, ["link:create"], context)
 
         audit.log_role_created.assert_not_called()
@@ -604,10 +604,10 @@ class TestNothingIsRecordedWhenNothingHappened:
     def test_a_failed_role_deletion_writes_no_record(
         self, uow_factory, audit, context
     ):
-        from link_shortener.domain import DomainError
+        from link_shortener.domain import RoleNotFoundError
 
         service = Mock()
-        service.delete_role.side_effect = LookupError("no such role")
+        service.delete_role.side_effect = RoleNotFoundError("editor")
         use_case = DeleteRoleUseCase(
             uow_factory=uow_factory,
             role_service=service,
@@ -615,7 +615,7 @@ class TestNothingIsRecordedWhenNothingHappened:
             audit_logger=audit,
         )
 
-        with pytest.raises(DomainError):
+        with pytest.raises(RoleNotFoundError):
             use_case.execute("editor", context)
 
         audit.log_role_deleted.assert_not_called()

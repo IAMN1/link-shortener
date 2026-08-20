@@ -1,7 +1,8 @@
 from typing import Dict, List
 
+from link_shortener.application.dtos.refusal import Refusal
 from link_shortener.domain import (
-    HashCalculator, OriginalUrl, ValidationError
+    DomainError, HashCalculator, OriginalUrl, ValidationError
 )
 from link_shortener.application.ports.logger.logger import Logger
 
@@ -56,7 +57,7 @@ class UrlGrouper:
                 - ``original_url``: OriginalUrl (if valid) else None
                 - ``urls``: list of input strings falling into this group
                 - ``is_valid``: boolean
-                - ``error``: error message if invalid
+                - ``error``: the refusal, if invalid
         """
 
         groups: Dict[str, Dict] = {}
@@ -94,7 +95,15 @@ class UrlGrouper:
                     "original_url": None,
                     "urls": [url],
                     "is_valid": False,
-                    "error": str(e),
+                    # The refusal itself, not ``str(e)``. Flattened here,
+                    # it reached the boundary as finished English and the
+                    # batch answered a Russian reader in a language the
+                    # single-link route had already stopped using.
+                    "error": (
+                        Refusal.from_error(e)
+                        if isinstance(e, DomainError)
+                        else Refusal.of(str(e), "VALIDATION_ERROR")
+                    ),
                 }
                 # Same reason as in ``create_short_link``: the URL that
                 # reaches this branch is one the domain has just refused,

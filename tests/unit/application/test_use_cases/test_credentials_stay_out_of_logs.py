@@ -340,7 +340,18 @@ class TestGroupingABatch:
         The URL beside it is the caller's own, so echoing that reveals
         nothing new -- but ``urlparse`` quotes the netloc in its message,
         and a batch response travels further than the request did.
+
+        Read off the whole refusal rather than off one field of it: the
+        item now carries a ``Refusal`` -- code, sentence, msgid and values
+        -- so a secret could hide in the values where a check on the
+        sentence alone would not look, and a field added later is covered
+        by this without anybody remembering to come back here.
         """
         groups = grouper.group([BREAKS_NFKC])
 
-        assert SECRET not in groups["invalid_0"]["error"]
+        refusal = groups["invalid_0"]["error"]
+
+        assert SECRET not in str(refusal)
+        assert SECRET not in refusal.message
+        assert SECRET not in refusal.template
+        assert SECRET not in str(refusal.params)

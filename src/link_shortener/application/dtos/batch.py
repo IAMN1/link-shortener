@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional
 
+from link_shortener.application.dtos.refusal import Refusal
 from link_shortener.application.utils.url_utils import build_short_url
 
 
@@ -17,7 +18,8 @@ class BatchItemResponse:
         original_url: The canonical original URL (may differ if deduplicated).
         short_url: Full short link (including base URL).
         clicks: Existing click count (0 for new links).
-        error: Error message if processing failed.
+        error: Why this item was refused, carried rather than worded: a
+            sentence finished here cannot be translated at the boundary.
         is_new: True if a new link was created.
         from_cache: True if the link was retrieved from cache.
         duplicate_of: If this URL is a duplicate, the canonical original URL.
@@ -36,7 +38,7 @@ class BatchItemResponse:
     # Batch is where a guest silently gets a seven-day link, so withholding
     # the expiry here is exactly where it misleads most.
     expires_at: Optional[datetime] = None
-    error: Optional[str] = None
+    error: Optional[Refusal] = None
     is_new: bool = False
     from_cache: bool = False
     duplicate_of: Optional[str] = None
@@ -91,13 +93,13 @@ class BatchItemResponse:
         )
 
     @classmethod
-    def error_(cls, url: str, error: str) -> "BatchItemResponse":
+    def error_(cls, url: str, error: Refusal) -> "BatchItemResponse":
         """
         Factory for a failed response item.
 
         Args:
             url: The input URL that caused the error.
-            error: Human-readable error description.
+            error: The refusal, with its code and its msgid intact.
 
         Returns:
             BatchItemResponse with success=False.

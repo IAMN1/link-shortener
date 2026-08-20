@@ -23,7 +23,10 @@ asking Babel what Babel says would pass against an empty catalogue.
 
 import pytest
 
-from link_shortener.domain.exceptions import DomainError, LinkNotFoundError
+from link_shortener.domain.exceptions import (
+    DomainError, LinkNotFoundError, PermissionsNotFoundError,
+    RoleAlreadyExistsError, RoleIsSystemError, RoleNotFoundError
+)
 from link_shortener.web.i18n import translate_error
 
 
@@ -168,3 +171,105 @@ class TestWhatTheLogsKeep:
         assert error.message == "Link with code (abc123) not found"
         assert error.template == "Link with code (%(code)s) not found"
         assert error.params == {"code": "abc123"}
+
+
+class TestTheRoleRefusalsAreMarkedToo:
+    """
+    The refusals that reached the reader in English until the service
+    stopped raising bare ``ValueError`` for them -- and one more beside
+    them: "Registration is unavailable" is answered 400 by
+    ``AuthController.register``, which words every ``DomainError`` on that
+    route itself rather than by the status table, so it is read by whoever
+    tried to register rather than by an operator reading a 5xx.
+
+    A bare exception carries a finished f-string and nothing to look a
+    sentence up by, so the boundary had no template to translate and the
+    envelope said "Role 'x' already exists" to a page rendered in Russian.
+    These pin the three sentences that replaced it, one per catalogue
+    entry: an empty ``msgstr``, a ``fuzzy`` flag or a lost placeholder each
+    turn one of them red.
+    """
+
+    @pytest.mark.parametrize("error,expected", [
+        (
+            DomainError(
+                "Registration is unavailable", "CONFIGURATION_ERROR"
+            ),
+            "Регистрация сейчас недоступна",
+        ),
+        (RoleAlreadyExistsError("editor"), "Роль editor уже существует"),
+        (RoleNotFoundError("editor"), "Роль editor не найдена"),
+        (
+            RoleIsSystemError("admin"),
+            "Роль admin принадлежит службе: её нельзя ни изменить, ни удалить",
+        ),
+        (
+            PermissionsNotFoundError({"link:fly"}),
+            "Права не найдены: link:fly",
+        ),
+    ])
+    def test_each_role_refusal_is_in_the_catalogue(self, app, error, expected):
+        with app.test_request_context("/", headers={"Cookie": "lang=ru"}):
+            assert translate_error(error) == expected
+
+    def test_the_name_survives_the_translation(self, app):
+        """The half a marked-but-f-string sentence loses."""
+        with app.test_request_context("/", headers={"Cookie": "lang=zh"}):
+            assert "editor" in translate_error(RoleAlreadyExistsError("editor"))
+
+
+class TestABatchRefusesInTheReadersLanguage:
+    """
+    The per-item refusals of a batch, which are the ones that got away.
+
+    A batch answers 200 with a verdict per item, so its refusals are not
+    raised and never pass the error handler -- the one place that words a
+    refusal in the reader's language. Written as finished sentences inside
+    the use case, they reached a Russian reader in English while the
+    single-link route, refusing the same URL for the same reason, answered
+    in Russian.
+
+    Read off a real response, like the tests above: asking the catalogue
+    what the catalogue says would pass against a use case that never
+    consults it.
+    """
+
+    BAD_URL = "ftp://batch-language.example.com"
+    """Refused by the value object, for its scheme, and costing no quota:
+    a refused item is never created, so this can be asked in any language
+    without spending the guest allowance the address is counted under."""
+
+    @pytest.mark.parametrize("language,expected", [
+        ("ru", "Схема «ftp» не разрешена. Разрешённые схемы: http, https"),
+        ("zh", "不允许使用协议「ftp」。允许的协议：http, https"),
+        ("en", "Scheme 'ftp' is not allowed. Allowed schemes: http, https"),
+    ])
+    def test_a_refused_item_says_it_in_the_chosen_language(
+        self, app, language, expected
+    ):
+        response = in_language(app, language).post(
+            "/api/v1/batch/shorten", json={"urls": [self.BAD_URL]}
+        )
+
+        body = response.get_json()
+        assert response.status_code == 200, body
+        assert body["results"][0]["error"] == expected
+
+    def test_the_same_refusal_reads_the_same_on_both_routes(self, app):
+        """The property that was broken, stated as one comparison.
+
+        One URL, one reason, two endpoints: whatever the single-link route
+        says, the batch says. This is what a per-item sentence written in
+        the application layer cannot hold, however carefully it is worded.
+        """
+        client = in_language(app, "ru")
+
+        single = client.post("/api/v1/shorten", json={"url": self.BAD_URL})
+        batch = client.post(
+            "/api/v1/batch/shorten", json={"urls": [self.BAD_URL]}
+        )
+
+        assert (
+            batch.get_json()["results"][0]["error"]
+            == single.get_json()["message"]
+        )

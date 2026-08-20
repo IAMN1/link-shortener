@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, Mock
 from jinja2 import BaseLoader
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.services.link_service import LinkService
+from link_shortener.application.facades.link_service import LinkService
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.web.app_factory import create_app
 from link_shortener.infrastructure.di.container import Container

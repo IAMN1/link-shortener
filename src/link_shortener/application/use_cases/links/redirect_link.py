@@ -10,7 +10,9 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import LinkNotFoundError, LinkExpiredError
+from link_shortener.domain import (
+    LinkExpiredError, LinkNotFoundError, ShortCode
+)
 
 
 @dataclass
@@ -85,17 +87,12 @@ class RedirectLinkUseCase(BaseUseCase):
                     log.info("Link expired (L1)", short_code=short_code.value)
                     raise LinkExpiredError(short_code.value)
 
-                self.task_queue.enqueue_link_accessed(short_code.value, context)
-
                 log.info(
                     "Redirect cache hit", code=short_code.value, cache_level="L1"
                 )
-                audit.log_url_accessed(
-                    short_code=short_code.value,
-                    original_url=cached_redirect.original_url,
+                return self._answer(
+                    short_code, cached_redirect.original_url, context, audit
                 )
-
-                return cached_redirect.original_url
 
             # Step 3: L1 could not answer. Try the full entity.
             cached_link = self.link_cache.get_by_code(short_code)
@@ -112,16 +109,10 @@ class RedirectLinkUseCase(BaseUseCase):
                     short_code, orig_url, cached_link.expires_at
                 )
 
-                self.task_queue.enqueue_link_accessed(short_code.value, context)
-
                 log.info(
                     "Redirect cache hit", code=short_code.value, cache_level="L2"
                 )
-                audit.log_url_accessed(
-                    short_code=short_code.value, original_url=orig_url
-                )
-
-                return orig_url
+                return self._answer(short_code, orig_url, context, audit)
 
             # Step 4: Query repository
             with self.uow_factory(read_only=True) as uow:
@@ -140,9 +131,6 @@ class RedirectLinkUseCase(BaseUseCase):
                 # overwritten here rather than outliving it.
                 self.link_cache.save(link)
 
-            # Enqueue background stat update
-            self.task_queue.enqueue_link_accessed(short_code.value, context)
-
             # The destination is not written here. It comes from storage
             # through ``from_storage``, which skips ``_validate_no
             # _credentials`` on purpose -- rows admitted under older rules
@@ -151,9 +139,7 @@ class RedirectLinkUseCase(BaseUseCase):
             # redirect. The audit line below records the same URL through
             # ``mask_url``; the short code identifies the link here.
             log.info("Redirect successful", code=short_code.value)
-            audit.log_url_accessed(short_code=short_code.value, original_url=orig_url)
-
-            return orig_url
+            return self._answer(short_code, orig_url, context, audit)
 
         except (ValueError, LinkNotFoundError, LinkExpiredError):
             raise
@@ -168,3 +154,42 @@ class RedirectLinkUseCase(BaseUseCase):
         finally:
             duration = time.perf_counter() - start_time
             log.debug("Execution time", duration_ms=round(duration * 1000, 2))
+
+    def _answer(
+        self,
+        short_code: ShortCode,
+        original_url: str,
+        context: RequestContext,
+        audit: AuditLogger,
+    ) -> str:
+        """
+        Hand back a destination, having recorded that it was handed back.
+
+        Three branches answer a redirect -- the L1 entry, the cached entity
+        and the repository read -- and each has to count the visit and write
+        the audit line. Written out three times, the two calls are two
+        chances to add a branch that answers without counting: the visit
+        would be missing from ``link_visits`` and the redirect from
+        ``audit.log``, on whichever share of traffic that branch happens to
+        serve, with everything else about the response identical. The same
+        shape has already cost this project once -- ``CountingAuditLogger``
+        exists because a counter beside each ``audit.log_*`` call was a
+        counter the fifteenth event forgot.
+
+        The log line stays with the branch: it names which level answered,
+        which is the one thing the three do not share.
+
+        Args:
+            short_code: The code that was asked for.
+            original_url: Where it leads.
+            context: Request context, carried into the background task.
+            audit: Audit logger, already bound to the request.
+
+        Returns:
+            The destination, for the controller to redirect to.
+        """
+        self.task_queue.enqueue_link_accessed(short_code.value, context)
+        audit.log_url_accessed(
+            short_code=short_code.value, original_url=original_url
+        )
+        return original_url

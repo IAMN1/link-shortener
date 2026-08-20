@@ -1,6 +1,8 @@
 from typing import Dict, List
 
 from link_shortener.application.dtos.batch import BatchItemResponse
+from link_shortener.application.dtos.refusal import Refusal
+from link_shortener.domain.i18n import N_
 from link_shortener.domain import Link
 
 
@@ -37,7 +39,13 @@ class BatchResponseBuilder:
                 # Safeguard: should not happen, but log missing link for debug
                 for url in group["urls"]:
                     results.append(
-                        BatchItemResponse.error_(url=url, error="Failed to save link")
+                        BatchItemResponse.error_(
+                            url=url,
+                            error=Refusal.of(
+                                N_("The link could not be stored"),
+                                "LINK_NOT_STORED",
+                            ),
+                        )
                     )
                 continue
             

@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 import uuid
 
 from link_shortener.application.dtos.batch import BatchCreateResponse, BatchItemResponse
+from link_shortener.application.dtos.refusal import Refusal
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.context import RequestContext
 
@@ -20,7 +21,10 @@ from link_shortener.application.use_cases.batch.fetcher import BatchLinkFetcher
 from link_shortener.application.use_cases.batch.grouper import UrlGrouper
 from link_shortener.application.use_cases.batch.response_builder import BatchResponseBuilder
 from link_shortener.domain.exceptions import (
-    GuestLinkLimitExceededError, LinkConflictError, ValidationError
+    LinkConflictError, ValidationError
+)
+from link_shortener.domain.policies.guest_quota_policy import (
+    guest_quota_spent, links_left_for_guest,
 )
 from link_shortener.domain.value_objects.dedup_scope import DedupScope
 from link_shortener.domain.value_objects.owner_id import OwnerID
@@ -204,12 +208,9 @@ class BatchCreateLinksUseCase(BaseUseCase):
         # all done, including reporting a malformed URL, keeps its 200 and
         # its per-item errors: that is what the response format is for.
         if quota_results and not (saved_links or fetched_results or invalid_results):
-            raise GuestLinkLimitExceededError(
-                      f"Guest link limit of {self.guest_link_limit} exceeded.",
-                      retry_after_seconds=self.guest_link_window_days * 24 * 3600,
-                      template=N_("Guest link limit of %(limit)s exceeded."),
-                      params={"limit": self.guest_link_limit},
-                  )
+            raise guest_quota_spent(
+                self.guest_link_limit, self.guest_link_window_days
+            )
 
         # 6. Build DTOs for newly created links
         new_results = self.builder.build_from_new_links(
@@ -280,7 +281,9 @@ class BatchCreateLinksUseCase(BaseUseCase):
                 used = repo.count_guest_links_by_identifier(
                     guest_id, self.guest_link_window_days
                 )
-                remaining_quota = max(0, self.guest_link_limit - used)
+                remaining_quota = links_left_for_guest(
+                    used, self.guest_link_limit
+                )
 
             # Only links that have to be created draw on the quota; being
             # handed one that already exists costs nothing.
@@ -364,9 +367,14 @@ class BatchCreateLinksUseCase(BaseUseCase):
             refused=len(refused),
         )
 
-        error = f"Guest link limit of {self.guest_link_limit} exceeded."
+        # The same refusal the whole-batch branch raises, and the same
+        # sentence: written as a finished f-string here, it was the one
+        # answer in this response nobody could translate.
+        refusal = Refusal.from_error(
+            guest_quota_spent(self.guest_link_limit, self.guest_link_window_days)
+        )
         quota_results = [
-            BatchItemResponse.error_(url=url, error=error)
+            BatchItemResponse.error_(url=url, error=refusal)
             for group in refused
             for url in group["urls"]
         ]

@@ -81,12 +81,13 @@ src/link_shortener/
 │   ├── entities/              # Link, User, Role, Permission
 │   ├── value_objects/         # OriginalUrl, ShortCode, UrlHash, Email, OwnerID
 │   ├── repositories/          # Storage interfaces
-│   ├── policies/              # HashCalculator, CodeGenerator
+│   ├── policies/              # Password, privilege, role, guest quota rules
 │   └── system_permissions.py
 │
 ├── application/               # Scenarios
 │   ├── use_cases/             # links · auth · admin · stats · batch
-│   ├── services/              # Facades for the web layer
+│   ├── facades/               # One object per area, held by the web layer
+│   ├── services/              # Work several use cases share, given their uow
 │   ├── dtos/                  # Data transfer objects
 │   └── ports/                 # Infrastructure abstractions
 │

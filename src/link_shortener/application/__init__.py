@@ -34,10 +34,11 @@ from .ports.journal_reader import (
 )
 
 # ------------------------------------------------------------------
-# Application Services (facades)
+# Facades the web layer holds, and the services use cases reach down to.
+# Two kinds of object, two directories: see the docstring in each.
 # ------------------------------------------------------------------
-from .services.admin_service import AdminService
-from .services.link_service import LinkService
+from .facades.admin_service import AdminService
+from .facades.link_service import LinkService
 from .services.role_management_service import RoleManagementService
 from .services.user_management_service import UserManagementService
 

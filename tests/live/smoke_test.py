@@ -1654,7 +1654,7 @@ def _():
 def _():
     r = admin.delete("/api/v1/admin/roles/admin", headers=admin_headers)
     assert r.status_code == 400
-    assert r.get_json()["error"] == "ROLE_DELETION_FAILED"
+    assert r.get_json()["error"] == "ROLE_IS_SYSTEM"
     # And it is still there.
     assert admin.get(
         "/api/v1/admin/roles/admin", headers=admin_headers

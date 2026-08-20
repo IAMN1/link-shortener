@@ -23,13 +23,26 @@ visibly changes under the reader.
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol
 
 from babel import Locale, UnknownLocaleError
 from flask import Flask, current_app, has_request_context, request
 from flask_babel import Babel, gettext, pgettext
 
-from link_shortener.domain.exceptions import DomainError
+class Marked(Protocol):
+    """Anything that arrives here with its sentence still marked.
+
+    Two things do: a ``DomainError``, raised and answered as an envelope,
+    and an ``application.dtos.Refusal``, carried inside a 200 because a
+    batch reports per item rather than raising. They are read the same way
+    and translated by the same function -- a second implementation would be
+    a second answer, and the batch endpoint is where the two would part
+    company.
+    """
+
+    message: str
+    template: str
+    params: Dict[str, Any]
 
 LANGUAGE_COOKIE_NAME = "lang"
 """Name of the cookie holding a deliberate choice of language.
@@ -113,9 +126,9 @@ def select_language() -> str:
     return negotiated or default_language()
 
 
-def translate_error(error: DomainError) -> str:
+def translate_error(error: Marked) -> str:
     """
-    Put a domain refusal into the language of the request.
+    Put a refusal into the language of the request.
 
     The other side of ``domain.i18n.N_``: the domain marked the sentence
     and carried the values beside it, and this is the one place that turns
@@ -131,7 +144,8 @@ def translate_error(error: DomainError) -> str:
     one than that.
 
     Args:
-        error: The refusal, carrying its template and its values.
+        error: The refusal, carrying its template and its values --
+            a ``DomainError`` or a ``Refusal``.
 
     Returns:
         The sentence, translated where the catalogue had it and English

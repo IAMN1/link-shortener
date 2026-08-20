@@ -79,9 +79,11 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
                 recent_days=self.recent_days
             )
 
-        except ValueError as e:
-            log.error("Invalid short code format", short_code=short_code_str)
-            raise ValueError(f"Invalid short code: {str(e)}")
+        # No ``except ValueError`` here. A code the format rules refuse is
+        # turned into ``LinkNotFoundError`` by ``_code_to_look_up`` before
+        # this block is reached -- that is the decision recorded on it --
+        # so the branch that used to re-raise a bare ``ValueError`` was
+        # unreachable, and a second answer to a question already answered.
 
         except (LinkNotFoundError, LinkExpiredError):
             raise

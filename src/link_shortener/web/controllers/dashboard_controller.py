@@ -9,8 +9,10 @@ from flask import Blueprint, g, render_template, request
 from flask_babel import gettext
 
 from link_shortener.application import LinkService, AdminService
+from link_shortener.domain import RoleIsSystemError
 from link_shortener.domain.system_permissions import SystemPermissions
 from link_shortener.infrastructure.auth.rbac_authorization_service import GUEST_ROLE_NAME
+from link_shortener.web.i18n import translate_error
 from link_shortener.web.responses import error_page
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.decorators import (
@@ -244,17 +246,24 @@ class DashboardController:
         if not role:
             return error_page("ROLE_NOT_FOUND", gettext("Role not found"), 404)
         if role.is_system:
-            # The service refuses the save with "Cannot modify system
-            # roles", so serving the form was a working-looking dead end:
-            # the list hides the Edit link, and the URL behind it did not.
-            return error_page(
-                "FORBIDDEN",
-                gettext(
-                    "The role %(name)s is a system role and cannot be modified",
-                    name=role.name,
-                ),
-                403,
-            )
+            # The service refuses the save, so serving the form was a
+            # working-looking dead end: the list hides the Edit link, and
+            # the URL behind it did not.
+            #
+            # The refusal is the domain's, not this page's. Worded here, it
+            # was a second sentence for one rule -- and the two had already
+            # drifted: the API said "Cannot modify system roles" while this
+            # said "The role X is a system role and cannot be modified",
+            # under a code (`FORBIDDEN`) that says nothing about which rule
+            # refused. One rule, one sentence, one code.
+            #
+            # The status stays 403 and is deliberately not the API's 400.
+            # They answer different acts: this is a page somebody may not
+            # open, while `PUT .../permissions` is a change the service
+            # does not make. A GET of a URL that exists is not a bad
+            # request, whatever the answer to it is.
+            refusal = RoleIsSystemError(role.name)
+            return error_page(refusal.code, translate_error(refusal), 403)
         available_permissions = SystemPermissions.all_values()
         return render_template(
             "dashboard/edit_role.html", role=role, available_permissions=available_permissions

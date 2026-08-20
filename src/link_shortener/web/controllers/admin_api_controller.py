@@ -297,7 +297,7 @@ class AdminApiController:
 
         Two answers: a name that is not there is 404 ``ROLE_NOT_FOUND``,
         like the user endpoint beside it, while a role that exists and is
-        protected is 400 ``ROLE_DELETION_FAILED``.
+        protected is 400 ``ROLE_IS_SYSTEM``.
         Both are raised by the use case; the guard below is a backstop for
         a future implementation that returns ``False`` instead of raising,
         and is unreachable today.

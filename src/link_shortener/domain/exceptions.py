@@ -185,3 +185,81 @@ class GuestLinkLimitExceededError(DomainError):
             message, "GUEST_LINK_LIMIT", template=template, params=params
         )
         self.retry_after_seconds = retry_after_seconds
+
+
+class RoleNotFoundError(DomainError):
+    """Raised when a role is asked for by a name nothing carries.
+
+    The same code the admin controller already raises for a role it could
+    not read, so a name that is not there answers 404 from wherever the
+    lookup happened to fail.
+    """
+
+    def __init__(self, role_name: str):
+        self.role_name = role_name
+        super().__init__(
+            f"Role '{role_name}' not found",
+            "ROLE_NOT_FOUND",
+            template=N_("Role %(name)s not found"),
+            params={"name": role_name},
+        )
+
+
+class RoleAlreadyExistsError(DomainError):
+    """Raised when a role is created under a name somebody already holds.
+
+    Distinct from a malformed name, which is a ``ValidationError``: this
+    request is well formed and the service simply has that name already.
+    Answered 409 for the reason ``LinkCodeTakenError`` is -- the caller
+    asked for one particular name, and there is a fix only they can make.
+    """
+
+    def __init__(self, role_name: str):
+        self.role_name = role_name
+        super().__init__(
+            f"Role '{role_name}' already exists",
+            "ROLE_ALREADY_EXISTS",
+            template=N_("Role %(name)s already exists"),
+            params={"name": role_name},
+        )
+
+
+class RoleIsSystemError(DomainError):
+    """Raised when a change is asked for on a role the service owns.
+
+    One error for modification and deletion alike: both are refused by the
+    same flag for the same reason, and telling them apart is the route's
+    job rather than the sentence's.
+    """
+
+    def __init__(self, role_name: str):
+        self.role_name = role_name
+        super().__init__(
+            f"Role '{role_name}' belongs to the service and cannot be "
+            f"modified or deleted",
+            "ROLE_IS_SYSTEM",
+            template=N_(
+                "Role %(name)s belongs to the service and cannot be "
+                "modified or deleted"
+            ),
+            params={"name": role_name},
+        )
+
+
+class PermissionsNotFoundError(DomainError):
+    """Raised when a request names permissions the service does not know.
+
+    Carries the names rather than a count: an operator who mistyped one of
+    nine needs to be told which one, and the answer is otherwise a puzzle
+    to be solved by bisection.
+    """
+
+    def __init__(self, names):
+        self.names = sorted(names)
+        joined = ", ".join(self.names)
+        super().__init__(
+            f"Permissions not found: {joined}",
+            "PERMISSIONS_NOT_FOUND",
+            template=N_("Permissions not found: %(names)s"),
+            params={"names": joined},
+        )

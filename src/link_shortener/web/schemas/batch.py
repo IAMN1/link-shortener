@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_serializer
 
+from link_shortener.web.i18n import translate_error
+
 class BatchItemResponse(BaseModel):
     """Schema for a single item in a batch response.
 
@@ -54,13 +56,19 @@ class BatchItemResponse(BaseModel):
 
     @classmethod
     def from_dto(cls, dto) -> "BatchItemResponse":
-        """Build schema from the application DTO."""
+        """Build schema from the application DTO.
+
+        This is where a refused item gets its sentence. The DTO carries the
+        refusal with its msgid intact precisely so that the wording happens
+        here, in the request whose language is known -- the same place the
+        error envelope words a refusal that was raised.
+        """
         return cls(
             success=dto.success,
             url=dto.url,
             short_code=dto.short_code,
             short_url=dto.short_url,
-            error=dto.error,
+            error=translate_error(dto.error) if dto.error else None,
             is_new=dto.is_new,
             from_cache=dto.from_cache,
             duplicate_of=dto.duplicate_of,

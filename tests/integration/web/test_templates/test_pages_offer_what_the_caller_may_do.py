@@ -24,7 +24,7 @@ the permission its endpoint asks for, so the two cannot drift apart again.
 import pytest
 from sqlalchemy import text
 
-from tests.integration.conftest import account_with_permissions
+from tests.integration.conftest import account_with_permissions, csrf_headers
 
 
 def only_this_role(app, user_id, role_name):
@@ -321,11 +321,39 @@ class TestSystemRolesAreNotOfferedForEditing:
     def test_the_form_behind_the_hidden_link_refuses(self, operator):
         """
         The list hides Edit for a system role and the URL did not: the form
-        rendered, and Save answered "Cannot modify system roles".
+        rendered, and Save refused what it had just offered to do.
+
+        Read off the code rather than off the wording. The page used to
+        write its own sentence about system roles, and a test looking for
+        "system role" in the markup passed on a page that had drifted from
+        what the API says about the same rule -- which is exactly what had
+        happened. The code is what says which refusal this is.
         """
         client, _, _ = operator
 
         response = client.get("/dashboard/roles/user/edit")
 
         assert response.status_code == 403
-        assert "system role" in response.get_data(as_text=True)
+        assert "cannot be modified or deleted" in response.get_data(as_text=True)
+
+    def test_the_page_and_the_api_say_the_same_thing(self, operator, app):
+        """One rule, one sentence.
+
+        The page used to word this refusal itself, and the two wordings had
+        drifted: the API said "Cannot modify system roles" while the page
+        said "The role X is a system role and cannot be modified". Both
+        come from ``RoleIsSystemError`` now, so a change to the sentence
+        moves both or neither.
+        """
+        client, token, _ = operator
+
+        page = client.get("/dashboard/roles/user/edit")
+        api = client.put(
+            "/api/v1/admin/roles/user/permissions",
+            json={"permissions": ["link:create"]},
+            headers=csrf_headers(client, {"Authorization": f"Bearer {token}"}),
+        )
+
+        sentence = api.get_json()["message"]
+        assert api.get_json()["error"] == "ROLE_IS_SYSTEM"
+        assert sentence in page.get_data(as_text=True)
