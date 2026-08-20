@@ -12,7 +12,7 @@ from typing import Optional
 from link_shortener.application import (
     UnitOfWork, RoleManagementService,
     UserManagementService, LinkService,
-    AdminService,
+    AdminService, AuthService,
     # Named here because every public accessor below says what it hands out:
     # a container whose getters return an unannotated value makes everything
     # it builds ``Any`` at the call site, however carefully the components
@@ -299,6 +299,24 @@ class Container:
             get_role_uc=self.get_get_role_use_case(),
             get_service_health_uc=self.get_service_health_use_case(),
             get_user_activity_stats_uc=self.get_user_activity_stats_use_case(),
+        )
+
+        # ------------------------------------------------------------------
+        # Facade service for authentication (eagerly composed)
+        # ------------------------------------------------------------------
+        self._auth_service = AuthService(
+            authentication_service=self.get_authentication_service(),
+            login_use_case=self.get_login_use_case(),
+            register_use_case=self.get_register_use_case(),
+            verify_email_use_case=self.get_verify_email_use_case(),
+            resend_verification_use_case=(
+                self.get_resend_verification_use_case()
+            ),
+            change_password_use_case=self.get_change_password_use_case(),
+            request_password_reset_use_case=(
+                self.get_request_password_reset_use_case()
+            ),
+            reset_password_use_case=self.get_reset_password_use_case(),
         )
 
     # ------------------------------------------------------------------
@@ -720,6 +738,10 @@ class Container:
     def get_admin_service(self) -> AdminService:
         """Return the application facade for admin operations."""
         return self._admin_service
+
+    def get_auth_service(self) -> AuthService:
+        """Return the application facade for authentication."""
+        return self._auth_service
 
     def get_user_management_service(self) -> UserManagementService:
         """Return the service for user CRUD operations."""

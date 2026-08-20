@@ -56,7 +56,11 @@
                 });
                 var data = await resp.json();
                 if (!resp.ok) throw new Error(data.message || data.error || t('could_not_send'));
-                doneEl.textContent = data.message;
+                // Out of the catalogue, not `data.message`: the 202 body
+                // is a literal the API never translates, so this line put
+                // English on a Russian page. The refusal above is the
+                // other case -- that one the API does translate.
+                doneEl.textContent = t('confirmation_link_sent');
                 doneEl.classList.remove('hidden');
             } catch(err) {
                 errEl.textContent = err.message;

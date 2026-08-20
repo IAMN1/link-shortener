@@ -128,15 +128,25 @@ class ResendVerificationUseCase(BaseUseCase):
             # confirmed. Recorded, because a burst of these is somebody
             # walking a list of addresses, and answered exactly like a
             # success.
-            log.info("Verification resend had nothing to send")
+            #
+            # With the address, for the reason the reset route carries
+            # one: a burst with no addresses in it shows that something
+            # happened three hundred times and not whether it happened to
+            # three hundred addresses, which is the whole difference
+            # between noise and a walk.
+            log.info(
+                "Verification resend had nothing to send", email=email_vo.value
+            )
             return ResendOutcome.NOTHING_TO_SEND
 
         # The normalised address, matching the row the token belongs to.
         if not self.task_queue.enqueue_verification_email(
             email_vo.value, token, context
         ):
-            log.error("Verification resend was not handed off")
+            log.error(
+                "Verification resend was not handed off", email=email_vo.value
+            )
             return ResendOutcome.NOT_HANDED_OFF
 
-        log.info("Verification resent")
+        log.info("Verification resent", email=email_vo.value)
         return ResendOutcome.SENT

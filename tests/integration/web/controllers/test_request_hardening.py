@@ -88,15 +88,20 @@ class TestAMissingContentType:
 
         assert response.status_code == 415, response.get_json()
 
-    def test_login_answers_for_itself(self, client):
+    def test_login_answers_the_same_415(self, client):
         """
-        The auth controller parses the body silently and answers 400 on its
-        own, so 415 never reaches a handler here. Asserted so that a change
-        to silent parsing shows up as this test rather than as a 500.
+        The auth routes read the body the same way as everything else now.
+
+        They used to parse it silently and answer 400 on their own, so 415
+        never reached a handler and a form submission was reported as
+        credentials nobody sent -- the fields were there, the encoding was
+        not. This test was written to make that show up if the parsing
+        changed, and this is it changing: one reader in
+        ``web/request_body.py``, one answer for one request.
         """
         response = _post(client, "/api/v1/auth/login", data="email=a@b.c")
 
-        assert response.status_code == 400, response.get_json()
+        assert response.status_code == 415, response.get_json()
 
     def test_the_answer_is_still_json_for_an_api_path(self, client):
         response = _post(client, "/api/v1/shorten", data="not json")
@@ -246,3 +251,124 @@ class TestAStatusThatMatchesWhatHappened:
         response = _post(client, "/api/v1/shorten", json={"url": _url()})
 
         assert response.status_code == 201
+
+
+class TestOneReaderMeansOneAnswer:
+    """The same broken body gets the same sentence on every route.
+
+    Two controllers each carried a private body reader, and the two
+    disagreed. Twenty kilobytes of ``[`` was named on the API routes --
+    "Request body is nested too deeply" -- and reported on the auth routes
+    as credentials nobody sent, which sends a person to re-type fields
+    they had already typed.
+    """
+
+    DEEP = "[" * 10000 + "]" * 10000
+
+    @pytest.mark.parametrize("path", [
+        "/api/v1/shorten",
+        "/api/v1/batch/shorten",
+        "/api/v1/auth/login",
+        "/api/v1/auth/register",
+        "/api/v1/auth/forgot-password",
+        "/api/v1/auth/reset-password",
+    ])
+    def test_a_body_too_deep_to_decode_is_named_as_that(self, client, path):
+        response = _post(
+            client, path, data=self.DEEP, content_type="application/json"
+        )
+
+        assert response.status_code == 400, response.get_json()
+        body = response.get_json()
+        assert body["error"] == "VALIDATION_ERROR"
+        assert body["message"] == "Request body is nested too deeply"
+        assert body["details"][0]["field"] == "body"
+
+    @pytest.mark.parametrize("path", [
+        "/api/v1/shorten",
+        "/api/v1/auth/login",
+        "/api/v1/auth/register",
+    ])
+    def test_a_body_of_literal_null_reads_as_no_body(self, client, path):
+        """``null`` is valid JSON and decodes to nothing.
+
+        It is the one value that reaches the reader as ``None`` -- an
+        absent body is refused earlier, by Flask, for not being offered
+        as JSON. Treated as an object it would be ``None.get(...)``, and
+        the endpoint would answer 500 to an unauthenticated caller.
+        """
+        response = _post(
+            client, path, data="null", content_type="application/json"
+        )
+
+        assert response.status_code == 400, response.get_json()
+        # The fields it did not send, rather than a complaint about the
+        # body: nothing was sent, so nothing about it is malformed.
+        assert response.get_json()["error"] == "VALIDATION_ERROR"
+
+    @pytest.mark.parametrize("path", [
+        "/api/v1/shorten",
+        "/api/v1/auth/login",
+        "/api/v1/auth/register",
+    ])
+    def test_a_body_that_is_not_an_object_is_named_as_that(self, client, path):
+        response = _post(client, path, json=[1, 2, 3])
+
+        assert response.status_code == 400, response.get_json()
+        body = response.get_json()
+        assert body["error"] == "VALIDATION_ERROR"
+        assert body["message"] == "Request body must be a JSON object"
+
+
+class TestTheRoutesThatNeedNoBody:
+    """Signing out and refreshing read a cookie, and may carry nothing.
+
+    Read as strictly as the rest, a sign-out with no body would be
+    answered 415 -- Flask refuses a body that is not offered as JSON, and
+    a body that is not there is not offered. Both routes take their token
+    from the cookie first, so arriving without one is ordinary.
+    """
+
+    def test_signing_out_without_a_body_is_not_a_media_type_error(self, client):
+        response = _post(client, "/api/v1/auth/logout")
+
+        assert response.status_code == 200, response.get_json()
+
+    def test_refreshing_without_a_body_says_the_token_is_missing(self, client):
+        response = _post(client, "/api/v1/auth/refresh")
+
+        assert response.status_code == 401, response.get_json()
+        assert response.get_json()["error"] == "UNAUTHENTICATED"
+
+    @pytest.mark.parametrize("path, status", [
+        ("/api/v1/auth/logout", 200),
+        ("/api/v1/auth/refresh", 401),
+    ])
+    def test_a_json_header_over_an_empty_body_is_still_no_body(
+        self, client, path, status
+    ):
+        """The shape this application's own pages send.
+
+        ``apiFetch`` puts ``Content-Type: application/json`` on every
+        request it makes and sends no body with a sign-out. Read strictly
+        that is a malformed JSON document -- nought bytes where an object
+        was promised -- and the route answered 400 "Malformed request
+        body". A browser never saw it, because a browser has the cookie
+        and returns before the body is read; a client without one did.
+        """
+        response = _post(client, path, data="", content_type="application/json")
+
+        assert response.status_code == status, response.get_json()
+
+    def test_a_body_that_is_offered_as_json_is_still_read_strictly(self, client):
+        response = _post(
+            client,
+            "/api/v1/auth/refresh",
+            data="[" * 10000 + "]" * 10000,
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400, response.get_json()
+        assert response.get_json()["message"] == (
+            "Request body is nested too deeply"
+        )

@@ -373,6 +373,7 @@ WRAPPERS = [
         lambda log: log.log_user_email_confirmed("u-1", False),
         "USER_EMAIL_CONFIRMED",
     ),
+    (lambda log: log.log_email_confirmed("u-1"), "EMAIL_CONFIRMED"),
     (lambda log: log.log_roles_changed("u-1", [], ["admin"]), "ROLES_CHANGED"),
     (lambda log: log.log_password_changed("u-1", 2), "PASSWORD_CHANGED"),
     (lambda log: log.log_password_reset("u-1", 2), "PASSWORD_RESET"),

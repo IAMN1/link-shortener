@@ -9,61 +9,38 @@ from typing import Optional
 from flask import Blueprint, current_app, g, jsonify, make_response, request
 from flask_babel import gettext
 
-from link_shortener.application import (
-    AuthenticationService,
-    ChangePasswordUseCase,
-    LoginUseCase,
-    RegisterUseCase,
-    RequestPasswordResetUseCase,
-    ResendVerificationUseCase,
-    ResetPasswordUseCase,
-    VerifyEmailUseCase,
-)
+from link_shortener.application import AuthService
 from link_shortener.domain import DomainError, ValidationError
 from link_shortener.web.middleware.csrf import (
     CSRF_COOKIE_NAME, build_csrf_token, set_csrf_cookie
 )
-from link_shortener.web.i18n import translate_error
+from link_shortener.web.middleware.error_handler import client_message
+from link_shortener.web.request_body import json_object, optional_json_object
+from link_shortener.web.schemas.auth import (
+    MessageResponse, RefreshResponse, RegisterResponse, TokenPairResponse,
+    UserResponse,
+)
 from link_shortener.web.responses import error_response
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.decorators import login_required
 from link_shortener.domain.i18n import N_
 
 
-def _decoded_body():
-    """
-    Decode the request body, treating anything undecodable as absent.
-
-    ``get_json(silent=True)`` swallows a malformed body but not a body the
-    decoder cannot get through at all: ``"[" * 10000`` is twenty kilobytes
-    and exhausts the stack, and ``RecursionError`` is not a ``ValueError``,
-    so it escaped the silent parse and left every endpoint here answering
-    500 to an unauthenticated request.
-
-    Returns:
-        The decoded body, or ``None``.
-    """
-    try:
-        return request.get_json(silent=True)
-    except RecursionError:
-        return None
-
-
 def _read_credentials():
     """
     Pull ``email`` and ``password`` out of the request body.
 
-    Guards the shape of the body as well as its contents: a JSON document
-    that is not an object, or fields that are not strings, would otherwise
-    crash further down and surface as a 500.
+    Guards the contents of the body; its shape and its decoding are
+    ``web/request_body.py``'s, which is where the whole application reads
+    a body now. This controller used to carry a reader of its own, and the
+    two disagreed about one and the same request: a body too deeply nested
+    to decode was reported here as credentials nobody sent.
 
     Returns:
         Tuple of (email, password), or (None, None) if the body does not
         carry usable credentials.
     """
-    data = _decoded_body()
-    if not isinstance(data, dict):
-        return None, None
+    data = json_object()
 
     email = data.get("email")
     password = data.get("password")
@@ -87,11 +64,11 @@ def _read_refresh_token() -> Optional[str]:
     if cookie_token:
         return cookie_token
 
-    body = _decoded_body()
-    if isinstance(body, dict):
-        token = body.get("refresh_token")
-        if isinstance(token, str) and token:
-            return token
+    # The lenient reader: this route is reached without a body at all
+    # by every browser, which keeps its token in the cookie read above.
+    token = optional_json_object().get("refresh_token")
+    if isinstance(token, str) and token:
+        return token
 
     return None
 
@@ -162,25 +139,8 @@ class AuthController:
     Controller for authentication endpoints (login, token refresh, logout, register).
     """
 
-    def __init__(
-        self, 
-        authentication_service: AuthenticationService,
-        login_use_case: LoginUseCase,
-        register_use_case: RegisterUseCase,
-        verify_email_use_case: VerifyEmailUseCase,
-        resend_verification_use_case: ResendVerificationUseCase,
-        change_password_use_case: ChangePasswordUseCase,
-        request_password_reset_use_case: RequestPasswordResetUseCase,
-        reset_password_use_case: ResetPasswordUseCase,
-    ):
-        self.authentication_service = authentication_service
-        self.login_use_case = login_use_case
-        self.register_use_case = register_use_case
-        self.verify_email_use_case = verify_email_use_case
-        self.resend_verification_use_case = resend_verification_use_case
-        self.change_password_use_case = change_password_use_case
-        self.request_password_reset_use_case = request_password_reset_use_case
-        self.reset_password_use_case = reset_password_use_case
+    def __init__(self, auth_service: AuthService):
+        self.auth_service = auth_service
         self.bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
         self._register_routes()
 
@@ -251,7 +211,7 @@ class AuthController:
 
         context = create_request_context()
         try:
-            result = self.login_use_case.execute(email, password, context)
+            result = self.auth_service.login(email, password, context)
         except ValidationError:
             # A malformed email is a malformed request, not a refused one.
             # ValidationError is a DomainError, so without this clause the
@@ -273,19 +233,20 @@ class AuthController:
             # answers INVALID_CREDENTIALS for a deactivated account -- and
             # it would catch EMAIL_NOT_VERIFIED the same way. The envelope
             # is the handler's all the same.
-            return error_response(e.code, translate_error(e), 401)
+            #
+            # The sentence is the handler's rule too, which is why it is
+            # `client_message` rather than `translate_error`: what a code
+            # may say to a client is decided by the code, and answering
+            # with a status of our own must not turn a 5xx sentence about
+            # the service's own state into a 401 a stranger reads.
+            return error_response(e.code, client_message(e), 401)
 
         # Build the response with access token in body and refresh token in HttpOnly cookie.
-        resp = make_response(jsonify({
-            "access_token": result.access_token,
-            "refresh_token": result.refresh_token,
-            "user": {
-                "id": result.user.id,
-                "email": result.user.email,
-                "roles": result.user.roles,
-                "is_active": result.user.is_active
-            }
-        }), 200)
+        resp = make_response(jsonify(TokenPairResponse(
+            access_token=result.access_token,
+            refresh_token=result.refresh_token,
+            user=UserResponse.from_dto(result.user),
+        ).model_dump()), 200)
 
         cookie_secure = current_app.config.get("COOKIE_SECURE", False)
 
@@ -332,18 +293,30 @@ class AuthController:
 
         context = create_request_context()
         try:
-            self.register_use_case.execute(email, password, context)
-            return jsonify({
-                "message": (
-                    "If that address can be registered, a link has been "
-                    "sent to it."
-                )
-            }), 202
+            self.auth_service.register(email, password, context)
+            return jsonify(RegisterResponse(message=(
+                "If that address can be registered, a link has been "
+                "sent to it."
+            )).model_dump()), 202
+        except ValidationError:
+            # A refused address or a refused password is a malformed
+            # request, and the global handler is what answers those --
+            # with the offending field in ``details``, which this branch
+            # cannot carry. Answered here, the two neighbouring routes
+            # reported one and the same ``ValidationError`` in two
+            # envelopes: ``/register`` with ``details: null`` and
+            # ``/forgot-password`` with the field named, while the OpenAPI
+            # document promises the field on both. The handler also logs
+            # the refusal, which this branch never did.
+            raise
         except DomainError as e:
             # Same rule as login: internal failures must not reach the
             # client, and the status is the endpoint's rather than the
-            # code's.
-            return error_response(e.code, translate_error(e), 400)
+            # code's. `client_message` is what keeps the first half true
+            # while the second is being exercised -- the status here is
+            # 400 whatever the code, so nothing else would stop a sentence
+            # meant for a log from being read as a bad request.
+            return error_response(e.code, client_message(e), 400)
 
     # ------------------------------------------------------------------
     # GET, POST /api/v1/auth/verify
@@ -364,17 +337,18 @@ class AuthController:
         """
         token = request.args.get("token")
         if not token and request.method == "POST":
-            body = _decoded_body()
-            token = body.get("token") if isinstance(body, dict) else None
+            token = json_object().get("token")
         if not isinstance(token, str) or not token:
             raise ValidationError(
                 N_("This confirmation link is not valid"), field="token"
             )
 
         context = create_request_context()
-        self.verify_email_use_case.execute(token, context)
+        self.auth_service.verify_email(token, context)
 
-        return jsonify({"message": "Email confirmed. You can sign in now."}), 200
+        return jsonify(MessageResponse(
+            message="Email confirmed. You can sign in now."
+        ).model_dump()), 200
 
     # ------------------------------------------------------------------
     # POST /api/v1/auth/resend-verification
@@ -393,19 +367,16 @@ class AuthController:
         Returns:
             202, always, unless the address is not an address.
         """
-        data = _decoded_body()
-        email = data.get("email") if isinstance(data, dict) else None
+        email = json_object().get("email")
         if not isinstance(email, str) or not email:
             raise ValidationError(N_("Email is required"), field="email")
 
         context = create_request_context()
-        self.resend_verification_use_case.execute(email, context)
+        self.auth_service.resend_verification(email, context)
 
-        return jsonify({
-            "message": (
-                "If that address needs confirming, a link has been sent to it."
-            )
-        }), 202
+        return jsonify(MessageResponse(message=(
+            "If that address needs confirming, a link has been sent to it."
+        )).model_dump()), 202
 
     # ------------------------------------------------------------------
     # POST /api/v1/auth/change-password
@@ -434,9 +405,9 @@ class AuthController:
             wrong or the new one is refused, 401 if the caller is not
             signed in.
         """
-        data = _decoded_body()
-        current_password = data.get("current_password") if isinstance(data, dict) else None
-        new_password = data.get("new_password") if isinstance(data, dict) else None
+        data = json_object()
+        current_password = data.get("current_password")
+        new_password = data.get("new_password")
         if not isinstance(current_password, str) or not current_password:
             raise ValidationError(
                 N_("Current password is required"), field="current_password"
@@ -447,7 +418,7 @@ class AuthController:
             )
 
         context = create_request_context()
-        tokens = self.change_password_use_case.execute(
+        tokens = self.auth_service.change_password(
             user_id=g.current_user.id,
             current_password=current_password,
             new_password=new_password,
@@ -459,10 +430,10 @@ class AuthController:
         # says what happened in the reader's own language, out of the
         # catalogue, and a second sentence here would be an English one
         # nothing displays.
-        resp = make_response(jsonify({
-            "access_token": tokens.access_token,
-            "refresh_token": tokens.refresh_token,
-        }), 200)
+        resp = make_response(jsonify(RefreshResponse(
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
+        ).model_dump()), 200)
         # Required, not a convenience: the access token in the browser
         # names a session this request has just revoked, so without the new
         # pair the page that made the change is signed out by it.
@@ -486,8 +457,7 @@ class AuthController:
         Returns:
             202, always, unless the address is not an address.
         """
-        data = _decoded_body()
-        email = data.get("email") if isinstance(data, dict) else None
+        email = json_object().get("email")
         if not isinstance(email, str) or not email:
             raise ValidationError(N_("Email is required"), field="email")
 
@@ -495,14 +465,12 @@ class AuthController:
         # The outcome is deliberately dropped. Which of the three things
         # happened is what this route exists not to say; the journal has
         # it.
-        self.request_password_reset_use_case.execute(email, context)
+        self.auth_service.request_password_reset(email, context)
 
-        return jsonify({
-            "message": (
-                "If that address has an account, a link to reset its "
-                "password has been sent to it."
-            )
-        }), 202
+        return jsonify(MessageResponse(message=(
+            "If that address has an account, a link to reset its "
+            "password has been sent to it."
+        )).model_dump()), 202
 
     # ------------------------------------------------------------------
     # POST /api/v1/auth/reset-password
@@ -526,9 +494,9 @@ class AuthController:
             200 on success, 400 for a token that cannot be spent or a
             password the policy refuses.
         """
-        data = _decoded_body()
-        token = data.get("token") if isinstance(data, dict) else None
-        new_password = data.get("new_password") if isinstance(data, dict) else None
+        data = json_object()
+        token = data.get("token")
+        new_password = data.get("new_password")
         if not isinstance(token, str) or not token:
             raise ValidationError(
                 N_("This reset link is not valid"), field="token"
@@ -539,11 +507,11 @@ class AuthController:
             )
 
         context = create_request_context()
-        self.reset_password_use_case.execute(token, new_password, context)
+        self.auth_service.reset_password(token, new_password, context)
 
-        return jsonify({
-            "message": "Password changed. You can sign in now."
-        }), 200
+        return jsonify(MessageResponse(
+            message="Password changed. You can sign in now."
+        ).model_dump()), 200
 
     # ------------------------------------------------------------------
     # POST /api/v1/auth/logout
@@ -562,13 +530,11 @@ class AuthController:
         """
         refresh_token = _read_refresh_token()
         if refresh_token:
-            self.authentication_service.revoke_refresh_token(refresh_token)
+            self.auth_service.logout(refresh_token)
         elif g.get("auth_session_id"):
-            self.authentication_service.revoke_session_chain(
-                g.get("auth_session_id")
-            )
+            self.auth_service.logout_session(g.get("auth_session_id"))
 
-        resp = jsonify({"message": "Logged out"})
+        resp = jsonify(MessageResponse(message="Logged out").model_dump())
         resp.delete_cookie('refresh_token', path='/')
         resp.delete_cookie('access_token', path='/')
         resp.delete_cookie(CSRF_COOKIE_NAME, path='/')
@@ -597,7 +563,7 @@ class AuthController:
                 "UNAUTHENTICATED", gettext("No refresh token"), 401
             )
 
-        tokens = self.authentication_service.refresh_access_token(refresh_token)
+        tokens = self.auth_service.refresh(refresh_token)
         if not tokens:
             resp, status = error_response(
                 "UNAUTHENTICATED", gettext("Invalid or expired refresh token"), 401
@@ -607,9 +573,9 @@ class AuthController:
             resp.delete_cookie(CSRF_COOKIE_NAME, path="/")
             return resp, status
 
-        resp = make_response(jsonify({
-            "access_token": tokens.access_token,
-            "refresh_token": tokens.refresh_token,
-        }), 200)
+        resp = make_response(jsonify(RefreshResponse(
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
+        ).model_dump()), 200)
         _set_token_cookies(resp, tokens.access_token, tokens.refresh_token)
         return resp

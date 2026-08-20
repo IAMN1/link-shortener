@@ -94,6 +94,7 @@ class AuthUseCasesComponent:
         return VerifyEmailUseCase(
             uow_factory=self.uow_factory,
             logger=self.logger,
+            audit_logger=self.audit_logger,
         )
 
     def get_resend_verification_use_case(self) -> ResendVerificationUseCase:

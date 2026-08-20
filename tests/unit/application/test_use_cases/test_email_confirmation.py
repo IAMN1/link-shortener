@@ -335,7 +335,9 @@ class TestConfirmation:
                 user_id=user.id, token_hash=token_digest(token), ttl_hours=24
             )
         )
-        use_case = VerifyEmailUseCase(uow_factory=uow_factory, logger=Mock())
+        use_case = VerifyEmailUseCase(
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock()
+        )
         return use_case, user, token
 
     def test_a_live_token_confirms_the_account(self, confirmed):
@@ -344,6 +346,42 @@ class TestConfirmation:
         use_case.execute(token, context())
 
         assert user.email_verified is True
+
+    def test_the_confirmation_reaches_the_audit_journal(self, confirmed):
+        """The act that lets an account sign in leaves a record.
+
+        The journal's rule is that an act changing who may do what is
+        recorded, and this is the act that turns an account which cannot
+        sign in into one that can. Its two neighbours on the self-service
+        path -- a password changed and a password reset -- were recorded
+        from the start; this one was not, so an account appeared at
+        registration and then simply started signing in.
+        """
+        use_case, user, token = confirmed
+
+        use_case.execute(token, context())
+
+        bound = use_case.audit_logger.bind.return_value
+        bound.log_email_confirmed.assert_called_once_with(
+            target_user_id=user.id
+        )
+
+    def test_a_refusal_leaves_no_record(self, confirmed):
+        """A token that cannot be spent names nobody.
+
+        The opposite of the sign-in beside it, where the refusals are the
+        interesting record. Here every way a token can fail is answered
+        alike on purpose, so a record of one would say nothing an operator
+        can act on -- and on the unknown-token path there is not even an
+        account to name.
+        """
+        use_case, _, _ = confirmed
+
+        with pytest.raises(ValidationError):
+            use_case.execute("never-issued", context())
+
+        bound = use_case.audit_logger.bind.return_value
+        bound.log_email_confirmed.assert_not_called()
 
     def test_a_token_works_once(self, confirmed):
         use_case, _, token = confirmed
@@ -370,7 +408,9 @@ class TestConfirmation:
                 now=datetime.now(timezone.utc) - timedelta(days=2),
             )
         )
-        use_case = VerifyEmailUseCase(uow_factory=uow_factory, logger=Mock())
+        use_case = VerifyEmailUseCase(
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock()
+        )
 
         with pytest.raises(ValidationError):
             use_case.execute(token, context())
@@ -385,7 +425,9 @@ class TestConfirmation:
                 user_id="gone", token_hash=token_digest(token), ttl_hours=24
             )
         )
-        use_case = VerifyEmailUseCase(uow_factory=uow_factory, logger=Mock())
+        use_case = VerifyEmailUseCase(
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock()
+        )
 
         with pytest.raises(ValidationError):
             use_case.execute(token, context())

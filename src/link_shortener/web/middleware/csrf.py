@@ -48,11 +48,12 @@ import time
 from typing import Optional
 from urllib.parse import urlparse
 
-from flask import Flask, g, jsonify, request
+from flask import Flask, g, request
+from flask_babel import gettext
 
 from link_shortener.application import AuthenticationService, Logger
 from link_shortener.web.middleware.authentication import AUTH_SOURCE_HEADER
-from link_shortener.web.schemas.error import ErrorResponse
+from link_shortener.web.responses import error_response
 from link_shortener.web.middleware.hooks import response_hook
 
 
@@ -418,16 +419,43 @@ class CsrfProtectionMiddleware:
         """
         Build the refusal returned for every failed check.
 
+        The sentence is written for whoever is reading it and taken from
+        the catalogue, like every other sentence this service shows. Built
+        by hand it was "CSRF token missing or invalid" -- the name of the
+        mechanism rather than anything a visitor can act on, and English
+        on a page the same request had just been answered in Russian.
+        What a person can act on is reloading: the ordinary cause is a
+        token that aged out under a form left open, and the next response
+        hands out a fresh one.
+
+        The envelope is ``error_response`` rather than an ``ErrorResponse``
+        assembled here, for the reason the throttle's 429 was moved onto
+        it: an answer built by hand is a second shape for one API, and it
+        drifts the first time the envelope gains a field.
+
+        There is deliberately no page branch. ``wants_html`` decides that
+        question everywhere else, and here it has nothing to decide: this
+        check only ever refuses an unsafe method, and every route in the
+        application that takes one is under ``/api/``. A page branch would
+        be a branch no request can reach.
+
         Returns:
             Tuple of (JSON response, 403).
         """
+        # The mechanism's own words, not the shown ones: an operator
+        # matching this against the middleware needs the name of the check
+        # that failed, and this line is not read by the visitor.
         self.logger.warning(
             "CSRF token missing or invalid",
             path=request.path,
             method=request.method,
         )
-        response = ErrorResponse(
-            error="CSRF_TOKEN_INVALID",
-            message="CSRF token missing or invalid",
+
+        return error_response(
+            "CSRF_TOKEN_INVALID",
+            gettext(
+                "This request could not be verified. Reload the page and "
+                "try again."
+            ),
+            403,
         )
-        return jsonify(response.model_dump()), 403

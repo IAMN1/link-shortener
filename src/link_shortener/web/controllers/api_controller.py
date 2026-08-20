@@ -23,7 +23,7 @@ Access rules:
 from flask import Blueprint, current_app, g, jsonify, request
 
 from link_shortener.domain import (
-    DomainError, LinkNotFoundError, SystemPermissions, ValidationError
+    DomainError, LinkNotFoundError, SystemPermissions
 )
 from link_shortener.application import LinkService, AdminService, AuthorizationService
 from link_shortener.web.schemas.batch import BatchCreateResponse
@@ -42,48 +42,9 @@ from link_shortener.web.security.deletion_token import (
     issue as issue_deletion_token,
     link_id_from,
 )
+from link_shortener.web.request_body import json_object
 from link_shortener.web.security.decorators import login_required, require_permission
 from link_shortener.domain.i18n import N_
-
-def _read_json_object() -> dict:
-    """
-    Read the request body as a JSON object.
-
-    Guards the *shape* of the body, which the request schemas cannot: they
-    are handed the body as keyword arguments, and ``**`` on anything but a
-    mapping raises ``TypeError`` before Pydantic is reached. A body of
-    ``[1, 2]``, ``"text"``, ``5`` or ``true`` therefore answered 500, on
-    both creation endpoints, without authentication. The same hole was
-    closed for the auth controller in its own block and left open here.
-
-    Returns:
-        The decoded object, or an empty one when the body is absent, so
-        that a missing field is reported as the missing field it is.
-
-    Raises:
-        ValidationError: If the body is not a JSON object, or is nested too
-            deeply to decode.
-    """
-    try:
-        data = request.get_json()
-    except RecursionError:
-        # ``"[" * 10000`` is twenty kilobytes and decodes recursively, so
-        # the decoder runs out of stack. Werkzeug turns a ``ValueError``
-        # from the decoder into 400 and a ``RecursionError`` is not one, so
-        # it went past every handler here into the catch-all: 500, from an
-        # unauthenticated request, on every endpoint that reads a body.
-        raise ValidationError(
-            N_("Request body is nested too deeply"), field="body"
-        )
-
-    if data is None:
-        return {}
-    if not isinstance(data, dict):
-        raise ValidationError(
-            N_("Request body must be a JSON object"), field="body"
-        )
-    return data
-
 
 class ApiController:
     """Controller for REST API endpoints (JSON)."""
@@ -118,7 +79,7 @@ class ApiController:
         Accepts JSON with ``url`` and optional ``ttl_seconds``.
         Returns 201 if new, 200 if existing.
         """
-        data = _read_json_object()
+        data = json_object()
         validated = CreateShortLinkRequest(**data)
         context = create_request_context()
         ttl = validated.ttl_seconds if validated.ttl_seconds is not None else 0
@@ -201,7 +162,7 @@ class ApiController:
     @require_permission(SystemPermissions.LINK_CREATE.value)
     def batch_create(self):
         """Batch create short links."""
-        data = _read_json_object()
+        data = json_object()
         validated = BatchCreateLinkRequest(**data)
         context = create_request_context()
         result_dto = self.link_service.batch_create_short_links(validated.urls, context)

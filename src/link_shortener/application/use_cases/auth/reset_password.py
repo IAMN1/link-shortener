@@ -87,19 +87,18 @@ class ResetPasswordUseCase(BaseUseCase):
                     N_("This reset link is not valid"), field="token"
                 )
 
-            # Before the password is written, so that a password the policy
-            # refuses leaves nothing behind: the raise rolls back the claim
-            # with it, and the link the person is holding still works for
-            # their second attempt at a strong enough password.
-            self.user_service.update_password(uow, user, new_password)
-
-            # The other links this account may still have outstanding. One
-            # of them is quite possibly the reason this reset happened, and
-            # a link that survives the reset it caused survives the point
-            # of it.
-            uow.password_resets.invalidate_for_user(user.id)
-
-            revoked = uow.refresh_sessions.revoke_all_for_user(user.id)
+            # The whole act in one call: the policy that refuses a weak
+            # password, the other links this account may still have
+            # outstanding -- one of them is quite possibly the reason this
+            # reset happened -- and every session it held.
+            #
+            # A password the policy refuses raises in there before
+            # anything is retired, and the raise rolls back the claim with
+            # it, so the link the person is holding still works for their
+            # second attempt at a strong enough one.
+            revoked = self.user_service.update_password(
+                uow, user, new_password
+            )
 
             uow.commit()
 

@@ -989,11 +989,21 @@ def security_reset_password(email, password, non_interactive):
     container = _container()
     user_service = container.get_user_management_service()
 
-    if reset_password(container.get_uow_factory(), user_service, email, password):
-        click.echo(f"Password reset successfully for {email}")
-    else:
+    revoked = reset_password(
+        container.get_uow_factory(), user_service, email, password
+    )
+    if revoked is None:
         click.echo(f"User {email} not found.", err=True)
         raise SystemExit(1)
+
+    # The count is said out loud because it is half of what the command
+    # did. An operator running this on an account somebody else is in
+    # wants to see that they were put out of it, and "reset successfully"
+    # alone reads the same whether one session was closed or none was.
+    click.echo(
+        f"Password reset successfully for {email}; "
+        f"sessions closed: {revoked}"
+    )
 
 @security_group.command("validate-token")
 @click.argument("token")

@@ -16,6 +16,9 @@ from unittest.mock import Mock
 import pytest
 
 from link_shortener.application.context import RequestContext
+from link_shortener.application.ports.auth.auth_service import (
+    AuthenticationService,
+)
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.services.user_management_service import (
     UserManagementService,
@@ -71,8 +74,24 @@ def uow(user):
 
 @pytest.fixture
 def user_service():
-    """The service that hashes and stores the new password."""
-    return Mock(spec=UserManagementService)
+    """The real service, over a mocked hasher.
+
+    Not a ``Mock(spec=UserManagementService)``, which is what stood here
+    while the retiring lived in this use case. It moved into
+    ``update_password`` -- there were three callers and the rule held in
+    two -- and mocked away, the service takes the retiring with it and
+    the checks below measure nothing. What is mocked is one layer lower:
+    hashing, which is bcrypt and has no business in a unit test.
+    """
+    hasher = Mock(spec=AuthenticationService)
+    # A hash a test can recognise. The policy lives inside this call in
+    # the real service, which is why the check below for a refused
+    # password raises from here rather than from the service.
+    hasher.hash_password.side_effect = lambda plain: f"hash-of-{plain}"
+    return UserManagementService(
+        authentication_service=hasher,
+        default_role_name="user",
+    )
 
 
 @pytest.fixture
@@ -159,7 +178,8 @@ class TestATokenThatCannotBeSpent:
         with pytest.raises(ValidationError):
             use_case.execute(TOKEN, "NewStrong1!", context)
 
-        user_service.update_password.assert_not_called()
+        uow.users.save.assert_not_called()
+        uow.password_resets.invalidate_for_user.assert_not_called()
         uow.refresh_sessions.revoke_all_for_user.assert_not_called()
         audit.log_password_reset.assert_not_called()
         uow.commit.assert_not_called()
@@ -168,12 +188,11 @@ class TestATokenThatCannotBeSpent:
 class TestASpentLinkTakesEverythingWithIt:
     """The sessions, and the other links."""
 
-    def test_the_password_is_written(self, use_case, user, user_service, context):
+    def test_the_password_is_written(self, use_case, user, uow, context):
         use_case.execute(TOKEN, "NewStrong1!", context)
 
-        user_service.update_password.assert_called_once()
-        assert user_service.update_password.call_args[0][1] is user
-        assert user_service.update_password.call_args[0][2] == "NewStrong1!"
+        uow.users.save.assert_called_once_with(user)
+        assert user.password_hash.value == "hash-of-NewStrong1!"
 
     def test_every_session_is_revoked(self, use_case, user, uow, context):
         use_case.execute(TOKEN, "NewStrong1!", context)
@@ -190,8 +209,11 @@ class TestASpentLinkTakesEverythingWithIt:
     def test_a_password_the_policy_refuses_leaves_nothing_behind(
         self, use_case, uow, user_service, audit, context
     ):
-        user_service.update_password.side_effect = ValidationError(
-            "Password is too common", field="password"
+        # Raised from hashing, which is where the policy actually lives:
+        # every path that sets a password goes through it, so a rule
+        # enforced there is a rule with no way around it.
+        user_service.authentication_service.hash_password.side_effect = (
+            ValidationError("Password is too common", field="password")
         )
 
         with pytest.raises(ValidationError):

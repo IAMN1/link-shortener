@@ -176,6 +176,47 @@ class TestRefusalsThatNeedAnAccount:
         assert response.get_json()["error"] == "UNAUTHENTICATED"
 
 
+class TestOneValidationErrorIsOneEnvelope:
+    """A refused field is named, on every route that refuses one.
+
+    ``details`` is where the envelope says *which* field was refused, and
+    it is filled by the global handler. ``/register`` used to answer its
+    own ``ValidationError`` by hand, so the same exception -- same class,
+    same code, same status -- came back with the field named on one route
+    and ``details: null`` on the next, while the OpenAPI document declared
+    the field on both.
+    """
+
+    @pytest.mark.parametrize("path, body, field", [
+        (
+            "/api/v1/auth/register",
+            {"email": "envelope-weak@example.test", "password": "short"},
+            "password",
+        ),
+        (
+            "/api/v1/auth/register",
+            {"email": "not-an-address", "password": "Str0ng!Passw0rd"},
+            "email",
+        ),
+        (
+            "/api/v1/auth/forgot-password",
+            {"email": "not-an-address"},
+            "email",
+        ),
+    ])
+    def test_the_refused_field_is_named(self, client, path, body, field):
+        response = client.post(path, json=body)
+
+        assert response.status_code == 400
+        assert_envelope(response, f"POST {path}")
+        answer = response.get_json()
+        assert answer["error"] == "VALIDATION_ERROR"
+        assert answer["details"], (
+            f"POST {path} refused {field} without saying which field it was"
+        )
+        assert answer["details"][0]["field"] == field
+
+
 class TestAdminRefusalsPastTheDoor:
     """The 404s an administrator gets, which no anonymous sweep reaches."""
 

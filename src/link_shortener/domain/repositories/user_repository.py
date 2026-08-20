@@ -19,11 +19,48 @@ class UserRepository(ABC):
         """
         Persist a new or updated user.
 
+        Writes the whole account, so the entity handed in must have been
+        read inside the transaction that is about to commit it. Read in an
+        earlier one, every column it carries is stale by however long the
+        gap was, and the save puts all of them back -- see
+        ``record_login`` for what that cost when the gap was a bcrypt
+        comparison.
+
         Args:
             user: User entity to save.
 
         Returns:
             The saved User.
+        """
+        ...
+
+    @abstractmethod
+    def record_login(self, user_id: str, when: datetime) -> bool:
+        """
+        Note that an account has just signed in.
+
+        One column, by a conditional update, rather than ``save`` on an
+        entity read earlier. The rule is the one
+        ``JwtAuthenticationService.revoke_refresh_token`` already states
+        for sessions: writing back a whole entity overwrites columns
+        another transaction has changed in the meantime.
+
+        Sign-in is where that gap is widest and where it costs most. The
+        account is read to check the password, which is ~160 ms of bcrypt,
+        and only then written. Measured on both of the columns an
+        administrator is most likely to be changing in that moment: an
+        account switched off during the window came back active, and a
+        password changed during it was replaced by the old hash -- so the
+        new password stopped working and the one the change was made
+        against went on working.
+
+        Args:
+            user_id: The account that signed in.
+            when: Time of the sign-in.
+
+        Returns:
+            True if a row was updated -- False if the account is gone,
+            which is a sign-in racing a deletion and nothing to undo.
         """
         ...
 

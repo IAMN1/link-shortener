@@ -44,6 +44,17 @@ class AuditEvent(Enum):
     USER_DEACTIVATED = "USER_DEACTIVATED"
     ROLES_CHANGED = "ROLES_CHANGED"
 
+    # The address proved itself, from the link that was mailed to it.
+    # Named without the ``USER_`` prefix on the convention the members
+    # above already follow: ``USER_*`` is an operator acting on somebody
+    # else's account, and a bare name is the account acting for itself --
+    # which is why LOGIN_SUCCEEDED, PASSWORD_CHANGED and PASSWORD_RESET
+    # are spelt the way they are. USER_EMAIL_CONFIRMED beside it is the
+    # operator's version of this act, and the difference between them is
+    # the whole reason both exist: one is evidence, the other is somebody
+    # asserting it.
+    EMAIL_CONFIRMED = "EMAIL_CONFIRMED"
+
     # The name of an event, not a password. bandit reads any string
     # assigned to a name containing PASSWORD as a credential; the value
     # here is what a reader filters the journal by, and it has to be
@@ -291,6 +302,37 @@ class AuditLogger(ABC):
             target_user_id=target_user_id,
             already_confirmed=already_confirmed,
             **fields,
+        )
+
+    def log_email_confirmed(self, target_user_id: str, **fields) -> None:
+        """
+        Record an address proven readable by whoever registered it.
+
+        The act that turns an account which cannot sign in into one that
+        can, which is what puts it here under the rule the enum states:
+        an act that changes who may do what leaves a record. Its two
+        neighbours on the self-service path -- a password changed and a
+        password reset -- were recorded from the start; this one was not,
+        so an investigator reading the journal for an account saw it
+        appear at registration and then simply start signing in.
+
+        No ``already_confirmed``, unlike ``log_user_email_confirmed``.
+        That flag exists because an operator can press the button twice
+        and the second press bypasses nothing; here a token can only be
+        spent once, so a second attempt is refused before it reaches this
+        line and there is no second outcome to distinguish.
+
+        ``user_id`` is nobody. The request is anonymous -- the account
+        cannot sign in yet, which is the point of the whole exchange --
+        and the account it is about is ``target_user_id``, as on every
+        other event here.
+
+        Args:
+            target_user_id: The account whose address was confirmed.
+            **fields: Additional context.
+        """
+        self.log_security_event(
+            AuditEvent.EMAIL_CONFIRMED, target_user_id=target_user_id, **fields
         )
 
     def log_user_deactivated(

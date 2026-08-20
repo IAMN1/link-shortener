@@ -1,6 +1,8 @@
 """Integration tests for AuthenticationMiddleware with real DB."""
 
-
+from link_shortener.infrastructure.database.unit_of_work import (
+    SQLAlchemyUnitOfWork,
+)
 from link_shortener.infrastructure.database.models.user_model import UserModel
 from tests.integration.conftest import confirm_email, auth_headers, csrf_headers
 
@@ -213,3 +215,67 @@ class TestDeactivatedUser:
         assert right.status_code == 401
         assert right.status_code == wrong.status_code
         assert _without_timestamp(right) == _without_timestamp(wrong)
+
+
+class TestADatabaseThatStoppedAnswering:
+    """The hook runs before every view, so its failure is every route's.
+
+    ``load_current_user`` opens a unit of work on every request that
+    carries a token. An outage there used to be a 500 on routes that need
+    no database at all -- ``/health`` among them, whose whole purpose is
+    to report that outage, and which then reported nothing but a crash.
+    The request continues as anonymous instead, and the failure goes to
+    the log.
+
+    The claim was written down in the middleware and measured by nothing.
+
+    The outage is made by breaking ``SQLAlchemyUnitOfWork.__enter__``,
+    not by replacing anything on the container. Everything was wired at
+    application start and holds the factory itself, so a container whose
+    accessor is swapped afterwards hands the new one to nobody -- written
+    that way first, this checked a working database and passed.
+    """
+
+    @staticmethod
+    def _break_it(monkeypatch):
+        """Every unit of work opened from now on fails to open."""
+        def refuses(self):
+            raise RuntimeError("connection to the database was refused")
+
+        monkeypatch.setattr(SQLAlchemyUnitOfWork, "__enter__", refuses)
+
+    def test_the_health_probe_is_not_a_crash(self, app, monkeypatch):
+        """It exists to report an outage, so it must survive one.
+
+        With a token, deliberately: without one the hook returns before
+        it opens anything, so the outage never reaches the branch this
+        is about and the check passes without measuring it -- which is
+        how it was written first.
+        """
+        client = app.test_client()
+        token, _ = _register_and_get_tokens(client, "outage-health@example.com")
+        self._break_it(monkeypatch)
+
+        response = app.test_client().get("/health", headers=auth_headers(token))
+
+        assert response.status_code != 500, response.get_data(as_text=True)
+
+    def test_a_live_token_goes_on_as_anonymous(self, app, monkeypatch):
+        """The account cannot be read, so the caller is nobody.
+
+        Not "let through on the token's word": the token is a signed
+        claim, and what the database was being asked is whether the
+        session behind it still lives and whether the account is still
+        active. With no answer to either, the safe reading is anonymous.
+        """
+        client = app.test_client()
+        token, _ = _register_and_get_tokens(client, "outage-anon@example.com")
+
+        self._break_it(monkeypatch)
+
+        response = app.test_client().get(
+            "/api/v1/links/mine", headers=auth_headers(token)
+        )
+
+        assert response.status_code == 401, response.get_data(as_text=True)
+        assert response.get_json()["error"] == "UNAUTHENTICATED"

@@ -165,9 +165,29 @@ class UserManagementService:
         user.activate()
         return uow.users.save(user)
     
-    def update_password(self, uow: UnitOfWork, user: User, new_password: str) -> User:
+    def update_password(
+        self, uow: UnitOfWork, user: User, new_password: str
+    ) -> int:
         """
-        Replace a user's password with a freshly hashed one.
+        Replace a user's password, and retire everything the old one held.
+
+        The whole act, not the hash alone. A password change retires every
+        session the account has and every reset link outstanding for it,
+        and that is written down in ``docs/decisions.md``: "A new request
+        retires the links outstanding, and so does any password change."
+        The reason is what a password change is usually *for* -- somebody
+        else may have the old one -- and a change that leaves their
+        session open has changed nothing they care about, while a reset
+        link that outlives it is that stranger still holding a way back
+        in.
+
+        All of it here rather than in the callers, because there are three
+        callers and the rule held in two. ``flask security
+        reset-password`` -- the operator's path, reached for an account
+        believed compromised -- replaced the hash and left every session
+        live and every mailed link working. A rule stated in the callers
+        is a rule the next caller does not know about; stated here, it is
+        the only door.
 
         Args:
             uow: Unit of work.
@@ -175,18 +195,30 @@ class UserManagementService:
             new_password: New plain-text password.
 
         Returns:
-            Updated User.
+            How many sessions were revoked, which is what the audit
+            journal records alongside the change.
 
         Raises:
-            ValidationError: If the password is empty.
+            ValidationError: If the password is empty, or the policy
+                refuses it. Raised before anything is retired, so a
+                refused password leaves the account exactly as it was.
         """
         if not new_password:
             raise ValidationError(N_("Password must not be empty"), field="password")
 
+        # The policy lives inside hashing, so a password it refuses is
+        # refused here before a single session is touched.
         hashed = self.authentication_service.hash_password(new_password)
         user.password_hash = PasswordHash(hashed)
+        uow.users.save(user)
 
-        return uow.users.save(user)
+        # The likeliest reason somebody changes a password in a hurry is
+        # that a reset they did not ask for arrived in their mailbox, and
+        # a link that outlives the change is that stranger still holding
+        # the account.
+        uow.password_resets.invalidate_for_user(user.id)
+
+        return uow.refresh_sessions.revoke_all_for_user(user.id)
 
     def list_users(self, uow: UnitOfWork, limit: int = 100, offset: int = 0) -> List[User]:
         """

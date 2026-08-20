@@ -339,3 +339,92 @@ class TestAdministratorsAreNotHeldUp:
         )
 
         assert signed_in.status_code == 200, signed_in.get_json()
+
+
+class TestADeploymentThatCannotRegisterAnybody:
+    """The default role is missing, and the person is told so in their language.
+
+    A code of its own -- ``REGISTRATION_UNAVAILABLE`` -- because it used to
+    share ``CONFIGURATION_ERROR`` with ``UserManagementService``, whose
+    sentence names a role from the configuration and belongs in a log. One
+    code cannot have two audiences: whatever rule decides whether a
+    sentence may be shown has to be right about both at once, and the rule
+    (a 5xx code says nothing to the client) was right about one.
+
+    So this one is listed in ``CODES_WORDED_FOR_THE_CLIENT``, and what
+    these hold is the two halves of that: the sentence a person sees, and
+    the sentence they do not.
+    """
+
+    @pytest.fixture
+    def application(self):
+        """An application whose default role is not in the database."""
+        from link_shortener.web.app_factory import create_app
+        from tests.integration.conftest import IntegrationTestConfig
+
+        class NoDefaultRoleConfig(IntegrationTestConfig):
+            DEFAULT_ROLE_NAME = "a-role-nobody-seeded"
+
+        from link_shortener.infrastructure.database.seed import seed_base_roles
+
+        application = create_app(config=NoDefaultRoleConfig())
+        application.config["TESTING"] = True
+        with application.app_context():
+            db = application.container.get_db_manager()
+            db.create_tables()
+            # Seeded, and the configured name is still not among them:
+            # what is missing is the role this deployment was told to
+            # give new accounts, not the whole table.
+            with db.session() as session:
+                seed_base_roles(session)
+        return application
+
+    def test_the_registration_is_refused_by_its_own_code(self, application):
+        response = application.test_client().post(
+            "/api/v1/auth/register",
+            json={
+                "email": "nobody-can-register@example.test",
+                "password": "Str0ng!Passw0rd",
+            },
+        )
+
+        assert response.status_code == 400, response.get_json()
+        assert response.get_json()["error"] == "REGISTRATION_UNAVAILABLE"
+
+    def test_the_sentence_is_shown_and_says_nothing_about_the_deployment(
+        self, application
+    ):
+        response = application.test_client().post(
+            "/api/v1/auth/register",
+            json={
+                "email": "nobody-can-register-2@example.test",
+                "password": "Str0ng!Passw0rd",
+            },
+        )
+
+        message = response.get_json()["message"]
+        assert message == "Registration is unavailable"
+        # The name of the role is the part an anonymous caller must not be
+        # handed: it says which part of the deployment is misconfigured.
+        assert "a-role-nobody-seeded" not in response.get_data(as_text=True)
+
+    def test_it_is_shown_in_the_language_of_the_request(self, application):
+        """The reason the sentence is marked at all.
+
+        Every other 5xx-coded sentence is replaced by a generic one before
+        it reaches anybody, so marking it would put the service's
+        internals in front of a translator. This one is read by whoever
+        pressed Register, which is what the exception list records.
+        """
+        client = application.test_client()
+        client.set_cookie("lang", "ru", domain="localhost")
+
+        response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "nobody-can-register-3@example.test",
+                "password": "Str0ng!Passw0rd",
+            },
+        )
+
+        assert response.get_json()["message"] == "Регистрация сейчас недоступна"

@@ -88,9 +88,20 @@ def authentication_service():
 
 
 @pytest.fixture
-def user_service():
-    """The service that would hash and store the new password."""
-    return Mock(spec=UserManagementService)
+def user_service(authentication_service):
+    """The real service, over the mocked authentication above.
+
+    Not a ``Mock(spec=UserManagementService)``, which is what stood here
+    while the retiring lived in this use case. It moved into
+    ``update_password`` -- there were three callers of it and the rule
+    held in two -- and mocked away, the service takes the revocation with
+    it and the checks below measure nothing. What is mocked is one layer
+    lower: hashing, which is bcrypt and has no business in a unit test.
+    """
+    return UserManagementService(
+        authentication_service=authentication_service,
+        default_role_name="user",
+    )
 
 
 @pytest.fixture
@@ -134,15 +145,16 @@ class TestTheCurrentPasswordIsRequired:
         assert refused.value.field == "current_password"
 
     def test_nothing_is_written_when_it_is_wrong(
-        self, use_case, user, user_service, uow, audit, context
+        self, use_case, user, uow, audit, context
     ):
         with pytest.raises(ValidationError):
             use_case.execute(user.id, "not-the-password", "NewStrong1!", context)
 
-        # All three, because each is a separate way for a refused attempt
-        # to leave a trace: the password stored, the sessions closed, and
-        # the journal saying a change happened.
-        user_service.update_password.assert_not_called()
+        # All four, because each is a separate way for a refused attempt
+        # to leave a trace: the password stored, the mailed links retired,
+        # the sessions closed, and the journal saying a change happened.
+        uow.users.save.assert_not_called()
+        uow.password_resets.invalidate_for_user.assert_not_called()
         uow.refresh_sessions.revoke_all_for_user.assert_not_called()
         audit.log_password_changed.assert_not_called()
 

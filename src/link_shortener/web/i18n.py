@@ -285,6 +285,22 @@ def script_strings() -> Dict[str, str]:
         "password_reset_done": gettext(
             "Password changed. You can sign in now."
         ),
+        # The registration and confirmation pages, on the same rule as the
+        # two above and for the same reason. Each of these sentences also
+        # exists in the API's own answer, in English, and the page used to
+        # print that: a visitor who registered on a Russian page was told
+        # "If that address can be registered..." because a 202 body is
+        # built from a literal and no catalogue reaches it. The API keeps
+        # its English -- a programmatic client has no reader to negotiate
+        # a language with -- and the page says the same thing out of the
+        # catalogue.
+        "registration_link_sent": gettext(
+            "If that address can be registered, a link has been sent to it."
+        ),
+        "confirmation_link_sent": gettext(
+            "If that address needs confirming, a link has been sent to it."
+        ),
+        "email_confirmed": gettext("Email confirmed. You can sign in now."),
         "no_links": gettext("No links"),
         "no_links_yet": gettext("No links yet"),
         "no_links_visited": gettext("No links have been visited yet"),

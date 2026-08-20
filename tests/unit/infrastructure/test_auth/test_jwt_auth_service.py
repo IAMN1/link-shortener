@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import jwt
 import pytest
 
+from link_shortener.domain.entities.refresh_session import RefreshSession
 from link_shortener.domain.entities.user import User
 from link_shortener.domain.value_objects.email import Email
 from link_shortener.domain.value_objects.password_hash import PasswordHash
@@ -220,3 +221,89 @@ class TestAuthenticateContract:
         )
 
         assert service.authenticate("someone@example.com", "WrongGuess42!") is None
+
+
+class TestASessionBelongsToOneAccount:
+    """A ``jti`` names a session; ``sub`` says whose it must be.
+
+    Both revocation and rotation check that the two agree, and neither
+    check was reached by anything. A guard nothing exercises is a guard
+    that can be inverted -- or dropped in a refactor -- with the suite
+    still green, and what it guards is a caller ending or spending a
+    session that is not theirs.
+
+    A token with mismatched claims is not something the service will ever
+    mint, so getting here at all means the signing key has gone. That is
+    exactly when the last check standing has to be the right one.
+    """
+
+    @staticmethod
+    def _a_session_of(user_id, token_id):
+        """A live session row belonging to one account."""
+        return RefreshSession.create(
+            user_id=user_id,
+            token_id=token_id,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+
+    def test_revocation_refuses_a_token_naming_another_account(
+        self, service, uow_factory
+    ):
+        uow_factory.uow.refresh_sessions.find_by_token_id.return_value = (
+            self._a_session_of("the-owner", "their-session")
+        )
+
+        revoked = service.revoke_refresh_token(mint(
+            sub="somebody-else",
+            jti="their-session",
+            type="refresh",
+            exp=datetime.now(timezone.utc) + timedelta(days=1),
+        ))
+
+        assert revoked is False
+        uow_factory.uow.refresh_sessions.revoke_chain.assert_not_called()
+
+    def test_revocation_refuses_a_token_naming_no_session(
+        self, service, uow_factory
+    ):
+        uow_factory.uow.refresh_sessions.find_by_token_id.return_value = None
+
+        revoked = service.revoke_refresh_token(mint(
+            sub="the-owner",
+            jti="no-such-session",
+            type="refresh",
+            exp=datetime.now(timezone.utc) + timedelta(days=1),
+        ))
+
+        assert revoked is False
+        uow_factory.uow.refresh_sessions.revoke_chain.assert_not_called()
+
+    def test_revocation_refuses_a_token_carrying_no_jti(self, service):
+        """``jti`` is not in ``REQUIRED_CLAIMS``, so it can be absent.
+
+        Absent it arrives as ``None``, which would be looked up as a
+        session id of ``None`` -- and a repository answering the first
+        row for it would end somebody's session at random.
+        """
+        assert service.revoke_refresh_token(mint(
+            sub="the-owner",
+            type="refresh",
+            exp=datetime.now(timezone.utc) + timedelta(days=1),
+        )) is False
+
+    def test_rotation_refuses_a_token_naming_another_account(
+        self, service, uow_factory
+    ):
+        uow_factory.uow.refresh_sessions.find_by_token_id.return_value = (
+            self._a_session_of("the-owner", "their-session")
+        )
+
+        pair = service.refresh_access_token(mint(
+            sub="somebody-else",
+            jti="their-session",
+            type="refresh",
+            exp=datetime.now(timezone.utc) + timedelta(days=1),
+        ))
+
+        assert pair is None
+        uow_factory.uow.refresh_sessions.claim_for_rotation.assert_not_called()

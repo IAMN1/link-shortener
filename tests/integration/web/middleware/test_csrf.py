@@ -483,3 +483,59 @@ class TestCsrfExemptions:
             headers=csrf_headers(client),
         )
         assert r.status_code == 200
+
+
+class TestTheRefusalIsAnAnswerLikeAnyOther:
+    """A blocked write is read by a person, in the language of the page.
+
+    The refusal used to be assembled here rather than through
+    ``error_response``, and its sentence was "CSRF token missing or
+    invalid" -- the name of the mechanism, in English, whatever language
+    the same request had just been answered in. Both halves of that are
+    what these hold.
+    """
+
+    def test_the_envelope_is_the_one_every_other_refusal_uses(self, app):
+        client = app.test_client()
+        _login(client, "csrfenvelope@example.com")
+
+        r = client.post(
+            "/api/v1/shorten", json={"url": "https://example.com/csrf-env"}
+        )
+
+        assert r.status_code == 403
+        body = r.get_json()
+        assert {"error", "message", "details", "timestamp"} <= set(body)
+        assert body["error"] == "CSRF_TOKEN_INVALID"
+
+    def test_the_sentence_is_in_the_language_of_the_request(self, app):
+        client = app.test_client()
+        _login(client, "csrflang@example.com")
+        client.set_cookie("lang", "ru", domain="localhost")
+
+        r = client.post(
+            "/api/v1/shorten", json={"url": "https://example.com/csrf-lang"}
+        )
+
+        assert r.status_code == 403
+        message = r.get_json()["message"]
+        assert message == (
+            "Этот запрос не удалось проверить. Обновите страницу и повторите."
+        )
+
+    def test_the_sentence_names_no_machinery(self, app):
+        """What a visitor is told is what they can do about it.
+
+        "CSRF" and "token" are the names of the check, and a person who
+        left a form open for half a day cannot act on either.
+        """
+        client = app.test_client()
+        _login(client, "csrfplain@example.com")
+
+        r = client.post(
+            "/api/v1/shorten", json={"url": "https://example.com/csrf-plain"}
+        )
+
+        message = r.get_json()["message"].lower()
+        assert "csrf" not in message
+        assert "token" not in message

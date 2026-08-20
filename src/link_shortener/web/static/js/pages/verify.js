@@ -32,7 +32,12 @@
             });
             var data = await resp.json();
             if (!resp.ok) throw new Error(data.message || data.error || t('confirmation_failed'));
-            document.getElementById('verify-done').textContent = data.message;
+            // Out of the catalogue, not `data.message`: the 200 body is a
+            // literal the API never translates, so the person who did
+            // what the mail asked was thanked in English on a Russian
+            // page. The refusal above is the other case -- that one the
+            // API does translate.
+            document.getElementById('verify-done').textContent = t('email_confirmed');
             document.getElementById('verify-done').classList.remove('hidden');
             document.getElementById('verify-next').classList.remove('hidden');
             btn.classList.add('hidden');

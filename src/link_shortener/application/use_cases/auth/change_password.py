@@ -117,22 +117,19 @@ class ChangePasswordUseCase(BaseUseCase):
                     field="new_password",
                 )
 
-            # Hashing and the policy check both live in here, so the rule
-            # that refuses a password at registration refuses it here --
-            # one place to change when the policy changes.
-            self.user_service.update_password(uow, user, new_password)
-
-            # Any reset link outstanding for this account dies with the
-            # old password. The likeliest reason somebody changes their
-            # password in a hurry is that a reset they did not ask for
-            # arrived in their mailbox, and a link that outlives the change
-            # is that stranger still holding the account.
-            uow.password_resets.invalidate_for_user(user.id)
-
+            # The whole act in one call: hashing, the policy that refuses
+            # a weak password, the reset links this change retires, and
+            # the sessions it closes. All of it lives in the service so
+            # that the operator's command-line path cannot do a part of
+            # it -- which it did, replacing the hash and leaving every
+            # session live.
+            #
             # Before the commit, and before any new session exists: a
-            # session opened first would be revoked by this line, and the
+            # session opened first would be revoked in here, and the
             # caller would be signed out by the change they made.
-            revoked = uow.refresh_sessions.revoke_all_for_user(user.id)
+            revoked = self.user_service.update_password(
+                uow, user, new_password
+            )
 
             uow.commit()
 

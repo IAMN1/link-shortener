@@ -446,6 +446,60 @@ class TestPasswordReset:
                 "NewPassword123!", after
             )
 
+    def test_it_closes_every_session_and_retires_every_mailed_link(
+        self, runner, app
+    ):
+        """The reason an operator reaches for this command at all.
+
+        ``docs/decisions.md`` states the rule for the whole service: "A
+        new request retires the links outstanding, and so does any
+        password change." Both in-application paths did it and this one
+        did not -- it replaced the hash and left every session live and
+        every mailed reset link working. The command is reached for an
+        account believed compromised, so what it left behind was exactly
+        what it was run to take away.
+        """
+        user_id = _make_user(app, "compromised@example.com")
+        with app.app_context():
+            with app.container.get_uow_factory()() as uow:
+                uow.refresh_sessions.save(RefreshSession.create(
+                    user_id=user_id,
+                    token_id="session-of-the-intruder",
+                    expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+                ))
+                uow.password_resets.save(PasswordReset.issue(
+                    user_id=user_id,
+                    token_hash="a" * 64,
+                    ttl_minutes=60,
+                ))
+                uow.commit()
+
+        result = runner.invoke(
+            app.cli,
+            [
+                "security",
+                "reset-password",
+                "--email",
+                "compromised@example.com",
+                "--password",
+                "NewPassword123!",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        with app.app_context():
+            with app.container.get_uow_factory()(read_only=True) as uow:
+                session = uow.refresh_sessions.find_by_token_id(
+                    "session-of-the-intruder"
+                )
+                assert session.revoked_at is not None, (
+                    "the intruder's session outlived the password reset"
+                )
+                assert uow.password_resets.claim("a" * 64) is None, (
+                    "a reset link mailed before the change still opens the "
+                    "account"
+                )
+
     def test_an_unknown_address_is_refused(self, runner, app):
         """Nothing is written for an account that does not exist."""
         result = runner.invoke(

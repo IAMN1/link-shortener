@@ -217,3 +217,65 @@ class TestTheDeviceThatMadeTheChange:
         # the answer had not replaced it the page would be signed out by
         # its own request.
         assert client.get("/api/v1/links/mine").status_code == 200
+
+
+class TestAFieldThatWasNotSent:
+    """Which field is missing is said, on every route that reads one.
+
+    Four guards across three routes, and nothing reached any of them. A
+    request missing a field is the ordinary shape of a broken client and
+    of a form that lost a value, and what makes it fixable is being told
+    which field -- so these hold the field name in ``details`` as well as
+    the status. Answered by the global handler, which is what puts the
+    name there.
+    """
+
+    def test_a_change_without_the_current_password(self, app):
+        client, token = an_account(app, "pw-nocurrent@example.com")
+
+        refused = client.post(
+            "/api/v1/auth/change-password",
+            json={"new_password": NEW_PASSWORD},
+            headers=csrf_headers(client, auth_headers(token)),
+        )
+
+        assert refused.status_code == 400
+        answer = refused.get_json()
+        assert answer["error"] == "VALIDATION_ERROR"
+        assert answer["details"][0]["field"] == "current_password"
+
+    def test_a_change_without_the_new_password(self, app):
+        client, token = an_account(app, "pw-nonew@example.com")
+
+        refused = client.post(
+            "/api/v1/auth/change-password",
+            json={"current_password": PASSWORD},
+            headers=csrf_headers(client, auth_headers(token)),
+        )
+
+        assert refused.status_code == 400
+        assert refused.get_json()["details"][0]["field"] == "new_password"
+
+    def test_a_resend_without_an_address(self, app):
+        refused = app.test_client().post(
+            "/api/v1/auth/resend-verification", json={}
+        )
+
+        assert refused.status_code == 400
+        assert refused.get_json()["details"][0]["field"] == "email"
+
+    def test_a_reset_without_the_new_password(self, app):
+        refused = app.test_client().post(
+            "/api/v1/auth/reset-password", json={"token": "irrelevant"}
+        )
+
+        assert refused.status_code == 400
+        assert refused.get_json()["details"][0]["field"] == "new_password"
+
+    def test_a_reset_without_a_token(self, app):
+        refused = app.test_client().post(
+            "/api/v1/auth/reset-password", json={"new_password": NEW_PASSWORD}
+        )
+
+        assert refused.status_code == 400
+        assert refused.get_json()["details"][0]["field"] == "token"

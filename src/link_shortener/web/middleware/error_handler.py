@@ -15,6 +15,140 @@ from link_shortener.domain.exceptions import (
 )
 
 
+STATUS_BY_CODE = {
+    "UNAUTHENTICATED": 401,
+    "FORBIDDEN": 403,
+    "USER_NOT_FOUND": 404,
+    "ROLE_NOT_FOUND": 404,
+    # A name in the address that is not one of the three journals. 404
+    # rather than 400 for the reason the other two are 404: the caller
+    # named a resource, and there is no such resource.
+    "JOURNAL_NOT_FOUND": 404,
+    "INVALID_CREDENTIALS": 401,
+    # The only code the application raised that this table did not name.
+    # It never showed, because the one route that raises it answers 401
+    # itself -- and it was answered 401 with the right sentence only
+    # because nothing consulted the table on the way. Named here so the
+    # table is the whole list: a code missing from it defaults to 500, and
+    # anything reading it -- `client_message` does now -- would take the
+    # sentence for one written about the service's own state and replace
+    # it with "An internal error occurred", which is what happened.
+    "EMAIL_NOT_VERIFIED": 401,
+    "ACCOUNT_INACTIVE": 403,
+    "VALIDATION_ERROR": 400,
+    "LINK_NOT_FOUND": 404,
+    "LINK_EXPIRED": 410,
+    "GUEST_LINK_LIMIT": 429,
+    "CODE_GENERATION_FAILED": 500,
+    # The same condition as CODE_GENERATION_FAILED, reached from the batch
+    # path: every attempt lost a race for a code. The service failed to
+    # store a link, so it is not the caller's fault; without this entry
+    # the default below would answer 400 on the batch endpoint and 500 on
+    # the single one for one and the same failure.
+    "LINK_CONFLICT": 500,
+    # The caller asked for a code somebody already holds. Their request,
+    # their fix -- and 409 says which kind of fix.
+    "LINK_CODE_TAKEN": 409,
+    "CONFIGURATION_ERROR": 500,
+    # A deployment that cannot register anybody: the default role is not
+    # in the database. 503 for the reason MAIL_NOT_HANDED_OFF is one --
+    # the request was fine and the service's own machinery is not. Its
+    # own code rather than CONFIGURATION_ERROR, which it used to share,
+    # because the two carry sentences written for different readers: this
+    # one is shown to whoever tried to register, and the other names a
+    # role from the configuration and belongs in the log.
+    "REGISTRATION_UNAVAILABLE": 503,
+    # The queue would not take a confirmation message. The request was
+    # fine and the account is fine; what failed is the service's own
+    # machinery, and 503 is what says so -- answered 500 by the default
+    # below, it would have read as a bug in handling the request instead.
+    "MAIL_NOT_HANDED_OFF": 503,
+    # The caller asked for a name somebody already holds -- the same shape
+    # as LINK_CODE_TAKEN, and answered the same way: their request, and a
+    # fix only they can make.
+    "ROLE_ALREADY_EXISTS": 409,
+    # The role is there and the service owns it. 400 rather than 403: the
+    # caller holds `admin:manage_roles` and is refused by what they named,
+    # not by who they are.
+    "ROLE_IS_SYSTEM": 400,
+    "PERMISSIONS_NOT_FOUND": 400,
+}
+"""What HTTP status each domain error code is answered with.
+
+At module level rather than inside the handler because the handler is no
+longer the only reader: ``AuthController`` answers two of these codes with
+a status of its own, and it still has to know which sentence the code may
+show a client. Two copies of this table would agree until one of them
+gained a code.
+"""
+
+
+def status_for(code: str) -> int:
+    """
+    Say which status a domain error code is answered with.
+
+    Args:
+        code: The error's machine-readable code.
+
+    Returns:
+        The mapped status, or 500. An unmapped code is a code nobody
+        classified, and the safe reading of that is "we do not know what
+        went wrong" rather than "the request was bad". Reported as 400, a
+        new internal failure looked like ordinary client noise and stayed
+        out of error monitoring.
+    """
+    return STATUS_BY_CODE.get(code, 500)
+
+
+CODES_WORDED_FOR_THE_CLIENT = frozenset({"REGISTRATION_UNAVAILABLE"})
+"""5xx codes whose sentence was written for whoever is reading it.
+
+The rule below is a proxy: a 5xx code usually means the service is
+describing its own state, and its sentence names things -- a role from the
+configuration, a broker -- that a stranger is not the audience for. This
+is the list of codes where the proxy is wrong, so it is the list of
+sentences that must stay marked and translated.
+
+It is a list rather than a flag on the error because the audience is a
+property of the code, not of the moment: one code, one sentence, one
+reader. A code that starts needing an entry here is usually a code that
+should have been two codes.
+"""
+
+
+def client_message(error: DomainError) -> str:
+    """
+    Say what this refusal may tell a client, in the client's language.
+
+    A 5xx message usually describes the service's own state -- a missing
+    role, a name from the configuration -- and the client is not the
+    audience for it. Which of those is which is decided by the code and
+    never by the status the answer happens to carry: ``AuthController``
+    answers ``REGISTRATION_UNAVAILABLE`` with 400 because the status is
+    that endpoint's to choose, and what the sentence may say is still the
+    code's to decide.
+
+    Here rather than inside the handler because the handler is not the
+    only place that answers a ``DomainError``. Left there, the rule held
+    on every route but the two that build their own response -- and those
+    two are on the unauthenticated registration path.
+
+    Args:
+        error: The refusal being answered.
+
+    Returns:
+        The generic sentence for a code answered 5xx, the translated one
+        otherwise.
+    """
+    if (
+        status_for(error.code) >= 500
+        and error.code not in CODES_WORDED_FOR_THE_CLIENT
+    ):
+        return gettext("An internal error occurred")
+
+    return translate_error(error)
+
+
 class ErrorHandlerMiddleware:
     """
     Registers Flask error handlers for known exceptions.
@@ -246,57 +380,7 @@ class ErrorHandlerMiddleware:
         def handle_domain_error(error: DomainError):
             """Handle generic domain errors (base class)."""
 
-            status_mapping = {
-                "UNAUTHENTICATED": 401,
-                "FORBIDDEN": 403,
-                "USER_NOT_FOUND": 404,
-                "ROLE_NOT_FOUND": 404,
-                # A name in the address that is not one of the three
-                # journals. 404 rather than 400 for the reason the other
-                # two are 404: the caller named a resource, and there is
-                # no such resource.
-                "JOURNAL_NOT_FOUND": 404,
-                "INVALID_CREDENTIALS": 401,
-                "ACCOUNT_INACTIVE": 403,
-                "VALIDATION_ERROR": 400,
-                "LINK_NOT_FOUND": 404,
-                "LINK_EXPIRED": 410,
-                "GUEST_LINK_LIMIT": 429,
-                "CODE_GENERATION_FAILED": 500,
-                # The same condition as CODE_GENERATION_FAILED, reached from
-                # the batch path: every attempt lost a race for a code. The
-                # service failed to store a link, so it is not the caller's
-                # fault; without this entry the default below would answer
-                # 400 on the batch endpoint and 500 on the single one for one
-                # and the same failure.
-                "LINK_CONFLICT": 500,
-                # The caller asked for a code somebody already holds. Their
-                # request, their fix -- and 409 says which kind of fix.
-                "LINK_CODE_TAKEN": 409,
-                "CONFIGURATION_ERROR": 500,
-                # The queue would not take a confirmation message. The
-                # request was fine and the account is fine; what failed is
-                # the service's own machinery, and 503 is what says so --
-                # answered 500 by the default below, it would have read as
-                # a bug in handling the request instead.
-                "MAIL_NOT_HANDED_OFF": 503,
-                # The caller asked for a name somebody already holds --
-                # the same shape as LINK_CODE_TAKEN, and answered the same
-                # way: their request, and a fix only they can make.
-                "ROLE_ALREADY_EXISTS": 409,
-                # The role is there and the service owns it. 400 rather
-                # than 403: the caller holds `admin:manage_roles` and is
-                # refused by what they named, not by who they are.
-                "ROLE_IS_SYSTEM": 400,
-                "PERMISSIONS_NOT_FOUND": 400,
-            }
-
-            # An unmapped code is a code nobody classified, and the safe
-            # reading of that is "we do not know what went wrong" rather
-            # than "the request was bad". Reported as 400, a new internal
-            # failure looked like ordinary client noise and stayed out of
-            # error monitoring.
-            status_code = status_mapping.get(error.code, 500)
+            status_code = status_for(error.code)
 
             # Logged before either answer is built, and therefore on both
             # paths. It used to sit below the HTML branch's `return`, so a
@@ -308,18 +392,17 @@ class ErrorHandlerMiddleware:
                 "Domain error", error=error.message, code=error.code
             )
 
-            # A 5xx message describes the service's own state -- a missing
-            # default role, a name from the configuration -- and the client
-            # is not the audience for it. It stays in the log line above.
+            # Asked of `client_message` rather than decided here, because
+            # this is no longer the only place that answers a DomainError:
+            # `AuthController` builds two of these responses itself, and
+            # the rule has to reach them too. It stays in the log line
+            # above either way.
             #
             # Said once for both shapes. Said only in the JSON branch, the
             # page showed the sentence the API refused to show: measured,
             # `GET /dashboard/` with the default role missing put "Default
             # role 'user' is missing from the database" on screen.
-            if status_code >= 500:
-                message = gettext("An internal error occurred")
-            else:
-                message = translate_error(error)
+            message = client_message(error)
 
             if self._should_return_html():
                 return error_page(error.code, message, status_code)

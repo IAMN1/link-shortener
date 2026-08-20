@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-20 22:20+0300\n"
+"POT-Creation-Date: 2026-08-20 23:35+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -73,19 +73,19 @@ msgstr "Неверный адрес или пароль"
 msgid "Confirm your email address before signing in"
 msgstr "Подтвердите адрес почты, прежде чем входить"
 
-#: src/link_shortener/application/use_cases/auth/register.py:137
+#: src/link_shortener/application/use_cases/auth/register.py:145
 msgid "Registration is unavailable"
 msgstr "Регистрация сейчас недоступна"
 
 #: src/link_shortener/application/use_cases/auth/reset_password.py:76
 #: src/link_shortener/application/use_cases/auth/reset_password.py:87
-#: src/link_shortener/web/controllers/auth_controller.py:534
+#: src/link_shortener/web/controllers/auth_controller.py:533
 msgid "This reset link is not valid"
 msgstr "Эта ссылка сброса недействительна"
 
-#: src/link_shortener/application/use_cases/auth/verify_email.py:52
-#: src/link_shortener/application/use_cases/auth/verify_email.py:71
-#: src/link_shortener/web/controllers/auth_controller.py:371
+#: src/link_shortener/application/use_cases/auth/verify_email.py:63
+#: src/link_shortener/application/use_cases/auth/verify_email.py:82
+#: src/link_shortener/web/controllers/auth_controller.py:372
 msgid "This confirmation link is not valid"
 msgstr "Эта ссылка подтверждения недействительна"
 
@@ -136,7 +136,7 @@ msgid "Link with code (%(code)s) not found"
 msgstr "Ссылка с кодом (%(code)s) не найдена"
 
 #: src/link_shortener/domain/exceptions.py:90
-#: src/link_shortener/web/middleware/error_handler.py:233
+#: src/link_shortener/web/middleware/error_handler.py:367
 msgid "Link not found"
 msgstr "Ссылка не найдена"
 
@@ -377,7 +377,7 @@ msgstr "Отправить не удалось"
 msgid "Not found"
 msgstr "Не найдено"
 
-#: src/link_shortener/web/i18n.py:255 src/link_shortener/web/i18n.py:392
+#: src/link_shortener/web/i18n.py:255 src/link_shortener/web/i18n.py:408
 msgid "Refused"
 msgstr "Отказано"
 
@@ -431,70 +431,82 @@ msgstr ""
 msgid "Password changed. You can sign in now."
 msgstr "Пароль изменён. Теперь можно войти."
 
-#: src/link_shortener/web/i18n.py:288
+#: src/link_shortener/web/i18n.py:298
+msgid "If that address can be registered, a link has been sent to it."
+msgstr "Если этот адрес можно зарегистрировать, ссылка отправлена на него."
+
+#: src/link_shortener/web/i18n.py:301
+msgid "If that address needs confirming, a link has been sent to it."
+msgstr "Если этот адрес нужно подтвердить, ссылка отправлена на него."
+
+#: src/link_shortener/web/i18n.py:303
+msgid "Email confirmed. You can sign in now."
+msgstr "Адрес подтверждён. Теперь можно войти."
+
+#: src/link_shortener/web/i18n.py:304
 #: src/link_shortener/web/templates/dashboard/my_links.html:39
 msgid "No links"
 msgstr "Ссылок нет"
 
-#: src/link_shortener/web/i18n.py:289
+#: src/link_shortener/web/i18n.py:305
 msgid "No links yet"
 msgstr "Ссылок пока нет"
 
-#: src/link_shortener/web/i18n.py:290
+#: src/link_shortener/web/i18n.py:306
 msgid "No links have been visited yet"
 msgstr "По ссылкам ещё не переходили"
 
-#: src/link_shortener/web/i18n.py:291
+#: src/link_shortener/web/i18n.py:307
 msgid "never"
 msgstr "никогда"
 
-#: src/link_shortener/web/i18n.py:292
+#: src/link_shortener/web/i18n.py:308
 msgid "Results"
 msgstr "Результаты"
 
-#: src/link_shortener/web/i18n.py:293
+#: src/link_shortener/web/i18n.py:309
 #: src/link_shortener/web/templates/dashboard/link_stats.html:9
 msgid "Link"
 msgstr "Ссылка"
 
-#: src/link_shortener/web/i18n.py:294
+#: src/link_shortener/web/i18n.py:310
 #: src/link_shortener/web/templates/public/index.html:102
 msgid "Extended"
 msgstr "Подробно"
 
-#: src/link_shortener/web/i18n.py:302
+#: src/link_shortener/web/i18n.py:318
 msgctxt "a link that was just made"
 msgid "Created"
 msgstr "Создана"
 
-#: src/link_shortener/web/i18n.py:303
+#: src/link_shortener/web/i18n.py:319
 msgctxt "a link that already existed"
 msgid "Existing"
 msgstr "Уже была"
 
-#: src/link_shortener/web/i18n.py:304
+#: src/link_shortener/web/i18n.py:320
 msgid "Copy"
 msgstr "Копировать"
 
-#: src/link_shortener/web/i18n.py:305
+#: src/link_shortener/web/i18n.py:321
 #: src/link_shortener/web/templates/dashboard/roles_list.html:48
 #: src/link_shortener/web/templates/dashboard/users_list.html:90
 msgid "Delete"
 msgstr "Удалить"
 
-#: src/link_shortener/web/i18n.py:306
+#: src/link_shortener/web/i18n.py:322
 msgid "Delete this link"
 msgstr "Удалить эту ссылку"
 
-#: src/link_shortener/web/i18n.py:307
+#: src/link_shortener/web/i18n.py:323
 msgid "Only from this page, and only now."
 msgstr "Только с этой страницы и только сейчас."
 
-#: src/link_shortener/web/i18n.py:309
+#: src/link_shortener/web/i18n.py:325
 msgid "This link's traffic is shown to whoever made it."
 msgstr "Переходы по ссылке видит тот, кто её создал."
 
-#: src/link_shortener/web/i18n.py:311
+#: src/link_shortener/web/i18n.py:327
 #: src/link_shortener/web/templates/dashboard/home.html:36
 #: src/link_shortener/web/templates/dashboard/my_links.html:27
 #: src/link_shortener/web/templates/dashboard/my_stats.html:37
@@ -503,7 +515,7 @@ msgstr "Переходы по ссылке видит тот, кто её соз
 msgid "Clicks"
 msgstr "Переходы"
 
-#: src/link_shortener/web/i18n.py:316
+#: src/link_shortener/web/i18n.py:332
 #: src/link_shortener/web/templates/dashboard/home.html:36
 #: src/link_shortener/web/templates/dashboard/link_stats.html:36
 #: src/link_shortener/web/templates/dashboard/my_links.html:28
@@ -513,207 +525,207 @@ msgstr "Переходы"
 msgid "Created"
 msgstr "Создана"
 
-#: src/link_shortener/web/i18n.py:317
+#: src/link_shortener/web/i18n.py:333
 #: src/link_shortener/web/templates/dashboard/link_stats.html:40
 msgid "Last Access"
 msgstr "Последний переход"
 
-#: src/link_shortener/web/i18n.py:318
+#: src/link_shortener/web/i18n.py:334
 msgid "Never"
 msgstr "Никогда"
 
-#: src/link_shortener/web/i18n.py:319
+#: src/link_shortener/web/i18n.py:335
 msgid "Days Old"
 msgstr "Дней с создания"
 
-#: src/link_shortener/web/i18n.py:320
+#: src/link_shortener/web/i18n.py:336
 #: src/link_shortener/web/templates/dashboard/link_stats.html:32
 msgid "Clicks/Day"
 msgstr "Переходов в день"
 
-#: src/link_shortener/web/i18n.py:321
+#: src/link_shortener/web/i18n.py:337
 msgid "Popular"
 msgstr "Популярная"
 
-#: src/link_shortener/web/i18n.py:322
+#: src/link_shortener/web/i18n.py:338
 msgid "Recent"
 msgstr "Свежая"
 
-#: src/link_shortener/web/i18n.py:325
+#: src/link_shortener/web/i18n.py:341
 msgid "Total"
 msgstr "Всего"
 
-#: src/link_shortener/web/i18n.py:326
+#: src/link_shortener/web/i18n.py:342
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:72
 msgid "People"
 msgstr "Люди"
 
-#: src/link_shortener/web/i18n.py:327
+#: src/link_shortener/web/i18n.py:343
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:75
 msgid "Robots"
 msgstr "Роботы"
 
-#: src/link_shortener/web/i18n.py:328
+#: src/link_shortener/web/i18n.py:344
 msgid "No visits in this span"
 msgstr "За этот промежуток переходов не было"
 
-#: src/link_shortener/web/i18n.py:329
+#: src/link_shortener/web/i18n.py:345
 msgid "Try a wider span"
 msgstr "Попробуйте промежуток шире"
 
-#: src/link_shortener/web/i18n.py:330
+#: src/link_shortener/web/i18n.py:346
 msgid "The figures could not be loaded"
 msgstr "Не удалось загрузить данные"
 
-#: src/link_shortener/web/i18n.py:335
+#: src/link_shortener/web/i18n.py:351
 msgid "Others"
 msgstr "Другие"
 
-#: src/link_shortener/web/i18n.py:338
+#: src/link_shortener/web/i18n.py:354
 msgid "As bars"
 msgstr "Полосами"
 
-#: src/link_shortener/web/i18n.py:339
+#: src/link_shortener/web/i18n.py:355
 msgid "As a ring"
 msgstr "Кольцом"
 
-#: src/link_shortener/web/i18n.py:344
+#: src/link_shortener/web/i18n.py:360
 msgid "updated just now"
 msgstr "обновлено только что"
 
-#: src/link_shortener/web/i18n.py:345
+#: src/link_shortener/web/i18n.py:361
 #, python-format
 msgid "updated %(count)s s ago"
 msgstr "обновлено %(count)s с назад"
 
-#: src/link_shortener/web/i18n.py:346
+#: src/link_shortener/web/i18n.py:362
 #, python-format
 msgid "updated %(count)s min ago"
 msgstr "обновлено %(count)s мин назад"
 
-#: src/link_shortener/web/i18n.py:347
+#: src/link_shortener/web/i18n.py:363
 #, python-format
 msgid "every %(interval)s"
 msgstr "каждые %(interval)s"
 
-#: src/link_shortener/web/i18n.py:348
+#: src/link_shortener/web/i18n.py:364
 msgid "auto-refresh off"
 msgstr "автообновление выключено"
 
-#: src/link_shortener/web/i18n.py:351
+#: src/link_shortener/web/i18n.py:367
 #: src/link_shortener/web/templates/dashboard/users_list.html:56
 msgid "Stats"
 msgstr "Статистика"
 
-#: src/link_shortener/web/i18n.py:356
+#: src/link_shortener/web/i18n.py:372
 msgid "Nothing has been written to this journal"
 msgstr "В этот журнал ничего не записано"
 
-#: src/link_shortener/web/i18n.py:357
+#: src/link_shortener/web/i18n.py:373
 msgid "The journal could not be read"
 msgstr "Журнал не удалось прочитать"
 
-#: src/link_shortener/web/i18n.py:361
+#: src/link_shortener/web/i18n.py:377
 msgid "not a record"
 msgstr "не запись"
 
-#: src/link_shortener/web/i18n.py:368
+#: src/link_shortener/web/i18n.py:384
 #, python-format
 msgid "Lines: %(count)s · %(files)s"
 msgstr "Строк: %(count)s · %(files)s"
 
-#: src/link_shortener/web/i18n.py:372
+#: src/link_shortener/web/i18n.py:388
 msgid "Nothing here matched that search"
 msgstr "Ничего подходящего под этот поиск"
 
-#: src/link_shortener/web/i18n.py:376
+#: src/link_shortener/web/i18n.py:392
 #, python-format
 msgid "Found: %(found)s · scanned: %(scanned)s"
 msgstr "Найдено: %(found)s · просмотрено: %(scanned)s"
 
-#: src/link_shortener/web/i18n.py:381
+#: src/link_shortener/web/i18n.py:397
 msgid "Not searched further back than this."
 msgstr "Глубже поиск не заходил."
 
-#: src/link_shortener/web/i18n.py:383
+#: src/link_shortener/web/i18n.py:399
 msgid "This is the start of the journal."
 msgstr "Это начало журнала."
 
-#: src/link_shortener/web/i18n.py:384
+#: src/link_shortener/web/i18n.py:400
 msgid "Older lines exist."
 msgstr "Есть строки старше."
 
-#: src/link_shortener/web/i18n.py:386
+#: src/link_shortener/web/i18n.py:402
 #, python-format
 msgid "Archives reach back to %(name)s."
 msgstr "Архивы уходят до %(name)s."
 
-#: src/link_shortener/web/i18n.py:391
+#: src/link_shortener/web/i18n.py:407
 msgid "Signed in"
 msgstr "Входов"
 
-#: src/link_shortener/web/i18n.py:393
+#: src/link_shortener/web/i18n.py:409
 msgid "Roles changed"
 msgstr "Смены ролей"
 
-#: src/link_shortener/web/i18n.py:394
+#: src/link_shortener/web/i18n.py:410
 msgid "Other events"
 msgstr "Прочие события"
 
-#: src/link_shortener/web/i18n.py:399
+#: src/link_shortener/web/i18n.py:415
 #, python-format
 msgid "Counted: %(since)s — %(until)s"
 msgstr "Подсчитано: %(since)s — %(until)s"
 
-#: src/link_shortener/web/i18n.py:400
+#: src/link_shortener/web/i18n.py:416
 msgid "Security events over time"
 msgstr "События безопасности по времени"
 
-#: src/link_shortener/web/i18n.py:401
+#: src/link_shortener/web/i18n.py:417
 msgid "The counters could not be read"
 msgstr "Счётчики не удалось прочитать"
 
-#: src/link_shortener/web/i18n.py:402
+#: src/link_shortener/web/i18n.py:418
 msgid "answering"
 msgstr "отвечает"
 
-#: src/link_shortener/web/i18n.py:403
+#: src/link_shortener/web/i18n.py:419
 msgid "not answering"
 msgstr "не отвечает"
 
-#: src/link_shortener/web/i18n.py:404
+#: src/link_shortener/web/i18n.py:420
 msgid "unknown"
 msgstr "неизвестно"
+
+#: src/link_shortener/web/request_body.py:58
+msgid "Request body is nested too deeply"
+msgstr "Тело запроса вложено слишком глубоко"
+
+#: src/link_shortener/web/request_body.py:87
+msgid "Request body must be a JSON object"
+msgstr "Тело запроса должно быть объектом JSON"
 
 #: src/link_shortener/web/controllers/admin_api_controller.py:177
 #, python-format
 msgid "Confirmation for %(email)s could not be queued"
 msgstr "Не удалось поставить письмо с подтверждением для %(email)s в очередь"
 
-#: src/link_shortener/web/controllers/api_controller.py:76
-msgid "Request body is nested too deeply"
-msgstr "Тело запроса вложено слишком глубоко"
-
-#: src/link_shortener/web/controllers/api_controller.py:83
-msgid "Request body must be a JSON object"
-msgstr "Тело запроса должно быть объектом JSON"
-
-#: src/link_shortener/web/controllers/api_controller.py:312
-#: src/link_shortener/web/controllers/api_controller.py:353
+#: src/link_shortener/web/controllers/api_controller.py:273
+#: src/link_shortener/web/controllers/api_controller.py:314
 msgid "Sign in to see your own statistics"
 msgstr "Войдите, чтобы видеть свою статистику"
 
-#: src/link_shortener/web/controllers/api_controller.py:361
+#: src/link_shortener/web/controllers/api_controller.py:322
 msgid "days must be a whole number"
 msgstr "days должно быть целым числом"
 
-#: src/link_shortener/web/controllers/auth_controller.py:250
-#: src/link_shortener/web/controllers/auth_controller.py:331
+#: src/link_shortener/web/controllers/auth_controller.py:232
+#: src/link_shortener/web/controllers/auth_controller.py:319
 msgid "Email and password are required"
 msgstr "Нужны адрес и пароль"
 
 #: src/link_shortener/web/controllers/auth_controller.py:399
-#: src/link_shortener/web/controllers/auth_controller.py:492
+#: src/link_shortener/web/controllers/auth_controller.py:491
 msgid "Email is required"
 msgstr "Нужен адрес почты"
 
@@ -722,15 +734,15 @@ msgid "Current password is required"
 msgstr "Нужен текущий пароль"
 
 #: src/link_shortener/web/controllers/auth_controller.py:446
-#: src/link_shortener/web/controllers/auth_controller.py:538
+#: src/link_shortener/web/controllers/auth_controller.py:537
 msgid "New password is required"
 msgstr "Нужен новый пароль"
 
-#: src/link_shortener/web/controllers/auth_controller.py:597
+#: src/link_shortener/web/controllers/auth_controller.py:596
 msgid "No refresh token"
 msgstr "Нет токена обновления"
 
-#: src/link_shortener/web/controllers/auth_controller.py:603
+#: src/link_shortener/web/controllers/auth_controller.py:602
 msgid "Invalid or expired refresh token"
 msgstr "Токен обновления неверен или истёк"
 
@@ -748,65 +760,69 @@ msgstr "Роль не найдена"
 msgid "No journal is called %(name)s"
 msgstr "Журнала с именем %(name)s нет"
 
-#: src/link_shortener/web/middleware/error_handler.py:75
+#: src/link_shortener/web/middleware/csrf.py:457
+msgid "This request could not be verified. Reload the page and try again."
+msgstr "Этот запрос не удалось проверить. Обновите страницу и повторите."
+
+#: src/link_shortener/web/middleware/error_handler.py:147
+#: src/link_shortener/web/middleware/error_handler.py:471
+msgid "An internal error occurred"
+msgstr "Произошла внутренняя ошибка"
+
+#: src/link_shortener/web/middleware/error_handler.py:209
 msgid "The request could not be understood"
 msgstr "Запрос не удалось разобрать"
 
-#: src/link_shortener/web/middleware/error_handler.py:76
+#: src/link_shortener/web/middleware/error_handler.py:210
 msgid "You do not have access to this"
 msgstr "У вас нет доступа к этому"
 
-#: src/link_shortener/web/middleware/error_handler.py:77
+#: src/link_shortener/web/middleware/error_handler.py:211
 msgid "That conflicts with something already stored"
 msgstr "Это спорит с тем, что уже сохранено"
 
-#: src/link_shortener/web/middleware/error_handler.py:78
+#: src/link_shortener/web/middleware/error_handler.py:212
 msgid "What was sent is too large"
 msgstr "Присланное слишком велико"
 
-#: src/link_shortener/web/middleware/error_handler.py:79
+#: src/link_shortener/web/middleware/error_handler.py:213
 msgid "The service expects a JSON body"
 msgstr "Служба ждёт тело в формате JSON"
 
-#: src/link_shortener/web/middleware/error_handler.py:80
+#: src/link_shortener/web/middleware/error_handler.py:214
 msgid "The service is unavailable right now"
 msgstr "Служба сейчас недоступна"
 
-#: src/link_shortener/web/middleware/error_handler.py:129
+#: src/link_shortener/web/middleware/error_handler.py:263
 msgid "Page not found"
 msgstr "Страница не найдена"
 
-#: src/link_shortener/web/middleware/error_handler.py:132
+#: src/link_shortener/web/middleware/error_handler.py:266
 msgid "Resource not found"
 msgstr "Ресурс не найден"
 
-#: src/link_shortener/web/middleware/error_handler.py:143
+#: src/link_shortener/web/middleware/error_handler.py:277
 msgid "Method not allowed"
 msgstr "Метод не разрешён"
 
-#: src/link_shortener/web/middleware/error_handler.py:152
+#: src/link_shortener/web/middleware/error_handler.py:286
 #, python-format
 msgid "Method %(method)s not allowed"
 msgstr "Метод %(method)s не разрешён"
 
-#: src/link_shortener/web/middleware/error_handler.py:175
+#: src/link_shortener/web/middleware/error_handler.py:309
 msgid "Request validation failed"
 msgstr "Проверка запроса не пройдена"
 
-#: src/link_shortener/web/middleware/error_handler.py:320
-#: src/link_shortener/web/middleware/error_handler.py:388
-msgid "An internal error occurred"
-msgstr "Произошла внутренняя ошибка"
-
-#: src/link_shortener/web/middleware/error_handler.py:352
+#: src/link_shortener/web/middleware/error_handler.py:435
 msgid "Bad request"
 msgstr "Неверный запрос"
 
-#: src/link_shortener/web/middleware/error_handler.py:356
+#: src/link_shortener/web/middleware/error_handler.py:439
 msgid "Malformed request body"
 msgstr "Неверное тело запроса"
 
-#: src/link_shortener/web/middleware/error_handler.py:383
+#: src/link_shortener/web/middleware/error_handler.py:466
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
 

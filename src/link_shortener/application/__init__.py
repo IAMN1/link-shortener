@@ -5,7 +5,7 @@ from .dtos.link import ShortLinkResponse, ExtendedLinkInfoResponse
 from .dtos.batch import BatchItemResponse, BatchCreateResponse
 from .dtos.stats import StatsItemResponse, ServiceStatsResponse
 from .dtos.user import UserResponse
-from .dtos.auth import LoginResponse, RegisterResponse
+from .dtos.auth import LoginResponse
 from .dtos.admin.role import RoleResponse
 from .dtos.admin.permission import PermissionResponse
 from .dtos.current_user_info import CurrentUserInfo
@@ -38,6 +38,7 @@ from .ports.journal_reader import (
 # Two kinds of object, two directories: see the docstring in each.
 # ------------------------------------------------------------------
 from .facades.admin_service import AdminService
+from .facades.auth_service import AuthService
 from .facades.link_service import LinkService
 from .services.role_management_service import RoleManagementService
 from .services.user_management_service import UserManagementService
@@ -127,7 +128,6 @@ __all__ = [
     "ServiceStatsResponse",
     "UserResponse",
     "LoginResponse",
-    "RegisterResponse",
     "RoleResponse",
     "PermissionResponse",
     "CurrentUserInfo",
@@ -160,6 +160,7 @@ __all__ = [
 
     # Services
     "AdminService",
+    "AuthService",
     "LinkService",
     "RoleManagementService",
     "UserManagementService",

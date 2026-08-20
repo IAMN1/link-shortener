@@ -121,21 +121,29 @@ class RegisterUseCase(BaseUseCase):
                     # anonymous caller which part of the deployment is
                     # misconfigured.
                     #
-                    # The status is still 400, because the controller answers
-                    # every DomainError that way -- so the code, not the
-                    # status, is what distinguishes this from a bad request.
+                    # Its own code rather than the CONFIGURATION_ERROR it
+                    # used to share with `UserManagementService`. That one
+                    # says "Default role 'user' not found", which is a
+                    # sentence for an operator reading a log, and one code
+                    # cannot carry both audiences: whatever rule decides
+                    # whether a sentence may be shown would have to be
+                    # right about both at once, and it was not.
+                    #
+                    # The status is still 400, because the controller
+                    # answers every DomainError on this route that way --
+                    # so the code, not the status, is what distinguishes
+                    # this from a bad request.
                     #
                     # It is also the one place the two paths still diverge:
                     # a deployment missing its default role answers 400 for
                     # a free address and 202 for a taken one. That is a
                     # deployment which cannot register anybody at all.
-                    # Marked, unlike the sentences behind a 5xx: the
-                    # controller answers every DomainError on this route
-                    # with 400, so this one is read by whoever tried to
-                    # register rather than by an operator reading a log.
+                    # Marked, unlike the sentences behind a 5xx: this one
+                    # is read by whoever tried to register, which is what
+                    # `CODES_WORDED_FOR_THE_CLIENT` records.
                     raise DomainError(
                         N_("Registration is unavailable"),
-                        code="CONFIGURATION_ERROR",
+                        code="REGISTRATION_UNAVAILABLE",
                     )
 
                 # Create user entity

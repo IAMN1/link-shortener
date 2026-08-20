@@ -325,8 +325,18 @@ to the person in front of it as the change having failed.
 belongs to the account reading it. There is no permission that could open
 or close it: every account that can sign in may change its own password,
 and none may change another's from there. The operator's path
-(`flask security reset-password`) is unchanged and still exists for the
-account that cannot sign in at all.
+(`flask security reset-password`) still exists for the account that cannot
+sign in at all.
+
+**Where the rule lives** (2026-08-21). Retiring the sessions and the
+mailed links is done by `UserManagementService.update_password`, not by
+the use cases above it. There are three callers — the page, the reset
+link, and the command — and stated in the callers the rule held in two:
+the command replaced the hash and left every session live and every
+mailed link working. That is the path reached for an account believed
+compromised, so what it left behind was exactly what it was run to take
+away. The command now says how many sessions it closed, because "reset
+successfully" reads the same whether it closed one or none.
 
 **What was left open.** Recovery by email. An account whose password is
 forgotten still needs an operator, and that is the other half of this
@@ -661,7 +671,14 @@ value inside the sentence, and `%s` cannot be moved past another `%s`.
 are built inside Pydantic from a rule name, so there is no msgid to mark.
 Sentences behind a 5xx are deliberately unmarked — the handler answers the
 generic one, so marking them would put the service's internals in front of
-a translator with no way to see where they appear.
+a translator with no way to see where they appear. The exception is named
+rather than implicit: `error_handler.CODES_WORDED_FOR_THE_CLIENT` lists
+the 5xx codes whose sentence *is* written for whoever reads it, and holds
+one entry. `REGISTRATION_UNAVAILABLE` says a deployment cannot register
+anybody, which somebody who just pressed Register is owed in their own
+language; it is a code of its own for that reason, because it used to
+share `CONFIGURATION_ERROR` with a sentence naming a role from the
+configuration, and one code cannot have two audiences.
 
 And a refusal Werkzeug words itself keeps its English. The statuses a
 visitor here actually meets have sentences of this project's own — 400,
@@ -1089,18 +1106,31 @@ for the search.*
 
 **Decided** (2026-08-18): the audit journal carried three events — a link
 created, followed, deleted — and nothing about accounts at all. It now
-carries twelve more, through one method on `AuditLogger`
+carries thirteen more, through one method on `AuditLogger`
 (`log_security_event`) and a named wrapper per event above it.
 
 **Which events, by one rule.** An act that changes who may do what leaves a
 record. That admits both sign-in outcomes, the five things that happen to
 an account (`USER_CREATED`, `USER_DELETED`, `USER_ACTIVATED`,
-`USER_DEACTIVATED`, `USER_EMAIL_CONFIRMED`), the roles on an account
-(`ROLES_CHANGED`), the three things that happen to a role itself
-(`ROLE_CREATED`, `ROLE_DELETED`, `ROLE_PERMISSIONS_CHANGED`) and the
-reading of a journal (`AUDIT_VIEWED`). It excludes listing accounts,
-reading one, and seeding the database: they change nothing, and a journal
-that records reads as loudly as writes buries the writes.
+`USER_DEACTIVATED`, `USER_EMAIL_CONFIRMED`), an address proving itself
+(`EMAIL_CONFIRMED`), the roles on an account (`ROLES_CHANGED`), the three
+things that happen to a role itself (`ROLE_CREATED`, `ROLE_DELETED`,
+`ROLE_PERMISSIONS_CHANGED`) and the reading of a journal
+(`AUDIT_VIEWED`). It excludes listing accounts, reading one, and seeding
+the database: they change nothing, and a journal that records reads as
+loudly as writes buries the writes.
+
+`EMAIL_CONFIRMED` is the second one this rule caught late, and it was
+caught by the same reading of it. `USER_EMAIL_CONFIRMED` below is an
+operator asserting that an address is readable; this one is the address
+proving it, from the link that was mailed there — and it is the act that
+turns an account which cannot sign in into one that can. Its two
+neighbours on the self-service path, `PASSWORD_CHANGED` and
+`PASSWORD_RESET`, were recorded from the start, so the journal for an
+account showed it registering and then simply beginning to sign in. The
+naming follows what the enum already did without saying so: `USER_*` is
+an operator acting on somebody else's account, and a bare name is the
+account acting for itself.
 
 `USER_EMAIL_CONFIRMED` is the one this rule caught late. An operator
 marking an address confirmed bypasses the proof that anybody can read that
@@ -1379,8 +1409,13 @@ a dummy for an account that does not exist. Here that means issuing and
 storing a token for an address with no account behind it, or sleeping to a
 fixed budget — the first writes rows for strangers, the second makes every
 real request as slow as the slowest one. Neither is worth it while the
-throttle stands at three requests an hour per address, which is what the
-timing attack would have to be run through.
+throttle stands at three requests an hour per caller — per IP while the
+caller is anonymous, which these two routes always are — and that is what
+the timing attack would have to be run through. Per caller, not per
+address asked about: one IP gets three requests an hour to this route
+whatever addresses it names, which is the binding constraint here. It was
+written down as "per address" until the auth slice checked it against
+`RateLimitMiddleware`, where the key is `client_id:endpoint`.
 
 Stated here because the code used to say it was "written down in the
 developer guide", where it was not: a docstring pointing at a note nobody

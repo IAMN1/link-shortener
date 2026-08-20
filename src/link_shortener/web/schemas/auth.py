@@ -2,14 +2,51 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
+from link_shortener.application.dtos.user import (
+    UserResponse as UserResponseDto,
+)
+
 
 class UserResponse(BaseModel):
-    """The account, as every auth answer describes it."""
+    """The account, as every auth answer describes it.
+
+    Four fields where ``admin.UserResponseSchema`` carries seven, and the
+    three left out are the difference between describing an account to
+    itself and describing it to an operator. ``created_at`` and
+    ``last_login`` are an account's history, which the sign-in answer has
+    no use for; ``email_verified`` is a question that cannot be open here,
+    because an unconfirmed address is refused at the sign-in and never
+    reaches this shape.
+    """
 
     id: str = Field(description="Account identifier.")
     email: str = Field(description="Address the account signs in with.")
     roles: List[str] = Field(description="Role names granted to it.")
     is_active: bool = Field(description="Whether it may sign in at all.")
+
+    @classmethod
+    def from_dto(cls, dto: UserResponseDto) -> "UserResponse":
+        """
+        Narrow the application's view of an account to this one.
+
+        Named rather than spelled out at the call site, for the reason
+        every other schema here has a ``from_dto``: a controller writing
+        the dictionary itself is a second copy of the field list, and the
+        day the DTO gains a field is the day the two disagree about
+        whether it is published.
+
+        Args:
+            dto: The account as the application layer describes it.
+
+        Returns:
+            The account as an auth answer describes it.
+        """
+        return cls(
+            id=dto.id,
+            email=dto.email,
+            roles=dto.roles,
+            is_active=dto.is_active,
+        )
 
 
 class RegisterResponse(BaseModel):

@@ -430,7 +430,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 59
+    expected = 62
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -1634,6 +1634,90 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         assert asked[0] == f"Удалить ссылку {code}?", (
             f"the page is Russian and the question was {asked[0]!r}"
         )
+
+    @check("registration says what happened in the language of the page")
+    def _():
+        # A success sentence, not a refusal -- and that is why nothing here
+        # saw it. `apiErrorText` picks the service's own sentence for a
+        # refusal, which the API translates; a 202 body is a literal it
+        # never translates, and the page printed that literal. So a
+        # visitor who registered on a Russian page was told "If that
+        # address can be registered, a link has been sent to it."
+        page = page_for("/register")
+        in_russian(page)
+        page.fill("#email", "browser-ru-register@example.test")
+        page.fill("#password", PASSWORD)
+        page.click("#register-form button[type=submit]")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#reg-sent"),
+            what="#reg-sent to say something",
+        )
+        said = page.inner_text("#reg-sent").strip()
+
+        assert said == (
+            "Если этот адрес можно зарегистрировать, ссылка отправлена "
+            "на него."
+        ), f"the page is Russian and registration said {said!r}"
+
+    @check("a confirmation says so in the language of the page")
+    def _():
+        # The end of the road the message above starts: the person did
+        # what the mail asked, and was thanked in English on a Russian
+        # page. Its own account, so the token is this check's to spend.
+        page = page_for("/register")
+        in_russian(page)
+        page.fill("#email", "browser-ru-verify@example.test")
+        page.fill("#password", PASSWORD)
+        page.click("#register-form button[type=submit]")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#reg-sent"),
+            what="#reg-sent to say something",
+        )
+
+        link = mail.confirmation_link("browser-ru-verify@example.test")
+        assert link is not None, "no confirmation message was delivered"
+        page.goto(link)
+        page.click("#verify-btn")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#verify-done", "#verify-error"),
+            what="#verify-done or #verify-error to say something",
+        )
+
+        assert page.inner_text("#verify-error").strip() == "", (
+            page.inner_text("#verify-error")
+        )
+        said = page.inner_text("#verify-done").strip()
+        assert said == "Адрес подтверждён. Теперь можно войти.", (
+            f"the page is Russian and the confirmation said {said!r}"
+        )
+
+    @check("asking for the confirmation again answers in the page's language")
+    def _():
+        # The third of the three, on the sign-in page: the same 202 body,
+        # the same literal, printed by the same kind of line. Its two
+        # neighbours -- the forgotten-password form and the reset form --
+        # took their sentence from the catalogue throughout, which is what
+        # made these three visible as the exception rather than the rule.
+        page = page_for("/login")
+        in_russian(page)
+        page.fill("#email", "browser-ru-resend@example.test")
+        page.click("#resend-link")
+        wait_until(
+            page,
+            lambda p: has_text(p, "#resend-done", "#resend-error"),
+            what="#resend-done or #resend-error to say something",
+        )
+
+        assert page.inner_text("#resend-error").strip() == "", (
+            page.inner_text("#resend-error")
+        )
+        said = page.inner_text("#resend-done").strip()
+        assert said == (
+            "Если этот адрес нужно подтвердить, ссылка отправлена на него."
+        ), f"the page is Russian and the resend said {said!r}"
 
     @check("a date is written in the language of the page, not the browser's")
     def _():

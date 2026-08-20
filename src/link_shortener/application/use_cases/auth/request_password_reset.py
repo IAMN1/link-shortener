@@ -126,15 +126,29 @@ class RequestPasswordResetUseCase(BaseUseCase):
         if token is None:
             # Recorded, because a burst of these is somebody walking a list
             # of addresses, and answered exactly like a success.
-            log.info("Password reset had nothing to send")
+            #
+            # With the address, which is what makes that reading possible:
+            # without it the burst is visible and the list is not, so an
+            # operator cannot tell one address retried three hundred times
+            # from three hundred addresses tried once -- and only the
+            # second is a walk. `application.log` already holds the full
+            # address for a registration and for every sign-in, by the
+            # decision recorded under the audit journal; what this route
+            # withholds it withholds from the *caller*, and the log is a
+            # different door with a permission of its own.
+            log.info(
+                "Password reset had nothing to send", email=email_vo.value
+            )
             return PasswordResetOutcome.NOTHING_TO_SEND
 
         # The normalised address, matching the row the token belongs to.
         if not self.task_queue.enqueue_password_reset_email(
             email_vo.value, token, context
         ):
-            log.error("Password reset was not handed off")
+            log.error(
+                "Password reset was not handed off", email=email_vo.value
+            )
             return PasswordResetOutcome.NOT_HANDED_OFF
 
-        log.info("Password reset sent")
+        log.info("Password reset sent", email=email_vo.value)
         return PasswordResetOutcome.SENT

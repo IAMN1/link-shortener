@@ -180,7 +180,10 @@ class TestTheRoleRefusalsAreMarkedToo:
     them: "Registration is unavailable" is answered 400 by
     ``AuthController.register``, which words every ``DomainError`` on that
     route itself rather than by the status table, so it is read by whoever
-    tried to register rather than by an operator reading a 5xx.
+    tried to register rather than by an operator reading a 5xx. That is
+    what ``CODES_WORDED_FOR_THE_CLIENT`` records, and why the sentence has
+    a code of its own rather than sharing ``CONFIGURATION_ERROR`` with the
+    one that names a role from the configuration.
 
     A bare exception carries a finished f-string and nothing to look a
     sentence up by, so the boundary had no template to translate and the
@@ -193,7 +196,7 @@ class TestTheRoleRefusalsAreMarkedToo:
     @pytest.mark.parametrize("error,expected", [
         (
             DomainError(
-                "Registration is unavailable", "CONFIGURATION_ERROR"
+                "Registration is unavailable", "REGISTRATION_UNAVAILABLE"
             ),
             "Регистрация сейчас недоступна",
         ),

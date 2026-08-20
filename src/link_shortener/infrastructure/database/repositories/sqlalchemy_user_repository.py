@@ -82,6 +82,30 @@ class SQLAlchemyUserRepository(UserRepository):
         self.session.flush()
         return user
 
+    def record_login(self, user_id: str, when: datetime) -> bool:
+        """Note that an account has just signed in.
+
+        A conditional update naming one column, rather than ``save`` on an
+        entity read before the password was checked. That read and this
+        write are separated by a bcrypt comparison, and ``save`` writes
+        every column back: an account deactivated in that window came back
+        active, and a password changed in it was replaced by the old hash.
+
+        Args:
+            user_id: The account that signed in.
+            when: Time of the sign-in.
+
+        Returns:
+            True if a row was updated.
+        """
+        updated = (
+            self.session.query(UserModel)
+            .filter(UserModel.id == user_id)
+            .update({UserModel.last_login: when}, synchronize_session=False)
+        )
+        self.session.flush()
+        return updated == 1
+
     def find_by_email(self, email: Email) -> Optional[User]:
         """Look up a user by email.
 

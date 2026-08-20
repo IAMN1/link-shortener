@@ -1,6 +1,7 @@
 import secrets
 import os
 from pathlib import Path
+from typing import Optional
 
 from link_shortener.application import UnitOfWorkFactory
 from link_shortener.domain import Email
@@ -157,12 +158,29 @@ def reset_password(
     user_service,  # UserManagementService
     email: str,
     new_password: str
-) -> bool:
-    """Reset a user's password."""
+) -> Optional[int]:
+    """Reset a user's password, closing what the old one held.
+
+    The sessions and the mailed links go with it, in
+    ``update_password``. That is the rule for every password change in
+    the service, and this path is the one it is most needed on: an
+    operator runs this command for an account somebody else may be in.
+
+    Args:
+        uow_factory: Factory for Unit of Work instances.
+        user_service: The service that applies the change.
+        email: Address of the account.
+        new_password: The password to set.
+
+    Returns:
+        How many sessions were closed, or ``None`` if no such account.
+        Zero is a real answer -- an account nobody was signed in to --
+        and is why this is not a boolean.
+    """
     with uow_factory() as uow:
         user = uow.users.find_by_email(Email(email))
         if not user:
-            return False
-        user_service.update_password(uow, user, new_password)
+            return None
+        revoked = user_service.update_password(uow, user, new_password)
         uow.commit()
-        return True
+        return revoked

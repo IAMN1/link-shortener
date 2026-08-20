@@ -159,11 +159,36 @@ class TestErrorDisclosure:
 class TestMalformedBody:
     """An odd request body is a client error, never a crash."""
 
-    @pytest.mark.parametrize("body", [42, "a string", [1, 2, 3], None])
+    @pytest.mark.parametrize("body", [42, "a string", [1, 2, 3]])
     def test_non_object_body_is_rejected(self, client, body):
         for path in ("/api/v1/auth/login", "/api/v1/auth/register"):
             r = client.post(path, json=body)
             assert r.status_code == 400, f"{path} with {body!r} → {r.status_code}"
+
+    def test_no_body_at_all_is_the_same_415_the_rest_of_the_api_answers(
+        self, client
+    ):
+        """A request offering no JSON is refused as one, here as elsewhere.
+
+        These routes used to parse the body silently, which turned "you
+        sent no JSON" into "you sent no credentials" -- 400 and "Email and
+        password are required" to a caller whose fields were fine and
+        whose encoding was not. ``POST /api/v1/shorten`` answered 415 to
+        the same request throughout. One reader now serves both, in
+        ``web/request_body.py``, so there is one answer.
+        """
+        for path in ("/api/v1/auth/login", "/api/v1/auth/register"):
+            r = client.post(path)
+            assert r.status_code == 415, f"{path} with no body → {r.status_code}"
+
+    def test_a_body_offered_as_json_but_empty_names_the_missing_fields(
+        self, client
+    ):
+        """``{}`` is a JSON body, so it is read and found wanting."""
+        for path in ("/api/v1/auth/login", "/api/v1/auth/register"):
+            r = client.post(path, json={})
+            assert r.status_code == 400, f"{path} with {{}} → {r.status_code}"
+            assert r.get_json()["error"] == "VALIDATION_ERROR"
 
     @pytest.mark.parametrize(
         "payload",

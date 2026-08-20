@@ -241,10 +241,7 @@ def create_app(config=None) -> Flask:
     # ------------------------------------------------------------------
     link_service = container.get_link_service()
     admin_service = container.get_admin_service()
-    authentication_service = container.get_authentication_service()
     authorization_service = container.get_authorization_service()
-    login_uc = container.get_login_use_case()
-    register_uc = container.get_register_use_case()
 
     api_controller = ApiController(link_service, admin_service, authorization_service)
     frontend_controller = FrontendController()
@@ -254,16 +251,7 @@ def create_app(config=None) -> Flask:
         container.get_security_counts_use_case(),
     )
     dashboard_controller = DashboardController(link_service, admin_service)
-    auth_controller = AuthController(
-        authentication_service,
-        login_uc,
-        register_uc,
-        container.get_verify_email_use_case(),
-        container.get_resend_verification_use_case(),
-        container.get_change_password_use_case(),
-        container.get_request_password_reset_use_case(),
-        container.get_reset_password_use_case(),
-    )
+    auth_controller = AuthController(container.get_auth_service())
 
     app.register_blueprint(api_controller.bp)
     app.register_blueprint(frontend_controller.bp)

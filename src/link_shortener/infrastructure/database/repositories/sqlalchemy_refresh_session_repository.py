@@ -73,29 +73,6 @@ class SQLAlchemyRefreshSessionRepository(RefreshSessionRepository):
         self.session.flush()
         return claimed == 1
 
-    def revoke_by_token_id(self, token_id: str) -> bool:
-        """Revoke one session if it is still live.
-
-        Args:
-            token_id: Session to revoke.
-
-        Returns:
-            True if this call revoked it.
-        """
-        revoked = (
-            self.session.query(RefreshSessionModel)
-            .filter(
-                RefreshSessionModel.token_id == token_id,
-                RefreshSessionModel.revoked_at.is_(None),
-            )
-            .update(
-                {RefreshSessionModel.revoked_at: datetime.now(timezone.utc)},
-                synchronize_session=False,
-            )
-        )
-        self.session.flush()
-        return revoked == 1
-
     def chain_is_live(self, chain_id: str) -> bool:
         """Report whether a chain still has a usable session.
 

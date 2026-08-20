@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from link_shortener.application.context import RequestContext
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
@@ -20,12 +21,21 @@ class VerifyEmailUseCase(BaseUseCase):
     "already used" says an account exists and someone confirmed it,
     "expired" says one existed recently.
 
+    The confirmation reaches the audit journal and the refusals do not,
+    which is the opposite of the sign-in beside it. There the refusals are
+    the interesting record; here a refusal is a token that could not be
+    spent, and this route answers the same for every reason one cannot be
+    -- so a record of it would name nobody. A confirmation names the
+    account it opened.
+
     Attributes:
         uow_factory: Factory for Unit of Work instances.
         logger: Application logger.
+        audit_logger: Audit logger, where the confirmation is recorded.
     """
     uow_factory: UnitOfWorkFactory
     logger: Logger
+    audit_logger: AuditLogger
 
     def execute(self, token: str, context: RequestContext) -> None:
         """
@@ -39,6 +49,7 @@ class VerifyEmailUseCase(BaseUseCase):
             ValidationError: If the token cannot be spent, for any reason.
         """
         log = self._get_logger(self.logger, context)
+        audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
             # claim() reads the owner and then spends the row with a
@@ -76,3 +87,7 @@ class VerifyEmailUseCase(BaseUseCase):
             uow.commit()
 
         log.info("Email confirmed", user_id=user_id)
+        # After the commit, as the sign-in writes its own record after the
+        # session exists: written ahead of it, this would claim a
+        # confirmation that a failure in the commit never made.
+        audit.log_email_confirmed(target_user_id=user_id)

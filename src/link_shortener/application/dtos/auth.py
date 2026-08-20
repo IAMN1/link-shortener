@@ -34,14 +34,12 @@ class RefreshedTokens:
     refresh_token: str
 
 
-@dataclass
-class RegisterResponse:
-    """
-    DTO returned after successful registration.
-
-    Attributes:
-        user: Newly created user data.
-        message: Success message.
-    """
-    user: UserResponse
-    message: str = "User registered successfully"
+# There is deliberately no ``RegisterResponse`` here. One stood in this
+# file carrying ``user`` and "User registered successfully", and nothing
+# ever built it -- which was just as well, because it described the
+# opposite of what registration does. ``RegisterUseCase`` returns nothing
+# on purpose: the answer is the same whether the address was free or
+# already taken, and an account handed back would say which. A DTO that
+# says otherwise is a standing invitation to wire it up, and it shares its
+# name with ``web.schemas.auth.RegisterResponse``, which carries a
+# sentence and nothing else and is what the endpoint actually answers.

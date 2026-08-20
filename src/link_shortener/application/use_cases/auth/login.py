@@ -113,10 +113,17 @@ class LoginUseCase(BaseUseCase):
                 code="EMAIL_NOT_VERIFIED",
             )
 
-        # Update last_login timestamp.
+        # One column, by a conditional update, rather than saving the
+        # entity back. The entity was read to check the password, which is
+        # ~160 ms of bcrypt ago, and `save` writes every column it holds:
+        # an account an administrator switched off during that window came
+        # back active, and a password changed during it was replaced by
+        # the old hash -- so the new password stopped working and the one
+        # the change was made against went on working. The rule is
+        # `JwtAuthenticationService.revoke_refresh_token`'s, applied here.
         user.last_login = datetime.now(timezone.utc)
         with self.uow_factory() as uow:
-            uow.users.save(user)
+            uow.users.record_login(user.id, user.last_login)
             uow.commit()
 
         # Open a session and take its pair of tokens.

@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, Mock
 from jinja2 import BaseLoader
 from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application.facades.auth_service import AuthService
 from link_shortener.application.facades.link_service import LinkService
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.web.app_factory import create_app
@@ -97,7 +98,26 @@ def mock_auth_service():
 
 
 @pytest.fixture
-def app(test_config, mock_link_service, mock_auth_service, monkeypatch, test_logger):
+def mock_auth_facade():
+    """The facade the auth controller holds, as one object per test.
+
+    ``Mock(spec=AuthService)`` rather than a bare ``Mock``: a bare one
+    answers to any name, so a test setting ``login_use_case.execute`` on
+    it would pass while the controller called something else entirely --
+    which is what the eight separate use-case mocks here used to allow.
+    """
+    return Mock(spec=AuthService)
+
+
+@pytest.fixture
+def app(
+    test_config,
+    mock_link_service,
+    mock_auth_service,
+    mock_auth_facade,
+    monkeypatch,
+    test_logger,
+):
     """
     Create a Flask app for testing with mocked services.
     """
@@ -127,8 +147,9 @@ def app(test_config, mock_link_service, mock_auth_service, monkeypatch, test_log
     monkeypatch.setattr(Container, "get_authorization_service", lambda self: Mock())
     monkeypatch.setattr(Container, "get_uow_factory", lambda self: Mock())
     monkeypatch.setattr(Container, "get_rate_limiter", lambda self: Mock())
-    monkeypatch.setattr(Container, "get_login_use_case", lambda self: Mock())
-    monkeypatch.setattr(Container, "get_register_use_case", lambda self: Mock())
+    monkeypatch.setattr(
+        Container, "get_auth_service", lambda self: mock_auth_facade
+    )
     monkeypatch.setattr(Container, "get_cache", lambda self: Mock(cache_type="null"))
     monkeypatch.setattr(Container, "get_db_manager", lambda self: MagicMock())
     monkeypatch.setattr(Container, "close", lambda self: None)
