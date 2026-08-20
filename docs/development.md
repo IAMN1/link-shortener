@@ -111,11 +111,13 @@ until it was caught.
 
 ## Load profile
 
-Measured twice, on one machine, and recorded together with it — without
-that the numbers would be opinions again. The first set was taken on
-2026-08-14, before a redirect recorded anything; this one on 2026-08-19,
-on a tree where every redirect writes a visit. Both are printed where they
-differ, because the difference is the point.
+Measured three times, on one machine, and recorded together with it —
+without that the numbers would be opinions again. The first set was taken
+on 2026-08-14, before a redirect recorded anything; the second on
+2026-08-19, on a tree where every redirect writes a visit. Both are
+printed where they differ, because the difference is the point. The third,
+2026-08-20, asks a different question — not where the service stops but
+which resource stops it — and is under *What saturates first* below.
 
 **Where.** Apple M5, 10 cores, 16 GB; Docker Desktop 29.6.2 limited to 10
 CPUs and 8 GB; macOS 26.5. Identical to the first run, which is what makes
@@ -232,6 +234,139 @@ worth 37% of the hot path's throughput — which is why
 `CACHE_LINK_TTL` and `CACHE_STATS_TTL` deserve non-zero values. The
 particular 3600 and 300 are a freshness-versus-hit-rate choice rather than a
 performance one, and this run does not measure them.
+
+### What saturates first
+
+The first two runs measured where the service stops; this one, taken
+2026-08-20 on the same machine at sixteen workers, measures what stops it.
+An idle percentage says who is busy, not who is holding the line, so each
+resource was capped in turn and the ceiling watched for movement. The caps
+are `deploy.resources.limits.cpus` in a second compose file passed after
+this one, so a point costs no edit to anything the repository keeps.
+
+| what was capped | req/s | p50 | p95 | p99 |
+|---|---|---|---|---|
+| nothing | **1465** / 1445 | 32 | 40 | 50 |
+| Redis cache at 0.25 cores | 1465 / 1432 | 32 | 40 | 48 |
+| PostgreSQL at 0.5 cores | 1463 / 1421 | 32 | 40 | 47 |
+| the application at 6 cores | 1429 | 33 | 39 | 45 |
+| the application at 4 cores | 1414 | 33 | 44 | 52 |
+| the application at 2 cores | **729** / 701 | 77 | 94 | 100 |
+| Celery worker stopped | **1625** / 1613 | 29 | 37 | 45 |
+
+Where two numbers are printed the point was taken twice, once early in the
+series and once late in the opposite order; no pair disagrees by more than
+4%. Every run above answered 0.00% failures, which is what makes the
+numbers throughput rather than refusal rate.
+
+**What the rows say.** A quarter of a core for the cache and half a core
+for the database — a fortieth and a twentieth of the machine — leave the
+ceiling where it was. Neither was holding it. Halving the application's
+cores halves the throughput, 729 against 1465, which is what a resource
+that holds the line looks like. Above four cores there is almost nothing
+left to win — 1414, 1429, 1465 — because four is about all the application
+can get while everything else on the machine is running.
+
+**Utilisation says the same thing.** Sampled in the middle of the baseline
+run:
+
+| container | CPU | what it is doing there |
+|---|---|---|
+| `app` | 400% | four cores of gunicorn |
+| `celery_worker` | 70% | draining the visit queue |
+| `redis` (cache) | 15% | 8 600 commands/s — six a request |
+| `redis_broker` | 8% | 14 300 commands/s — ten a task |
+| `db` | 9% | all but one or two of its 27 connections idle in `ClientRead` |
+
+The host is 5–8% idle throughout, at 67% user and 27% system. The database
+figure is the one to read twice: on a redirect that hits L1 the request
+never reaches it, and the only writes are the worker's.
+
+Those command counts are per request, not per second divided by luck.
+`INFO commandstats` over one 30-second run, 42 750 requests: the cache
+answered exactly 42 982 of each of `get`, `eval`, `expire`, `zcard`,
+`zadd` and `zremrangebyscore` — the L1 lookup, and the limiter's
+sliding-window script, which runs the other four inside itself. The
+broker answered ten commands a task, which is the transaction Celery
+wraps each one in.
+
+**How far Redis is from its limit.** The same run: the cache spent 1.67
+seconds *executing* commands over 30 seconds and the broker 1.04, so the
+two instances together used 9% of one core out of ten. The limiter is the
+expensive half — `eval` costs 29.6 µs a call against 2.2 for the
+redirect's `get`, three quarters of the cache's time — and it is still not
+close to anything. The 15% and 8% in the table are mostly the socket, not
+the work.
+
+The application takes whatever frees up. Stop the Celery worker — the
+redirects still enqueue, nothing drains — and the container goes from 400%
+to 505% and the ceiling from 1465 to 1625.
+
+**About a sixth of the machine measures rather than serves.** On the host,
+`com.apple.Virtualization` (the whole stack) holds 615%, but locust holds
+84% and Docker's port forwarding another 78%. That is 1.6 cores spent on
+generating load and moving it across the VM boundary, so 1500 is a floor
+for this service, not a verdict on it. Four locust processes instead of
+one gave 1378, not more: the generator was never the limit, it is just
+expensive.
+
+**Transport against logic.** A 322-byte static file — no cache, no queue,
+no logic — runs at 3144 req/s, p50 14 ms. Turned into machine time per
+request that is 318 µs for the transport against 615 µs for a redirect
+(worker stopped, so 1625): answering a redirect costs about as much again
+as receiving the request did.
+
+**What the logging costs.** Each redirect writes a line to
+`application.log` and one to the audit journal, and `LOG_TO_CONSOLE` sends
+a copy to Docker's json-file driver:
+
+| | req/s |
+|---|---|
+| both on (default) | 1465 |
+| `LOG_TO_FILE=false` | 1545 |
+| `LOG_TO_CONSOLE=false` | 1560 |
+| both off | 1579 |
+
+Eight percent for the pair. Worth knowing before blaming the framework,
+and not worth turning off.
+
+**Deferring the write earns 17%, it does not cost it.** With
+`CELERY_ENABLED=false` the click update runs inside the request through
+`NullTaskQueue`, and the ceiling drops to 1215 with p50 at 39 ms. The
+queue is not overhead on the hot path; it is what keeps the hot path off
+the database.
+
+### The visit queue saturates at half the ceiling
+
+The redirect answers from Redis and enqueues the visit; the worker writes
+it. Those two rates are not the same, and the smaller one is reached
+first. Taken with `constant_throughput`, 50 users, queue length read at
+the 28th second:
+
+| redirects/s | tasks left in the queue |
+|---|---|
+| 194 | 0 |
+| 386 | 0 |
+| 579 | 39 |
+| 775 | 4 777 |
+| 1402 | 42 315, growing by ~1 350/s |
+
+So the worker keeps up to about 600 redirects a second and is behind at
+800. At the ceiling the queue grows by about 1 350 a second against
+roughly 1 400 arriving, which leaves the worker writing well under a tenth
+of what it receives. Nothing is lost — the tasks sit in the broker and
+drain afterwards at the rate below, which clears 42 315 of them in about
+half a minute — so a spike leaves the counters behind by roughly as long
+as the spike itself lasted. What that reassurance does not cover is size:
+`redis_broker` holds 256 MB under `noeviction`, which is where a long
+enough spike stops being harmless.
+
+The worker is not slow. Given the machine to itself it drains 31 490
+tasks in 24 seconds — 1312 a second, and that includes the container
+starting. It falls behind under load because sixteen gunicorn processes
+take the CPU it needs, which is the same finding as everything above:
+this machine runs out of processor, and every part of the service is
+competing for the same ten cores.
 
 ## API documentation
 

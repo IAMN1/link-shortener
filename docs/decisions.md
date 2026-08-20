@@ -147,13 +147,52 @@ And the pool decides nothing at all: 622, 627, 615 and 617 req/s at pool 1,
 per worker and one for the beat. `sync` carries one request at a time, so a
 process holds one connection however many it is allowed.
 
-**What was left open.** The ceiling is one machine's, and the saturating
-resource was not isolated: at sixteen workers on ten cores the curve is
-flattening, but whether it flattens against the CPU, the database or Redis
-was not established. The `CreateUser` scenario is only repeatable against a
-freshly built database — the guest allowance is ten links per address and
-the profile reuses its addresses — which is written where the run is
-described rather than here, because it is a property of the profile.
+**What it flattens against** (measured 2026-08-20, same machine, same
+profile, sixteen workers). The CPU, and not by a small margin. The method
+is to take a resource away rather than to read its idle percentage: a
+percentage says who is busy, a cap says who was holding the line. Capping
+the Redis cache at a quarter of a core moves the ceiling by 0.0% and
+capping PostgreSQL at half a core by 0.2%; capping the application at two
+cores halves it, 729 against 1465. Utilisation agrees — under load the
+database burns 9% of one core with all but one or two of its 27
+connections idle in `ClientRead`, and the two Redis instances spend 9% of
+a single core between them actually running commands — 1.67 and 1.04
+seconds of it over a 30-second run, six commands a request and ten a
+task. The host is 5-8% idle throughout. The application takes four cores
+and takes more the moment any frees: stop the Celery worker and it goes to
+505% and the ceiling to 1625. The tables are in
+[Development → Load profile](development.md).
+
+That is the answer to the question, and two things stand beside it that
+the ceiling on its own does not say.
+
+**About a sixth of this machine measures rather than serves.** locust
+holds 84% of a core and Docker's port forwarding another 78% — 1.6 cores
+spent generating the load and carrying it across the VM boundary. So 1500
+is a floor for the service rather than a verdict on it, and a generator on
+another machine would move it. Four locust processes instead of one gave
+1378 and not more, so the generator was never the limit; it is only
+expensive.
+
+**The visit queue saturates at half the ceiling.** A redirect answers from
+Redis and enqueues the visit; the Celery worker writes it, and that second
+rate is the smaller one. The worker keeps up to about 600 redirects a
+second, is behind at 800 (4 777 tasks outstanding after 28 seconds), and
+at the ceiling the queue grows by about 1 350 a second against 1 400
+arriving — the worker writes well under a tenth of them. Nothing is lost:
+the tasks wait in the broker and drain afterwards at 1312 a second, so the
+counters are behind by about as long as the spike lasted. But "1500
+redirects a second" is then a statement about answering, not about
+counting.
+The broker holds 256 MB under `noeviction`, which is where a long enough
+spike stops being harmless.
+
+**What is still open.** The ceiling is one machine's, and this machine
+spends part of itself on the measurement. The `CreateUser` scenario is
+only repeatable against a freshly built database — the guest allowance is
+ten links per address and the profile reuses its addresses — which is
+written where the run is described rather than here, because it is a
+property of the profile.
 
 ---
 
