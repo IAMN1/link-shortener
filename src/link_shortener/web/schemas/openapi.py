@@ -897,9 +897,14 @@ PATHS: Dict[str, Any] = {
             "requestBody": {"required": True, **_json("CreateUserRequest")},
             "responses": {
                 "201": {"description": "Created", **_json("UserResponseSchema")},
-                "400": _error("Malformed body, or a role that does not exist"),
+                "400": _error(
+                    "Malformed body, or a role no account may wear -- "
+                    "guest, which is the role an unauthenticated request "
+                    "acts under"
+                ),
                 "401": _error("Nobody is authenticated"),
                 "403": _error("The caller does not hold admin:manage_users"),
+                "404": _error("No role carries one of those names"),
                 "409": _error("That address is already registered"),
                 "415": _error("A body that is not declared application/json"),
             },
@@ -951,13 +956,20 @@ PATHS: Dict[str, Any] = {
             "requestBody": {"required": True, **_json("UpdateUserRolesRequest")},
             "responses": {
                 "200": {"description": "The account", **_json("UserResponseSchema")},
-                "400": _error("Malformed body, or a role that does not exist"),
+                "400": _error(
+                    "Malformed body, or a role no account may wear -- "
+                    "guest, which is the role an unauthenticated request "
+                    "acts under"
+                ),
                 "401": _error("Nobody is authenticated"),
                 "403": _error(
                     "The caller does not hold admin:manage_users, or this "
                     "would leave the system without an administrator"
                 ),
-                "404": _error("No account carries that id"),
+                "404": _error(
+                    "No account carries that id, or no role carries one of "
+                    "those names"
+                ),
                 "415": _error("A body that is not declared application/json"),
             },
         }
@@ -1123,7 +1135,10 @@ PATHS: Dict[str, Any] = {
                 "200": {"description": "Deleted", **_json("MessageResponse")},
                 "400": _error("The role is a system role"),
                 "401": _error("Nobody is authenticated"),
-                "403": _error("The caller does not hold admin:manage_roles"),
+                "403": _error(
+                    "The caller does not hold admin:manage_roles, or the "
+                    "change would leave the system without an administrator"
+                ),
                 "404": _error("No role carries that name"),
             },
         },
@@ -1148,7 +1163,10 @@ PATHS: Dict[str, Any] = {
                     "system role"
                 ),
                 "401": _error("Nobody is authenticated"),
-                "403": _error("The caller does not hold admin:manage_roles"),
+                "403": _error(
+                    "The caller does not hold admin:manage_roles, or the "
+                    "change would leave the system without an administrator"
+                ),
                 "404": _error("No role carries that name"),
                 "415": _error("A body that is not declared application/json"),
             },

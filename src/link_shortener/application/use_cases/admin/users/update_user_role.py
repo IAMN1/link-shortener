@@ -6,6 +6,7 @@ from link_shortener.application.dtos.user import UserResponse
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
+from link_shortener.application.services.role_management_service import RoleManagementService
 from link_shortener.application.services.user_management_service import UserManagementService
 from link_shortener.application.use_cases.admin.privilege_guard import (
     is_administrator,
@@ -14,8 +15,9 @@ from link_shortener.application.use_cases.admin.privilege_guard import (
     would_keep_admin,
 )
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import DomainError
-from link_shortener.domain.i18n import N_
+from link_shortener.domain.policies.role_policy import (
+    require_roles_are_assignable,
+)
 
 
 @dataclass
@@ -55,6 +57,10 @@ class UpdateUserRolesUseCase(BaseUseCase):
             UserResponse reflecting the new roles.
 
         Raises:
+            RoleNotAssignableError: If a named role is one no account may
+                wear, answered 400.
+            RoleNotFoundError: If a named role does not exist, answered
+                404 -- the answer the role endpoints give that question.
             DomainError: If the caller is not authorized, if a role carries
                 a permission the caller does not hold, or if the change
                 would leave the system without an administrator.
@@ -63,17 +69,21 @@ class UpdateUserRolesUseCase(BaseUseCase):
         audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
-            roles = []
-            for name in role_names:
-                role = uow.roles.get_by_name(name)
-                if not role:
-                    raise DomainError(
-                              f"Role '{name}' not found",
-                              code="VALIDATION_ERROR",
-                              template=N_("Role '%(name)s' not found"),
-                              params={"name": name},
-                          )
-                roles.append(role)
+            # Resolved by the service rather than here: a name nothing
+            # carries used to be a ``VALIDATION_ERROR``, answered 400,
+            # while the role endpoints answered 404 to the same question.
+            roles = RoleManagementService.resolve_roles(uow, role_names)
+
+            # What is wrong with the request, before what is wrong with
+            # the state. ``UserManagementService.update_roles`` asks this
+            # too and stays the door every path goes through -- but it
+            # asks after the administrator count, so ``{"roles":
+            # ["guest"]}`` aimed at the last administrator came back
+            # "this would leave the system without an administrator".
+            # That reads as "find another administrator and retry", and
+            # the request would be refused just the same: no account may
+            # wear ``guest``, whatever the count says.
+            require_roles_are_assignable(roles)
 
             # ``admin:manage_users`` is not a shorter spelling of
             # ``admin:all``: assign yourself the admin role, read the

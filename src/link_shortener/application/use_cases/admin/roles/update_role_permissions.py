@@ -8,9 +8,11 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.services.role_management_service import RoleManagementService
 from link_shortener.application.use_cases.admin.privilege_guard import (
+    require_administrator_survives_without,
     require_may_grant_permissions,
 )
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
+from link_shortener.domain import SystemPermissions
 
 
 @dataclass
@@ -57,12 +59,18 @@ class UpdateRolePermissionsUseCase(BaseUseCase):
                 same question.
             RoleIsSystemError: If the role is one the service owns.
             PermissionsNotFoundError: If a named permission does not exist.
+            DomainError: With code ``FORBIDDEN`` when the new set would
+                leave the system without an administrator.
             DomainError: If the caller may not confer what they asked for.
         """
         log = self._get_logger(self.logger, context)
         audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
+            # See CreateRoleUseCase: the request is checked before the
+            # caller, so a mistyped permission is answered as one.
+            self.role_service.resolve_permissions(uow, permission_names)
+
             # See CreateRoleUseCase: widening a role the caller wears is
             # the same escalation by another route.
             require_may_grant_permissions(context, uow, permission_names)
@@ -75,6 +83,21 @@ class UpdateRolePermissionsUseCase(BaseUseCase):
             permissions_before = (
                 [p.name for p in existing.permissions] if existing else []
             )
+
+            # Replacing what a role carries can take ``admin:all`` off the
+            # last administrator just as deleting the role would, and the
+            # rule stood on neither route. Asked only when the new set
+            # actually drops it: a replacement that keeps it changes
+            # nothing about who is an administrator.
+            # A system role is refused whatever the count says, so it is
+            # left to the service: see `delete_role` for what asking in
+            # the other order did to one request's answer.
+            if (
+                existing is not None
+                and not existing.is_system
+                and SystemPermissions.ADMIN_ALL.value not in permission_names
+            ):
+                require_administrator_survives_without(uow, existing)
 
             # Raised by the service and left alone, for the reason written
             # in `create_role`: a generic ``ROLE_UPDATE_FAILED`` answered

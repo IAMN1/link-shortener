@@ -62,6 +62,17 @@ class CreateRoleUseCase(BaseUseCase):
         audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
+            # What is wrong with the request, before who is asking. The
+            # service resolves these names too and stays the door -- but
+            # it does so after this guard, so a mistyped permission came
+            # back "You cannot grant permissions you do not hold
+            # yourself: link:craete" to a caller holding only
+            # ``admin:manage_roles`` (measured) and "Permissions not
+            # found: link:craete" to an administrator. The first sends
+            # somebody looking for a way to obtain a permission that does
+            # not exist.
+            self.role_service.resolve_permissions(uow, permission_names)
+
             # A role is a bundle of permissions, and handing one out is
             # handing them out. Without this, ``admin:manage_roles`` was a
             # two-step spelling of ``admin:all``: put the permission in a

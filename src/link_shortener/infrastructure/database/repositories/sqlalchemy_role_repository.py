@@ -1,9 +1,12 @@
 from typing import List, Optional
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from link_shortener.infrastructure.database.models.permission_model import PermissionModel
 from link_shortener.infrastructure.database.models.role_model import RoleModel
-from link_shortener.domain import Role, RoleRepository, Permission
+from link_shortener.domain import (
+    Permission, Role, RoleAlreadyExistsError, RoleRepository
+)
 
 
 class SQLAlchemyRoleRepository(RoleRepository):
@@ -45,6 +48,10 @@ class SQLAlchemyRoleRepository(RoleRepository):
 
         Returns:
             The updated domain Role (re-hydrated from the ORM).
+
+        Raises:
+            RoleAlreadyExistsError: If the write collides with a name
+                somebody else has just taken.
         """
 
         model = self.session.query(RoleModel).filter_by(id=role.id).first()
@@ -52,7 +59,23 @@ class SQLAlchemyRoleRepository(RoleRepository):
             model = RoleModel(id=role.id)
             self.session.add(model)
         self._update_model(model, role)
-        self.session.flush()
+        try:
+            self.session.flush()
+        except IntegrityError as clash:
+            # The unique index on ``roles.name`` is the only authority on
+            # whether a name is free; the lookup ``create_role`` does
+            # first is a hint that goes stale the moment another
+            # transaction commits. Without this, simultaneous creations
+            # of one name answered 201 to the first and 500 to the rest
+            # -- measured, six at once: 201, 409, 409, 500, 500, 500 --
+            # so one situation had two codes and the service blamed
+            # itself for a request that was simply late. The same
+            # arrangement ``SQLAlchemyLinkRepository`` makes for
+            # ``short_code``.
+            #
+            # The session is unusable afterwards; the unit of work rolls
+            # it back on the way out.
+            raise RoleAlreadyExistsError(role.name) from clash
         return self._to_domain(model)
 
     def delete(self, role_id: str) -> None:

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-20 23:35+0300\n"
+"POT-Creation-Date: 2026-08-21 04:15+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -21,29 +21,23 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 
 #: src/link_shortener/application/facades/admin_service.py:228
-#: src/link_shortener/application/services/user_management_service.py:116
-#: src/link_shortener/application/services/user_management_service.py:139
-#: src/link_shortener/application/services/user_management_service.py:162
+#: src/link_shortener/application/services/user_management_service.py:119
+#: src/link_shortener/application/services/user_management_service.py:146
+#: src/link_shortener/application/services/user_management_service.py:169
 #: src/link_shortener/application/use_cases/admin/users/confirm_user_email.py:71
-#: src/link_shortener/web/controllers/admin_api_controller.py:111
-#: src/link_shortener/web/controllers/admin_api_controller.py:214
+#: src/link_shortener/web/controllers/admin_api_controller.py:113
+#: src/link_shortener/web/controllers/admin_api_controller.py:216
 #, python-format
 msgid "User with id %(id)s not found"
 msgstr "Учётная запись с id %(id)s не найдена"
 
-#: src/link_shortener/application/services/user_management_service.py:58
+#: src/link_shortener/application/services/user_management_service.py:61
 msgid "Email already registered"
 msgstr "Этот адрес уже зарегистрирован"
 
-#: src/link_shortener/application/services/user_management_service.py:184
+#: src/link_shortener/application/services/user_management_service.py:214
 msgid "Password must not be empty"
 msgstr "Пароль не может быть пустым"
-
-#: src/link_shortener/application/use_cases/admin/users/create_user.py:75
-#: src/link_shortener/application/use_cases/admin/users/update_user_role.py:73
-#, python-format
-msgid "Role '%(name)s' not found"
-msgstr "Роль «%(name)s» не найдена"
 
 #: src/link_shortener/application/use_cases/auth/change_password.py:91
 #: src/link_shortener/application/use_cases/journals/read_journal.py:297
@@ -73,19 +67,20 @@ msgstr "Неверный адрес или пароль"
 msgid "Confirm your email address before signing in"
 msgstr "Подтвердите адрес почты, прежде чем входить"
 
-#: src/link_shortener/application/use_cases/auth/register.py:145
+#: src/link_shortener/application/use_cases/auth/register.py:148
+#: src/link_shortener/application/use_cases/auth/register.py:168
 msgid "Registration is unavailable"
 msgstr "Регистрация сейчас недоступна"
 
 #: src/link_shortener/application/use_cases/auth/reset_password.py:76
 #: src/link_shortener/application/use_cases/auth/reset_password.py:87
-#: src/link_shortener/web/controllers/auth_controller.py:533
+#: src/link_shortener/web/controllers/auth_controller.py:502
 msgid "This reset link is not valid"
 msgstr "Эта ссылка сброса недействительна"
 
 #: src/link_shortener/application/use_cases/auth/verify_email.py:63
 #: src/link_shortener/application/use_cases/auth/verify_email.py:82
-#: src/link_shortener/web/controllers/auth_controller.py:372
+#: src/link_shortener/web/controllers/auth_controller.py:343
 msgid "This confirmation link is not valid"
 msgstr "Эта ссылка подтверждения недействительна"
 
@@ -136,7 +131,7 @@ msgid "Link with code (%(code)s) not found"
 msgstr "Ссылка с кодом (%(code)s) не найдена"
 
 #: src/link_shortener/domain/exceptions.py:90
-#: src/link_shortener/web/middleware/error_handler.py:367
+#: src/link_shortener/web/middleware/error_handler.py:372
 msgid "Link not found"
 msgstr "Ссылка не найдена"
 
@@ -159,8 +154,6 @@ msgid "Guest link limit exceeded"
 msgstr "Превышен гостевой предел ссылок"
 
 #: src/link_shortener/domain/exceptions.py:203
-#: src/link_shortener/web/controllers/admin_api_controller.py:273
-#: src/link_shortener/web/controllers/admin_api_controller.py:311
 #, python-format
 msgid "Role %(name)s not found"
 msgstr "Роль %(name)s не найдена"
@@ -175,7 +168,12 @@ msgstr "Роль %(name)s уже существует"
 msgid "Role %(name)s belongs to the service and cannot be modified or deleted"
 msgstr "Роль %(name)s принадлежит службе: её нельзя ни изменить, ни удалить"
 
-#: src/link_shortener/domain/exceptions.py:263
+#: src/link_shortener/domain/exceptions.py:268
+#, python-format
+msgid "Role %(name)s cannot be assigned to an account"
+msgstr "Роль %(name)s нельзя назначить учётной записи"
+
+#: src/link_shortener/domain/exceptions.py:288
 #, python-format
 msgid "Permissions not found: %(names)s"
 msgstr "Права не найдены: %(names)s"
@@ -217,14 +215,23 @@ msgstr ""
 "Пароль слишком распространён — выберите тот, которого нет в списке у "
 "каждого злоумышленника"
 
-#: src/link_shortener/domain/policies/privilege_policy.py:95
+#: src/link_shortener/domain/policies/privilege_policy.py:99
 #, python-format
 msgid "You cannot grant permissions you do not hold yourself: %(permissions)s"
 msgstr "Нельзя выдать права, которых нет у вас самих: %(permissions)s"
 
-#: src/link_shortener/domain/policies/privilege_policy.py:115
+#: src/link_shortener/domain/policies/privilege_policy.py:119
 msgid "This would leave the system without an administrator"
 msgstr "После этого система осталась бы без администратора"
+
+#: src/link_shortener/domain/policies/role_policy.py:130
+msgid "A role name must be letters, digits, hyphen or underscore"
+msgstr "Имя роли может состоять из букв, цифр, дефиса и подчёркивания"
+
+#: src/link_shortener/domain/policies/role_policy.py:140
+#, python-format
+msgid "A role name must be %(least)s to %(most)s characters long"
+msgstr "Имя роли должно быть длиной от %(least)s до %(most)s символов"
 
 #: src/link_shortener/domain/value_objects/email.py:104
 msgid "Invalid email format"
@@ -705,7 +712,7 @@ msgstr "Тело запроса вложено слишком глубоко"
 msgid "Request body must be a JSON object"
 msgstr "Тело запроса должно быть объектом JSON"
 
-#: src/link_shortener/web/controllers/admin_api_controller.py:177
+#: src/link_shortener/web/controllers/admin_api_controller.py:179
 #, python-format
 msgid "Confirmation for %(email)s could not be queued"
 msgstr "Не удалось поставить письмо с подтверждением для %(email)s в очередь"
@@ -719,30 +726,30 @@ msgstr "Войдите, чтобы видеть свою статистику"
 msgid "days must be a whole number"
 msgstr "days должно быть целым числом"
 
-#: src/link_shortener/web/controllers/auth_controller.py:232
-#: src/link_shortener/web/controllers/auth_controller.py:319
+#: src/link_shortener/web/controllers/auth_controller.py:210
+#: src/link_shortener/web/controllers/auth_controller.py:292
 msgid "Email and password are required"
 msgstr "Нужны адрес и пароль"
 
-#: src/link_shortener/web/controllers/auth_controller.py:399
-#: src/link_shortener/web/controllers/auth_controller.py:491
+#: src/link_shortener/web/controllers/auth_controller.py:372
+#: src/link_shortener/web/controllers/auth_controller.py:462
 msgid "Email is required"
 msgstr "Нужен адрес почты"
 
-#: src/link_shortener/web/controllers/auth_controller.py:442
+#: src/link_shortener/web/controllers/auth_controller.py:413
 msgid "Current password is required"
 msgstr "Нужен текущий пароль"
 
-#: src/link_shortener/web/controllers/auth_controller.py:446
-#: src/link_shortener/web/controllers/auth_controller.py:537
+#: src/link_shortener/web/controllers/auth_controller.py:417
+#: src/link_shortener/web/controllers/auth_controller.py:506
 msgid "New password is required"
 msgstr "Нужен новый пароль"
 
-#: src/link_shortener/web/controllers/auth_controller.py:596
+#: src/link_shortener/web/controllers/auth_controller.py:563
 msgid "No refresh token"
 msgstr "Нет токена обновления"
 
-#: src/link_shortener/web/controllers/auth_controller.py:602
+#: src/link_shortener/web/controllers/auth_controller.py:569
 msgid "Invalid or expired refresh token"
 msgstr "Токен обновления неверен или истёк"
 
@@ -764,65 +771,65 @@ msgstr "Журнала с именем %(name)s нет"
 msgid "This request could not be verified. Reload the page and try again."
 msgstr "Этот запрос не удалось проверить. Обновите страницу и повторите."
 
-#: src/link_shortener/web/middleware/error_handler.py:147
-#: src/link_shortener/web/middleware/error_handler.py:471
+#: src/link_shortener/web/middleware/error_handler.py:152
+#: src/link_shortener/web/middleware/error_handler.py:476
 msgid "An internal error occurred"
 msgstr "Произошла внутренняя ошибка"
 
-#: src/link_shortener/web/middleware/error_handler.py:209
+#: src/link_shortener/web/middleware/error_handler.py:214
 msgid "The request could not be understood"
 msgstr "Запрос не удалось разобрать"
 
-#: src/link_shortener/web/middleware/error_handler.py:210
+#: src/link_shortener/web/middleware/error_handler.py:215
 msgid "You do not have access to this"
 msgstr "У вас нет доступа к этому"
 
-#: src/link_shortener/web/middleware/error_handler.py:211
+#: src/link_shortener/web/middleware/error_handler.py:216
 msgid "That conflicts with something already stored"
 msgstr "Это спорит с тем, что уже сохранено"
 
-#: src/link_shortener/web/middleware/error_handler.py:212
+#: src/link_shortener/web/middleware/error_handler.py:217
 msgid "What was sent is too large"
 msgstr "Присланное слишком велико"
 
-#: src/link_shortener/web/middleware/error_handler.py:213
+#: src/link_shortener/web/middleware/error_handler.py:218
 msgid "The service expects a JSON body"
 msgstr "Служба ждёт тело в формате JSON"
 
-#: src/link_shortener/web/middleware/error_handler.py:214
+#: src/link_shortener/web/middleware/error_handler.py:219
 msgid "The service is unavailable right now"
 msgstr "Служба сейчас недоступна"
 
-#: src/link_shortener/web/middleware/error_handler.py:263
+#: src/link_shortener/web/middleware/error_handler.py:268
 msgid "Page not found"
 msgstr "Страница не найдена"
 
-#: src/link_shortener/web/middleware/error_handler.py:266
+#: src/link_shortener/web/middleware/error_handler.py:271
 msgid "Resource not found"
 msgstr "Ресурс не найден"
 
-#: src/link_shortener/web/middleware/error_handler.py:277
+#: src/link_shortener/web/middleware/error_handler.py:282
 msgid "Method not allowed"
 msgstr "Метод не разрешён"
 
-#: src/link_shortener/web/middleware/error_handler.py:286
+#: src/link_shortener/web/middleware/error_handler.py:291
 #, python-format
 msgid "Method %(method)s not allowed"
 msgstr "Метод %(method)s не разрешён"
 
-#: src/link_shortener/web/middleware/error_handler.py:309
+#: src/link_shortener/web/middleware/error_handler.py:314
 msgid "Request validation failed"
 msgstr "Проверка запроса не пройдена"
 
-#: src/link_shortener/web/middleware/error_handler.py:435
+#: src/link_shortener/web/middleware/error_handler.py:440
 msgid "Bad request"
 msgstr "Неверный запрос"
 
-#: src/link_shortener/web/middleware/error_handler.py:439
+#: src/link_shortener/web/middleware/error_handler.py:444
 msgid "Malformed request body"
 msgstr "Неверное тело запроса"
 
-#: src/link_shortener/web/middleware/error_handler.py:466
+#: src/link_shortener/web/middleware/error_handler.py:471
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
 
@@ -2098,4 +2105,7 @@ msgstr "Запросите новую со %(link)s."
 
 #~ msgid "The role %(name)s is a system role and cannot be modified"
 #~ msgstr "Роль %(name)s — системная, изменить её нельзя"
+
+#~ msgid "Role '%(name)s' not found"
+#~ msgstr "Роль «%(name)s» не найдена"
 

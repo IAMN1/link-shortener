@@ -11,7 +11,7 @@ from flask_babel import gettext
 from link_shortener.application import LinkService, AdminService
 from link_shortener.domain import RoleIsSystemError
 from link_shortener.domain.system_permissions import SystemPermissions
-from link_shortener.infrastructure.auth.rbac_authorization_service import GUEST_ROLE_NAME
+from link_shortener.domain.policies.role_policy import GUEST_ROLE_NAME
 from link_shortener.web.i18n import translate_error
 from link_shortener.web.responses import error_page
 from link_shortener.web.security.context import create_request_context

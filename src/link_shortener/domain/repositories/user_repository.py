@@ -105,8 +105,37 @@ class UserRepository(ABC):
         ...
 
     @abstractmethod
+    def lock_administrator_set(self) -> None:
+        """
+        Serialise every change to who holds ``admin:all``.
+
+        Counting the administrators and then writing the change is two
+        statements, and nothing ties them together. Two administrators
+        demoting each other at the same moment each read "one other would
+        remain" and each proceed -- measured against the running stack,
+        first attempt: both answered 200 and the service was left with no
+        administrator at all, which is the state the count exists to
+        prevent.
+
+        A row lock cannot express it: each request locks the account it is
+        about, and the two never touch the same row. What has to be
+        serialised is the set, and the set is not a row.
+
+        Callers must take this inside the very transaction that both counts
+        and writes, before the count. It is released when that transaction
+        ends, whichever way it ends.
+
+        Implementations on engines without such a lock are expected to do
+        nothing and to say so -- the guard is then advisory there.
+        """
+        ...
+
+    @abstractmethod
     def count_active_with_permission(
-        self, permission_name: str, excluding_user_id: Optional[str] = None
+        self,
+        permission_name: str,
+        excluding_user_id: Optional[str] = None,
+        excluding_role_id: Optional[str] = None,
     ) -> int:
         """
         Count active users holding a permission through any of their roles.
@@ -119,6 +148,11 @@ class UserRepository(ABC):
             permission_name: Permission to look for (e.g. ``"admin:all"``).
             excluding_user_id: User to leave out of the count -- the one the
                 operation is about, whose privileges are about to change.
+            excluding_role_id: Role to disregard, for an operation that is
+                about to stop that role granting anything -- deleting it,
+                or replacing what it carries. A user holding the permission
+                through a second role is still counted, which is the whole
+                reason this is a query and not a flag.
 
         Returns:
             Number of matching active users.

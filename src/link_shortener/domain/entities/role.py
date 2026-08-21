@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from link_shortener.domain.entities.permission import Permission
+from link_shortener.domain.exceptions import RoleIsSystemError
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,24 @@ class Role:
         """Hash based on role ID."""
         return hash(self.id)
     
+    def ensure_may_be_changed(self) -> None:
+        """
+        Refuse a change to a role the service owns.
+
+        Deletion counts as a change: both are refused by the same flag for
+        the same reason, which is why one error carries both.
+
+        The rule was written twice in ``RoleManagementService``, once
+        before replacing a role's permissions and once before deleting it,
+        and the flag it turns on lives here. A third caller would have had
+        to remember -- and this entity is the thing that knows.
+
+        Raises:
+            RoleIsSystemError: If this is a role the service owns.
+        """
+        if self.is_system:
+            raise RoleIsSystemError(self.name)
+
     def has_permission(self, permission_name: str) -> bool:
         """
         Check if this role grants a specific permission by name.

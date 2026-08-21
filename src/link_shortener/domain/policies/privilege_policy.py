@@ -18,6 +18,10 @@ never beyond the ceiling set for them. This module is that rule, and it is
 the same shape as ``ANONYMOUS_PERMISSION_CEILING``, which bounds the other
 end of the same spectrum.
 
+A third rule, about which roles may be worn at all, lives in
+``role_policy`` beside the name it turns on: it needs a role and not an
+actor, and the entity that assembles a user has to be able to ask it.
+
 The second rule is that the last administrator cannot be removed. It is
 about availability, not privilege: an account that locks out the final
 holder of ``admin:all`` leaves a system whose admin surface can only be

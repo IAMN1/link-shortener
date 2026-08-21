@@ -329,17 +329,22 @@ class AdminService:
             context=context,
         )
 
-    def delete_role(self, role_name: str, context: RequestContext) -> bool:
+    def delete_role(self, role_name: str, context: RequestContext) -> None:
         """Delete a non-system role.
 
         Args:
             role_name: Name of the role to delete.
             context: Request context.
 
-        Returns:
-            ``True`` if deleted, ``False`` if the role is a system role or not found.
+        Raises:
+            RoleNotFoundError: If no role carries that name.
+            RoleIsSystemError: If the role is one the service owns.
+
+        Neither outcome was ever a return value, though this said they
+        were: "``False`` if the role is a system role or not found"
+        described a value the use case does not produce.
         """
-        return self.delete_role_uc.execute(role_name, context)
+        self.delete_role_uc.execute(role_name, context)
 
     # ------------------------------------------------------------------
     # Service health

@@ -2,6 +2,7 @@
 from unittest.mock import MagicMock
 
 from link_shortener.application.ports.logging_status import LoggingStatus
+from link_shortener.domain import RoleNotFoundError
 
 
 def _get_admin_controller(app):
@@ -189,18 +190,27 @@ class TestAdminApiController:
     def test_delete_role(self, app, client):
         """DELETE /api/v1/admin/roles/<name> deletes role."""
         ctrl = _get_admin_controller(app)
-        ctrl.admin_service.delete_role.return_value = True
+        ctrl.admin_service.delete_role.return_value = None
 
         response = client.delete("/api/v1/admin/roles/editor")
         assert response.status_code == 200
 
     def test_delete_role_not_found(self, app, client):
-        """DELETE /api/v1/admin/roles/<name> returns 404 when not found."""
+        """A name nothing carries is 404, and the use case says so.
+
+        This used to mock the facade into returning ``False`` and assert
+        that the route noticed -- a branch the use case cannot reach,
+        since it raises. What the route actually answers is whatever the
+        refusal's code maps to.
+        """
         ctrl = _get_admin_controller(app)
-        ctrl.admin_service.delete_role.return_value = False
+        ctrl.admin_service.delete_role.side_effect = RoleNotFoundError(
+            "system"
+        )
 
         response = client.delete("/api/v1/admin/roles/system")
         assert response.status_code == 404
+        assert response.get_json()["error"] == "ROLE_NOT_FOUND"
 
     def test_get_health(self, app, client):
         """GET /api/v1/admin/health returns health status."""

@@ -1,5 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from link_shortener.infrastructure.database.models.permission_model import PermissionModel
@@ -7,9 +9,10 @@ from link_shortener.infrastructure.database.models.role_model import RoleModel
 from link_shortener.infrastructure.database.models.user_model import UserModel
 from link_shortener.application import Logger
 from link_shortener.domain import (
-    Role, User, UserRepository,
+    Role, RoleNotFoundError, User, UserRepository, ValidationError,
     Email, PasswordHash, Permission
 )
+from link_shortener.domain.i18n import N_
 
 
 class SQLAlchemyUserRepository(UserRepository):
@@ -72,6 +75,11 @@ class SQLAlchemyUserRepository(UserRepository):
         Returns:
             The same user instance (the session is flushed but the entity
             is not re-hydrated from the ORM).
+
+        Raises:
+            ValidationError: If the write collides with an address
+                somebody else has just registered.
+            RoleNotFoundError: If the user carries a role no row answers to.
         """
         model = self.session.get(UserModel, user.id)
         if not model:
@@ -79,7 +87,26 @@ class SQLAlchemyUserRepository(UserRepository):
             self.session.add(model)
         self._domain_to_orm_fields(user, model)
         self._sync_roles(user, model)
-        self.session.flush()
+        try:
+            self.session.flush()
+        except IntegrityError as clash:
+            # The unique index on ``users.email`` is the only authority on
+            # whether an address is free; every caller checks by reading
+            # first, and that reading goes stale the moment another
+            # transaction commits. Without this, simultaneous registrations
+            # of one address answered 202 to the first and 500 to the rest
+            # -- measured, five at once: 202, 500, 500 and two throttled --
+            # so a public endpoint blamed the service for a request that
+            # was merely late, and the difference in answers told a caller
+            # what the 202 is worded to withhold.
+            #
+            # The same ``ValidationError`` the read-first check raises, so
+            # both routes to the same fact carry one sentence and one
+            # field. The session is unusable afterwards; the unit of work
+            # rolls it back on the way out.
+            raise ValidationError(
+                N_("Email already registered"), field="email"
+            ) from clash
         return user
 
     def record_login(self, user_id: str, when: datetime) -> bool:
@@ -159,14 +186,60 @@ class SQLAlchemyUserRepository(UserRepository):
         )
         return [self._orm_to_domain(m) for m in models]
 
+    ADMINISTRATOR_SET_LOCK_NAMESPACE = -900370853
+    """First half of the advisory lock key for the administrator set.
+
+    Derived the way the guest quota's namespace is, so it can be
+    re-derived and never drifts:
+    ``blake2b(b"link_shortener.administrator_set", digest_size=4)`` read as
+    a signed 32-bit integer.
+    """
+
+    ADMINISTRATOR_SET_LOCK_KEY = 0
+    """Second half of the key.
+
+    A constant rather than a value derived from anything: unlike the guest
+    quota, which is per identifier, there is one administrator set and
+    every change to it waits on every other. They are rare, and the wait
+    is what makes the count mean something.
+    """
+
+    def lock_administrator_set(self) -> None:
+        """Serialise every change to who holds ``admin:all``.
+
+        Uses ``pg_advisory_xact_lock``, as the guest quota does and for the
+        same reason: there is no row to lock. The thing being protected is
+        a set -- "somebody, anybody, still has ``admin:all``" -- and two
+        administrators demoting each other lock two different rows and
+        never meet.
+
+        On any other engine this does nothing, and the guard is advisory
+        there. PostgreSQL is what production runs; SQLite serves local
+        development and the test suite, whose writes are serialised anyway.
+        """
+        if self.session.get_bind().dialect.name != "postgresql":
+            return
+
+        self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:namespace, :key)"),
+            {
+                "namespace": self.ADMINISTRATOR_SET_LOCK_NAMESPACE,
+                "key": self.ADMINISTRATOR_SET_LOCK_KEY,
+            },
+        )
+
     def count_active_with_permission(
-        self, permission_name: str, excluding_user_id: Optional[str] = None
+        self,
+        permission_name: str,
+        excluding_user_id: Optional[str] = None,
+        excluding_role_id: Optional[str] = None,
     ) -> int:
         """Count active users holding a permission through any role.
 
         Args:
             permission_name: Permission to look for (e.g. ``"admin:all"``).
             excluding_user_id: User to leave out of the count.
+            excluding_role_id: Role to disregard while counting.
 
         Returns:
             Number of matching active users.
@@ -180,6 +253,11 @@ class SQLAlchemyUserRepository(UserRepository):
         )
         if excluding_user_id is not None:
             query = query.filter(UserModel.id != excluding_user_id)
+        if excluding_role_id is not None:
+            # On the join, not on the user: somebody holding the permission
+            # through a second role keeps counting, and only the path
+            # through this one is disregarded.
+            query = query.filter(RoleModel.id != excluding_role_id)
         # Distinct because a user holding the permission through two roles
         # is still one administrator.
         return query.distinct().count()
@@ -308,18 +386,28 @@ class SQLAlchemyUserRepository(UserRepository):
     def _sync_roles(self, user: User, model: UserModel):
         """Replace the ORM model's role collection with associations from the domain user.
 
-        If a role referenced by the domain user does not yet exist in the database,
-        a new RoleModel is created.
-
         Args:
             user: Domain User.
             model: UserModel ORM instance.
+
+        Raises:
+            RoleNotFoundError: If the user carries a role no row answers
+                to. Saving a user is not how a role comes into existence:
+                this method used to create the missing row itself, with
+                ``is_system=False`` and no permissions at all, which is a
+                write into the roles table from the user repository and a
+                role stripped of everything the domain entity carried.
+                Two administrators are enough to reach it -- one deletes a
+                role between the other's lookup and save, and the role
+                came back empty and unprotected, silently.
+
+        Matched on the id rather than on the name for the same reason: a
+        role deleted and made again under its old name is a different
+        role, and the name would have bound the account to it.
         """
         model.roles = []
         for role in user.roles:
-            role_model = self.session.query(RoleModel).filter_by(name=role.name).first()
-            if not role_model:
-                # Create a stub role if it does not exist (roles are usually seeded)
-                role_model = RoleModel(id=role.id, name=role.name)
-                self.session.add(role_model)
+            role_model = self.session.get(RoleModel, role.id)
+            if role_model is None:
+                raise RoleNotFoundError(role.name)
             model.roles.append(role_model)

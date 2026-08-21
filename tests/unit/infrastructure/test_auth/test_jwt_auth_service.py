@@ -11,6 +11,7 @@ import jwt
 import pytest
 
 from link_shortener.domain.entities.refresh_session import RefreshSession
+from link_shortener.domain.entities.role import Role
 from link_shortener.domain.entities.user import User
 from link_shortener.domain.value_objects.email import Email
 from link_shortener.domain.value_objects.password_hash import PasswordHash
@@ -172,6 +173,53 @@ class TestSignatureIsVerified:
         )
 
         assert service.validate_token(f"{header}.{edited}.{signature}") is None
+
+
+class TestWhatTheTokenStates:
+    """A token states who is calling, and not what they may do.
+
+    It used to carry a ``roles`` claim. Nothing decided anything by it --
+    the middleware reads the account from the database on every request,
+    which is what makes a demotion take effect at once -- so what the
+    claim actually was is a snapshot up to fifteen minutes stale, sitting
+    in the token looking authoritative. The one reader was
+    ``flask security validate-token``, printing it as diagnostics.
+    """
+
+    @staticmethod
+    def _somebody() -> User:
+        """A user wearing a role, so an omitted claim is not a coincidence."""
+        return User(
+            id="user-7",
+            email=Email("wearer@example.com"),
+            password_hash=PasswordHash("$2b$12$" + "a" * 53),
+            roles=[Role(id="role-1", name="admin")],
+        )
+
+    def _claims(self, service, token):
+        """Decode without verifying: the subject here is the payload."""
+        return jwt.decode(
+            token, SECRET, algorithms=[ALGORITHM],
+            options={"verify_exp": False},
+        )
+
+    def test_an_access_token_states_no_roles(self, service):
+        token = service._create_token(
+            self._somebody(), timedelta(minutes=15), "access",
+            session_id="session-1",
+        )
+
+        claims = self._claims(service, token)
+        assert "roles" not in claims
+        assert claims["sub"] == "user-7"
+
+    def test_a_refresh_token_states_no_roles_either(self, service):
+        token = service._create_token(
+            self._somebody(), timedelta(days=7), "refresh",
+            token_id="jti-1",
+        )
+
+        assert "roles" not in self._claims(service, token)
 
 
 class TestAuthenticateContract:

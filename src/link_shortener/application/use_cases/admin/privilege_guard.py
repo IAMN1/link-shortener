@@ -87,8 +87,46 @@ def require_administrator_remains(uow: UnitOfWork, user_id: str) -> None:
     Raises:
         DomainError: With code ``FORBIDDEN`` if nobody else would be left.
     """
+    # Before the count, in the transaction that will write the change:
+    # without it two administrators demoting each other both read "one
+    # other would remain" and both proceed.
+    uow.users.lock_administrator_set()
     remaining = uow.users.count_active_with_permission(
         SystemPermissions.ADMIN_ALL.value, excluding_user_id=user_id
+    )
+    require_not_last_administrator(remaining)
+
+
+def require_administrator_survives_without(uow: UnitOfWork, role: Role) -> None:
+    """
+    Refuse an operation that takes ``admin:all`` off the last administrator.
+
+    The rule was on the three routes that act on an account -- re-roling,
+    deleting, deactivating -- and on neither of the two that act on a
+    role. Both reach the same end, and both were measured against the
+    running stack: an administrator whose ``admin:all`` came through a
+    role of their own making, then ``PUT /admin/roles/<name>/permissions``
+    without it (200) or ``DELETE /admin/roles/<name>`` (200), and the
+    admin API answered 403 to everybody afterwards. The deletion left
+    the account with no roles at all.
+
+    Counted excluding this role, so an administrator who also holds
+    ``admin:all`` through another one keeps the operation allowed.
+
+    Args:
+        uow: Active Unit of Work.
+        role: The role about to stop granting what it grants.
+
+    Raises:
+        DomainError: With code ``FORBIDDEN`` if nobody would be left.
+    """
+    # Nothing to protect if this role is not what makes an administrator.
+    if not role.has_permission(SystemPermissions.ADMIN_ALL.value):
+        return
+
+    uow.users.lock_administrator_set()
+    remaining = uow.users.count_active_with_permission(
+        SystemPermissions.ADMIN_ALL.value, excluding_role_id=role.id
     )
     require_not_last_administrator(remaining)
 

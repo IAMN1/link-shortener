@@ -1027,7 +1027,6 @@ def security_validate_token(token):
         click.echo("=" * 40)
         click.echo(f"User ID: {result.get('user_id')}")
         click.echo(f"Email: {result.get('email')}")
-        click.echo(f"Roles: {', '.join(result.get('roles', []))}")
         # ISO 8601 in UTC, like every other moment this service writes.
         # It printed the raw `exp` claim, so the answer to "how long is
         # this good for" was an epoch an operator had to convert by hand.

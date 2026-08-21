@@ -12,7 +12,11 @@ class ListRolesUseCase(BaseUseCase):
     """
     Retrieves all roles defined in the system.
 
-    Requires either ``admin:view_roles`` or ``admin:manage_roles`` permission.
+    Requires ``admin:view_roles``. Not "either that or ``admin:manage_roles``", which is what
+    this said: the routes ask for one named permission each, and
+    ``test_each_admin_route_asks_for_its_own_permission`` holds them to
+    it -- OWASP A01 asks a system to deny by default, and an account
+    built to manage is not thereby an account built to read.
     """
     uow_factory: UnitOfWorkFactory
     logger: Logger

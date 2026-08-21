@@ -36,6 +36,11 @@ STATUS_BY_CODE = {
     "EMAIL_NOT_VERIFIED": 401,
     "ACCOUNT_INACTIVE": 403,
     "VALIDATION_ERROR": 400,
+    # A role that exists and that no account may wear -- ``guest``. The
+    # request is well formed and names something real, so it is not a 404
+    # and not a 403: the caller is entitled, and the operation is one the
+    # service does not perform.
+    "ROLE_NOT_ASSIGNABLE": 400,
     "LINK_NOT_FOUND": 404,
     "LINK_EXPIRED": 410,
     "GUEST_LINK_LIMIT": 429,

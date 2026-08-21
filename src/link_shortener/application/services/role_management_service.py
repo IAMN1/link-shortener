@@ -3,9 +3,9 @@ import uuid
 
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.domain import (
-    PermissionsNotFoundError, Role, RoleAlreadyExistsError, RoleIsSystemError,
-    RoleNotFoundError
+    PermissionsNotFoundError, Role, RoleAlreadyExistsError, RoleNotFoundError
 )
+from link_shortener.domain.policies.role_policy import require_valid_role_name
 
 
 class RoleManagementService:
@@ -36,6 +36,65 @@ class RoleManagementService:
         if missing:
             raise PermissionsNotFoundError(missing)
 
+    @classmethod
+    def resolve_permissions(cls, uow: UnitOfWork, permission_names: List[str]):
+        """
+        Turn permission names into the permissions they name.
+
+        The counterpart of ``resolve_roles``, and the one door for it.
+
+        Args:
+            uow: Active unit of work.
+            permission_names: Names as the caller wrote them.
+
+        Returns:
+            The permission entities, without duplicates.
+
+        Raises:
+            PermissionsNotFoundError: If any name has no permission
+                behind it, naming all of them at once -- a request may
+                carry a dozen, and bisecting a dozen is the cost this
+                avoids.
+        """
+        permissions = uow.permissions.get_by_names(permission_names)
+        cls._refuse_unknown_permissions(permission_names, permissions)
+        return permissions
+
+    @staticmethod
+    def resolve_roles(uow: UnitOfWork, role_names: List[str]) -> List[Role]:
+        """
+        Turn role names into the roles they name.
+
+        The one door for it. Four callers used to open it themselves --
+        two admin use cases and two CLI commands -- and the two in the
+        application layer raised ``VALIDATION_ERROR`` for a name nothing
+        carries, which the status table answers 400. The role endpoints
+        beside them answered 404 to that very question, so one situation
+        had two codes, two statuses, and two msgids in the catalogue that
+        a translator had to keep in step by hand.
+
+        Args:
+            uow: Active unit of work.
+            role_names: Names as the caller wrote them, in their order.
+
+        Returns:
+            The roles, in the order they were asked for.
+
+        Raises:
+            RoleNotFoundError: At the first name nothing carries. The
+                first rather than all of them, unlike
+                ``PermissionsNotFoundError``: a request names a handful of
+                roles and dozens of permissions, so bisection is not the
+                cost there that it is for permissions.
+        """
+        roles = []
+        for name in role_names:
+            role = uow.roles.get_by_name(name)
+            if not role:
+                raise RoleNotFoundError(name)
+            roles.append(role)
+        return roles
+
     def create_role(self,
                     uow: UnitOfWork,
                     name: str,
@@ -56,14 +115,19 @@ class RoleManagementService:
             The newly created Role entity.
 
         Raises:
+            ValidationError: If the name is not one a role may be called.
             RoleAlreadyExistsError: If the name is already taken.
             PermissionsNotFoundError: If any permission is missing.
         """
+        # Asked here rather than trusted from the schema: the schema is one
+        # of two doors, and the other is a YAML file read by
+        # ``flask db load-custom-roles``.
+        require_valid_role_name(name)
+
         existing = uow.roles.get_by_name(name)
         if existing:
             raise RoleAlreadyExistsError(name)
-        permissions = uow.permissions.get_by_names(permission_names)
-        self._refuse_unknown_permissions(permission_names, permissions)
+        permissions = self.resolve_permissions(uow, permission_names)
 
         role = Role(
             id=str(uuid.uuid4()),
@@ -95,11 +159,9 @@ class RoleManagementService:
         role = uow.roles.get_by_name(role_name)
         if not role:
             raise RoleNotFoundError(role_name)
-        if role.is_system:
-            raise RoleIsSystemError(role_name)
+        role.ensure_may_be_changed()
 
-        permissions = uow.permissions.get_by_names(permission_names)
-        self._refuse_unknown_permissions(permission_names, permissions)
+        permissions = self.resolve_permissions(uow, permission_names)
 
         updated_role = Role(
             id=role.id,
@@ -132,6 +194,5 @@ class RoleManagementService:
         role = uow.roles.get_by_name(role_name)
         if not role:
             raise RoleNotFoundError(role_name)
-        if role.is_system:
-            raise RoleIsSystemError(role_name)
+        role.ensure_may_be_changed()
         uow.roles.delete(role.id)

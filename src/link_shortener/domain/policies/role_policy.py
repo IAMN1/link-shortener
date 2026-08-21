@@ -24,6 +24,28 @@ of defense"). The four names this application ships -- ``guest``,
 ``user``, ``analyst``, ``admin`` -- are inside it.
 """
 
+import re
+from typing import Iterable, TYPE_CHECKING
+
+from link_shortener.domain.exceptions import (
+    RoleNotAssignableError, ValidationError
+)
+from link_shortener.domain.i18n import N_
+
+if TYPE_CHECKING:  # pragma: no cover - imported for the annotation only
+    from link_shortener.domain.entities.role import Role
+
+
+GUEST_ROLE_NAME = "guest"
+"""
+Name of the role an unauthenticated caller acts under.
+
+Here rather than beside the authorization service that reads it, because
+it is not that service's fact: two rules turn on this name and only one of
+them is about authorization. The other is that no account may be given it
+-- a role meant for whoever has not signed in confers, on somebody who
+has, the entitlements of a passer-by.
+"""
 
 ROLE_NAME_MIN_LENGTH = 2
 """Shortest role name the service accepts, in characters."""
@@ -54,6 +76,75 @@ Letters, digits, underscore and hyphen: enough for every name in
 ``roles.yaml`` and for the ones an operator is likely to add, and short of
 anything that has a meaning in a URL path.
 """
+
+def require_roles_are_assignable(roles: Iterable["Role"]) -> None:
+    """
+    Check that every one of these roles may be worn by an account.
+
+    ``guest`` may not. It is the role an unauthenticated request acts
+    under, so an account wearing it holds what a passer-by holds: it signs
+    in and the dashboard it lands on refuses it.
+
+    Asked by ``User.create`` and by ``UserManagementService.update_roles``,
+    which between them are every way a role reaches an account. It was
+    first put in the service alone, on the reasoning that the API, the
+    panel and both CLI commands all arrive there -- and registration does
+    not: it builds the entity itself, so a deployment with
+    ``DEFAULT_ROLE_NAME=guest`` registered guests, measured at 202 with
+    the account holding ``guest``. The rule was in the callers again, and
+    the third caller broke it again.
+
+    Args:
+        roles: The roles an account is about to be given.
+
+    Raises:
+        RoleNotAssignableError: At the first role no account may carry.
+    """
+    for role in roles:
+        if role.name == GUEST_ROLE_NAME:
+            raise RoleNotAssignableError(role.name)
+
+
+def require_valid_role_name(name: str) -> None:
+    """
+    Refuse a role name the service cannot address or log.
+
+    The rule itself was written twice already -- as these constants and as
+    the Pydantic field built from them -- and that pairing is deliberate:
+    the schema refuses malformed input at the edge with a field-level
+    message. What it is not is the only place the rule is applied. Roles
+    also arrive through ``flask db load-custom-roles``, which reads a YAML
+    file and never meets the schema, and a name with a slash in it created
+    that way is a role no route can address and nothing short of SQL can
+    remove. Measured: ``a/b`` went in.
+
+    Args:
+        name: The name a role is about to be created under.
+
+    Raises:
+        ValidationError: If the name is outside what a role may be called.
+    """
+    if not isinstance(name, str) or not re.fullmatch(ROLE_NAME_PATTERN, name):
+        raise ValidationError(
+            N_(
+                "A role name must be letters, digits, hyphen or underscore"
+            ),
+            field="name",
+        )
+    if not ROLE_NAME_MIN_LENGTH <= len(name) <= ROLE_NAME_MAX_LENGTH:
+        raise ValidationError(
+            f"A role name must be {ROLE_NAME_MIN_LENGTH} to "
+            f"{ROLE_NAME_MAX_LENGTH} characters long",
+            field="name",
+            template=N_(
+                "A role name must be %(least)s to %(most)s characters long"
+            ),
+            params={
+                "least": ROLE_NAME_MIN_LENGTH,
+                "most": ROLE_NAME_MAX_LENGTH,
+            },
+        )
+
 
 ROLE_DESCRIPTION_MAX_LENGTH = 255
 """

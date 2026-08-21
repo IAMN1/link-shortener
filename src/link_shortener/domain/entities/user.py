@@ -4,6 +4,9 @@ from typing import List, Optional
 import uuid
 
 from link_shortener.domain.entities.role import Role
+from link_shortener.domain.policies.role_policy import (
+    require_roles_are_assignable,
+)
 from link_shortener.domain.value_objects.email import Email
 from link_shortener.domain.value_objects.password_hash import PasswordHash
 
@@ -66,7 +69,17 @@ class User:
 
         Returns:
             A new User instance with ``is_active=True`` and ``created_at`` set to now.
+
+        Raises:
+            RoleNotAssignableError: If one of the roles is one no account
+                may wear.
         """
+        # Asked here because this is where a user first gets roles, and
+        # registration builds the entity directly rather than through
+        # ``UserManagementService``: the rule lived in that service alone
+        # and registration walked past it.
+        require_roles_are_assignable(roles or [])
+
         return cls(
             id=str(uuid.uuid4()),
             email=email,

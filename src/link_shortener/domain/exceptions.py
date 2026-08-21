@@ -246,6 +246,31 @@ class RoleIsSystemError(DomainError):
         )
 
 
+class RoleNotAssignableError(DomainError):
+    """Raised when a role is put on an account that may not carry it.
+
+    Distinct from ``RoleIsSystemError``, which refuses a change *to* the
+    role: this one refuses handing the role *out*, and the role itself is
+    untouched either way. ``guest`` is the case it exists for -- the role
+    an unauthenticated request acts under, which on a real account means
+    signing in to a dashboard that will not open.
+
+    Answered 400: the request is well formed and names something real, and
+    the caller is asking for an operation the service does not perform.
+    """
+
+    def __init__(self, role_name: str):
+        self.role_name = role_name
+        super().__init__(
+            f"Role '{role_name}' cannot be assigned to an account",
+            "ROLE_NOT_ASSIGNABLE",
+            template=N_(
+                "Role %(name)s cannot be assigned to an account"
+            ),
+            params={"name": role_name},
+        )
+
+
 class PermissionsNotFoundError(DomainError):
     """Raised when a request names permissions the service does not know.
 

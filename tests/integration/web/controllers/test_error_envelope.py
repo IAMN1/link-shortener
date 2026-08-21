@@ -297,6 +297,105 @@ class TestAdminRefusalsPastTheDoor:
         assert_envelope(response, "PUT /api/v1/admin/roles/no-such-role")
         assert response.get_json()["error"] == "ROLE_NOT_FOUND"
 
+    def test_a_role_that_is_not_there_answers_the_role_endpoints_answer(
+        self, client
+    ):
+        """One question about a role, one code, on all four routes.
+
+        The two user routes resolved role names themselves and raised
+        ``VALIDATION_ERROR`` for a name nothing carries -- 400, against
+        the 404 ``GET`` and ``DELETE`` on the role endpoints give the
+        very same question. A client could not handle "no such role" by
+        its code, and the catalogue carried two msgids for one sentence.
+        """
+        created = client.post(
+            f"{API_PREFIX}/admin/users",
+            json={
+                "email": "envelope-roles@example.test",
+                "password": "Irrelevant1!",
+                "roles": ["user"],
+            },
+            headers=auth_headers(self.token),
+        )
+        assert created.status_code == 201, created.get_json()
+        user_id = created.get_json()["id"]
+
+        for method, path in (
+            ("POST", f"{API_PREFIX}/admin/users"),
+            ("PUT", f"{API_PREFIX}/admin/users/{user_id}/roles"),
+        ):
+            body = {"roles": ["no-such-role"]}
+            if method == "POST":
+                body |= {
+                    "email": "envelope-roles-2@example.test",
+                    "password": "Irrelevant1!",
+                }
+
+            response = client.open(
+                path, method=method, json=body,
+                headers=auth_headers(self.token),
+            )
+
+            assert response.status_code == 404, (
+                f"{method} {path}: {response.get_json()}"
+            )
+            assert_envelope(response, f"{method} {path}")
+            assert response.get_json()["error"] == "ROLE_NOT_FOUND"
+
+    def test_the_guest_role_is_not_handed_to_an_account(self, client):
+        """The role an unauthenticated request acts under stays there.
+
+        The admin panel left ``guest`` out of the lists it draws and said
+        why: an account holding it gets the entitlements of a passer-by
+        and signs in to a dashboard it may not read. The rule lived in the
+        page that drew the form, so ``PUT`` took the role without a word
+        -- measured against the running stack at 200.
+        """
+        created = client.post(
+            f"{API_PREFIX}/admin/users",
+            json={
+                "email": "envelope-guest@example.test",
+                "password": "Irrelevant1!",
+                "roles": ["user"],
+            },
+            headers=auth_headers(self.token),
+        )
+        assert created.status_code == 201, created.get_json()
+        user_id = created.get_json()["id"]
+
+        response = client.put(
+            f"{API_PREFIX}/admin/users/{user_id}/roles",
+            json={"roles": ["guest"]},
+            headers=auth_headers(self.token),
+        )
+
+        assert response.status_code == 400, response.get_json()
+        assert_envelope(response, "PUT /api/v1/admin/users/<id>/roles")
+        assert response.get_json()["error"] == "ROLE_NOT_ASSIGNABLE"
+
+        # And the account still holds what it held: a refusal that wrote
+        # half the change would be worse than the grant it refused.
+        after = client.get(
+            f"{API_PREFIX}/admin/users/{user_id}",
+            headers=auth_headers(self.token),
+        )
+        assert after.get_json()["roles"] == ["user"]
+
+    def test_creating_an_account_as_a_guest_is_refused_too(self, client):
+        """The other door into the same rule."""
+        response = client.post(
+            f"{API_PREFIX}/admin/users",
+            json={
+                "email": "envelope-guest-new@example.test",
+                "password": "Irrelevant1!",
+                "roles": ["guest"],
+            },
+            headers=auth_headers(self.token),
+        )
+
+        assert response.status_code == 400, response.get_json()
+        assert response.get_json()["error"] == "ROLE_NOT_ASSIGNABLE"
+
     def test_a_name_somebody_already_holds_is_a_conflict(self, client):
         """409, for the reason ``LINK_CODE_TAKEN`` is.
 

@@ -2,6 +2,7 @@
 
 import pytest
 
+from link_shortener.domain import ValidationError
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.infrastructure.database.models.permission_model import (
     PermissionModel
@@ -247,3 +248,107 @@ class TestASystemRoleCanBeMadeSystemAgain:
         with fresh_db.session() as session:
             editor = session.query(RoleModel).filter_by(name="editor").one()
             assert not editor.is_system
+
+
+class TestTheNameRuleStandsAtThisDoorToo:
+    """``load-custom-roles`` is the second way a role is created.
+
+    The rule about what a role may be called lived in the admin API's
+    Pydantic schema and nowhere else, so a YAML file walked past it.
+    Measured before the fix: a role named ``a/b`` went in, and
+    ``DELETE /api/v1/admin/roles/a/b`` cannot address it -- Werkzeug's
+    default converter stops at the slash -- so nothing short of SQL could
+    take it out again.
+    """
+
+    def test_a_name_no_route_can_address_is_refused(self, fresh_db, tmp_path):
+        bad = tmp_path / "bad-name.yaml"
+        bad.write_text(
+            "permissions:\n"
+            "  - name: \"link:create\"\n"
+            "    resource: \"link\"\n"
+            "    action: \"create\"\n"
+            "roles:\n"
+            "  - name: \"a/b\"\n"
+            "    description: \"a name no route can address\"\n"
+            "    permissions: [\"link:create\"]\n"
+        )
+
+        with fresh_db.session() as session:
+            with pytest.raises(ValidationError):
+                RoleLoader(session).load_from_yaml(bad)
+
+        with fresh_db.session() as session:
+            assert session.query(RoleModel).filter_by(name="a/b").first() is None
+
+    def test_the_shipped_configuration_passes_the_rule(self, fresh_db):
+        """The rule must not refuse what the service itself ships."""
+        with fresh_db.session() as session:
+            summary = RoleLoader(session).load_from_yaml(
+                DEFAULT_RBAC_CONFIG_PATH
+            )
+
+        assert sorted(summary.roles_created) == [
+            "admin", "analyst", "auditor", "guest", "user",
+        ]
+
+
+class TestWhatUpdateExistingActuallyUpdates:
+    """``--update-existing`` reaches the permissions, not only the roles.
+
+    The flag was accepted by ``load_from_yaml`` and then passed to
+    ``_upsert_permission`` as a hard-coded ``False``. Both the docstring
+    ("existing permissions are never modified unless ``update_existing``
+    is True") and the CLI help ("Update existing roles and permissions")
+    described the behaviour the code did not have -- and the command
+    printed "Updated roles and permission from <file>" either way, so an
+    operator editing a description saw a success and no change.
+    """
+
+    def _file(self, tmp_path, name, description):
+        """A one-permission YAML file with the given description."""
+        path = tmp_path / f"{name}.yaml"
+        path.write_text(
+            "permissions:\n"
+            "  - name: \"link:create\"\n"
+            "    resource: \"link\"\n"
+            "    action: \"create\"\n"
+            f"    description: \"{description}\"\n"
+            "roles: []\n"
+        )
+        return path
+
+    def test_the_flag_reaches_an_existing_permission(self, fresh_db, tmp_path):
+        first = self._file(tmp_path, "first", "as it was")
+        second = self._file(tmp_path, "second", "as it should be")
+
+        with fresh_db.session() as session:
+            RoleLoader(session).load_from_yaml(first)
+
+        with fresh_db.session() as session:
+            RoleLoader(session).load_from_yaml(second, update_existing=True)
+
+        with fresh_db.session() as session:
+            stored = session.query(PermissionModel).filter_by(
+                name="link:create"
+            ).one()
+            assert stored.description == "as it should be"
+
+    def test_without_the_flag_the_permission_is_left_alone(
+        self, fresh_db, tmp_path
+    ):
+        """The other half of the promise, which did hold."""
+        first = self._file(tmp_path, "keep-first", "as it was")
+        second = self._file(tmp_path, "keep-second", "as it should not be")
+
+        with fresh_db.session() as session:
+            RoleLoader(session).load_from_yaml(first)
+
+        with fresh_db.session() as session:
+            RoleLoader(session).load_from_yaml(second)
+
+        with fresh_db.session() as session:
+            stored = session.query(PermissionModel).filter_by(
+                name="link:create"
+            ).one()
+            assert stored.description == "as it was"

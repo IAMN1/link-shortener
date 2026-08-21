@@ -13,13 +13,11 @@ from link_shortener.application import AuthorizationService
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.domain import SystemPermissions, User
+from link_shortener.domain.policies.role_policy import GUEST_ROLE_NAME
 
 # ==============================================================================
 # Anonymous access
 # ==============================================================================
-
-GUEST_ROLE_NAME = "guest"
-"""Name of the role an unauthenticated caller acts under."""
 
 ANONYMOUS_PERMISSION_CEILING = frozenset({
     SystemPermissions.STATS_VIEW_BASIC.value,
@@ -141,10 +139,14 @@ class RBACAuthorizationService(AuthorizationService):
         """
         Check a permission for an unauthenticated caller.
 
-        Opens a Unit of Work, so this branch must not be reached from inside
-        an open one. Today it cannot be: the only call site within a
-        transaction (``DeleteLinkUseCase``) has already established that the
-        caller is somebody.
+        Opens a Unit of Work, so this branch must not be reached from
+        inside an open one. Three use cases ask this service while doing
+        their own database work, and each stays clear of it differently:
+        ``DeleteLinkUseCase`` has already established that the caller is
+        somebody, while ``ReadJournalUseCase`` and ``GetSecurityCountsUseCase``
+        close the unit of work they loaded the actor with before they ask.
+        Said as a list because it was said as "the only call site", and by
+        then there were three.
 
         Args:
             permission: Permission string being checked.

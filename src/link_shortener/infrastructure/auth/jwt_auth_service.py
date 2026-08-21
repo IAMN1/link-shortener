@@ -146,9 +146,17 @@ class JwtAuthenticationService(AuthenticationService):
         """
         Internal helper to build a signed JWT.
 
-        The payload includes ``sub`` (user ID), ``email``, ``roles``,
-        standard ``exp``/``iat`` claims, and a ``type`` claim to distinguish
-        access and refresh tokens. Refresh tokens additionally carry a
+        The payload includes ``sub`` (user ID), ``email``, standard
+        ``exp``/``iat`` claims, and a ``type`` claim to distinguish
+        access and refresh tokens.
+
+        No ``roles`` claim, though there was one. Nothing decided anything
+        by it: the middleware reads the account from the database on every
+        request, which is what makes a demotion take effect at once. What
+        the claim did was look authoritative while being a snapshot up to
+        fifteen minutes stale -- the shape a wrong decision arrives in
+        later, when somebody reads roles off the token because they are
+        there. Refresh tokens additionally carry a
         ``jti`` naming the session row that can retire them; access tokens
         carry a ``sid`` naming the login they belong to, which is what makes
         them revocable at all.
@@ -166,7 +174,6 @@ class JwtAuthenticationService(AuthenticationService):
         payload = {
             "sub": user.id,
             "email": user.email.value,
-            "roles": [role.name for role in user.roles],
             "exp": datetime.now(timezone.utc) + expires_delta,
             "iat": datetime.now(timezone.utc),
             "type": token_type,

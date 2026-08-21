@@ -14,7 +14,11 @@ class GetUserUseCase(BaseUseCase):
     """
     Retrieves a single user by their identifier.
 
-    Requires either ``admin:view_users`` or ``admin:manage_users`` permission.
+    Requires ``admin:view_users``. Not "either that or ``admin:manage_users``", which is what
+    this said: the routes ask for one named permission each, and
+    ``test_each_admin_route_asks_for_its_own_permission`` holds them to
+    it -- OWASP A01 asks a system to deny by default, and an account
+    built to manage is not thereby an account built to read.
     """
 
     uow_factory: UnitOfWorkFactory

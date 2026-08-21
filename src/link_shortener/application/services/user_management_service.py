@@ -8,6 +8,9 @@ from link_shortener.domain import (
     Email, PasswordHash, Role
 )
 from link_shortener.domain.i18n import N_
+from link_shortener.domain.policies.role_policy import (
+    require_roles_are_assignable,
+)
 
 
 @dataclass
@@ -117,6 +120,10 @@ class UserManagementService:
                       params={"id": user_id},
                   )
         
+        # ``User.create`` asks this on the way in; this is the other way
+        # a role reaches an account, and it goes around the factory.
+        require_roles_are_assignable(roles)
+
         user.roles = roles
         return uow.users.save(user)
     

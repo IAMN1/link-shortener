@@ -7,11 +7,14 @@ from link_shortener.application.ports.task_queue import TaskQueue
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
-    DomainError, User,
+    DomainError, RoleNotAssignableError, User, ValidationError,
     Email, PasswordHash
 )
 from link_shortener.domain.entities.email_verification import EmailVerification
 from link_shortener.domain.i18n import N_
+from link_shortener.domain.policies.role_policy import (
+    require_roles_are_assignable,
+)
 from link_shortener.domain.value_objects.verification_token import (
     issue_token,
     token_digest,
@@ -63,40 +66,30 @@ class RegisterUseCase(BaseUseCase):
     task_queue: TaskQueue
     verification_ttl_hours: int
 
-    def execute(self, email: str, password: str, context: RequestContext) -> None:
+
+    def _register(self, email_vo, password_hash_vo, log):
         """
-        Register a new user, or say nothing about one that exists.
+        Do the writing half, in one transaction.
+
+        Split out so the caller can answer a lost race the way it answers
+        a taken address, without wrapping the whole method in a ``try``
+        that would also swallow refusals from the checks before it.
 
         Args:
-            email: Desired email.
-            password: Plain-text password.
-            context: Request context.
+            email_vo: The normalised address.
+            password_hash_vo: The hashed password.
+            log: Bound logger.
 
         Returns:
-            Nothing. The caller cannot be told which of the two happened,
-            so there is nothing to hand back -- an identifier here would
-            be the disclosure this method exists to avoid.
+            A pair of the saved user and its verification token, or
+            ``(None, None)`` if the address is already registered.
 
         Raises:
-            ValidationError: If the email is not an address, or the
-                password does not meet the policy. Both are refused out
-                loud because both are properties of what the caller sent,
-                not of who is registered.
+            ValidationError: If the address was taken between the read
+                and the write.
+            DomainError: With code ``REGISTRATION_UNAVAILABLE`` if the
+                deployment has no usable default role.
         """
-        log = self._get_logger(self.logger, context)
-        log.info("Registration attempt", email=email)
-
-        # Validate email using domain value object
-        email_vo = Email(email)
-
-        # Hashed before the lookup, not after. This is the expensive step
-        # -- ~160 ms of bcrypt -- and whichever branch skipped it would be
-        # the one an attacker could recognise by the clock alone. Password
-        # policy is enforced in here too, so a password the policy refuses
-        # is refused for a taken address exactly as for a free one.
-        hashed = self.authentication_service.hash_password(password)
-        password_hash_vo = PasswordHash(hashed)
-
         saved_user = None
         token = None
         with self.uow_factory() as uow:
@@ -146,6 +139,26 @@ class RegisterUseCase(BaseUseCase):
                         code="REGISTRATION_UNAVAILABLE",
                     )
 
+                # A default role that exists and may not be worn is the
+                # same kind of fault as one that is missing: the caller
+                # did nothing wrong, and no retry helps. Translated into
+                # this route's own code rather than answered as it comes,
+                # because ``RoleNotAssignableError`` names the role -- and
+                # naming it tells an anonymous caller which part of the
+                # deployment is misconfigured, which is the very reason
+                # the branch above does not name the missing one either.
+                try:
+                    require_roles_are_assignable([default_role])
+                except RoleNotAssignableError:
+                    log.error(
+                        "Default role cannot be assigned to an account",
+                        role_name=self.default_role_name,
+                    )
+                    raise DomainError(
+                        N_("Registration is unavailable"),
+                        code="REGISTRATION_UNAVAILABLE",
+                    )
+
                 # Create user entity
                 user = User.create(
                     email=email_vo,
@@ -164,6 +177,58 @@ class RegisterUseCase(BaseUseCase):
                     )
                 )
                 uow.commit()
+
+        return saved_user, token
+
+    def execute(self, email: str, password: str, context: RequestContext) -> None:
+        """
+        Register a new user, or say nothing about one that exists.
+
+        Args:
+            email: Desired email.
+            password: Plain-text password.
+            context: Request context.
+
+        Returns:
+            Nothing. The caller cannot be told which of the two happened,
+            so there is nothing to hand back -- an identifier here would
+            be the disclosure this method exists to avoid.
+
+        Raises:
+            ValidationError: If the email is not an address, or the
+                password does not meet the policy. Both are refused out
+                loud because both are properties of what the caller sent,
+                not of who is registered.
+        """
+        log = self._get_logger(self.logger, context)
+        log.info("Registration attempt", email=email)
+
+        # Validate email using domain value object
+        email_vo = Email(email)
+
+        # Hashed before the lookup, not after. This is the expensive step
+        # -- ~160 ms of bcrypt -- and whichever branch skipped it would be
+        # the one an attacker could recognise by the clock alone. Password
+        # policy is enforced in here too, so a password the policy refuses
+        # is refused for a taken address exactly as for a free one.
+        hashed = self.authentication_service.hash_password(password)
+        password_hash_vo = PasswordHash(hashed)
+
+        saved_user = None
+        token = None
+        try:
+            saved_user, token = self._register(email_vo, password_hash_vo, log)
+        except ValidationError as clash:
+            # Somebody registered this address between the check below and
+            # the write. Answered as a taken address rather than as a
+            # failure: that is what it is, and the alternative was a 500
+            # on a public endpoint -- measured, five simultaneous
+            # registrations of one address: 202, 500, 500. The difference
+            # in answers also told a caller what the 202 is worded to
+            # withhold.
+            if clash.field != "email":
+                raise
+            log.info("Registration lost a race for the address")
 
         if saved_user is None:
             # Recorded, because a run of these is somebody walking a list

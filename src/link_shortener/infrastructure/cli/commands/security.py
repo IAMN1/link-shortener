@@ -11,7 +11,13 @@ def validate_token(
     auth_service,  # AuthenticationService
     token: str
 ) -> dict:
-    """Validate a JWT token and return its claims."""
+    """Validate a JWT token and return its claims.
+
+    What the token carries, not what the account holds: the two are not
+    the same thing, and the token no longer states the roles at all.
+    ``flask security list-users`` answers that question from the database,
+    which is where every authorization decision reads it from.
+    """
     try:
         claims = auth_service.validate_token(token)
         if not claims:
@@ -27,7 +33,6 @@ def validate_token(
             # see JwtAuthenticationService._create_token.
             "user_id": claims.get("sub"),
             "email": claims.get("email"),
-            "roles": claims.get("roles", []),
             "type": claims.get("type"),
             "exp": claims.get("exp"),
         }

@@ -11,6 +11,7 @@ import uuid
 import yaml
 from sqlalchemy.orm import Session
 
+from link_shortener.domain.policies.role_policy import require_valid_role_name
 from link_shortener.infrastructure.database.models.permission_model import PermissionModel
 from link_shortener.infrastructure.database.models.role_model import RoleModel
 
@@ -106,10 +107,15 @@ class RoleLoader:
 
         summary = LoadSummary()
 
-        # 1. Upsert permissions
+        # 1. Upsert permissions. The flag is passed down rather than
+        # hard-coded False, which is what it was: ``--update-existing``
+        # said "Update existing roles and permissions" and this docstring
+        # promised the same, while an edited description or resource in
+        # the file changed nothing and the command still reported
+        # "Updated roles and permission from <file>".
         for perm_def in config.get("permissions", []):
             self._upsert_permission(
-                perm_def, update_existing=False, summary=summary
+                perm_def, update_existing=update_existing, summary=summary
             )
 
         # Push the new permissions to the database before the roles look them
@@ -186,8 +192,16 @@ class RoleLoader:
 
         Returns:
             The persistent RoleModel instance.
+
+        Raises:
+            ValidationError: If the file names a role something a role may
+                not be called.
         """
         role_name = role_def["name"]
+        # The other door the admin API's schema does not stand at. A name
+        # with a slash in it makes a role no route can address: created
+        # here, it could then be removed by nothing short of SQL.
+        require_valid_role_name(role_name)
         perm_names = role_def.pop("permissions", [])
 
         role = self.session.query(RoleModel).filter_by(name=role_name).first()

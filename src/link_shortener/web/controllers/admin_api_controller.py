@@ -13,7 +13,9 @@ from link_shortener.application import AdminService
 from link_shortener.application.use_cases.auth.resend_verification import (
     ResendOutcome,
 )
-from link_shortener.domain import DomainError, SystemPermissions
+from link_shortener.domain import (
+    DomainError, RoleNotFoundError, SystemPermissions
+)
 from link_shortener.web.schemas.admin.admin_request import (
     CreateRoleRequest, CreateUserRequest,
     UpdateRolePermissionsRequest, UpdateUserRolesRequest
@@ -267,12 +269,10 @@ class AdminApiController:
         context = create_request_context()
         role = self.admin_service.get_role(role_name, context)
         if not role:
-            raise DomainError(
-                      f"Role {role_name} not found",
-                      code="ROLE_NOT_FOUND",
-                      template=N_("Role %(name)s not found"),
-                      params={"name": role_name},
-                  )
+            # The domain error rather than a ``DomainError`` assembled
+            # here: this sentence was written out in four places, which
+            # is four msgids for one fact and four chances to disagree.
+            raise RoleNotFoundError(role_name)
         return jsonify(RoleResponseSchema.from_dto(role).model_dump())
 
     @require_permission(SystemPermissions.ADMIN_MANAGE_ROLES.value)
@@ -297,20 +297,16 @@ class AdminApiController:
 
         Two answers: a name that is not there is 404 ``ROLE_NOT_FOUND``,
         like the user endpoint beside it, while a role that exists and is
-        protected is 400 ``ROLE_IS_SYSTEM``.
-        Both are raised by the use case; the guard below is a backstop for
-        a future implementation that returns ``False`` instead of raising,
-        and is unreachable today.
+        protected is 400 ``ROLE_IS_SYSTEM``. Both are raised by the use
+        case, which is why nothing is checked here: the guard that used to
+        stand below tested a ``False`` the use case cannot return, and the
+        chain said so in three places -- the use case returned a ``bool``
+        that was always ``True``, the facade documented a ``False`` for
+        "a system role or not found", and the only test of the branch
+        mocked the facade into returning it.
         """
         context = create_request_context()
-        deleted = self.admin_service.delete_role(role_name, context)
-        if not deleted:
-            raise DomainError(
-                      f"Role {role_name} not found",
-                      code="ROLE_NOT_FOUND",
-                      template=N_("Role %(name)s not found"),
-                      params={"name": role_name},
-                  )
+        self.admin_service.delete_role(role_name, context)
         return jsonify({"message": "Role deleted"})
 
     # ------------------------------------------------------------------
