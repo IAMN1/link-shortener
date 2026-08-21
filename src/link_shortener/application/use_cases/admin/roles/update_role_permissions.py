@@ -83,6 +83,11 @@ class UpdateRolePermissionsUseCase(BaseUseCase):
             permissions_before = (
                 [p.name for p in existing.permissions] if existing else []
             )
+            # How far this reaches. Replacing what a role grants moves
+            # every account wearing it, at once and without any of them
+            # being touched, so the count is the only thing in the record
+            # that says whether that was one account or all of them.
+            holders = uow.users.count_with_role(existing.id) if existing else 0
 
             # Replacing what a role carries can take ``admin:all`` off the
             # last administrator just as deleting the role would, and the
@@ -108,10 +113,11 @@ class UpdateRolePermissionsUseCase(BaseUseCase):
             )
             uow.commit()
 
-            log.info("Role updated", role_name=role.name)
-            audit.log_role_permissions_changed(
-                role=role.name,
-                permissions_before=permissions_before,
-                permissions_after=[p.name for p in role.permissions],
-            )
-            return RoleResponse.from_role(role)
+        log.info("Role updated", role_name=role.name, holders=holders)
+        audit.log_role_permissions_changed(
+            role=role.name,
+            permissions_before=permissions_before,
+            permissions_after=[p.name for p in role.permissions],
+            holders=holders,
+        )
+        return RoleResponse.from_role(role)

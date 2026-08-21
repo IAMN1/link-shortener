@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from link_shortener.domain.i18n import N_
 
@@ -38,6 +38,63 @@ class DomainError(Exception):
         self.template = template if template is not None else message
         self.params: Dict[str, Any] = params or {}
         super().__init__(message)
+
+
+class PermissionDeniedError(DomainError):
+    """
+    Raised when the caller does not hold what an action takes.
+
+    Its own class rather than ``DomainError(code="FORBIDDEN")``, and the
+    reason is the audit trail. A refusal by privilege is the event an
+    investigation is opened over -- somebody tried to do something they
+    are not entitled to -- and it left no record anywhere: the decorators
+    raised, the error handler answered 403, and the only line written was
+    ``{"error": "Not authorized", "code": "FORBIDDEN"}`` with no account,
+    no address, no path and no request id on it. Measured on the running
+    stack; a refusal on the journal route was recorded in full by the use
+    case that made it, and the identical refusal on the role route by
+    nothing.
+
+    Carrying the required permissions on the exception is what lets one
+    place write that record. The alternative is every raiser writing its
+    own, which is seventeen call sites and the eighteenth forgetting --
+    the argument ``CountingAuditLogger`` is built on.
+
+    ``FORBIDDEN`` unchanged, so nothing about the answer moves: the status
+    table keeps deciding, and a caller sees what it saw before.
+
+    Not every 403 is one of these. "This would leave the system without an
+    administrator" and "no account may wear guest" are refusals about the
+    state of the request, not about who is asking, and they stay ordinary
+    domain errors -- a journal that files them as attempted escalation
+    would bury the ones that are.
+
+    Attributes:
+        message: Human-readable description, in English.
+        code: Always ``"FORBIDDEN"``.
+        required: Permission names the caller would have needed. Several
+            where holding any one of them would have done, and empty where
+            the refusal names no permission at all -- refusing to grant
+            what the caller does not hold is about the *asked-for* set,
+            which is carried in ``exceeded`` instead.
+        exceeded: Permission names the caller tried to hand out without
+            holding them. Empty on an ordinary refusal.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        required: Optional[Sequence[str]] = None,
+        exceeded: Optional[Sequence[str]] = None,
+        *,
+        template: Optional[str] = None,
+        params: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            message, code="FORBIDDEN", template=template, params=params
+        )
+        self.required: Tuple[str, ...] = tuple(required or ())
+        self.exceeded: Tuple[str, ...] = tuple(exceeded or ())
 
 
 class ValidationError(DomainError):

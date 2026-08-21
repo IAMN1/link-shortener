@@ -51,12 +51,22 @@ over nothing.
 """
 
 SHIPPED_CONFIG = Path(__file__).resolve().parents[4] / "dockers/logrotate.conf"
+ENTRYPOINT = (
+    Path(__file__).resolve().parents[4] / "dockers/logrotate-entrypoint.sh"
+)
 
-JOURNAL_IN_CONFIG = re.compile(r"^(/logs/[\w.-]+\.log)\s*\{?\s*$", re.MULTILINE)
-"""A journal named by the shipped configuration.
+JOURNAL_IN_CONFIG = re.compile(
+    r"^(/logs/\$\{(\w+)\}\.log)\s*\{?\s*$", re.MULTILINE
+)
+"""A journal named by the shipped template, and the variable naming it.
 
 Both forms of a logrotate block header are one line: the last path carries
 the opening brace, the ones above it stand alone.
+
+The names are variables rather than literals because the rotator resolves
+them at start-up from the same three settings the application reads -- see
+``dockers/logrotate-entrypoint.sh``. Written literally, they agreed with a
+tree that had not touched the defaults and with no deployment that had.
 """
 
 
@@ -235,19 +245,53 @@ class TestTheShippedConfigurationNamesTheseFiles:
     """
 
     @pytest.fixture(scope="class")
-    def named_in_the_config(self):
+    def variables_in_the_template(self):
         text = SHIPPED_CONFIG.read_text(encoding="utf-8")
-        return {Path(path).name for path in JOURNAL_IN_CONFIG.findall(text)}
+        return {variable for _path, variable in JOURNAL_IN_CONFIG.findall(text)}
 
-    def test_it_covers_every_journal_the_application_writes(self, named_in_the_config):
-        config = TestingConfig()
-        written = {
-            f"{config.LOG_FILENAME}.log",
-            f"{config.AUDIT_LOG_FILENAME}.log",
-            f"{config.ERROR_LOG_FILENAME}.log",
+    def test_it_follows_every_setting_the_application_reads(
+        self, variables_in_the_template
+    ):
+        """The three names, asked for by the same names on both sides.
+
+        A journal the template does not name is a journal nothing rotates,
+        and ``missingok`` makes that indistinguishable from a working
+        configuration until the disk fills up.
+        """
+        assert variables_in_the_template == {
+            "LOG_FILENAME", "ERROR_LOG_FILENAME", "AUDIT_LOG_FILENAME",
         }
 
-        assert named_in_the_config == written
+    def test_every_variable_it_names_is_one_the_profile_carries(
+        self, variables_in_the_template
+    ):
+        """A variable spelled wrong resolves to nothing.
+
+        ``envsubst`` puts an empty string where it cannot resolve, so
+        ``LOG_FILNAME`` would leave ``/logs/.log`` in the finished config
+        -- a path nothing writes, quietly rotated forever.
+        """
+        config = TestingConfig()
+
+        for variable in variables_in_the_template:
+            assert getattr(config, variable, None), variable
+
+    def test_the_rotator_falls_back_to_the_same_defaults(
+        self, variables_in_the_template
+    ):
+        """The entrypoint's defaults against the profile's.
+
+        The rotator cannot read ``BaseConfig``; it is a Debian container
+        with a shell script in it. So the three defaults are written twice,
+        and this is what keeps the second copy honest -- the same
+        arrangement ``logging_settings_from`` is held to.
+        """
+        script = ENTRYPOINT.read_text(encoding="utf-8")
+        config = TestingConfig()
+
+        for variable in variables_in_the_template:
+            expected = getattr(config, variable)
+            assert f'${{{variable}:-{expected}}}' in script, variable
 
     def test_it_names_them_where_the_rotator_mounts_them(self):
         """
@@ -259,7 +303,7 @@ class TestTheShippedConfigurationNamesTheseFiles:
         ``missingok`` would keep quiet about it.
         """
         text = SHIPPED_CONFIG.read_text(encoding="utf-8")
-        found = JOURNAL_IN_CONFIG.findall(text)
+        found = [path for path, _variable in JOURNAL_IN_CONFIG.findall(text)]
 
         assert found, "the configuration names no journal at all"
         assert all(path.startswith("/logs/") for path in found), found

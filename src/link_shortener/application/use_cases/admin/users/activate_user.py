@@ -49,6 +49,6 @@ class ActivateUserUseCase(BaseUseCase):
             updated_user = self.user_service.activate_user(uow, user_id)
             uow.commit()
 
-            log.info("User activated", target_user_id=user_id)
-            audit.log_user_activated(target_user_id=user_id)
-            return UserResponse.from_user(updated_user)
+        log.info("User activated", target_user_id=user_id)
+        audit.log_user_activated(target_user_id=user_id)
+        return UserResponse.from_user(updated_user)

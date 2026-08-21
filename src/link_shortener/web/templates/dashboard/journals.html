@@ -206,10 +206,20 @@
        reader is looking at the thing being described. All three journals
        carry personal data of some kind, and the permission that opened
        this page was granted deliberately -- which is worth knowing while
-       reading, not afterwards. #}
+       reading, not afterwards.
+
+       Each sentence sits behind the permission that opens the journal it
+       is about, and that is a correction rather than a refinement: both
+       stood behind `audit:view`, so the one caller who reads the full
+       addresses -- a holder of `logs:view`, which is what opens
+       `application.log` -- was shown no warning at all, while a holder of
+       `audit:view` alone read a warning about a journal the endpoint
+       would refuse them. #}
     {% if can('audit:view') %}
         <br>{{ _('The audit journal names destination addresses and the accounts that followed them.') }}
-        {{ _('The application journal names the address of everyone who registered or signed in.') }}
+    {% endif %}
+    {% if can('logs:view') %}
+        <br>{{ _('The application journal names the address of everyone who registered or signed in.') }}
     {% endif %}
 </div>
 

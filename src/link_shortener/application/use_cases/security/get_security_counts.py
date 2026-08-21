@@ -19,12 +19,13 @@ from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.auth.authorization_service import (
     AuthorizationService,
 )
-from link_shortener.application.ports.logger.audit import AuditEvent
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.admin.privilege_guard import load_actor
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import DomainError, SystemPermissions
+from link_shortener.domain import (
+    DomainError, PermissionDeniedError, SystemPermissions,
+)
 from link_shortener.domain.i18n import N_
 
 
@@ -227,13 +228,6 @@ class GetSecurityCountsUseCase(BaseUseCase):
         log.warning(
             "Security counts refused", required_permission=REQUIRED_PERMISSION
         )
-        raise DomainError(N_("Not authorized"), code="FORBIDDEN")
-
-
-KNOWN_EVENT_TYPES = tuple(event.value for event in AuditEvent)
-"""The vocabulary, offered to a caller that wants to label a chart.
-
-Exported from here rather than read off the counts: a period in which
-nothing failed has no ``LOGIN_FAILED`` row, and a chart legend assembled
-from the answer would lose a series exactly when it reads as good news.
-"""
+        raise PermissionDeniedError(
+            N_("Not authorized"), required=[REQUIRED_PERMISSION]
+        )

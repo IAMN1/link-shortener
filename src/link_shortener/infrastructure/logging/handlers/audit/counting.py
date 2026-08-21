@@ -126,6 +126,13 @@ class CountingAuditLogger(AuditLogger):
         failed count roll back the work it was recording -- an account
         that was not created because the service could not count it.
 
+        Which is why the callers write their event *after* their own block
+        closes. Two transactions at once is two connections out of the pool
+        for one administrative action, on a deployment of four sync
+        workers, and the second of them exists only to add a row nobody is
+        waiting on. Held by
+        ``test_a_security_event_is_written_outside_the_transaction``.
+
         A failure here is swallowed after being logged, for the reason
         the failover machinery swallows its own: the count is a
         statistic, and taking down the request that produced it would

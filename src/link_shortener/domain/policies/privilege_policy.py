@@ -31,7 +31,9 @@ recovered from a shell.
 from typing import Iterable, Optional
 
 from link_shortener.domain.entities.user import User
-from link_shortener.domain.exceptions import DomainError
+from link_shortener.domain.exceptions import (
+    DomainError, PermissionDeniedError,
+)
 from link_shortener.domain.system_permissions import SystemPermissions
 from link_shortener.domain.i18n import N_
 
@@ -91,16 +93,20 @@ def require_may_confer(actor: Optional[User], permissions: Iterable[str]) -> Non
     held = permissions_held_by(actor)
     exceeded = sorted(set(permissions) - held)
     if exceeded:
-        raise DomainError(
-                  "You cannot grant permissions you do not hold yourself: "
-                  + ", ".join(exceeded),
-                  code="FORBIDDEN",
-                  template=N_(
-                      "You cannot grant permissions you do not hold yourself: "
-                      "%(permissions)s"
-                  ),
-                  params={"permissions": ", ".join(exceeded)},
-              )
+        # ``exceeded`` rather than ``required``: what is missing here is
+        # not one permission the caller needs but the set they tried to
+        # hand out without holding it, which is an escalation attempt and
+        # reads differently in the journal.
+        raise PermissionDeniedError(
+            "You cannot grant permissions you do not hold yourself: "
+            + ", ".join(exceeded),
+            exceeded=exceeded,
+            template=N_(
+                "You cannot grant permissions you do not hold yourself: "
+                "%(permissions)s"
+            ),
+            params={"permissions": ", ".join(exceeded)},
+        )
 
 
 def require_not_last_administrator(remaining_administrators: int) -> None:

@@ -148,6 +148,14 @@ class RBACAuthorizationService(AuthorizationService):
         Said as a list because it was said as "the only call site", and by
         then there were three.
 
+        The last two are held to it by
+        ``test_the_actor_is_loaded_before_the_permission_is_asked``, which
+        widens the ceiling below for the length of a test: with the ceiling
+        as it stands, neither journal permission reaches the database here,
+        so the order in those use cases could be reversed and nothing would
+        notice. What the ceiling admits is a decision that can change; the
+        order must not depend on it.
+
         Args:
             permission: Permission string being checked.
 

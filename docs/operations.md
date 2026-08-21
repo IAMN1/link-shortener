@@ -265,9 +265,13 @@ that the file it holds has been moved aside and opens the new one; the
 moving is done from outside.
 
 The configuration that does it ships with the project, in
-[`dockers/logrotate.conf`](../dockers/logrotate.conf): `application.log`
-and `error.log` daily, or at 100 MB, keeping 14 compressed generations;
-`audit.log` weekly, keeping 52. Two ways to run it, one file:
+[`dockers/logrotate.conf`](../dockers/logrotate.conf): the application and
+error journals daily, or at 100 MB, keeping 14 compressed generations; the
+audit journal weekly, keeping 200. It is a template rather than a finished
+file — the three journal names are written as `${LOG_FILENAME}`,
+`${ERROR_LOG_FILENAME}` and `${AUDIT_LOG_FILENAME}`, the same settings the
+application chooses them by, so a deployment that renames a journal keeps
+its rotation. Two ways to run it, one file:
 
 **In the stack.** A `logrotate` service under the `logs` profile mounts
 the same journals and runs logrotate hourly — hourly so that the 100 MB
@@ -283,9 +287,12 @@ the disk ends. `LOG_ROTATE_INTERVAL` changes how often logrotate is
 called.
 
 **On the host, without Docker.** Copy the same file to
-`/etc/logrotate.d/link_shortener` and change the paths in the two block
-headers from `/logs/...` to the absolute path of your `LOG_DIR`. Nothing
-else in it is container-specific. Check it before trusting it:
+`/etc/logrotate.d/link_shortener` and write out both parts of each path by
+hand: `/logs/...` becomes the absolute path of your `LOG_DIR`, and
+`${LOG_FILENAME}` and its two siblings become the names you configured --
+logrotate does not expand a variable, the rotator container does that at
+start-up. Nothing else in it is container-specific. Check it before
+trusting it:
 
 ```bash
 logrotate -d /etc/logrotate.d/link_shortener   # says what it would do

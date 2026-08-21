@@ -115,6 +115,42 @@ class TestJSONFormatter:
         assert "кириллица" not in formatted
         assert json.loads(formatted)["note"] == "кириллица"
 
+    def test_the_writer_s_module_becomes_the_logger_name(self):
+        """The same answer the other two renderings already gave.
+
+        ``StandardLogger`` renames ``module`` to ``module_name`` on its way
+        in -- ``module`` collides with a built-in LogRecord attribute --
+        and ``ConsoleFormatter`` displays the renamed value while the
+        structlog chain folds its own ``module`` into ``logger``. This
+        formatter did neither, so one record read
+        ``"logger": "...di.container"`` in the file and
+        ``[...read_journal]`` on the console beside it: the field a reader
+        filters the journal by, disagreeing with itself across two
+        renderings of one line.
+        """
+        record = make_record(module_name="link_shortener.web.api")
+
+        entry = json.loads(JSONFormatter().format(record))
+
+        assert entry["logger"] == "link_shortener.web.api"
+
+    def test_the_module_is_not_written_twice(self):
+        """Read into ``logger``, it has no business appearing beside it."""
+        record = make_record(module_name="link_shortener.web.api")
+
+        entry = json.loads(JSONFormatter().format(record))
+
+        assert "module_name" not in entry
+
+    def test_a_record_that_named_no_module_keeps_its_logger_name(self):
+        """Nothing else was renamed: the middleware still names itself."""
+        record = make_record()
+
+        entry = json.loads(JSONFormatter().format(record))
+
+        assert entry["logger"] == "link_shortener.test"
+
+
 
 class TestConsoleFormatter:
     """The human-readable line."""

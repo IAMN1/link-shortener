@@ -378,12 +378,18 @@ WRAPPERS = [
     (lambda log: log.log_password_changed("u-1", 2), "PASSWORD_CHANGED"),
     (lambda log: log.log_password_reset("u-1", 2), "PASSWORD_RESET"),
     (lambda log: log.log_role_created("editor", ["link:create"]), "ROLE_CREATED"),
-    (lambda log: log.log_role_deleted("editor"), "ROLE_DELETED"),
+    (lambda log: log.log_role_deleted("editor", 7), "ROLE_DELETED"),
     (
-        lambda log: log.log_role_permissions_changed("editor", ["a"], ["a", "b"]),
+        lambda log: log.log_role_permissions_changed(
+            "editor", ["a"], ["a", "b"], 4
+        ),
         "ROLE_PERMISSIONS_CHANGED",
     ),
     (lambda log: log.log_audit_viewed("audit", "opened"), "AUDIT_VIEWED"),
+    (
+        lambda log: log.log_permission_denied(["admin:manage_roles"]),
+        "PERMISSION_DENIED",
+    ),
 ]
 """Every named wrapper on the port, and the event type it must reach.
 
@@ -470,6 +476,27 @@ class TestSecurityEvents:
         }
 
         assert covered == expected
+
+    def test_a_refusal_writes_only_the_half_that_applies(self, audit_logger):
+        """An empty field is not information, and both are empty by turns.
+
+        An ordinary refusal names a permission the caller lacks; an
+        escalation attempt names the set they tried to hand out. Writing
+        both always put ``"exceeded": []`` on every record of the first
+        kind and ``"required": []`` on every record of the second --
+        which is what ``_terms_of`` refuses to do for a search, and for
+        the same reason.
+        """
+        logger, handler = audit_logger("security.refusal")
+
+        logger.log_permission_denied(required=["audit:view"])
+        logger.log_permission_denied(exceeded=["admin:all"])
+
+        refused, escalated = handler.records[-2:]
+        assert refused.required == ["audit:view"]
+        assert not hasattr(refused, "exceeded")
+        assert escalated.exceeded == ["admin:all"]
+        assert not hasattr(escalated, "required")
 
     def test_the_address_is_masked_on_the_way_in(self, audit_logger):
         logger, handler = audit_logger("security.mask")

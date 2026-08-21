@@ -66,11 +66,11 @@ class DeactivateUserUseCase(BaseUseCase):
             revoked = uow.refresh_sessions.revoke_all_for_user(user_id)
             uow.commit()
 
-            log.info(
-                "User deactivated", target_user_id=user_id, sessions_revoked=revoked
-            )
-            audit.log_user_deactivated(
-                target_user_id=user_id, sessions_revoked=revoked
-            )
+        log.info(
+            "User deactivated", target_user_id=user_id, sessions_revoked=revoked
+        )
+        audit.log_user_deactivated(
+            target_user_id=user_id, sessions_revoked=revoked
+        )
 
-            return UserResponse.from_user(updated_user)
+        return UserResponse.from_user(updated_user)

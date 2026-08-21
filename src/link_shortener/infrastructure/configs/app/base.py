@@ -1,3 +1,4 @@
+import re
 import secrets
 from pathlib import Path
 from typing import List, Optional
@@ -12,6 +13,18 @@ from link_shortener.domain.value_objects.short_code import (
 from link_shortener.infrastructure.configs.app.env import (
     env_bool, env_float, env_int, env_list, env_str, read_env, read_env_for
 )
+
+
+JOURNAL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+"""What a journal may be called.
+
+A name, not a path: the three journal settings are joined to ``LOG_DIR``
+and given a ``.log`` suffix by ``os.path.join``, which is perfectly willing
+to leave the directory if the name asks it to. Anchored at both ends and
+starting on a letter or a digit, so ``..`` and ``./`` are refused along
+with every separator -- a leading dot is refused too, since a journal
+nobody can see is not a journal anybody reads.
+"""
 
 
 def _find_project_root() -> Optional[Path]:
@@ -1388,7 +1401,50 @@ class BaseConfig:
         errors.extend(self._confirmation_errors())
         errors.extend(self._log_level_errors())
         errors.extend(self._language_errors())
+        errors.extend(self._journal_name_errors())
 
+        return errors
+
+
+    def _journal_name_errors(self) -> List[str]:
+        """
+        Check that each journal name is a name and not a path.
+
+        The three settings are joined to ``LOG_DIR`` and given a ``.log``
+        suffix, with nothing in between looking at them. A name carrying a
+        separator therefore writes outside the log directory --
+        ``LOG_FILENAME=../../etc/cron.d/whatever`` is a file the
+        application creates and appends to for as long as it runs -- and
+        one carrying a directory that does not exist fails every write
+        instead, which the failover machinery turns into a silent
+        ``dropped_calls`` rather than a startup error.
+
+        It reaches further than the writing. The rotator resolves these
+        same three names into its configuration at start-up, so a name
+        that points somewhere else takes ``rotate`` and ``create`` along
+        with it -- a mistyped variable would have logrotate renaming files
+        in a directory nobody meant to name.
+
+        Checked at start-up rather than defended at the join, because
+        there is nothing sensible to do at the join: a deployment that
+        asked for an impossible journal has to be told, not quietly given
+        a different one. Which is also why this is a validation error and
+        not a fallback to the default.
+
+        Returns:
+            List of human-readable error messages.
+        """
+        errors = []
+        for setting in (
+            "LOG_FILENAME", "AUDIT_LOG_FILENAME", "ERROR_LOG_FILENAME"
+        ):
+            name = getattr(self, setting, "")
+            if not JOURNAL_NAME.match(name or ""):
+                errors.append(
+                    f"Invalid {setting}: {name!r} -- a journal is named by "
+                    "letters, digits, dot, dash and underscore, starting "
+                    "with a letter or a digit, and is not a path"
+                )
         return errors
 
 

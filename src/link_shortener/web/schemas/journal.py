@@ -16,12 +16,11 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from link_shortener.application.ports.journal_reader import (
-    JournalFilter, JournalLine, JournalPage,
+    HARD_LIMIT, JournalFilter, JournalLine, JournalPage,
 )
 from link_shortener.application.use_cases.journals.read_journal import (
     DEFAULT_LINES,
 )
-from link_shortener.infrastructure.logging.journal_reader import HARD_LIMIT
 
 
 STAMP_PREFIX = (

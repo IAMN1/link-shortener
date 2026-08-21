@@ -4,11 +4,12 @@ from pydantic import ValidationError as PydanticValidationError
 from werkzeug.exceptions import BadRequest, HTTPException
 
 from link_shortener.web.i18n import translate_error
+from link_shortener.web.security.context import create_request_context
 from link_shortener.web.responses import error_page, wants_html
 from link_shortener.web.schemas.error import ErrorDetail, ErrorResponse
-from link_shortener.application import Logger
+from link_shortener.application import AuditLogger, Logger
 from link_shortener.domain.exceptions import (
-    DomainError, LinkNotFoundError
+    DomainError, LinkNotFoundError, PermissionDeniedError
 )
 from link_shortener.domain.exceptions import (
     ValidationError as DomainValidationError
@@ -162,15 +163,49 @@ class ErrorHandlerMiddleware:
     routes an HTML error page is rendered.
     """
 
-    def __init__(self, app: Flask, logger: Logger):
+    def __init__(self, app: Flask, logger: Logger, audit_logger: AuditLogger):
         """
         Args:
             app: Flask application instance.
             logger: Application logger.
+            audit_logger: Where a refusal by privilege is recorded. This
+                middleware is the one place every ``DomainError`` passes
+                through, which is what makes it the place to write that
+                event from: the alternative is each raiser writing its own
+                and the next one forgetting.
         """
         self.app = app
         self.logger = logger
+        self.audit_logger = audit_logger
         self._register_error_handlers()
+
+    def _record_refusal(self, error: PermissionDeniedError, context) -> None:
+        """
+        Write down an attempt that was refused for want of a privilege.
+
+        The event the audit trail had no record of at all. Measured on the
+        running stack before this: a caller with no ``audit:view`` asking
+        for the audit journal and the same caller asking for the role list
+        both came back 403, and ``audit.log`` gained nothing either time.
+
+        The request's own context is bound, because "somebody was refused"
+        without an account, an address or a path is not a fact anybody can
+        act on -- and the line the error handler already wrote carried
+        none of the three. It is also where the path and the method come
+        from: ``for_logging`` carries both, so the event does not name
+        them again.
+
+        Args:
+            error: The refusal, carrying what the caller would have needed.
+            context: The request context, built once by the handler and
+                passed in -- ``create_request_context`` negotiates a
+                language on its way, and doing that twice for one answer
+                is twice for nothing.
+        """
+        audit = self.audit_logger.bind(**context.for_logging())
+        audit.log_permission_denied(
+            required=error.required, exceeded=error.exceeded
+        )
 
     def _should_return_html(self) -> bool:
         """
@@ -393,9 +428,21 @@ class ErrorHandlerMiddleware:
             # actually looking at -- was answered and never recorded.
             # Always in English: the operator reading `application.log` is
             # not the visitor whose cookie chose a language.
-            self.logger.error(
-                "Domain error", error=error.message, code=error.code
-            )
+            # Bound to the request, which it was not: the line read
+            # ``{"error": "Not authorized", "code": "FORBIDDEN"}`` and
+            # nothing else -- no account, no address, no path, and no
+            # request id to join it to the ``Request completed`` line that
+            # has one. Measured on the running stack: two different 403s a
+            # second apart were indistinguishable in the journal.
+            context = create_request_context()
+            log = self.logger.bind(**context.for_logging())
+            log.error("Domain error", error=error.message, code=error.code)
+
+            # The audit trail's own record of the refusal, which is a
+            # different journal read by different people: `logs:view`
+            # opens the line above, `audit:view` opens this one.
+            if isinstance(error, PermissionDeniedError):
+                self._record_refusal(error, context)
 
             # Asked of `client_message` rather than decided here, because
             # this is no longer the only place that answers a DomainError:

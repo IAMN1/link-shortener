@@ -8,7 +8,7 @@ import functools
 
 from flask import g, redirect, request, url_for
 
-from link_shortener.domain import DomainError
+from link_shortener.domain import DomainError, PermissionDeniedError
 from link_shortener.web.security.context import get_current_domain_user
 from link_shortener.domain.i18n import N_
 
@@ -50,7 +50,9 @@ def require_permission(permission: str):
                     raise DomainError(
                         N_("Authentication required"), code="UNAUTHENTICATED"
                     )
-                raise DomainError(N_("Not authorized"), code="FORBIDDEN")
+                raise PermissionDeniedError(
+                    N_("Not authorized"), required=[permission]
+                )
 
             return view_func(*args, **kwargs)
         return wrapper
@@ -103,7 +105,9 @@ def require_any_permission(*permissions: str):
                 raise DomainError(
                     N_("Authentication required"), code="UNAUTHENTICATED"
                 )
-            raise DomainError(N_("Not authorized"), code="FORBIDDEN")
+            raise PermissionDeniedError(
+                N_("Not authorized"), required=list(permissions)
+            )
         return wrapper
     return decorator
 

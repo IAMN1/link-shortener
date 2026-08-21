@@ -28,7 +28,8 @@ from pathlib import Path
 from typing import IO, Deque, List, Optional, Tuple, cast
 
 from link_shortener.application.ports.journal_reader import (
-    Journal, JournalFilter, JournalLine, JournalPage, JournalReaderPort,
+    HARD_LIMIT, Journal, JournalFilter, JournalLine, JournalPage,
+    JournalReaderPort,
 )
 
 BLOCK = 64 * 1024
@@ -37,16 +38,6 @@ BLOCK = 64 * 1024
 Large enough that an ordinary page of 200 lines at some 500 bytes each
 arrives in two reads, small enough that the buffer stays trivial beside the
 request that asked for it.
-"""
-
-HARD_LIMIT = 2000
-"""Most lines one call may return, whatever it was asked for.
-
-The number reaches this class from a request, so it is not a number this
-service gets to trust. At the measured 473 bytes a line that is under a
-megabyte of response -- and the ceiling is on lines rather than bytes
-because a line's length is bounded by what the application writes into it,
-while the count is bounded by nothing at all.
 """
 
 SCAN_LIMIT = 50_000

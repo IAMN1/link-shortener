@@ -209,6 +209,29 @@ class JournalPage:
     oldest_available: Optional[str]
 
 
+HARD_LIMIT = 2000
+"""Most lines one call may return, whatever it was asked for.
+
+Here rather than in the implementation, because it is not the
+implementation's business alone: the number arrives from a request, and the
+caller that takes the request has to refuse an excess *before* the read
+rather than discover it afterwards. ``JournalQuery`` bounds ``limit`` by
+this, and a schema reaching into ``infrastructure`` for it was the web
+layer importing a fact from the layer beneath the one it is allowed to
+know.
+
+The number itself is a measurement of the file reader: at the measured 473
+bytes a line, two thousand lines is under a megabyte of response. It binds
+every implementation all the same -- a caller told "at most this many" must
+get the same answer from whichever reader is wired in, or the refusal it
+gives is about the wrong ceiling.
+
+The ceiling is on lines rather than bytes because a line's length is
+bounded by what the application writes into it, while the count is bounded
+by nothing at all.
+"""
+
+
 class JournalReaderPort(ABC):
     """Reads the journals the application writes, and only those.
 

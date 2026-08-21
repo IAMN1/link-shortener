@@ -108,10 +108,10 @@ class UpdateUserRolesUseCase(BaseUseCase):
             updated_user = self.user_service.update_roles(uow, user_id, roles)
             uow.commit()
 
-            log.info("User roles updated", target_user_id=user_id)
-            audit.log_roles_changed(
-                target_user_id=user_id,
-                roles_before=roles_before,
-                roles_after=[role.name for role in updated_user.roles],
-            )
-            return UserResponse.from_user(updated_user)
+        log.info("User roles updated", target_user_id=user_id)
+        audit.log_roles_changed(
+            target_user_id=user_id,
+            roles_before=roles_before,
+            roles_after=[role.name for role in updated_user.roles],
+        )
+        return UserResponse.from_user(updated_user)

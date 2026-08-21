@@ -530,6 +530,85 @@ class TestRolesThemselvesAreRecorded:
 
         assert audit.log_role_deleted.call_args[1]["role"] == "editor"
 
+    def test_a_deleted_role_records_how_many_accounts_wore_it(
+        self, uow, uow_factory, audit, context
+    ):
+        """The name alone said nothing about reach.
+
+        Deleting a role takes it off every account wearing it, at once and
+        without touching any of them, so "role removed" read identically
+        whether it stripped nobody or the whole staff -- and an
+        investigator asking why an account lost a power finds nothing
+        against that account.
+        """
+        uow.roles.get_by_name.return_value = role_granting(
+            "editor", "link:create"
+        )
+        uow.users.count_with_role.return_value = 7
+        use_case = DeleteRoleUseCase(
+            uow_factory=uow_factory,
+            role_service=Mock(),
+            logger=Mock(),
+            audit_logger=audit,
+        )
+
+        use_case.execute("editor", context)
+
+        assert audit.log_role_deleted.call_args[1]["holders"] == 7
+
+    def test_the_wearers_are_counted_before_the_role_goes(
+        self, uow, uow_factory, audit, context
+    ):
+        """Counted afterwards, the answer is always nought.
+
+        The deletion is what empties the role, so the count has to be
+        taken while there is still something to count -- and in the same
+        transaction, or it is a number from before somebody else's change.
+        """
+        order = []
+        uow.roles.get_by_name.return_value = role_granting(
+            "editor", "link:create"
+        )
+        uow.users.count_with_role.side_effect = lambda _role_id: (
+            order.append("counted") or 3
+        )
+        service = Mock()
+        service.delete_role.side_effect = lambda *_args: order.append("deleted")
+        use_case = DeleteRoleUseCase(
+            uow_factory=uow_factory,
+            role_service=service,
+            logger=Mock(),
+            audit_logger=audit,
+        )
+
+        use_case.execute("editor", context)
+
+        assert order == ["counted", "deleted"]
+
+    def test_changed_permissions_record_how_many_accounts_move_with_them(
+        self, uow, uow_factory, audit, context
+    ):
+        """The widest-reaching act in the vocabulary, with its reach."""
+        uow.roles.get_by_name.return_value = role_granting(
+            "editor", "link:create"
+        )
+        uow.users.count_with_role.return_value = 4
+        service = Mock()
+        service.update_role_permissions.return_value = role_granting(
+            "editor", "admin:all"
+        )
+        use_case = UpdateRolePermissionsUseCase(
+            uow_factory=uow_factory,
+            role_service=service,
+            logger=Mock(),
+            audit_logger=audit,
+        )
+
+        use_case.execute("editor", ["admin:all"], context)
+
+        _, kwargs = audit.log_role_permissions_changed.call_args
+        assert kwargs["holders"] == 4
+
     def test_changed_permissions_record_both_sides(
         self, uow, uow_factory, audit, context
     ):
