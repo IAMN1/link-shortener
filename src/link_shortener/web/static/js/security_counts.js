@@ -62,9 +62,14 @@ function countsRest(totals) {
 // intervals are three things nobody can compare anyway.
 function drawSecurityColumns(host, answer) {
     var buckets = answer.buckets;
-    var series = COUNTS_SERIES.filter(function (one) {
-        return answer.series[one.key];
-    });
+    // Every named series, including the ones the answer has no row for.
+    // A kind that did not occur is absent from `series` rather than sent
+    // as zeroes -- the endpoint reports what happened -- and dropping it
+    // here took it out of the tooltip too, so a week with no refusals
+    // read as a week the chart had never heard of refusals. The tiles
+    // beside the chart already draw such a kind as 0; this is the same
+    // reading, in the other half of the panel.
+    var series = COUNTS_SERIES;
 
     var start = new Date(answer.since).getTime();
     var step = (new Date(answer.until).getTime() - start) / Math.max(1, buckets);
@@ -78,7 +83,7 @@ function drawSecurityColumns(host, answer) {
         // axis with nothing on it and a chart that still looks drawn.
         var column = { total: 0, parts: [], at: new Date(start + step * i).toISOString() };
         series.forEach(function (one) {
-            var value = answer.series[one.key][i] || 0;
+            var value = (answer.series[one.key] || [])[i] || 0;
             column.total += value;
             column.parts.push({
                 value: value, colour: one.colour, label: one.label
@@ -224,6 +229,14 @@ function mountSecurityCounts(root) {
             if (!resp) return;
             if (!resp.ok) {
                 showLoadError('counts-error', await apiErrorText(resp), null, 1);
+                // Same as the journal viewer beside it: a refusal is not
+                // something to keep asking about. This panel polls once a
+                // minute, so it is a quieter version of the same fault --
+                // a recorded refusal per minute, about a page nobody is
+                // looking at.
+                if (resp.status === 401 || resp.status === 403) {
+                    countsStopPolling();
+                }
                 return;
             }
             paint(await resp.json());

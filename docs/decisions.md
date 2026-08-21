@@ -406,6 +406,13 @@ resend has, and recorded with it under [Known limits](#known-limits).
 slash in a role name makes `DELETE /api/v1/admin/roles/<name>` point at
 something else entirely.
 
+**Where it is asked** (2026-08-21): in the domain, as
+`require_valid_role_name`, and in the YAML loader that seeds roles. The
+pattern lived in the Pydantic schema alone, which is the boundary the API
+enters through and not the one every path enters through: `flask
+db load-base-roles` reads a file an operator edits, and a role named there
+with a slash in it was created without anything objecting.
+
 ### The anonymous ceiling stands above the `guest` row
 
 **Decided**: whatever the database says about `guest`, an anonymous caller
@@ -525,6 +532,108 @@ holds them.
 assign yourself `admin`, read the permissions back. Kubernetes checks the
 same rule in the API server and makes the exceptions explicit verbs;
 AWS IAM does it with permissions boundaries.
+
+### No account wears `guest`
+
+**Decided** (2026-08-21): `guest` is the role an unauthenticated request
+acts under, so an account wearing it holds what a passer-by holds. The rule
+is asked by `User.create`, where an account first gets roles whichever path
+built it, and by `UserManagementService.update_roles`, which is the one
+path around the factory.
+
+**Why not in the service alone.** That was the first attempt and it was not
+enough: registration builds its `User` itself and never enters the service,
+so a deployment with `DEFAULT_ROLE_NAME=guest` registered guests — measured
+at 202 with the account holding `guest`. The admin panel had left the role
+out of the lists it draws and said why, which left the rule living in the
+page that draws the form: `PUT /api/v1/admin/users/<id>/roles` with
+`{"roles": ["guest"]}` answered 200 on the running stack.
+
+Registration translates the refusal into its own `REGISTRATION_UNAVAILABLE`
+rather than naming the role, because naming it would tell an anonymous
+caller which part of the deployment is misconfigured.
+
+### The last administrator cannot be removed through a role either
+
+**Decided** (2026-08-21): the rule stood on the three routes that act on an
+account — re-roling it, deactivating it, deleting it — and not on the two
+that act on a role. Deleting a role carrying `admin:all`, or replacing what
+it grants, takes the permission off every holder at once and left the
+service with nobody able to administer it. Both routes now ask
+`require_administrator_survives_without` before they write.
+
+**Asked only when it matters.** A replacement that keeps `admin:all` moves
+nobody, so the count is taken only when the new set drops it. A system role
+is refused whatever the count says, and asking in the other order made one
+request answer two ways: `DELETE /api/v1/admin/roles/admin` came back
+`ROLE_IS_SYSTEM` while two administrators existed and "this would leave the
+system without an administrator" while one did — for a role that is never
+deletable either way.
+
+### The set of administrators is locked, not merely counted
+
+**Decided** (2026-08-21): `lock_administrator_set` takes
+`pg_advisory_xact_lock` before any count of administrators, the way
+`lock_guest_quota` does for the guest allowance.
+
+**Why.** Counting and then writing are two statements with nothing tying
+them together. Two administrators demoting each other at the same moment
+each read "one other would remain" and each proceeded: measured on the
+running stack, first attempt, both answered 200 and nobody was left. A row
+lock cannot express it — each request locks the account it is about, and
+the two never touch the same row. After the advisory lock the same race
+answers 200 and 403 and leaves one administrator standing.
+
+On any engine but PostgreSQL the lock does nothing and the guard is
+advisory, which is stated where it is taken rather than assumed.
+
+### What is wrong with the request is answered before who is asking
+
+**Decided** (2026-08-21): on the four administrative routes the order of
+refusals is: something wrong with the request, then something wrong with
+the caller, then something wrong with the state of the service.
+
+**Why.** The order decides what a caller is told to do about it, and it was
+decided by accident. `{"roles": ["guest"]}` aimed at the last administrator
+came back "this would leave the system without an administrator", which
+reads as "find another administrator and retry" for a request no retry can
+satisfy. The same body sent by a caller holding only `admin:manage_users`
+came back "You cannot grant permissions you do not hold yourself:
+link:create, stats:view_basic", which reads as "obtain those two" — and no
+account may wear `guest` either way. A mistyped permission name did the
+same on the role routes: `PERMISSIONS_NOT_FOUND` to an administrator and
+"You cannot grant permissions you do not hold yourself: link:craete" to a
+caller holding only `admin:manage_roles`, sending somebody looking for a
+way to obtain a permission that does not exist.
+
+**The one place the order is reversed, and why.** A role or an account that
+is not there answers 403 to a caller who may not read it, before it answers
+404 — because 404 would disclose that it exists. That is the exception, it
+is deliberate, and it is marked where it is made.
+
+### A unique index is translated into the refusal it stands for
+
+**Decided** (2026-08-21): `IntegrityError` on `roles.name` and on
+`users.email` is caught at the repository boundary and re-raised as
+`RoleAlreadyExistsError` and the existing address refusal.
+
+**Why.** The constraint is the only thing that can answer the question
+without a race — a check followed by an insert is two statements — so it
+has to be the thing that answers it. Left as an `IntegrityError`, it
+reached the error handler as an unhandled exception and became a 500: the
+service reported itself broken for a request that was merely refused.
+
+### The JWT carries no `roles` claim
+
+**Decided** (2026-08-21): the access token names the account and nothing
+about what it may do.
+
+**Why.** A claim is a snapshot, and permissions are read fresh from the
+database on every decision that matters. Carrying both meant carrying two
+answers to one question, with the token's answer being the stale one and
+the easier one to reach for — the shape of every "the role was removed and
+they could still do it" report. Nothing read the claim; it was written,
+carried and trusted by nobody, which is the best moment to remove one.
 
 ### The URL rule is written twice, on purpose
 
@@ -1201,8 +1310,18 @@ the lines the reader came for — the same reflection the read's own
 `log.debug` was already dropped to `debug` to avoid. What is recorded is
 the act of going to look: opening the page, switching journals, reaching
 into the archives. The refresh marks itself with `follow=true` and is not
-recorded; a request naming the archives is recorded whatever it says about
-itself, because the page polls its tail and never the rotated files.
+recorded; every other control on the page reloads with `follow=false`, and
+that flag decides on its own.
+
+It did not at first. This entry said that a request naming the archives was
+recorded whatever it claimed about itself, on the reasoning that the page
+polls its tail and never the rotated files — which turned out to be untrue
+of the page, and the exemption was withdrawn in the entry below ("The
+follow flag decides alone, and the terms only describe"). The sentence
+stayed here for three days after the code stopped agreeing with it, which
+is its own small lesson: a decision revised in a later entry has to be
+struck from the earlier one, or the document answers a question two ways
+and the reader takes whichever they find first.
 
 **What looking at it changed.** Two things the suite had no opinion about.
 Masking applied only to the call's fields left binding as a way around it:
@@ -1385,6 +1504,157 @@ ways at once.
 
 ---
 
+### A refusal by privilege is an event, and it is written from one place
+
+**Decided** (2026-08-21): `PermissionDeniedError` is a domain error of its
+own, carrying the permissions the caller would have needed and the ones
+they tried to hand out; the error handler turns it into
+`AuditEvent.PERMISSION_DENIED`.
+
+**Why an event at all.** The journal recorded what administrators did and
+nothing about what they tried and were refused — which is the thing an
+investigation is usually opened over. Measured on the running stack: a
+caller holding `user` asked for the audit journal and for the role list a
+second apart, was refused both, and `audit.log` gained nothing either time.
+`application.log` gained one line for the first, written by the use case
+that refused it and carrying the account, the address and the permission;
+for the second it gained `{"error": "Not authorized", "code":
+"FORBIDDEN"}` and nothing else — not even a `request_id` to join it to the
+`Request completed` line that has one. So refusals were recorded on the
+routes that happen to refuse inside a use case, and not on the routes that
+refuse in a decorator, which is most of them.
+
+**Why a class and not a code.** Because not every 403 is one of these.
+"This would leave the system without an administrator" and "no account may
+wear `guest`" are refusals about the state of the service, not about who is
+asking; filed as attempted escalation they would bury the ones that are.
+The type is what lets one place tell them apart.
+
+**Why from the error handler.** It is where every `PermissionDeniedError`
+raised on a route ends up, and one writer cannot forget what seventeen
+raisers can — the argument `CountingAuditLogger` is built on. The limit of
+it is the CLI, which reaches `DeleteLinkUseCase` with no request and no
+error handler; a refusal there is logged by the use case and not recorded.
+That is a narrow gap: the CLI runs as whoever has a shell on the host, and
+what such a caller can do is not bounded by this application anyway.
+
+**What looking at it changed.** Two things, neither of which the suite had
+an opinion about. The first record carried `request_path` and `path` with
+the same value in each, because the event named what the bound context
+already carried — the arguments went. And `Container.get_audit_logger()`
+handed back the component's logger rather than the counted one, so the
+first live refusals reached `audit.log` and left `security_events` empty:
+the chart on the journal page reported no refusals while the journal
+beside it listed two. The accessor had never had an external caller before,
+so nothing had noticed that it returns almost — but not quite — the object
+the rest of the service uses.
+
+### A page stops asking for what it has just been refused
+
+**Decided** (2026-08-21): the journal viewer and the counters panel stop
+their timers on a 401 or a 403, and go on polling through anything else.
+
+**Why.** The viewer polls every five seconds, and a refusal used to change
+nothing about that: it painted the message and asked again. Harmless while
+a refusal was recorded nowhere, and not harmless the moment one became an
+audit event — a permission withdrawn while somebody had the page open
+writes twelve lines a minute into the journal, about a reader who has
+walked away. A 500 or a dropped connection is the kind of thing that comes
+back, so those keep polling; a page that gave up on the first of them would
+need reloading by hand.
+
+### A security event is written after its transaction closes
+
+**Decided** (2026-08-21): every use case writes its audit event outside the
+`with` block that did the work.
+
+**Why.** `CountingAuditLogger` counts in a transaction of its own — so that
+a failed count cannot roll back the work it was recording — and a caller
+still holding its own therefore holds two connections at once, on a
+deployment of four sync workers, for a row nobody is waiting on. Seven use
+cases did it and six did not: two spellings of one act, and the seven were
+the expensive one.
+
+The rule is held by a test that reads `COUNTED_ELSEWHERE` out of the
+counter rather than restating it, so a link event moved out of that set —
+which is what would make its second connection real — reddens rather than
+passing quietly.
+
+### The role events say how far they reached
+
+**Decided** (2026-08-21): `ROLE_DELETED` and `ROLE_PERMISSIONS_CHANGED`
+carry `holders`, the number of accounts wearing the role.
+
+**Why.** Both acts move every holder at once without touching any of their
+accounts, so an investigator asking why an account lost a power finds
+nothing against that account — and the record they do find read the same
+whether it stripped nobody or the whole staff.
+
+**A count and not a list.** The identities are recoverable from the
+`ROLES_CHANGED` records that put the role on each account, while a list
+would put an unbounded field into a journal kept at `maxsize 1G`: a role
+worn by a thousand accounts would write some forty kilobytes, once, for a
+fact already written a thousand times.
+
+### A record names the use case that wrote it
+
+**Decided** (2026-08-21): `BaseUseCase._get_logger` binds the writer's own
+`__module__`, and the logger proxy prefers a bound name over the one it was
+built with. A name passed on a single call is still ignored.
+
+**Why.** Every application-layer logger is fetched by the DI container,
+under the container's `__name__`, and that name was stamped on every line —
+the one field a journal record carries about where it came from. Measured
+on the running stack: a refused journal read, written from
+`ReadJournalUseCase`, arrived as `"logger":
+"link_shortener.infrastructure.di.container"`. Seventeen use cases shared
+that one name, so filtering the journal by source offered the wiring and
+nothing else.
+
+**Bound, not passed.** Where a line came from is a property of its writer,
+so a writer may state it once by binding it; a single line may not, or
+lines start attributing themselves to whatever the call felt like naming.
+The third rendering had to be brought along: `JSONFormatter` wrote
+`record.name` while the console formatter beside it and the structlog chain
+both preferred the module, so one record read two ways depending on which
+file it landed in.
+
+### The rotation configuration is a template, not a finished file
+
+**Decided** (2026-08-21): `dockers/logrotate.conf` names its three journals
+by `${LOG_FILENAME}`, `${ERROR_LOG_FILENAME}` and `${AUDIT_LOG_FILENAME}`,
+and the rotator container resolves them at start-up from the same
+environment the application reads.
+
+**Why.** The names were written into it literally. The application chooses
+them from those three settings and the journal viewer reads them from the
+same place, so those two agree always; the rotator agreed only while the
+defaults were untouched. A deployment writing `LOG_FILENAME=journal` kept
+its journals and lost its rotation without a word — `missingok` answers a
+missing file with nothing at all, logrotate returns zero, and the file
+grows until the disk ends. The suite compared the literal names against the
+tree's own defaults, which is not what a deployment runs.
+
+**And the names are now checked.** Nothing looked at them: they are joined
+to `LOG_DIR` and given a `.log` suffix by `os.path.join`, which leaves the
+directory the moment a name asks it to. A name carrying a separator wrote
+outside the log directory, and after this entry the rotator would have
+followed it there with `rotate` and `create` in hand. They are validated at
+start-up, where a deployment can be told, rather than defended at the join,
+where there is nothing sensible to do about it.
+
+### The web layer reads the reader's ceiling from the port
+
+**Decided** (2026-08-21): `HARD_LIMIT` lives on `JournalReaderPort`.
+
+**Why.** `JournalQuery` refuses a `limit` above it, and read it out of
+`infrastructure.logging.journal_reader` to do so — the web layer importing
+a fact from the layer it is meant not to know. The number is a measurement
+of the file reader, but it is also part of the contract: a caller that must
+refuse an excess before the read has to know what an excess is, and a
+caller told "at most this many" should get the same answer from whichever
+reader is wired in.
+
 ## Known limits
 
 Things that are wrong, understood, and deliberately left. Each says what it
@@ -1521,6 +1791,45 @@ separately from `admin:all` and its granting is recorded as
 `ROLES_CHANGED`, so a reader can hide a reading but not the entitlement
 that allowed it. The alternative considered was suppressing repeats inside
 a time window, which needs the same store.
+
+</details>
+
+<details>
+<summary><b>A refusal raised off a route is not recorded</b> — accepted 2026-08-21</summary>
+
+`PERMISSION_DENIED` is written by the error handler, which is where a
+`PermissionDeniedError` raised on any route ends up. The CLI reaches
+`DeleteLinkUseCase` with no request and no error handler, so a refusal
+there is written to `application.log` by the use case and not to the audit
+journal.
+
+Closing it means either writing the event from each raiser — seventeen call
+sites and the eighteenth forgetting, the argument `CountingAuditLogger`
+exists to avoid — or giving the CLI an equivalent of the handler, which is
+a second place deciding what a refusal is. Left because the gap is narrow
+in the way that matters: the CLI runs as whoever has a shell on the host,
+and what such a caller can do is not bounded by this application. An
+operator who can run `flask link delete` can also read the journals off the
+disk and edit them.
+
+</details>
+
+<details>
+<summary><b>Refused requests fill the counters as readily as successful ones</b> — accepted 2026-08-21</summary>
+
+Every `PERMISSION_DENIED` is counted in `security_events`, like every other
+security event, so a caller probing what they can reach writes a row per
+attempt. Nothing rate-limits refusals in particular: what bounds them is
+the ordinary throttle, 100 requests a minute per caller by default, and the
+daily fold plus `SECURITY_EVENT_RETENTION_DAYS` behind it.
+
+That is the intended shape rather than an oversight — "how many refusals
+this week" is the question the counter exists to answer, and a counter that
+dropped the refusals would answer it with silence. It is written down
+because the arithmetic is worth knowing before it surprises somebody: at
+the throttle's ceiling one determined caller can add 144 000 rows a day,
+which the fold reduces to one row per event type per day and the sweep
+removes a year later.
 
 </details>
 

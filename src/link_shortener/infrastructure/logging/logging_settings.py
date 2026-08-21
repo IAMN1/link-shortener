@@ -134,6 +134,16 @@ def logging_settings_from(
     drift: a setting added to one is silently absent in the other, and the
     worker goes on logging by a default nobody chose.
 
+    The defaults here are the second copy of a truth ``BaseConfig`` already
+    holds, and they cannot simply be dropped: ``read`` is handed whatever
+    holds the configuration, and a name it cannot find has to resolve to
+    something. So they are held to the profile's by a test that compares
+    the two sets, the way ``PERMISSION_FOR`` is held to ``Journal``. One of
+    the thirteen had already drifted -- ``LOG_FILENAME`` said
+    ``link_shortener`` here and ``application`` there, which is the pair
+    that decides which file the application writes and which file the
+    journal viewer reads.
+
     Args:
         read: Callable taking a name and a default, the way
             ``app.config.get`` does. For a profile object,
@@ -145,7 +155,7 @@ def logging_settings_from(
     """
     return LoggingSettings(
         log_dir=read("LOG_DIR", "logs"),
-        log_file_name=read("LOG_FILENAME", "link_shortener"),
+        log_file_name=read("LOG_FILENAME", "application"),
         audit_log_filename=read("AUDIT_LOG_FILENAME", "audit"),
         error_log_filename=read("ERROR_LOG_FILENAME", "error"),
         log_date_format=read("LOG_DATE_FORMAT", "%Y-%m-%d %H:%M:%S"),

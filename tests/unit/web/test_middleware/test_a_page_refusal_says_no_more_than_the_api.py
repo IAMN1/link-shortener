@@ -35,8 +35,17 @@ INTERNAL = "Default role 'user' is missing from the database"
 
 @pytest.fixture
 def logger():
-    """A logger that remembers what it was told."""
-    return Mock()
+    """A logger that remembers what it was told.
+
+    ``bind`` answers with the same object, so what the handler writes on
+    the bound logger is read here without threading a second mock through
+    every test: the handler binds the request context before writing, and
+    a mock whose ``bind`` returned a fresh child would hide the line
+    rather than show it.
+    """
+    logger = Mock()
+    logger.bind.return_value = logger
+    return logger
 
 
 @pytest.fixture
@@ -63,7 +72,7 @@ def failing_app(logger, tmp_path):
     application.config["SUPPORTED_LANGUAGES"] = ["en"]
     application.config["DEFAULT_LANGUAGE"] = "en"
     init_babel(application)
-    ErrorHandlerMiddleware(application, logger)
+    ErrorHandlerMiddleware(application, logger, Mock())
 
     @application.route("/page")
     def page():

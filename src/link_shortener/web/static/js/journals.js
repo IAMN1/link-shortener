@@ -387,6 +387,29 @@ function mountJournals(root) {
             if (!resp.ok) {
                 showLoadError('journal-error', await apiErrorText(resp),
                               null, 4);
+                // A refusal stops the timer, and that is not tidiness.
+                // The page went on asking every five seconds for
+                // something it had just been told it may not have --
+                // which is a request per poll for as long as the tab is
+                // open, and, since a refusal by privilege is recorded,
+                // twelve lines a minute in the audit journal about one
+                // reader who walked away from an open page. A permission
+                // withdrawn while somebody was reading is exactly how
+                // this happens, and it is the ordinary case rather than
+                // the strange one.
+                //
+                // The other outcomes keep polling: a 500 or a dropped
+                // connection is the kind of thing that comes back, and a
+                // page that gave up on the first of them would need
+                // reloading by hand.
+                if (resp.status === 401 || resp.status === 403) {
+                    every = 0;
+                    journalStartPolling(0);
+                    pressed(everyButtons, function (button) {
+                        return Number(button.getAttribute('data-journal-every')) === 0;
+                    });
+                    paintFreshness();
+                }
                 return;
             }
             clearError();

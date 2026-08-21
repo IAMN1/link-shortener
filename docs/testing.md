@@ -1,6 +1,6 @@
 # Testing
 
-**3547 tests**, 96.05% coverage against a floor of 88%, plus two live runs
+**3627 tests**, 96.07% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -122,7 +122,7 @@ the throttle instead of what it is named after.
 
 </details>
 
-### browser_test.py — 62 checks in a real browser
+### browser_test.py — 64 checks in a real browser
 
 ```bash
 uv sync --group browser
@@ -247,7 +247,7 @@ Both now raise `tests/live/mail_catcher.py`, an SMTP server on the loopback,
 point the mailer at it, and take the link out of the delivered message.
 
 Measured by pointing `VERIFY_PATH` at a path nothing answers: the HTTP run
-gives 91/156, the browser run 17/62.
+gives 91/156, the browser run 17/64.
 
 The link has to be **opened**, not parsed. The message now leads to a page
 whose button posts the token, which tempted the HTTP run into extracting the
@@ -363,7 +363,7 @@ them can ask the whole question.
 |---|---|---|
 | The handler is swapped for one that does not notice a rotation | Records go on being written — into the file that was moved aside, which the retention policy eventually deletes | `test_rotation_is_followed.py` moves the file and reads both sides; it also asserts that all three journals `setup_logging` installs are watched ones |
 | The handler rotates for itself | With one process it works; with the four gunicorn runs it truncates a file the other three are writing | `test_rotation_under_several_writers.py` runs four writer processes against one journal while a fifth renames it, and counts every record back |
-| The shipped configuration names a file nobody writes | `missingok` is in it on purpose, so a path that matches nothing rotates nothing and says nothing | The names in `dockers/logrotate.conf` are held against the journal names the configuration produces |
+| The shipped configuration names a file nobody writes | `missingok` is in it on purpose, so a path that matches nothing rotates nothing and says nothing | `dockers/logrotate.conf` is a template: it names the three journals by the settings that choose them, and the test holds those variable names against the profile's own — plus a Docker run that renames all three and checks logrotate follows |
 | The configuration does not parse | logrotate skips the block it cannot read and carries on | `test_logrotate_config_is_accepted.py` builds the rotator image and runs `logrotate -d` over the shipped file. Written the obvious way, that file said `create 0640 1000 1000` and the Debian build answered `unknown user '1000'` — it looked right and rotated nothing |
 
 The last one needs Docker and skips without it, the way the rest of the
@@ -410,8 +410,8 @@ catch tests that read configuration nobody gave them.
 flowchart TD
     subgraph clean["clean"]
         C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
-        C2 --> C3[count collected tests<br/>minimum 3537] --> C4[pytest --error-for-skips]
-        C4 --> C5[smoke_test.py<br/>156 checks] --> C6[browser_test.py<br/>62 checks]
+        C2 --> C3[count collected tests<br/>minimum 3617] --> C4[pytest --error-for-skips]
+        C4 --> C5[smoke_test.py<br/>156 checks] --> C6[browser_test.py<br/>64 checks]
     end
     subgraph hostile["hostile"]
         H1[the same, plus a polluted .env<br/>and exported variables] --> H2[pytest --error-for-skips]

@@ -430,7 +430,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 62
+    expected = 64
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -1964,6 +1964,89 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         labels = page.locator("[data-counts-chart] .chart-axis").count()
         numeric = page.locator("[data-counts-chart] .chart-axis--num").count()
         assert labels > numeric, (labels, numeric)
+
+    @check("a refused journal stops the page asking again")
+    def _():
+        # The viewer polls, and a refusal used to change nothing about
+        # that: it painted the message and went on asking every five
+        # seconds for something it had just been told it may not have.
+        # Harmless while a refusal was recorded nowhere; not harmless now
+        # that one is an audit event, because a permission withdrawn while
+        # somebody had the page open writes twelve lines a minute into the
+        # journal about a reader who is not even there.
+        #
+        # Counted rather than timed: how many requests a five-second
+        # interval makes in N seconds is a race, and "no more after the
+        # refusal" is the property anyway.
+        page = page_for("/login")
+        sign_in(page, base)
+
+        asked = []
+
+        def refuse(route):
+            asked.append(route.request.url)
+            route.fulfill(
+                status=403,
+                content_type="application/json",
+                body='{"error": "FORBIDDEN", "message": "Not authorized"}',
+            )
+
+        page.route("**/api/v1/journals/**", refuse)
+        page.goto(f"{base}/dashboard/service/journals")
+        wait_until(
+            page,
+            lambda p: bool(asked),
+            what="the viewer to ask for a journal",
+        )
+        after_the_refusal = len(asked)
+
+        # Two intervals of the fastest setting the page offers, and a
+        # margin: still polling, this is 2 to 3 more requests.
+        page.wait_for_timeout(12000)
+
+        assert len(asked) == after_the_refusal, (
+            f"kept asking after a 403: {len(asked) - after_the_refusal} more"
+        )
+
+    @check("the tooltip names a series the answer has no row for")
+    def _():
+        # A kind that did not occur is absent from `series` rather than
+        # sent as zeroes -- the endpoint reports what happened -- and the
+        # chart used to drop it here too. A span with no role changes in
+        # it drew a tooltip that had never heard of role changes, while
+        # the tile beside the chart said 0: two halves of one panel
+        # answering differently.
+        #
+        # Driven with an answer of this test's own rather than the live
+        # one, because the fault only shows for a series the span is
+        # missing, and which series this run is missing is not something
+        # a check should depend on.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-counts-chart] svg", timeout=5000)
+
+        named, drawn = page.evaluate(
+            """() => {
+                const host = document.createElement('div');
+                document.body.appendChild(host);
+                drawSecurityColumns(host, {
+                    period: '7d',
+                    buckets: 2,
+                    since: '2026-08-01T00:00:00Z',
+                    until: '2026-08-03T00:00:00Z',
+                    series: { LOGIN_SUCCEEDED: [1, 2] },
+                    totals: { LOGIN_SUCCEEDED: 3 }
+                });
+                host.querySelector('.chart-hit')
+                    .dispatchEvent(new MouseEvent('mouseenter'));
+                const keys = [...host.querySelectorAll('.chart-tip-key')]
+                    .map(node => node.textContent);
+                host.remove();
+                return [COUNTS_SERIES.length, keys];
+            }"""
+        )
+        assert len(drawn) == named, (named, drawn)
 
     @check("the dates along the axis are a whole number of days apart")
     def _():

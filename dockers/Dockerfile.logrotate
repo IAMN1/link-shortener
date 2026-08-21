@@ -4,13 +4,22 @@
 # пакетов и один набор системных утилит на стек вместо двух.
 FROM debian:bookworm-slim
 
+# gettext-base ради одного envsubst: имена журналов подставляются в шаблон
+# при старте, чтобы ротатор следил за теми же файлами, что пишет
+# приложение. Подстановка руками, через sed, обошлась бы без пакета и
+# читалась бы хуже — envsubst называет ровно те переменные, которые ему
+# разрешено трогать.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     logrotate \
+    gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 # Путь от корня проекта: контекст сборки — корень, как и у образа
-# приложения.
-COPY dockers/logrotate.conf /etc/logrotate.d/link_shortener
+# приложения. Кладётся шаблоном: готовый конфиг из него делает entrypoint,
+# подставляя имена журналов.
+COPY dockers/logrotate.conf /etc/logrotate.d/link_shortener.template
+COPY dockers/logrotate-entrypoint.sh /logrotate-entrypoint.sh
+RUN chmod +x /logrotate-entrypoint.sh
 
 # Расписание циклом, а не cron.
 #
@@ -28,9 +37,7 @@ COPY dockers/logrotate.conf /etc/logrotate.d/link_shortener
 # контейнере он не пережил бы перезапуск, и первый же вызов после него
 # ротировал бы файлы заново, не дождавшись суток.
 #
-# Отказ не гасится: `logrotate` возвращает ненулевой код, когда не смог
-# подменить файл — чаще всего из-за прав на каталог, — и об этом надо
-# узнать из `docker logs`, а не по молчанию.
+# Сам цикл и подстановка имён — в /logrotate-entrypoint.sh.
 ENV LOG_ROTATE_INTERVAL=3600
 
-CMD ["sh", "-c", "while true; do logrotate --state /logs/.logrotate.state /etc/logrotate.d/link_shortener || echo 'logrotate failed, see the message above' >&2; sleep ${LOG_ROTATE_INTERVAL}; done"]
+CMD ["/logrotate-entrypoint.sh"]

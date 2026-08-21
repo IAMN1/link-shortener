@@ -17,6 +17,24 @@ class TestContainer:
         container = Container(config)
         assert container.config is config
 
+    def test_the_audit_logger_it_hands_out_is_the_counting_one(self, config):
+        """The accessor and the use cases must get the same object.
+
+        It handed back the component's logger directly, so anything wired
+        through here wrote to ``audit.log`` and was counted nowhere.
+        Measured on the running stack the day the error handler became its
+        first caller: two ``PERMISSION_DENIED`` lines in the journal and
+        no row in ``security_events``, so the chart on the journal page
+        reported no refusals while the journal beside it listed two.
+        """
+        from link_shortener.infrastructure.logging.handlers.audit.counting import (
+            CountingAuditLogger,
+        )
+
+        container = Container(config)
+
+        assert isinstance(container.get_audit_logger(), CountingAuditLogger)
+
     def test_get_link_service(self, config):
         """Container should provide a LinkService instance."""
         container = Container(config)

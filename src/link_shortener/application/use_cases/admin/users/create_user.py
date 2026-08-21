@@ -93,6 +93,12 @@ class CreateUserUseCase(BaseUseCase):
                 # so it answers to the same rule as reassigning one.
                 require_may_grant_roles(context, uow, roles)
 
+            # The clause covers the creation and nothing after it. It
+            # used to reach over the record as well, so a failure to write
+            # the audit line was logged as "User creation failed" and
+            # re-raised -- for an account that had been created and
+            # committed a line earlier. The caller was told the creation
+            # failed about the one thing that had not.
             try:
                 new_user = self.user_service.create_user(
                     uow=uow,
@@ -102,18 +108,18 @@ class CreateUserUseCase(BaseUseCase):
                     is_active=is_active,
                 )
                 uow.commit()
-
-                log.info("User created by admin", new_user_id=new_user.id)
-                # The roles are read off the account rather than off
-                # ``role_names``: asked for none, it is given the default
-                # one, and a record repeating the empty request would say
-                # an account was created with no entitlements at all.
-                audit.log_user_created(
-                    target_user_id=new_user.id,
-                    email=email,
-                    roles=[role.name for role in new_user.roles],
-                )
-                return UserResponse.from_user(new_user)
             except Exception as e:
                 log.error("User creation failed", error=str(e))
                 raise
+
+        log.info("User created by admin", new_user_id=new_user.id)
+        # The roles are read off the account rather than off
+        # ``role_names``: asked for none, it is given the default
+        # one, and a record repeating the empty request would say
+        # an account was created with no entitlements at all.
+        audit.log_user_created(
+            target_user_id=new_user.id,
+            email=email,
+            roles=[role.name for role in new_user.roles],
+        )
+        return UserResponse.from_user(new_user)

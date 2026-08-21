@@ -43,7 +43,16 @@ class JSONFormatter(logging.Formatter):
                 record.created, tz=timezone.utc
             ).strftime(UTC_SECONDS),
             "level": record.levelname.lower(),
-            "logger": record.name,
+            # The writer's own module where it named one, and the logger's
+            # name otherwise. ``StandardLogger`` renames ``module`` to
+            # ``module_name`` on its way in, because ``module`` collides
+            # with a built-in LogRecord attribute; ``ConsoleFormatter``
+            # displays the renamed value and the structlog chain folds its
+            # own ``module`` into ``logger`` -- this was the one of the
+            # three that did not, so the same record read
+            # ``"logger": "...di.container"`` in the file and
+            # ``[...read_journal]`` on the console beside it.
+            "logger": getattr(record, "module_name", None) or record.name,
             "event": record.getMessage(),
         }
         # Computed from a reference record, not enumerated: the hand-written
@@ -51,7 +60,9 @@ class JSONFormatter(logging.Formatter):
         # attribute through, so every line carried ``"taskName": null``.
         skip_keys = STANDARD_RECORD_ATTRS
         for key, value in record.__dict__.items():
-            if key in skip_keys or key in log_entry:
+            # ``module_name`` has already been read into ``logger``; left
+            # in, every line would carry the same value under two names.
+            if key in skip_keys or key in log_entry or key == "module_name":
                 continue
 
             # Check if the value is JSON‑serialisable

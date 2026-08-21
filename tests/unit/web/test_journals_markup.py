@@ -122,22 +122,34 @@ class TestOnlyTheJournalsThisCallerMayReadAreOffered:
 
         assert offered_journals(markup) == ["application", "error", "audit"]
 
-    def test_what_the_journals_carry_is_said_to_whoever_reads_the_record(
+    def test_each_warning_is_shown_to_whoever_can_open_that_journal(
         self, journals_app
     ):
         """
-        The warning is shown to the caller who can open the audit journal,
-        and it names both journals rather than only that one: the
-        application journal carries the address of everyone who signed in,
-        which is the fact least likely to be guessed from a page of
-        timestamps.
+        A sentence about a journal goes to the caller who can read it.
+
+        Both sentences stood behind ``audit:view``, which got the split
+        exactly backwards: `application.log` carries the full address of
+        everyone who registered or signed in and opens to ``logs:view``,
+        so the one caller who reads those addresses was shown no warning,
+        while a holder of ``audit:view`` alone was warned about a journal
+        the endpoint would refuse them.
         """
-        reader = render_page(journals_app, {"audit:view"})
+        auditor = render_page(journals_app, {"audit:view"})
         operator = render_page(journals_app, {"logs:view"})
 
-        assert "audit journal names destination addresses" in reader
-        assert "application journal names the address" in reader
+        assert "audit journal names destination addresses" in auditor
+        assert "application journal names the address" not in auditor
+
+        assert "application journal names the address" in operator
         assert "audit journal names destination addresses" not in operator
+
+    def test_holding_both_is_warned_about_both(self, journals_app):
+        """Neither sentence is lost by the other being shown."""
+        markup = render_page(journals_app, {"audit:view", "logs:view"})
+
+        assert "audit journal names destination addresses" in markup
+        assert "application journal names the address" in markup
 
 
 class TestTheMarkupCarriesWhatTheScriptLooksFor:
@@ -214,7 +226,7 @@ class TestTheMarkupCarriesWhatTheScriptLooksFor:
         400 every time it is pressed -- and the page would show the
         refusal rather than the journal.
         """
-        from link_shortener.infrastructure.logging.journal_reader import (
+        from link_shortener.application.ports.journal_reader import (
             HARD_LIMIT,
         )
 

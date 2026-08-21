@@ -17,7 +17,8 @@ from link_shortener.application.ports.uow import (
 )
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
-    DomainError, Link, LinkNotFoundError, SystemPermissions
+    DomainError, Link, LinkNotFoundError, PermissionDeniedError,
+    SystemPermissions,
 )
 from link_shortener.domain.i18n import N_
 
@@ -206,8 +207,9 @@ class DeleteLinkUseCase(BaseUseCase):
                 code=link.short_code.value,
                 required_permission=required,
             )
-            raise DomainError(
-                N_("You are not allowed to delete this link"), code="FORBIDDEN"
+            raise PermissionDeniedError(
+                N_("You are not allowed to delete this link"),
+                required=[required],
             )
 
     @staticmethod

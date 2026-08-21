@@ -10,7 +10,7 @@ their own.
 from flask import g
 
 from link_shortener.application.ports.auth.authorization_service import AuthorizationService
-from link_shortener.domain import DomainError, SystemPermissions
+from link_shortener.domain import DomainError, PermissionDeniedError, SystemPermissions
 from link_shortener.domain.i18n import N_
 
 
@@ -71,4 +71,4 @@ def require_can_view_link_details(
         raise DomainError(N_("Authentication required"), code="UNAUTHENTICATED")
 
     if not can_view_link_details(owner_id, authorization_service):
-        raise DomainError(N_("You are not allowed to view this link"), code="FORBIDDEN")
+        raise PermissionDeniedError(N_("You are not allowed to view this link"))

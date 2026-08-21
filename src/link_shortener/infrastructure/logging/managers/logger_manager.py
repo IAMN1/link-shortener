@@ -284,7 +284,22 @@ class FailoverLoggerProxy(Logger):
             discard it; nothing else calls this.
         """
         all_kwargs = {**self._bound_fields, **kwargs}
-        all_kwargs["module"] = self._module_name
+        # A bound ``module`` wins over the name this proxy was built with;
+        # one passed on the call does not, which is the distinction the
+        # test beside this one is about. Where a line came from is a
+        # property of the writer, so a writer may state it once by binding
+        # it -- and a single line may not, or lines start attributing
+        # themselves to whatever the call felt like naming.
+        #
+        # The name this proxy carries is the one the logger was *fetched*
+        # under, and the fetching is done by the DI container: every record
+        # an application-layer use case wrote was therefore filed under
+        # ``link_shortener.infrastructure.di.container``, so the one field
+        # saying where a record came from named the wiring rather than the
+        # work. ``BaseUseCase._get_logger`` binds the real one.
+        all_kwargs["module"] = self._bound_fields.get(
+            "module", self._module_name
+        )
         return self._service.execute(method_name, message, **all_kwargs)
 
     def debug(self, message: str, **kwargs):
@@ -365,7 +380,11 @@ class _ModuleLogger(Logger):
             **kwargs: Additional structured data.
         """
         all_kwargs = {**self._bound_fields, **kwargs}
-        all_kwargs["module"] = self._module_name
+        # A bound name wins, a called one does not: see the reasoning in
+        # ``FailoverLoggerProxy._call``.
+        all_kwargs["module"] = self._bound_fields.get(
+            "module", self._module_name
+        )
         getattr(self._logger, level)(message, **all_kwargs)
 
     def debug(self, message: str, **kwargs):

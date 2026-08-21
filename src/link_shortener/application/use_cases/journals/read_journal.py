@@ -29,7 +29,9 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.admin.privilege_guard import load_actor
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import DomainError, SystemPermissions
+from link_shortener.domain import (
+    DomainError, PermissionDeniedError, SystemPermissions,
+)
 from link_shortener.domain.i18n import N_
 
 
@@ -301,4 +303,4 @@ class ReadJournalUseCase(BaseUseCase):
         # separately granted act; an attempt that was refused is exactly the
         # thing an operator wants to find afterwards.
         log.warning("Journal read refused", required_permission=required)
-        raise DomainError(N_("Not authorized"), code="FORBIDDEN")
+        raise PermissionDeniedError(N_("Not authorized"), required=[required])

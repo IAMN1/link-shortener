@@ -69,6 +69,15 @@ class AuditEvent(Enum):
 
     AUDIT_VIEWED = "AUDIT_VIEWED"
 
+    # An attempt that was refused, which is the one kind of event here
+    # that records something that did *not* happen. It belongs by the same
+    # rule as the rest read the other way round: an act that would have
+    # changed who may do what, stopped. What an investigation is opened
+    # over is rarely a successful administrative action -- it is somebody
+    # trying one they are not entitled to, repeatedly, and until this
+    # existed the journal held no trace of that at all.
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+
 
 class AuditLogger(ABC):
     """
@@ -440,36 +449,58 @@ class AuditLogger(ABC):
             **fields,
         )
 
-    def log_role_deleted(self, role: str, **fields) -> None:
+    def log_role_deleted(self, role: str, holders: int, **fields) -> None:
         """
-        Record a role removed.
+        Record a role removed, and how many accounts it came off.
+
+        The name alone left the record silent about reach. Deleting a role
+        takes it off every account wearing it, in one statement and without
+        touching any of them, so "role removed" read the same whether it
+        stripped nobody or everybody -- and an investigator asking why an
+        account stopped being able to do something finds nothing against
+        that account, exactly as with ``ROLE_PERMISSIONS_CHANGED``.
+
+        A count rather than the accounts themselves. The identities are
+        recoverable from the ``ROLES_CHANGED`` records that put the role on
+        each of them, while a list would put an unbounded field into a
+        journal kept at ``maxsize 1G`` -- a role worn by a thousand
+        accounts would write a line of some forty kilobytes, once, for a
+        fact already written a thousand times.
 
         Args:
             role: Name of the role that was deleted.
+            holders: How many accounts were wearing it, active or not.
             **fields: Additional context.
         """
-        self.log_security_event(AuditEvent.ROLE_DELETED, role=role, **fields)
+        self.log_security_event(
+            AuditEvent.ROLE_DELETED, role=role, holders=holders, **fields
+        )
 
     def log_role_permissions_changed(
         self,
         role: str,
         permissions_before: Sequence[str],
         permissions_after: Sequence[str],
+        holders: int,
         **fields,
     ) -> None:
         """
-        Record a change to what a role grants.
+        Record a change to what a role grants, and how far it reached.
 
         The widest-reaching act in this vocabulary: it changes what every
         holder of the role may do, at once, without any of their accounts
         being touched. An investigator looking at why an account could
         suddenly do something will find nothing against that account --
-        the change is here.
+        the change is here, and ``holders`` is how many accounts it moved.
+
+        A count rather than a list, for the reason given on
+        ``log_role_deleted``.
 
         Args:
             role: Name of the role whose permissions changed.
             permissions_before: Permission names it granted before.
             permissions_after: Permission names it grants now.
+            holders: How many accounts wear the role, active or not.
             **fields: Additional context.
         """
         self.log_security_event(
@@ -477,6 +508,7 @@ class AuditLogger(ABC):
             role=role,
             permissions_before=list(permissions_before),
             permissions_after=list(permissions_after),
+            holders=holders,
             **fields,
         )
 
@@ -535,6 +567,70 @@ class AuditLogger(ABC):
             reason=reason,
             filters=filters or {},
             **fields,
+        )
+
+    def log_permission_denied(
+        self,
+        required: Sequence[str] = (),
+        exceeded: Sequence[str] = (),
+        **fields,
+    ) -> None:
+        """
+        Record an attempt that was refused for want of a privilege.
+
+        The only event here about something that did not happen, and the
+        one an investigation most often starts from: a successful
+        administrative action has a person behind it who meant to take it,
+        while a refused one may be somebody finding out what they can
+        reach.
+
+        Written from one place -- the error handler, which is where a
+        ``PermissionDeniedError`` raised on any route ends up -- rather
+        than from each raiser. Seventeen raisers would be seventeen
+        chances for the eighteenth to forget, which is the argument
+        ``CountingAuditLogger`` is built on.
+
+        Any *route*, and that is the limit of it: the CLI reaches
+        ``DeleteLinkUseCase`` without a request and without an error
+        handler, so a refusal there is logged by the use case and not
+        recorded here. It is a narrow gap -- the CLI runs as whoever has
+        a shell on the host, and what such a caller can do is not bounded
+        by this application anyway.
+
+        What was attempted is not an argument here: the address and the
+        method are in the request context, which every caller binds before
+        writing, and the record carries them as ``request_path`` and
+        ``request_method`` like every other event. Passed again under
+        shorter names they were simply written twice -- measured on the
+        running stack, the first version of this record carried both
+        ``"request_path"`` and ``"path"`` with the same value in each.
+
+        The permission is an argument, because nothing else knows it: a
+        caller repeatedly refused ``admin:all`` is a different story from
+        one who wandered onto a page.
+
+        Whichever of the two is empty is left out rather than written as
+        an empty list, which is how ``_terms_of`` writes a search: a
+        record should say what was asked, not list what was not. Every
+        ordinary refusal carries ``required`` and no ``exceeded``, and an
+        escalation attempt the other way round, so writing both always
+        would put an empty field in every record of both kinds.
+
+        Args:
+            required: Permission names the caller would have needed.
+                Several where any one of them would have done.
+            exceeded: Permission names the caller tried to hand out
+                without holding them -- an escalation attempt rather than
+                an ordinary refusal.
+            **fields: Additional context.
+        """
+        named = {
+            name: list(value)
+            for name, value in (("required", required), ("exceeded", exceeded))
+            if value
+        }
+        self.log_security_event(
+            AuditEvent.PERMISSION_DENIED, **named, **fields
         )
 
     @abstractmethod

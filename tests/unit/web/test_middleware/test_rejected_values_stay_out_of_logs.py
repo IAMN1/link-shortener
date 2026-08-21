@@ -50,7 +50,7 @@ def client(logger):
     app.config["SUPPORTED_LANGUAGES"] = ["en"]
     app.config["DEFAULT_LANGUAGE"] = "en"
     init_babel(app)
-    ErrorHandlerMiddleware(app, logger)
+    ErrorHandlerMiddleware(app, logger, Mock())
 
     @app.post("/api/v1/probe")
     def probe():

@@ -17,11 +17,10 @@ from unittest.mock import Mock
 import pytest
 
 from link_shortener.application.ports.journal_reader import (
-    Journal, JournalLine, JournalPage,
+    HARD_LIMIT, Journal, JournalLine, JournalPage,
 )
 from link_shortener.domain import DomainError
 from link_shortener.infrastructure.di.container import Container
-from link_shortener.infrastructure.logging.journal_reader import HARD_LIMIT
 from link_shortener.web.app_factory import create_app
 
 

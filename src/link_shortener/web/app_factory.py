@@ -228,7 +228,11 @@ def create_app(config=None) -> Flask:
         container.get_authentication_service()
     )
     ## 5. Error handling
-    ErrorHandlerMiddleware(app, container.get_logger(ErrorHandlerMiddleware.__module__))
+    ErrorHandlerMiddleware(
+        app,
+        container.get_logger(ErrorHandlerMiddleware.__module__),
+        container.get_audit_logger(),
+    )
     ## 6. Cache-Control on responses belonging to an account
     #
     # Position matters only in that it is after authentication, which is

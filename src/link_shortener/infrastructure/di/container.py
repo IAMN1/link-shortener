@@ -776,8 +776,24 @@ class Container:
         return self.logger_component.get_active_logger_name()
 
     def get_audit_logger(self) -> AuditLogger:
-        """Return the audit logger (possibly with failover)."""
-        return self.audit_component.get_audit_logger()
+        """
+        Return the audit logger every use case is given.
+
+        The counting wrapper included, which it was not: this handed back
+        the component's logger directly, so anything wired through here
+        wrote to the journal and was not counted. Measured on the running
+        stack when the error handler became the first caller -- two
+        ``PERMISSION_DENIED`` records in ``audit.log`` and no row in
+        ``security_events``, so the chart said no refusals had happened.
+
+        An accessor that hands back almost the object the rest of the
+        service uses is worse than none: the difference is invisible at
+        the call site and shows up as a figure that is quietly wrong.
+
+        Returns:
+            The wrapped logger, with failover behind it.
+        """
+        return self._audit_logger()
 
     def get_db_manager(self) -> DatabaseManager:
         """Return the database manager (singleton)."""

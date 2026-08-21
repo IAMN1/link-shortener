@@ -418,6 +418,12 @@ services:
         # чтобы срабатывал ещё и потолок по размеру, который проверяется
         # только в момент вызова.
         LOG_ROTATE_INTERVAL: ${LOG_ROTATE_INTERVAL:-3600}
+        # Те же три имени, по которым журналы выбирает приложение. Без них
+        # ротатор следил бы за файлами, названными в конфиге буквально, и
+        # развёртывание со своим LOG_FILENAME теряло бы ротацию молча.
+        LOG_FILENAME: ${LOG_FILENAME:-application}
+        ERROR_LOG_FILENAME: ${ERROR_LOG_FILENAME:-error}
+        AUDIT_LOG_FILENAME: ${AUDIT_LOG_FILENAME:-audit}
       volumes:
         # Тот же каталог, что у app, но по своему пути: конфиг написан от
         # /logs, чтобы не зависеть от LOG_DIR приложения.

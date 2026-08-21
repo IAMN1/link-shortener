@@ -69,6 +69,83 @@ def validation_errors(monkeypatch, profile_cls, **overrides):
     return ""
 
 
+class TestAJournalIsNamedAndNotPathed:
+    """The three journal settings are joined to ``LOG_DIR`` unexamined.
+
+    ``os.path.join(log_dir, f"{name}.log")`` leaves the directory the
+    moment the name asks it to, and nothing between the setting and the
+    open call looks at it. Two things follow from a name carrying a
+    separator: the application writes outside its log directory, and --
+    since the rotator resolves the same three settings into its
+    configuration at start-up -- logrotate follows it there, renaming and
+    creating files where nobody meant to.
+
+    A directory that does not exist is the quieter half of the same fault:
+    every write fails, the failover machinery counts it in
+    ``dropped_calls``, and the service goes on answering with no journal
+    at all.
+    """
+
+    REFUSED = (
+        "../../etc/cron.d/whatever",
+        "logs/application",
+        "..",
+        ".hidden",
+    )
+    """Shapes that reach the join and take it somewhere else.
+
+    An empty value is not among them, and cannot be: ``EnvField`` reads a
+    blank variable as unset and answers with the default, so
+    ``LOG_FILENAME=`` is a journal called ``application`` rather than a
+    journal called nothing.
+    """
+
+    @pytest.mark.parametrize("setting", (
+        "LOG_FILENAME", "AUDIT_LOG_FILENAME", "ERROR_LOG_FILENAME",
+    ))
+    @pytest.mark.parametrize("name", REFUSED)
+    def test_a_name_that_is_a_path_is_refused(
+        self, monkeypatch, setting, name
+    ):
+        said = validation_errors(
+            monkeypatch, ProductionConfig, **{setting: name}
+        )
+
+        assert setting in said, said
+
+    @pytest.mark.parametrize("setting", (
+        "LOG_FILENAME", "AUDIT_LOG_FILENAME", "ERROR_LOG_FILENAME",
+    ))
+    @pytest.mark.parametrize("name", ("application", "audit-2", "trail.v2"))
+    def test_an_ordinary_name_is_accepted(
+        self, monkeypatch, setting, name
+    ):
+        """Including the shapes a deployment plausibly picks.
+
+        A dash, a dot in the middle, a digit: refusing those would push an
+        operator into renaming their journals to satisfy a checker, which
+        is a worse outcome than the fault being guarded against.
+        """
+        said = validation_errors(
+            monkeypatch, ProductionConfig, **{setting: name}
+        )
+
+        assert setting not in said, said
+
+    def test_the_refusal_says_which_setting_is_wrong(self, monkeypatch):
+        """One of three, and they are set in three different places."""
+        said = validation_errors(
+            monkeypatch, ProductionConfig, AUDIT_LOG_FILENAME="../elsewhere"
+        )
+
+        assert "Invalid AUDIT_LOG_FILENAME" in said
+        # And not about the other two, whose names are substrings of it:
+        # a check written as ``"LOG_FILENAME" not in said`` passes only
+        # because it cannot fail.
+        assert "Invalid LOG_FILENAME" not in said
+        assert "Invalid ERROR_LOG_FILENAME" not in said
+
+
 class TestTheDomainIsAHostAndNotSomethingElse:
     """It goes in front of every short link with only a scheme added."""
 

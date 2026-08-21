@@ -160,6 +160,30 @@ class UserRepository(ABC):
         ...
 
     @abstractmethod
+    def count_with_role(self, role_id: str) -> int:
+        """
+        Count the accounts wearing a role, active or not.
+
+        Exists for the audit trail rather than for a rule. Deleting a role
+        takes it off every account at once and replacing what it grants
+        changes what every one of them may do, and neither record said how
+        many that was -- "role removed" reads the same whether it touched
+        nobody or the whole staff.
+
+        Inactive accounts are counted too. A suspended account still wears
+        the role and still loses it here, and it can be switched back on;
+        counting only the active ones would understate what an operation
+        reached.
+
+        Args:
+            role_id: The role to count the wearers of.
+
+        Returns:
+            How many accounts hold it.
+        """
+        ...
+
+    @abstractmethod
     def delete(self, user_id: str) -> bool:
         """
         Permanently delete a user.

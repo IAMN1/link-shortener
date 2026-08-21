@@ -262,6 +262,26 @@ class SQLAlchemyUserRepository(UserRepository):
         # is still one administrator.
         return query.distinct().count()
 
+    def count_with_role(self, role_id: str) -> int:
+        """Count the accounts wearing a role, active or not.
+
+        Args:
+            role_id: The role to count the wearers of.
+
+        Returns:
+            How many accounts hold it.
+        """
+        # No filter on ``is_active``: a suspended account wears the role
+        # and loses it with the rest. Distinct for the reason
+        # ``count_active_with_permission`` is: the join can repeat a row.
+        return (
+            self.session.query(UserModel.id)
+            .join(UserModel.roles)
+            .filter(RoleModel.id == role_id)
+            .distinct()
+            .count()
+        )
+
     def delete(self, user_id: str) -> bool:
         """Permanently delete a user.
 

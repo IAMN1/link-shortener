@@ -93,13 +93,13 @@ class CreateRoleUseCase(BaseUseCase):
             )
             uow.commit()
 
-            log.info("Role created successfully", role_name=role.name)
-            # The permissions as the role ended up holding them, not as
-            # they were asked for: a name the service did not resolve
-            # is not a permission this role grants, and recording the
-            # request would overstate what was created.
-            audit.log_role_created(
-                role=role.name,
-                permissions=[p.name for p in role.permissions],
-            )
-            return RoleResponse.from_role(role)
+        log.info("Role created successfully", role_name=role.name)
+        # The permissions as the role ended up holding them, not as
+        # they were asked for: a name the service did not resolve
+        # is not a permission this role grants, and recording the
+        # request would overstate what was created.
+        audit.log_role_created(
+            role=role.name,
+            permissions=[p.name for p in role.permissions],
+        )
+        return RoleResponse.from_role(role)
