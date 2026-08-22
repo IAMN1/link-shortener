@@ -184,8 +184,14 @@ class TestFoldingTheDaysThatAreOver:
 
         assert [(row[1], row[2]) for row in totals] == [("LOGIN_FAILED", 4)]
 
-    def test_folding_twice_replaces_rather_than_doubles(self, uow_factory):
-        """A retried task and a second operator land on the same state."""
+    def test_folding_twice_does_not_double_it(self, uow_factory):
+        """A run that follows a finished one finds no work and writes nothing.
+
+        Not because the second write replaces the first -- it used to, and
+        the read that made it possible was a ``SELECT`` per row -- but
+        because the fold starts at the day after the latest one folded, so
+        a repeat has nothing to reach.
+        """
         yesterday = NOON - timedelta(days=1)
         record(uow_factory, "LOGIN_FAILED", yesterday)
         midnight = NOON.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -201,6 +207,63 @@ class TestFoldingTheDaysThatAreOver:
             )
 
         assert [(row[1], row[2]) for row in totals] == [("LOGIN_FAILED", 1)]
+
+    def test_a_second_night_folds_only_what_the_first_one_left(
+        self, uow_factory
+    ):
+        """The bound, seen from outside: last night's days are not redone."""
+        midnight = NOON.replace(hour=0, minute=0, second=0, microsecond=0)
+        record(uow_factory, "LOGIN_FAILED", NOON - timedelta(days=3))
+
+        with uow_factory() as uow:
+            first = uow.security_events.fold_days_before(midnight)
+            uow.commit()
+
+        record(uow_factory, "LOGIN_SUCCEEDED", NOON - timedelta(days=1))
+
+        with uow_factory() as uow:
+            second = uow.security_events.fold_days_before(midnight)
+            uow.commit()
+
+        assert (first, second) == (1, 1), (
+            "the second night rewrote the first night's days as well"
+        )
+
+        with uow_factory(read_only=True) as uow:
+            totals = uow.security_events.day_totals_between(
+                NOON - timedelta(days=4), NOON
+            )
+
+        assert sorted((row[1], row[2]) for row in totals) == [
+            ("LOGIN_FAILED", 1), ("LOGIN_SUCCEEDED", 1)
+        ]
+
+    def test_it_does_not_read_a_row_before_writing_each_one(
+        self, uow_factory, statements
+    ):
+        """
+        Cost, which no return value shows.
+
+        Every ``(day, kind)`` pair was fetched before it was written --
+        a round trip per row, growing with the table rather than with the
+        work. The visit roll-up was measured for this and lost its
+        per-row statements; this one kept them.
+        """
+        midnight = NOON.replace(hour=0, minute=0, second=0, microsecond=0)
+        for day in (2, 3, 4):
+            for kind in ("LOGIN_FAILED", "LOGIN_SUCCEEDED"):
+                record(uow_factory, kind, NOON - timedelta(days=day))
+
+        with statements() as seen:
+            with uow_factory() as uow:
+                written = uow.security_events.fold_days_before(midnight)
+                uow.commit()
+
+        selects = [one for one in seen if one.lstrip().upper().startswith("SELECT")]
+
+        assert written == 6
+        # One for the boundary, one for the grouped read. Not one per row.
+        assert len(selects) <= 2, selects
 
     def test_today_is_never_folded(self, uow_factory):
         """A total written for a day still receiving events is wrong as

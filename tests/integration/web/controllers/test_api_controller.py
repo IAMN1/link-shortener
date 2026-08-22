@@ -220,3 +220,127 @@ class TestExpiredLink:
 
         r = client.get("/EXPINT", follow_redirects=False)
         assert r.status_code == 410
+
+
+class TestPersonalStatsAnswerAboutTheCaller:
+    """``/api/v1/stats/mine`` reports on whoever is asking, and nobody else.
+
+    ``GetUserActivityStatsUseCase`` takes the account as an argument and
+    checks nothing about it -- deliberately, since the account is not a
+    row it loads and both routes that reach it already know who may ask.
+    What holds that arrangement up is this endpoint taking the id from
+    the request rather than from the query, and nothing was asserting it:
+    a route that started reading ``?user_id=`` would be the whole of the
+    defect, and every test here would still have passed.
+    """
+
+    def test_the_answer_counts_the_callers_own_links(self, client):
+        from tests.integration.conftest import auth_headers, register_and_login
+
+        mine = register_and_login(client, email="mine-stats-a@example.com")
+        for number in (1, 2):
+            client.post(
+                "/api/v1/shorten",
+                json={"url": f"https://example.com/mine-stats-a/{number}"},
+                headers=auth_headers(mine),
+            )
+
+        body = client.get(
+            "/api/v1/stats/mine", headers=auth_headers(mine)
+        ).get_json()
+
+        assert body["total_links"] == 2
+
+    def test_naming_another_account_changes_nothing(self, client):
+        """The parameter does not exist, and that is the point.
+
+        Asked with one anyway, the answer has to stay the caller's own --
+        which is the check that fails the day the id starts coming from
+        the query instead of from the session.
+        """
+        import jwt
+
+        from tests.integration.conftest import auth_headers, register_and_login
+
+        # One client each. A client that has signed in carries the session
+        # cookie and the CSRF cookie with it, so signing a second account
+        # in through the same one is refused -- and the refusal is quiet:
+        # the helper hands back ``None``, ``auth_headers`` becomes empty,
+        # and the request goes out as the first account. Measured here as
+        # this endpoint reporting three links to an account that owns one.
+        theirs_client = client.application.test_client()
+        theirs = register_and_login(
+            theirs_client, email="mine-stats-b@example.com"
+        )
+        for number in (1, 2, 3):
+            theirs_client.post(
+                "/api/v1/shorten",
+                json={"url": f"https://example.com/mine-stats-b/{number}"},
+                headers=auth_headers(theirs),
+            )
+        stranger_id = jwt.decode(
+            theirs, options={"verify_signature": False}
+        )["sub"]
+
+        my_client = client.application.test_client()
+        mine = register_and_login(my_client, email="mine-stats-c@example.com")
+        my_client.post(
+            "/api/v1/shorten",
+            json={"url": "https://example.com/mine-stats-c/1"},
+            headers=auth_headers(mine),
+        )
+
+        body = my_client.get(
+            f"/api/v1/stats/mine?user_id={stranger_id}",
+            headers=auth_headers(mine),
+        ).get_json()
+
+        assert body["total_links"] == 1, (
+            "the endpoint answered about the account named in the query"
+        )
+
+
+class TestTheServiceWideTopLinksAreRealLinks:
+    """``/api/v1/stats`` and the table it fills, checked by its values.
+
+    Every test that touched ``popular_links`` before this one worked on an
+    empty list -- withheld from a caller without ``stats:view_full``, or
+    from a service with nothing in it. So the branch that builds the
+    entries was never asserted on: the whole suite stayed green with the
+    DTO's factory returning ``clicks=0`` for every link, measured by
+    breaking it on purpose. This is the table an operator reads to see
+    which links the service is carrying.
+    """
+
+    def test_a_visited_link_appears_with_its_own_figures(self, app, client):
+        from tests.integration.conftest import (
+            account_with_permissions, auth_headers, only_this_role,
+        )
+
+        analyst, token, user_id = account_with_permissions(
+            app,
+            "top-links-analyst@example.com",
+            "Test1234!",
+            "top-links-analyst",
+            ["stats:view_basic", "stats:view_full", "link:create"],
+        )
+        only_this_role(app, user_id, "top-links-analyst")
+
+        made = analyst.post(
+            "/api/v1/shorten",
+            json={"url": "https://example.com/top-links-probe"},
+            headers=auth_headers(token),
+        ).get_json()
+        for _ in range(3):
+            analyst.get(f"/{made['short_code']}")
+
+        body = analyst.get("/api/v1/stats").get_json()
+
+        entry = [
+            row for row in body["popular_links"]
+            if row["short_code"] == made["short_code"]
+        ]
+        assert entry, body["popular_links"]
+        assert entry[0]["clicks"] == 3, entry[0]
+        assert entry[0]["original_url"] == "https://example.com/top-links-probe"
+        assert entry[0]["short_url"].endswith(made["short_code"])

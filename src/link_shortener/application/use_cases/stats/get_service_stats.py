@@ -10,7 +10,6 @@ from link_shortener.application.ports.cache.link_service_stats_cache import Stat
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.application.utils.url_utils import build_short_url
 
 
 @dataclass
@@ -88,14 +87,12 @@ class GetServiceStatsUseCase(BaseUseCase):
                 total_urls=total_urls,
                 total_clicks=total_clicks,
                 avg_clicks_per_url=round(avg_clicks, 2),
+                # Through the DTO's own factory, which is this and was
+                # written for it. Spelled out here instead, the two said
+                # the same five lines and only one of them was covered by
+                # the tests that build a DTO.
                 popular_links=[
-                    StatsItemResponse(
-                        short_code=str(link.short_code.value),
-                        short_url=build_short_url(self.base_url, link.short_code.value),
-                        original_url=str(link.original_url.value),
-                        clicks=link.clicks,
-                        created_at=link.created_at,
-                    )
+                    StatsItemResponse.from_link(link, self.base_url)
                     for link in most_clicked
                 ],
             )

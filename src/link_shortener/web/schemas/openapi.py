@@ -539,10 +539,11 @@ PATHS: Dict[str, Any] = {
         "get": {
             "summary": "Recorded visits over a span",
             "description": (
-                "When links were opened, not only how often. Needs "
-                "stats:view_basic, which the seeded guest role carries. "
-                "`scope=mine` narrows the answer to the caller's own links "
-                "and requires a session. The top-links table needs "
+                "When links were opened, not only how often. The "
+                "service-wide answer needs stats:view_basic, which the "
+                "seeded guest role carries. `scope=mine` narrows it to "
+                "the caller's own links and needs link:view_own and a "
+                "session. The top-links table needs "
                 "stats:view_full on top and comes back empty without it -- "
                 "a short code is somebody's link, which is a different "
                 "disclosure than a count. Robots are counted and reported "
@@ -567,7 +568,14 @@ PATHS: Dict[str, Any] = {
                 {
                     "name": "code", "in": "query", "required": False,
                     "schema": {"type": "string"},
-                    "description": "Restrict to one link, by its short code.",
+                    "description": (
+                        "Restrict to one link, by its short code. Checked "
+                        "against that link's owner rather than against the "
+                        "statistics permissions: the link's owner, an "
+                        "administrator and a holder of stats:view_any may "
+                        "ask, and nobody else. A code no link carries is "
+                        "404."
+                    ),
                 },
             ],
             "responses": {
@@ -586,7 +594,9 @@ PATHS: Dict[str, Any] = {
                 "Reads the rolled-up days and the raw visits together, so "
                 "the answer reaches further back than the raw rows do. "
                 "Days with no visits are present with a zero, so a chart "
-                "draws a gap rather than joining two distant points."
+                "draws a gap rather than joining two distant points. "
+                "Scoped like /stats/visits: stats:view_basic for the "
+                "service-wide answer, link:view_own for `scope=mine`."
             ),
             "tags": ["stats"],
             "parameters": [
@@ -604,6 +614,11 @@ PATHS: Dict[str, Any] = {
                 {
                     "name": "code", "in": "query", "required": False,
                     "schema": {"type": "string"},
+                    "description": (
+                        "Restrict to one link, by its short code. Gated as "
+                        "on /stats/visits: by that link's owner, not by the "
+                        "statistics permissions."
+                    ),
                 },
             ],
             "responses": {
@@ -1223,8 +1238,9 @@ PATHS: Dict[str, Any] = {
                         "Which span, from a fixed set. Free-form spans "
                         "are not offered: a caller naming its own span "
                         "and bucket count can ask for a million buckets. "
-                        "The same four the visit charts use, so two "
-                        "charts on one screen are about the same week."
+                        "The same four the visit charts use, and cut "
+                        "from the same table, so two answers about "
+                        "one service cover the same days."
                     ),
                     "schema": {
                         "type": "string",

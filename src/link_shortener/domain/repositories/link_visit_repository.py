@@ -39,6 +39,20 @@ class LinkVisitRepository(ABC):
         """
         Everything the statistics page shows for one span.
 
+        Read from the raw visits alone, and not from the folded days --
+        which is a limit rather than an oversight. Three of the four
+        figures it returns are breakdowns by device, by browser and by
+        link, and a folded day keeps none of those: it is a total and a
+        robot count. Filling the timeline from the fold while the
+        breakdowns beside it still came from the raw rows would answer one
+        question with two vocabularies, and the page would show a span of
+        ninety visits split across a handful of devices.
+
+        So this reaches back exactly as far as the retention window does,
+        while ``daily_totals`` reaches further. On the seeded ninety days
+        the two agree; shorten the window and the long span drawn from
+        here shrinks with it while the daily chart below keeps its shape.
+
         Args:
             since: Start of the span, inclusive, in UTC.
             until: End of the span, exclusive, in UTC.
@@ -93,9 +107,18 @@ class LinkVisitRepository(ABC):
         is still receiving visits, and a total written for it would be
         wrong the moment the next one arrives.
 
-        Rolling twice over the same day must not double it -- the
-        implementation replaces the day's row rather than adding to it,
-        so a retried task or a second operator is harmless.
+        Rolling twice over the same day must not double it, and two
+        different things see to that. A run begins at the day after the
+        latest one already folded, so a repeat over a span an earlier run
+        finished finds no work and writes nothing -- that bound is what
+        makes a retried task safe, rather than any rewriting of rows.
+
+        Two runs that overlap -- both reading that boundary before either
+        has committed -- are refused rather than merged: the key on
+        ``(link_id, day)`` rejects the second, and its transaction rolls
+        back whole. The totals the first wrote stand, and no day is
+        doubled. Measured against PostgreSQL: the loser raises
+        ``UniqueViolation`` and the table holds one correct row.
 
         Args:
             before: Fold days earlier than this instant.

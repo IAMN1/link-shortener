@@ -9,7 +9,7 @@ every administrator, and every test about the numbers would still pass.
 """
 
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from unittest.mock import Mock
 
 import pytest
@@ -254,16 +254,42 @@ class TestTheSpansOnOffer:
 
         assert counts.period == DEFAULT_PERIOD
 
-    def test_the_same_spans_the_visit_charts_use(self):
-        """Two charts on one screen must be about the same week."""
+    def test_the_spans_are_the_visit_charts_own_spans(self):
+        """Two charts about one service must be about the same days.
+
+        Not "equal to" -- the same object. Two tables kept equal by
+        comparison were equal in the two things a comparison of them could
+        see, the names and the widths, and differed in the one it could
+        not: where a span starts. Measured at 14:37 UTC, the thirty-day
+        answers covered windows 9 h 23 min apart.
+        """
         from link_shortener.application.use_cases.stats.get_visit_stats import (
             PERIODS as VISIT_PERIODS,
         )
+        from link_shortener.application.utils import chart_spans
 
-        assert set(PERIODS) == set(VISIT_PERIODS)
-        assert {name: span for name, (span, _) in PERIODS.items()} == {
-            name: span for name, (span, _) in VISIT_PERIODS.items()
-        }
+        assert PERIODS is chart_spans.PERIODS
+        assert VISIT_PERIODS is chart_spans.PERIODS
+
+    @pytest.mark.parametrize("period", ["30d", "90d"])
+    def test_a_span_drawn_in_days_starts_on_one(self, use_case, uow, period):
+        """
+        The alignment, asked of this use case rather than of the helper.
+
+        Both are drawn in whole-day buckets, and both are read off an axis
+        labelled with dates -- which is only true if a bucket is a date.
+
+        Args:
+            period: The two spans whose buckets are one day wide.
+        """
+        context = signed_in_as(
+            user_holding(SystemPermissions.AUDIT_VIEW.value), uow
+        )
+
+        counts = use_case.execute(context, period=period, now=NOON)
+
+        assert counts.since.time() == time(0, 0)
+        assert counts.until.time() == time(0, 0)
 
 
 class TestWhatComesBack:

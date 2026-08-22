@@ -13,6 +13,10 @@ Access rules:
     the same people or neither withholds anything.
   - GET /api/v1/stats – roles with 'stats:view_basic'; the popular-links
     breakdown additionally needs 'stats:view_full'.
+  - GET /api/v1/stats/visits and /stats/visits/daily – 'stats:view_basic'
+    for the service-wide answer, 'link:view_own' for 'scope=mine'. A
+    named '?code=' is checked against the link's own owner on top of
+    either. The top-links table needs 'stats:view_full'.
   - GET /api/v1/links/mine – 'link:view_own'.
   - GET /api/v1/stats/mine – 'link:view_own'.
   - DELETE /api/v1/links/<code> – 'link:delete_own' for one's own link,
@@ -23,7 +27,7 @@ Access rules:
 from flask import Blueprint, current_app, g, jsonify, request
 
 from link_shortener.domain import (
-    DomainError, LinkNotFoundError, SystemPermissions
+    DomainError, LinkNotFoundError, PermissionDeniedError, SystemPermissions
 )
 from link_shortener.application import LinkService, AdminService, AuthorizationService
 from link_shortener.web.schemas.batch import BatchCreateResponse
@@ -43,7 +47,9 @@ from link_shortener.web.security.deletion_token import (
     link_id_from,
 )
 from link_shortener.web.request_body import json_object
-from link_shortener.web.security.decorators import login_required, require_permission
+from link_shortener.web.security.decorators import (
+    login_required, require_any_permission, require_permission,
+)
 from link_shortener.domain.i18n import N_
 
 class ApiController:
@@ -203,6 +209,31 @@ class ApiController:
             response_data.popular_links = []
         return jsonify(response_data.model_dump())
 
+    def _require(self, permission: str) -> None:
+        """
+        Refuse this request unless the caller holds one named permission.
+
+        For the checks a decorator cannot make because the answer depends
+        on what the request asked for: one address here serves both the
+        service-wide counts and the caller's own, and the two are opened
+        by different permissions. The decorator lets a holder of either
+        through, and this decides which one this particular request needed.
+
+        Args:
+            permission: What the caller has to hold.
+
+        Raises:
+            PermissionDeniedError: When they do not. It carries the
+                permission that was wanted, so the refusal recorded in the
+                audit journal names it.
+        """
+        if not self.authorization_service.is_allowed(
+            g.get('_domain_user'), permission
+        ):
+            raise PermissionDeniedError(
+                N_("Not authorized"), required=[permission]
+            )
+
     def _require_may_read_one_links_traffic(self, short_code, context):
         """
         Check that this caller may see the traffic of one named link.
@@ -251,20 +282,55 @@ class ApiController:
     # ------------------------------------------------------------------
     # GET /api/v1/stats/visits
     # ------------------------------------------------------------------
-    @require_permission(SystemPermissions.STATS_VIEW_BASIC.value)
+    @require_any_permission(
+        SystemPermissions.LINK_VIEW_OWN.value,
+        SystemPermissions.STATS_VIEW_BASIC.value,
+    )
     def get_visit_stats(self):
         """
         Recorded visits over a span, for the service or for the caller.
 
-        ``scope=mine`` narrows the answer to the caller's own links and
-        needs nothing further -- an account may always see its own. The
-        service-wide answer needs ``stats:view_basic``, and the top-links
-        table on top of it needs ``stats:view_full``: a short code is
-        somebody's link, which is a different disclosure than a count.
+        Two questions behind one address, and they are not opened by the
+        same permission. The service-wide answer is a count nobody owns
+        and needs ``stats:view_basic``, which the seeded ``guest`` role
+        carries. ``scope=mine`` is the caller's own traffic and needs
+        ``link:view_own`` -- the permission the rest of that account's own
+        material is behind, including the page these charts are drawn on
+        and ``/stats/mine`` beside them.
+
+        Asked for under ``stats:view_basic`` alone, ``scope=mine`` made
+        seeing one's own statistics depend on a permission whose own
+        description is "basic *service* statistics", and the dashboard page
+        said so in three places while the route did the opposite: measured,
+        a role holding ``link:view_own`` opened ``/dashboard/stats``, was
+        served its tiles, and got 403 from both charts on it.
+
+        A named ``?code=`` is a third question and carries its own door:
+        ``require_can_view_link_details``, against that link's owner. It
+        does not additionally need ``stats:view_basic``, which is the
+        permission for a count of everything -- and requiring it anyway
+        shut a holder of ``stats:view_any`` out of the page written for
+        exactly that holder: measured, ``/dashboard/links/<code>/stats``
+        answered 200 and the charts on it 403.
+
+        The decorator lets either through and the checks below pick the
+        one this request actually needs -- the arrangement the journal
+        page uses, where a permission opens the door and the endpoint
+        behind each panel enforces its own.
+
+        The top-links table needs ``stats:view_full`` on top of either: a
+        short code is somebody's link, which is a different disclosure than
+        a count.
         """
         context = create_request_context()
         scope = request.args.get("scope", "service")
         period = request.args.get("period", "7d")
+
+        # The named code first, because whether it was named is what
+        # decides which permission the rest of this needs.
+        named = self._require_may_read_one_links_traffic(
+            request.args.get("code"), context
+        )
 
         owner_id = None
         if scope == "mine":
@@ -272,11 +338,10 @@ class ApiController:
                 raise DomainError(
                     N_("Sign in to see your own statistics"), code="UNAUTHENTICATED"
                 )
+            self._require(SystemPermissions.LINK_VIEW_OWN.value)
             owner_id = g.current_user.id
-
-        named = self._require_may_read_one_links_traffic(
-            request.args.get("code"), context
-        )
+        elif named is None:
+            self._require(SystemPermissions.STATS_VIEW_BASIC.value)
 
         summary = self.link_service.get_visit_stats(
             context,
@@ -294,27 +359,32 @@ class ApiController:
     # ------------------------------------------------------------------
     # GET /api/v1/stats/visits/daily
     # ------------------------------------------------------------------
-    @require_permission(SystemPermissions.STATS_VIEW_BASIC.value)
+    @require_any_permission(
+        SystemPermissions.LINK_VIEW_OWN.value,
+        SystemPermissions.STATS_VIEW_BASIC.value,
+    )
     def get_daily_visits(self):
         """
         Visits per day, reaching past the raw rows into the roll-up.
 
-        Same scoping as ``/stats/visits``. Separate endpoint rather than a
-        ``granularity`` parameter because it answers from a different pair
-        of tables and takes a different bound: a year of days is a fine
-        question, a year of hours is not.
+        Same scoping as ``/stats/visits``, and the same two permissions
+        behind it: ``link:view_own`` for one's own, ``stats:view_basic``
+        for the service-wide count. The two endpoints are drawn on one
+        page by one script, so a caller entitled to one chart and refused
+        the other would read half a screen.
+
+        Separate endpoint rather than a ``granularity`` parameter because
+        it answers from a different pair of tables and takes a different
+        bound: a year of days is a fine question, a year of hours is not.
         """
         context = create_request_context()
         scope = request.args.get("scope", "service")
 
-        owner_id = None
-        if scope == "mine":
-            if not g.get("current_user"):
-                raise DomainError(
-                    N_("Sign in to see your own statistics"), code="UNAUTHENTICATED"
-                )
-            owner_id = g.current_user.id
-
+        # What is wrong with the request, before who is asking -- the order
+        # `decisions.md` settles for the administrative routes, and there
+        # is no reason for this one to answer in a different order. A
+        # mistyped `days` beside a code somebody may not read should say
+        # which of the two to fix first, and it is the one the caller can.
         try:
             days = int(request.args.get("days", 90))
         except ValueError as invalid:
@@ -325,6 +395,17 @@ class ApiController:
         named = self._require_may_read_one_links_traffic(
             request.args.get("code"), context
         )
+
+        owner_id = None
+        if scope == "mine":
+            if not g.get("current_user"):
+                raise DomainError(
+                    N_("Sign in to see your own statistics"), code="UNAUTHENTICATED"
+                )
+            self._require(SystemPermissions.LINK_VIEW_OWN.value)
+            owner_id = g.current_user.id
+        elif named is None:
+            self._require(SystemPermissions.STATS_VIEW_BASIC.value)
 
         buckets = self.link_service.get_daily_visits(
             context,

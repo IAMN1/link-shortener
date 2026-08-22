@@ -25,18 +25,26 @@ CHARTS_JS = WEB / "static" / "js" / "charts.js"
 TEMPLATES = WEB / "templates" / "dashboard"
 
 STATS_PAGES = {
-    "my_stats.html": "mine",
-    "service_stats.html": "service",
-    "link_stats.html": "mine",
+    "my_stats.html": ("mine",),
+    "service_stats.html": ("service",),
+    "link_stats.html": ("service", "mine"),
 }
-"""The pages that carry the charts, and the scope each one asks for.
+"""The pages that carry the charts, and the scopes each one asks for.
 
-``link_stats.html`` asks for ``mine`` as well, and passes a code beside it.
-That pairing is the page's whole security argument: the service applies the
-owner and the code as one condition, so an address carrying somebody else's
-code answers with zeroes. A page that asked for the code alone would read
-that link's traffic to anyone who guessed it, and the codes are short.
+``link_stats.html`` asks for both, under one condition. The tiles at the top
+of that page come from ``/links/<code>/extended``, which answers the link's
+owner, an administrator and a holder of ``stats:view_any``; asked with
+``mine`` for all three, the charts beneath those tiles told the third of
+them that a link they had just been shown five visits for had none. What
+neither branch does is ask by the code alone -- the reader who is not
+entitled to another account's traffic keeps the owner condition beside it,
+and the codes in that address are guessable by construction.
 """
+
+PAGE_SCOPES = sorted(
+    (page, scope) for page, scopes in STATS_PAGES.items() for scope in scopes
+)
+"""Every page-and-scope pair, flattened: one page asks for two."""
 
 
 @pytest.fixture
@@ -95,7 +103,7 @@ class TestTheBlockCarriesWhatTheScriptLooksFor:
     stays empty and the page still loads.
     """
 
-    @pytest.mark.parametrize("page, scope", sorted(STATS_PAGES.items()))
+    @pytest.mark.parametrize("page, scope", PAGE_SCOPES)
     def test_the_scope_is_the_one_the_page_means(self, charts_app, page, scope):
         markup = render_block(charts_app, scope)
 
@@ -145,6 +153,29 @@ class TestTheBlockCarriesWhatTheScriptLooksFor:
 
         assert len(queries) == 2, f"expected two requests, found {len(queries)}"
         assert all("code: code" in query for query in queries), queries
+
+    def test_one_panel_is_drawn_at_one_size(self):
+        """
+        Every frame in this file is the same frame.
+
+        A second, narrower one stood beside the wide one and was named in
+        exactly one place: the branch where the daily chart's request
+        failed. So one full-width panel drew at 720 when it had data, at
+        720 when it had none, and at 400 when something went wrong -- the
+        odd size appearing only when the reader already had a problem to
+        read about. Every panel that draws a chart here is a full-width
+        card, so there is one frame.
+        """
+        script = CHARTS_JS.read_text(encoding="utf-8")
+
+        frames = re.findall(r"var (CHART_\w*(?:WIDE|NARROW))\b", script)
+        # Every place that draws the "nothing here" or "it went wrong"
+        # frame, with whatever it passes as options.
+        messages = re.findall(r"drawChartMessage\([^)]*\)", script)
+
+        assert frames == ["CHART_WIDE"], frames
+        assert messages, "no calls found -- the pattern stopped matching"
+        assert [one for one in messages if "size" in one] == [], messages
 
     def test_both_breakdowns_have_a_host_and_a_toggle(self, charts_app):
         markup = render_block(charts_app, "service")
@@ -208,26 +239,31 @@ class TestThePagesMountTheChartsTheSameWay:
     they cannot share is the two lines that include it.
     """
 
-    @pytest.mark.parametrize("page, scope", sorted(STATS_PAGES.items()))
+    @pytest.mark.parametrize("page, scope", PAGE_SCOPES)
     def test_the_page_draws_the_block_with_its_own_scope(self, page, scope):
         source = (TEMPLATES / page).read_text(encoding="utf-8")
 
         assert "dashboard/_visit_charts.html" in source
         assert f"charts.visit_charts('{scope}'" in source
 
-    def test_the_link_page_narrows_by_code_and_never_by_code_alone(self):
+    def test_the_link_page_never_asks_by_the_code_alone(self):
         """
-        The page about one link, and the pairing that makes it safe.
+        The page about one link, and what each of its two branches sends.
 
         Its address carries a short code, and short codes are guessable by
-        construction — six characters. What keeps that from being a way to
-        read a stranger's traffic is that the code is always sent with
-        `scope=mine`, which the service applies as one condition with it.
+        construction — six characters. The endpoint refuses a stranger's
+        code on its own, and the reader who is not entitled to another
+        account's traffic keeps `scope=mine` beside it as a second lock.
+        What neither branch does is drop the code: every figure on this
+        page is about the link the address names.
         """
         source = (TEMPLATES / "link_stats.html").read_text(encoding="utf-8")
 
-        assert "charts.visit_charts('mine', short_code)" in source
-        assert "charts.visit_charts('service'" not in source
+        assert "{% if can('stats:view_any') %}" in source
+        assert re.findall(r"visit_charts\(([^)]*)\)", source) == [
+            "'service', short_code",
+            "'mine', short_code",
+        ]
 
     @pytest.mark.parametrize("page", sorted(STATS_PAGES))
     def test_the_script_is_loaded_from_the_head(self, page):

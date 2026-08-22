@@ -123,7 +123,9 @@ class VisitBreakdown:
     A count against a label, for the "top X" tables.
 
     Attributes:
-        label: Device class, browser family, or network.
+        label: Device class, browser family, or short code -- whichever
+            the breakdown was asked for. Not the visitor's network: that
+            is recorded on the row and no breakdown reads it.
         total: How many visits carried it.
     """
     label: str

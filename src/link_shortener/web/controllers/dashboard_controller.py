@@ -92,14 +92,22 @@ class DashboardController:
         the same endpoints the other statistics pages use, narrowed with
         ``code``.
 
-        The narrowing is always applied together with ``scope=mine``, and
-        that pairing is what keeps this page from becoming a way to read
-        somebody else's traffic: ``get_visit_stats`` applies the owner and
-        the code as one condition, so a code belonging to another account
-        answers with zeroes rather than with its figures. The page is
-        therefore safe for any signed-in caller to open with any code in
-        the address, which is a property worth having on a page whose
-        address is guessable by construction -- the codes are short.
+        What keeps this from being a way to read somebody else's traffic
+        is the endpoint: a named ``code`` goes through
+        ``require_can_view_link_details``, the same gate the tiles at the
+        top of the page pass through, and a stranger's code is answered
+        403 rather than with figures. The page is therefore safe for any
+        signed-in caller to open with any code in the address, which is a
+        property worth having on a page whose address is guessable by
+        construction -- the codes are short.
+
+        ``scope=mine`` is sent beside the code by every reader not
+        entitled to another account's traffic, which leaves the owner
+        condition as a second lock rather than the only one. It is not
+        sent by a holder of ``stats:view_any``: that reader is entitled to
+        this link's traffic, the tiles already answer them out of
+        ``/extended``, and narrowing the charts by owner as well told them
+        a link they had just been shown five visits for had none.
 
         Args:
             short_code: The link to report on, from the address.

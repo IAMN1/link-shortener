@@ -57,9 +57,18 @@ class LinkVisitModel(Base):
         DateTime(timezone=True), nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-    # 45 characters is the widest an IPv6 address gets written; the value
-    # stored here is shorter, but the column matches `urls.guest_identifier`
-    # so the two are comparable without a cast.
+    # 45 characters is the widest an IPv6 address gets written, and the
+    # width `urls.guest_identifier` already uses -- one width for one kind
+    # of value rather than two numbers to keep in step. What the two hold
+    # is not the same thing and they are not to be compared: that column
+    # keeps a guest's address whole, to count their allowance by, while
+    # this one keeps only the network the request came from.
+    #
+    # Written and, so far, read by nobody: no chart breaks visits down by
+    # network. It is kept because it is the only thing on this row that
+    # could tell one source of traffic from another after the fact -- a
+    # column added later fills with nulls for the past, which is the one
+    # thing that cannot be recovered.
     visitor_network: Mapped[str | None] = mapped_column(String(45), nullable=True)
     device: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
     browser: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
@@ -75,9 +84,12 @@ class LinkVisitDayModel(Base):
     free to be deleted by the retention sweep without the year-long chart
     losing its past.
 
-    The primary key is the pair, so rolling the same day twice replaces
-    the row instead of adding a second one. A retried task and a second
-    operator both land on the same state.
+    The primary key is the pair, and it refuses a second row for a day
+    already folded rather than replacing the first: the insert is a plain
+    one, not an upsert, so an overlapping run is rolled back by the key
+    instead of overwriting what the other wrote. What keeps an ordinary
+    repeat from reaching the key at all is the roll-up's own lower bound,
+    which starts it at the day after the latest one folded.
 
     Attributes:
         link_id: The link. ``CASCADE`` for the same reason as above.

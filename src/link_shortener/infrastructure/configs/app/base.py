@@ -563,10 +563,19 @@ class BaseConfig:
     How long a raw visit row is kept before the sweep deletes it.
 
     Days that have ended are folded into one row per link per day first,
-    so the long-range charts keep their shape after the rows behind them
-    are gone. Zero disables the sweep, and the table then grows without
-    limit -- which is a choice, not an accident, and has to be made
-    deliberately.
+    so the daily chart keeps its shape after the rows behind them are
+    gone. It is the one that does: a folded day is a total and a robot
+    count, and the bucketed span above it carries breakdowns by device,
+    by browser and by link that no fold keeps -- so that chart reaches
+    back exactly this far and no further.
+
+    Which is why this number and the longest span on offer are both
+    ninety days. Shorten it and the ninety-day view shrinks with it while
+    the daily chart below it does not, and nothing on the page says why
+    the two disagree.
+
+    Zero disables the sweep, and the table then grows without limit --
+    which is a choice, not an accident, and has to be made deliberately.
     """
 
     SECURITY_EVENT_RETENTION_DAYS: int = env_int(

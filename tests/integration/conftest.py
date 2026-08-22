@@ -152,6 +152,38 @@ def auth_headers(token):
     return {}
 
 
+def only_this_role(app, user_id, role_name):
+    """
+    Leave the account holding one role.
+
+    ``account_with_permissions`` adds a role to the default ``user`` one
+    rather than replacing it, so an account built to lack a permission
+    holds it anyway -- and a check that something is refused would pass or
+    fail for the wrong reason.
+
+    Here rather than in one test file because two of them need it: what
+    one permission opens is a question about the account holding exactly
+    it, and the default role carries four permissions of its own.
+
+    Args:
+        app: The application under test.
+        user_id: Account to strip.
+        role_name: The single role it is to keep.
+    """
+    from sqlalchemy import text
+
+    with app.app_context():
+        with app.container.get_db_manager().session() as session:
+            session.execute(
+                text(
+                    "DELETE FROM user_roles WHERE user_id = :uid AND role_id IN "
+                    "(SELECT id FROM roles WHERE name != :keep)"
+                ),
+                {"uid": user_id, "keep": role_name},
+            )
+            session.commit()
+
+
 def account_with_permissions(app, email, password, role_name, permissions):
     """
     Register an account and add a role holding these permissions.

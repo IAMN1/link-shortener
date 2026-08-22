@@ -25,41 +25,6 @@ NOON = datetime(2026, 3, 10, 12, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture()
-def statements(app):
-    """
-    Record the SQL a block of code sends, for counting round trips.
-
-    Cost is the point of two checks below, and cost is not visible in a
-    return value: a method folding the right numbers with one statement
-    per row is correct and unusable.
-
-    Returns:
-        A context manager yielding the list the statements land in.
-    """
-    from contextlib import contextmanager
-
-    from sqlalchemy import event
-
-    engine = app.container.get_db_manager().engine
-
-    @contextmanager
-    def recording():
-        seen = []
-
-        def note(conn, cursor, statement, parameters, context, executemany):
-            seen.append(statement)
-
-        event.listen(engine, "before_cursor_execute", note)
-        try:
-            yield seen
-        finally:
-            event.remove(engine, "before_cursor_execute", note)
-
-    with app.app_context():
-        yield recording
-
-
-@pytest.fixture()
 def uow_factory(app):
     """Unit of Work factory bound to the integration database."""
     with app.app_context():
@@ -253,6 +218,36 @@ class TestWhatTheBreakdownsSay:
         assert top.index(("topbsy", 4)) < top.index(("topqui", 1))
 
 
+    def test_the_top_links_table_answers_about_the_link_asked_for(
+        self, uow_factory
+    ):
+        """
+        Every figure in one summary answers one question.
+
+        This was the field that did not. Narrowing by link reached the
+        buckets, the device split and the browser split, and left the top
+        table counting the whole service -- so a span asked for one link
+        came back with its own two visits beside a table naming somebody
+        else's busier ones, in the same object, with nothing marking which
+        field had been narrowed.
+        """
+        asked = make_link(uow_factory, "topask")
+        other = make_link(uow_factory, "topoth")
+        visit(uow_factory, asked, NOON + timedelta(minutes=5))
+        for minute in (1, 2, 3, 4):
+            visit(uow_factory, other, NOON + timedelta(minutes=minute))
+
+        with uow_factory() as uow:
+            summary = uow.link_visits.summary(
+                since=NOON, until=NOON + timedelta(hours=1), buckets=1,
+                link_id=asked,
+            )
+
+        assert [(row.label, row.total) for row in summary.top_links] == [
+            ("topask", 1)
+        ]
+
+
 class TestWhoIsAllowedToSeeWhat:
 
     def test_an_owner_sees_only_their_own_links(self, uow_factory):
@@ -330,7 +325,13 @@ class TestKeepingTheShapeOfThePastAfterTheRowsAreGone:
 
     def test_rolling_the_same_day_twice_does_not_double_it(self, uow_factory):
         """
-        A retried task and a second operator both land on the same state.
+        A run that follows a finished one finds no work and writes nothing.
+
+        The two runs here are sequential, which is the shape a retried
+        task takes: the first has committed before the second reads the
+        boundary, so the second starts at the day after everything folded
+        and never reaches the key. Two runs that overlap are a different
+        question, and the check below asks it.
         """
         link = make_link(uow_factory, "roll02")
         visit(uow_factory, link, NOON - timedelta(days=2))
@@ -346,6 +347,42 @@ class TestKeepingTheShapeOfThePastAfterTheRowsAreGone:
             )
 
         assert [d.total for d in days] == [1]
+
+    def test_two_runs_that_overlap_leave_one_correct_day(self, uow_factory):
+        """
+        Both read the boundary before either wrote: the key decides.
+
+        The port used to promise the day's row was replaced, so "a
+        retried task or a second operator is harmless" -- but the delete
+        that replaced it went when the lower bound made it unreachable,
+        and a plain insert does not replace anything. What actually
+        happens is that the second transaction is rejected whole. That is
+        harmless in the sense that matters -- the total is right and it is
+        written once -- and it is not the mechanism that was written down.
+        """
+        from sqlalchemy.exc import IntegrityError
+
+        link = make_link(uow_factory, "roll09")
+        visit(uow_factory, link, NOON - timedelta(days=2))
+        visit(uow_factory, link, NOON - timedelta(days=2, hours=3))
+
+        with uow_factory() as first, uow_factory() as second:
+            # Both find the same work, because neither has committed yet.
+            assert first.link_visits.roll_up_days(before=NOON - timedelta(days=1)) == 1
+            assert second.link_visits.roll_up_days(before=NOON - timedelta(days=1)) == 1
+
+            first.commit()
+            with pytest.raises(IntegrityError):
+                second.commit()
+
+        with uow_factory() as uow:
+            days = uow.link_visits.rolled_days(
+                link, since=NOON - timedelta(days=3), until=NOON
+            )
+
+        assert [d.total for d in days] == [2], (
+            "the day the loser rolled back took the winner's total with it"
+        )
 
     def test_a_second_night_folds_only_what_the_first_one_left(
         self, uow_factory
@@ -466,6 +503,55 @@ class TestKeepingTheShapeOfThePastAfterTheRowsAreGone:
         by_day = {b.at.date(): b.total for b in daily}
         assert by_day[old_day.date()] == 2, "the folded day lost its total"
         assert by_day[NOON.date()] == 1, "the recent day lost its raw visits"
+
+    def test_the_bucketed_span_reads_the_raw_rows_and_not_the_fold(
+        self, uow_factory
+    ):
+        """
+        Where each of the two charts stops, and why they stop differently.
+
+        ``daily_totals`` merges the fold with the raw rows, so the daily
+        chart outlives the retention window. ``summary`` does not, and
+        that is a decision rather than an omission: it returns breakdowns
+        by device, by browser and by link beside its timeline, and a
+        folded day keeps none of those -- it is a total and a robot count.
+        A timeline filled from the fold with breakdowns still counted from
+        the raw rows would put ninety visits above a handful of devices,
+        and nothing on the page would say which was the true figure.
+
+        The cost is that the two disagree once the window is shortened
+        below the longest span on offer. They are both ninety days for
+        that reason.
+        """
+        link = make_link(uow_factory, "rawfld")
+        old_day = NOON - timedelta(days=3)
+        visit(uow_factory, link, old_day)
+
+        with uow_factory() as uow:
+            uow.link_visits.roll_up_days(before=NOON - timedelta(days=2))
+            # The sweep, with a window shorter than the span asked for
+            # below: the day survives only as its folded total.
+            uow.link_visits.delete_raw_before(NOON - timedelta(days=2))
+            uow.commit()
+
+        start = (NOON - timedelta(days=4)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        with uow_factory(read_only=True) as uow:
+            bucketed = uow.link_visits.summary(
+                since=start, until=start + timedelta(days=5), buckets=5,
+                link_id=link,
+            )
+            daily = uow.link_visits.daily_totals(
+                since=start, until=start + timedelta(days=5), link_id=link,
+            )
+
+        assert bucketed.total == 0, (
+            "the bucketed span read the fold, and its breakdowns cannot"
+        )
+        assert sum(day.total for day in daily) == 1, (
+            "the daily chart lost the day the sweep took"
+        )
 
     def test_a_day_present_in_both_places_is_counted_once(self, uow_factory):
         """

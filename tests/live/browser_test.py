@@ -1359,40 +1359,48 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         # and one about everything, side by side and unlabelled.
         assert all("code=charted01" in url for url in asked), asked
 
-    @check("a stranger's code on that page shows nothing rather than their traffic")
+    @check("a stranger's code on that page answers whoever is entitled to it")
     def _():
         # The address carries a short code and short codes are guessable,
-        # so this page is reachable with somebody else's. What keeps it
-        # honest is that the code is always sent with `scope=mine`, which
-        # the service applies as one condition with the owner.
+        # so this page is reachable with somebody else's. Who may read one
+        # is decided by the endpoint -- `require_can_view_link_details`,
+        # the same gate the tiles at the top pass through -- and this
+        # account holds `admin:all`, so the answer for it is yes.
+        #
+        # The page asks under the scope that entitlement implies. Narrowed
+        # by owner as well, it drew a chart of zeroes beneath tiles that
+        # had just reported the link's figures, and nothing on the screen
+        # said which of the two was the true one.
         page = page_for("/login")
         sign_in(page, base)
         page.goto(f"{base}/dashboard/links/foreign01/stats")
         page.wait_for_selector("[data-visit-columns] svg", timeout=8000)
-        narrowed = page.evaluate(
-            "async () => (await (await fetch("
-            "'/api/v1/stats/visits?scope=mine&period=7d&code=foreign01',"
-            " {credentials: 'same-origin'})).json()).total"
-        )
-        # The same link asked for service-wide, where this account is an
-        # administrator and may look. Both halves are needed: without this
-        # one, "zero" would also be the answer for a link nobody has ever
-        # opened, and the check would pass while proving nothing.
+        scope = page.get_attribute("[data-visit-scope]", "data-visit-scope")
         service_wide = page.evaluate(
             "async () => (await (await fetch("
             "'/api/v1/stats/visits?scope=service&period=7d&code=foreign01',"
+            " {credentials: 'same-origin'})).json()).total"
+        )
+        # The owner condition, still refusing. It is what every reader
+        # without the entitlement is sent with, and the second lock behind
+        # the endpoint's own refusal -- so it has to keep working even on
+        # the page that no longer sends it.
+        narrowed = page.evaluate(
+            "async () => (await (await fetch("
+            "'/api/v1/stats/visits?scope=mine&period=7d&code=foreign01',"
             " {credentials: 'same-origin'})).json()).total"
         )
         marks = page.eval_on_selector_all(
             "[data-visit-columns] svg path", "nodes => nodes.length"
         )
 
-        assert service_wide > 0, "the stranger's link has no traffic to withhold"
+        assert scope == "service", f"the page asked for this link under {scope!r}"
+        assert service_wide > 0, "the stranger's link has no traffic to chart"
         assert narrowed == 0, (
-            f"another account's link reported {narrowed} of its "
-            f"{service_wide} visits to a stranger"
+            f"the owner condition let {narrowed} of another account's "
+            f"{service_wide} visits through"
         )
-        assert marks == 0, "the page drew columns for a link that is not this account's"
+        assert marks > 0, "the page charted nothing for a link it may report on"
 
     @check("the links table offers a way to one link's own page")
     def _():
@@ -2098,6 +2106,28 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         assert page.get_attribute(
             '[data-counts-period="90d"]', "aria-pressed"
         ) == "true"
+
+        # The note names the last interval counted, and the ninety-day span
+        # is where that stopped being obvious: it ends at the midnight
+        # after today, `until` is exclusive, and "A — B" reads as including
+        # B -- so the note used to name tomorrow. Read as dates rather than
+        # as text, because the fault was one day, not one word.
+        stamps = page.evaluate(
+            """() => {
+                const said = document.querySelector('[data-counts-note]').textContent;
+                return [...said.matchAll(/\\d{1,4}[./-]\\d{1,2}[./-]\\d{1,4}/g)]
+                    .map(hit => Date.parse(hit[0].replace(/\\./g, '/')));
+            }"""
+        )
+        tomorrow = page.evaluate(
+            "() => { const d = new Date(); d.setHours(0,0,0,0);"
+            " return d.getTime() + 86400000; }"
+        )
+        assert len(stamps) == 2, page.inner_text("[data-counts-note]")
+        assert stamps[1] < tomorrow, (
+            "the span note named a day the figures do not cover: "
+            + page.inner_text("[data-counts-note]")
+        )
 
     @check("the counters are written in the language of the page")
     def _():

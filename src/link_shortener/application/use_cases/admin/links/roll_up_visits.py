@@ -34,7 +34,16 @@ class RollUpVisitsUseCase(BaseUseCase):
         logger: Where the outcome is recorded.
         retention_days: How long a raw visit row is kept. Zero disables
             the sweep, and the table then grows without limit -- the
-            roll-up still runs, so the charts stay correct either way.
+            roll-up still runs, so the daily chart stays correct either
+            way.
+
+            The default is the same number as ``VISIT_RETENTION_DAYS``,
+            which is where it comes from in a running service, and the
+            same number again as the longest span the charts offer. Two
+            defaults that disagree are a service whose history is one
+            length and whose tests are another, and nothing says which is
+            meant. Its twin next door says this too; a test holds both to
+            the configuration rather than to a number typed twice.
     """
 
     uow_factory: UnitOfWorkFactory

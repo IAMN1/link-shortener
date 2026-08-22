@@ -24,33 +24,9 @@ the permission its endpoint asks for, so the two cannot drift apart again.
 import pytest
 from sqlalchemy import text
 
-from tests.integration.conftest import account_with_permissions, csrf_headers
-
-
-def only_this_role(app, user_id, role_name):
-    """
-    Leave the account holding one role.
-
-    ``account_with_permissions`` adds a role to the default ``user`` one
-    rather than replacing it, so an account built to lack ``link:create``
-    holds it anyway -- and a check that a control is absent would pass or
-    fail for the wrong reason.
-
-    Args:
-        app: The application under test.
-        user_id: Account to strip.
-        role_name: The single role it is to keep.
-    """
-    with app.app_context():
-        with app.container.get_db_manager().session() as session:
-            session.execute(
-                text(
-                    "DELETE FROM user_roles WHERE user_id = :uid AND role_id IN "
-                    "(SELECT id FROM roles WHERE name != :keep)"
-                ),
-                {"uid": user_id, "keep": role_name},
-            )
-            session.commit()
+from tests.integration.conftest import (
+    account_with_permissions, csrf_headers, only_this_role,
+)
 
 
 @pytest.fixture(scope="module")
@@ -83,6 +59,25 @@ def reader(app):
         ["link:view_own", "stats:view_basic"],
     )
     only_this_role(app, account[2], "pages-reader")
+    return account
+
+
+@pytest.fixture(scope="module")
+def any_links_analyst(app):
+    """An account entitled to any link's traffic, not only to its own."""
+    account = account_with_permissions(
+        app,
+        "pages-analyst@example.com",
+        "Test1234!",
+        "pages-analyst",
+        [
+            "link:view_own",
+            "stats:view_basic",
+            "stats:view_full",
+            "stats:view_any",
+        ],
+    )
+    only_this_role(app, account[2], "pages-analyst")
     return account
 
 
@@ -140,8 +135,6 @@ def register_enough_accounts(app, client):
         app: The application under test.
         client: A client entitled to read the list.
     """
-    from sqlalchemy import text
-
     from link_shortener.web.controllers.dashboard_controller import USERS_PER_PAGE
 
     with app.app_context():
@@ -357,3 +350,42 @@ class TestSystemRolesAreNotOfferedForEditing:
         sentence = api.get_json()["message"]
         assert api.get_json()["error"] == "ROLE_IS_SYSTEM"
         assert sentence in page.get_data(as_text=True)
+
+
+class TestOneLinksPageFetchesUnderTheReadersEntitlement:
+    """The scope the charts on one link's page are fetched under.
+
+    The tiles at the top of that page come from ``/links/<code>/extended``,
+    which answers the link's owner, an administrator and a holder of
+    ``stats:view_any``. The charts beneath them were fetched under
+    ``scope=mine`` for all three, and the service applies the owner and the
+    code as one condition -- so the third of those three was shown a link's
+    five visits in the tiles and a chart saying it had none, with nothing on
+    the screen to say which was the true one. Measured against the running
+    stack before the fix: tiles ``clicks: 5``, charts ``total: 0``.
+    """
+
+    def test_a_holder_of_view_any_is_not_narrowed_to_their_own(
+        self, any_links_analyst
+    ):
+        """Entitled to this link's traffic, and so asked for it."""
+        client, _, _ = any_links_analyst
+
+        markup = page(client, "/dashboard/links/lnkpg1/stats")
+
+        assert 'data-visit-scope="service"' in markup
+        assert 'data-visit-code="lnkpg1"' in markup
+
+    def test_everybody_else_keeps_the_owner_condition(self, reader):
+        """Not entitled to a stranger's traffic, so the second lock stays.
+
+        The endpoint refuses a stranger's code on its own; this is what
+        keeps that refusal from being the only thing between a guessable
+        address and somebody else's figures.
+        """
+        client, _, _ = reader
+
+        markup = page(client, "/dashboard/links/lnkpg2/stats")
+
+        assert 'data-visit-scope="mine"' in markup
+        assert 'data-visit-code="lnkpg2"' in markup

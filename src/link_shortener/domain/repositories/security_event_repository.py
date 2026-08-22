@@ -82,6 +82,13 @@ class SecurityEventRepository(ABC):
         The current day is never folded: a total written for a day still
         receiving events is wrong as soon as the next one lands.
 
+        Days already folded are not folded again. A run begins at the day
+        after the latest one written, so a repeat over a span an earlier
+        run finished finds no work -- which is what makes a retried task
+        safe. Two runs that overlap are refused rather than merged: the
+        key on ``(day, event_type)`` rejects the second, whose transaction
+        rolls back whole, and no day is doubled either way.
+
         Args:
             day: Midnight UTC of the current day; everything before it is
                 folded.

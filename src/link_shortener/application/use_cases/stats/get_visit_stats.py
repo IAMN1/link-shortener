@@ -1,9 +1,11 @@
 """
 Reading recorded visits into the shapes a chart can draw.
 
-The spans on offer are fixed rather than free-form, and the reason is
-not tidiness: a caller free to name its own span and bucket count can
-ask for a million buckets, and the database will oblige.
+The spans on offer, and where each one begins, come from
+``application.utils.chart_spans`` -- shared with the security counters
+rather than copied, because the two are read about one service and a
+reader comparing "redirects this month" with "sign-ins this month" is
+entitled to the same month.
 """
 
 from dataclasses import dataclass
@@ -14,20 +16,11 @@ from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
+from link_shortener.application.utils.chart_spans import (
+    DEFAULT_PERIOD, PERIODS, span_of,
+)
 from link_shortener.domain import DomainError, ShortCode, VisitSummary
 from link_shortener.domain.i18n import N_
-
-
-# What a caller may ask for, and how finely each span is drawn. A free
-# choice of span and bucket count would let one request ask for a million
-# buckets, and the query planner would oblige.
-PERIODS = {
-    "24h": (timedelta(hours=24), 24),
-    "7d": (timedelta(days=7), 7 * 4),
-    "30d": (timedelta(days=30), 30),
-    "90d": (timedelta(days=90), 90),
-}
-DEFAULT_PERIOD = "7d"
 
 
 @dataclass
@@ -35,10 +28,22 @@ class GetVisitStatsUseCase(BaseUseCase):
     """
     Read the recorded visits for a span, for the service or for one link.
 
-    Who may see what is decided here rather than by the route, because
-    the answer depends on the row: a link's own owner may see its visits,
-    and so may a holder of ``stats:view_any``, and nobody else may see
-    either. A decorator can only ask "is anybody signed in".
+    Who may see what is decided by the route, in
+    ``_require_may_read_one_links_traffic``, and this takes the answer as
+    two filters: ``link_id`` for the link that was allowed and
+    ``owner_id`` for the account a caller is confined to. The decision
+    does depend on the row -- a link's own owner may see its visits, and
+    so may an administrator or a holder of ``stats:view_any``, and nobody
+    else may see either -- but the row is one the route has already
+    loaded to make that decision. Loading it a second time here is what
+    the guard was changed to stop doing: measured, two identical
+    ``SELECT ... FROM urls`` and four pool checkouts per call, on an
+    endpoint a chart polls every ten seconds.
+
+    So the filters arrive decided, and applying them is all that happens
+    here: both are applied together when both are given, which is what
+    makes an owner asking about a link that is not theirs get zeroes
+    rather than somebody else's figures.
 
     Attributes:
         uow_factory: Opens the read transaction.
@@ -120,8 +125,7 @@ class GetVisitStatsUseCase(BaseUseCase):
             else:
                 link_id = link.id
 
-        until = now or datetime.now(timezone.utc)
-        since = until - span
+        since, until = span_of(now or datetime.now(timezone.utc), span, buckets)
 
         with self.uow_factory(read_only=True) as uow:
             summary = uow.link_visits.summary(
