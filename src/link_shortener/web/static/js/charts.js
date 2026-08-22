@@ -20,12 +20,19 @@ var SVG_NS = 'http://www.w3.org/2000/svg';
 
 // The system of coordinates a chart is drawn in. Not pixels: the SVG is
 // scaled to whatever the panel is wide, so these numbers only decide the
-// *proportions* and the size of the text relative to the plot. A narrow
-// panel therefore gets its own, smaller frame -- the same 11px label
-// stretched across a 720-wide viewBox in a half-width panel renders at
-// about 7px, which is how a chart ends up with axis text nobody can read.
+// *proportions* and the size of the text relative to the plot -- the same
+// 11px label stretched across a 720-wide viewBox in a half-width panel
+// renders at about 7px, which is how a chart ends up with axis text
+// nobody can read.
+//
+// One frame, because every panel that draws a chart here is a full-width
+// card. A second, narrower one stood beside this and was named in exactly
+// one place: the branch where the daily chart failed to load. So that
+// chart was 720 wide when it drew, 720 wide when it had nothing to draw,
+// and 400 wide when the request behind it went wrong -- three sizes for
+// one panel, and the odd one out only ever appeared when something was
+// already broken.
 var CHART_WIDE = { w: 720, h: 240 };
-var CHART_NARROW = { w: 400, h: 200 };
 var CHART_PAD = { top: 12, right: 8, bottom: 26, left: 40 };
 
 // Three hues and a tail, and the count is measured rather than chosen --
@@ -714,7 +721,7 @@ function mountVisitCharts(root) {
                 + chartQuery({ scope: scope, days: 90, code: code }));
             if (!resp) return;
             if (!resp.ok) {
-                drawChartMessage(daily, 'failed', { size: CHART_NARROW });
+                drawChartMessage(daily, 'failed', {});
                 return;
             }
             var data = await resp.json();

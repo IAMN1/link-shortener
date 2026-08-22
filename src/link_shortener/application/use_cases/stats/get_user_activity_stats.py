@@ -12,8 +12,22 @@ class GetUserActivityStatsUseCase(BaseUseCase):
     """
     Retrieve activity statistics for a specific user.
 
-    Access is restricted: only the user themselves or an administrator
-    (with ``admin:view_users``) can view the statistics.
+    Who may ask about whom is decided by the two routes that reach this,
+    and deliberately not here. ``GET /api/v1/stats/mine`` holds
+    ``link:view_own`` and passes the caller's own id, which it takes from
+    the request rather than from the query -- there is no way to name
+    somebody else through it. ``GET /api/v1/admin/users/<id>/stats`` takes
+    the id from the address and holds ``admin:view_users``.
+
+    The check is not moved in here the way ``ReadJournalUseCase`` and
+    ``GetSecurityCountsUseCase`` moved theirs. Those two have a caller
+    that reaches them without passing a decorator -- the CLI -- and this
+    one has none; the account whose statistics these are is an argument,
+    not a row this use case loads, so there is nothing here that a route
+    does not already know. What that costs is written down: the guarantee
+    lives in two places rather than one, and a route that started taking
+    the id from the query would be the whole of the defect. A test holds
+    ``/stats/mine`` to answering about its caller.
     """
     uow_factory: UnitOfWorkFactory
     base_url: str
@@ -29,12 +43,7 @@ class GetUserActivityStatsUseCase(BaseUseCase):
         Returns:
             UserActivityResponse containing total links, total clicks,
             average clicks per link, and the 10 most recent links.
-
-        Raises:
-            DomainError: If the caller is not authorized.
         """
-
-        # Authorization: admin or the user themselves
         with self.uow_factory(read_only=True) as uow:
             stats = uow.links.get_user_stats(user_id)
 

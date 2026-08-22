@@ -12,7 +12,7 @@ by: a security event is about the service.
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Tuple, cast as as_type
+from typing import Dict, List, Optional, Tuple, cast as as_type
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.engine import CursorResult
@@ -174,14 +174,43 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
             row = counted.setdefault(event_type, [0] * buckets)
             row[position] = total
 
+    def _first_unfolded_day(self) -> Optional[datetime]:
+        """
+        Midnight of the first day the fold has not written yet.
+
+        Every kind is folded for every day in one statement, so the latest
+        day present is the boundary: everything up to it is done, and the
+        day after it is where tonight's work starts.
+
+        Returns:
+            The day to start from, or ``None`` when nothing has been
+            folded yet and the whole table is the work.
+        """
+        latest = self.session.execute(
+            select(func.max(SecurityEventDayModel.day))
+        ).scalar()
+
+        return None if latest is None else _as_utc(latest) + timedelta(days=1)
+
     def fold_days_before(self, day: datetime) -> int:
         """
-        Write the day totals for every day that is over.
+        Write the day totals for every day that is over and not folded yet.
 
-        Days are folded from the raw rows and written whole, replacing any
-        total already stored for the same day and kind -- so a retried task
-        and a second operator land on the same state rather than doubling
-        a count.
+        Only those days: the scan starts at the day after the latest row
+        in ``security_event_days``, and a first run -- which has none --
+        takes everything. Without that bound this grouped the whole
+        retention window every night, a year of it, and rewrote every day
+        row it had ever written to the same numbers. The visit roll-up was
+        given the bound for exactly that reason; this half of the pair was
+        left behind, and the two are written from one template.
+
+        A plain insert, as the visit roll-up is. It was a read and a write
+        per ``(day, kind)`` pair -- a ``SELECT`` before every row, growing
+        with the table rather than with the work -- and with the bound in
+        place there is nothing for a read to find. What keeps a day from
+        being folded twice is the bound; what keeps two runs at once from
+        writing one day twice is the key on ``(day, event_type)``, which
+        refuses the second rather than doubling the total.
 
         Args:
             day: Midnight UTC of the current day.
@@ -202,15 +231,17 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
             epoch_seconds(self.session, SecurityEventModel.occurred_at) // DAY
         ).label("day_index")
 
-        statement = (
-            select(
-                SecurityEventModel.event_type,
-                day_index,
-                func.count(SecurityEventModel.id),
-            )
-            .where(SecurityEventModel.occurred_at < day)
-            .group_by(SecurityEventModel.event_type, day_index)
-        )
+        statement = select(
+            SecurityEventModel.event_type,
+            day_index,
+            func.count(SecurityEventModel.id),
+        ).where(SecurityEventModel.occurred_at < day)
+
+        since = self._first_unfolded_day()
+        if since is not None:
+            statement = statement.where(SecurityEventModel.occurred_at >= since)
+
+        statement = statement.group_by(SecurityEventModel.event_type, day_index)
 
         totals: Dict[Tuple[datetime, str], int] = {}
         for event_type, index, count in self.session.execute(statement):
@@ -219,18 +250,10 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
             )
             totals[(midnight, str(event_type))] = int(count)
 
-        for (midnight, event_type), total in totals.items():
-            existing = self.session.get(
-                SecurityEventDayModel, (midnight, event_type)
-            )
-            if existing:
-                existing.total = total
-            else:
-                self.session.add(
-                    SecurityEventDayModel(
-                        day=midnight, event_type=event_type, total=total
-                    )
-                )
+        self.session.add_all([
+            SecurityEventDayModel(day=midnight, event_type=event_type, total=total)
+            for (midnight, event_type), total in totals.items()
+        ])
 
         return len(totals)
 

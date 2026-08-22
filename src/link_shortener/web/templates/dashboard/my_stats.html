@@ -23,8 +23,11 @@
 
 {# The counters above are lifetime totals; the charts below are a span the
    reader chooses. `mine` narrows every figure to this account's own links,
-   which needs no permission beyond being signed in -- an account may
-   always see its own traffic. #}
+   and is opened by `link:view_own` -- the permission this page itself is
+   behind, and the one `/stats/mine` above asks for. It used to be served
+   under `stats:view_basic`, which is the service-wide count's permission,
+   so a reader holding what this page needs was shown the page, given its
+   tiles, and refused both charts on it. #}
 {{ charts.visit_charts('mine') }}
 
 <div class="card card--flush">

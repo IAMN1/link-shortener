@@ -1,19 +1,18 @@
 """
 Reading the counted security events into the shapes a chart can draw.
 
-The spans on offer are the ones the visit charts already use, and that is
-deliberate rather than lazy: the two sets of figures are read on the same
-screen, and a reader comparing "sign-ins" against "redirects" over what
-they believe is the same week should not be comparing two different weeks.
-
-Free-form spans are refused for the reason they are refused there too -- a
-caller naming its own span and bucket count can ask for a million buckets,
-and the database will oblige.
+The spans on offer, and where each one begins, come from
+``application.utils.chart_spans`` -- the same source the visit charts read
+from, so that "sign-ins last month" and "redirects last month" cannot mean
+two different months. They used to be a copy each, held equal by a test
+that compared the two dictionaries: it saw the names and the widths, and
+not that one moved a thirty-day span onto whole days while the other took
+the last thirty days from the instant it was asked.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime, timezone
+from typing import List, Optional, Tuple
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.auth.authorization_service import (
@@ -23,25 +22,14 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.admin.privilege_guard import load_actor
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
+from link_shortener.application.utils.chart_spans import (
+    DEFAULT_PERIOD, PERIODS, span_of,
+)
 from link_shortener.domain import (
     DomainError, PermissionDeniedError, SystemPermissions,
 )
 from link_shortener.domain.i18n import N_
 
-
-PERIODS: Dict[str, Tuple[timedelta, int]] = {
-    "24h": (timedelta(hours=24), 24),
-    "7d": (timedelta(days=7), 7 * 4),
-    "30d": (timedelta(days=30), 30),
-    "90d": (timedelta(days=90), 90),
-}
-"""The spans a caller may ask for, and how finely each is drawn.
-
-The same four the visit charts offer, so that two charts on one screen are
-about the same week.
-"""
-
-DEFAULT_PERIOD = "7d"
 
 REQUIRED_PERMISSION = SystemPermissions.AUDIT_VIEW.value
 """What it takes to see these figures.
@@ -136,9 +124,7 @@ class GetSecurityCountsUseCase(BaseUseCase):
         self._require_may_read(context, log)
 
         span, buckets = PERIODS[period]
-        since, until = self._span_of(
-            now or datetime.now(timezone.utc), span, buckets
-        )
+        since, until = span_of(now or datetime.now(timezone.utc), span, buckets)
 
         with self.uow_factory(read_only=True) as uow:
             series = uow.security_events.buckets_between(since, until, buckets)
@@ -162,45 +148,6 @@ class GetSecurityCountsUseCase(BaseUseCase):
             series=series,
             buckets=buckets,
         )
-
-    @staticmethod
-    def _span_of(
-        now: datetime, span: timedelta, buckets: int
-    ) -> Tuple[datetime, datetime]:
-        """
-        Both ends of a span, given how finely it is drawn.
-
-        A span drawn in whole days is moved onto the days themselves:
-        it ends at the midnight after now and begins ``buckets`` days
-        before that, so every bucket is a date rather than a slice
-        running from whatever time of day the question was asked. The
-        last bucket is therefore today, still filling up.
-
-        Two things need that. The folded totals in
-        ``security_event_days`` are totals between midnights and cannot
-        be laid on a bucket that straddles two days, so without this the
-        fold is unreadable and the sweep takes the long-range chart's
-        past with it. And the axis already labels these buckets with
-        dates, which is only true if a bucket is one.
-
-        Shorter buckets keep the span as asked: an hour of a 24-hour
-        span means the hour that just passed, and rounding it to the
-        clock would answer a different question.
-
-        Args:
-            now: The moment the question was asked.
-            span: How long the span is.
-            buckets: How many intervals it is drawn in.
-
-        Returns:
-            Start, inclusive, and end, exclusive, both in UTC.
-        """
-        if buckets < 1 or span / buckets != timedelta(days=1):
-            return now - span, now
-
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = midnight + timedelta(days=1)
-        return end - timedelta(days=buckets), end
 
     def _require_may_read(self, context: RequestContext, log: Logger) -> None:
         """

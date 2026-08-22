@@ -42,12 +42,24 @@
     </div>
 </div>
 
-{# `mine` together with the code, never the code alone: the service applies
-   the owner and the code as one condition, so this address answers with
-   zeroes for a link belonging to somebody else. That matters here more
-   than on the other two pages, because this address carries a short code
-   and short codes are guessable by construction. #}
+{# The scope follows what this reader is entitled to, because the tiles
+   above already do. They come from `/links/<code>/extended`, which answers
+   the link's owner, an administrator and a holder of `stats:view_any` --
+   and asked with `mine` for all three, the charts beneath those tiles told
+   the third of them that a link they had just been shown five visits for
+   had none. One screen, two answers, and nothing on it to say which was
+   the true one.
+
+   Everybody else keeps `mine` beside the code. The endpoint refuses a
+   stranger's code on its own -- `require_can_view_link_details`, the same
+   gate the tiles pass through -- so the owner condition is a second lock
+   rather than the only one, and it is worth having on an address that
+   carries a short code: short codes are guessable by construction. #}
+{% if can('stats:view_any') %}
+{{ charts.visit_charts('service', short_code) }}
+{% else %}
 {{ charts.visit_charts('mine', short_code) }}
+{% endif %}
 
 {% endblock %}
 {% block extra_head %}

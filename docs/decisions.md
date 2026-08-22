@@ -430,9 +430,12 @@ reasoning: [Architecture](architecture.md#the-anonymous-request-and-the-ceiling-
 `/api/v1/stats/visits/daily` is checked against `can_view_link_details`,
 the same gate the extended link endpoint uses.
 
-**Why.** Both endpoints hold `stats:view_basic`, which the `guest` role
-carries — that is deliberate, because the service-wide answer is a count
-nobody owns. A named code is not that answer. Measured against the running
+**Why.** Both endpoints answer the service-wide question to a holder of
+`stats:view_basic`, which the `guest` role carries — that is deliberate,
+because the service-wide answer is a count nobody owns. A named code is not
+that answer, and it is not opened by that permission either: see *Your own
+statistics are opened by `link:view_own`*, where the three questions behind
+this one address are separated. Measured against the running
 stack: an anonymous caller who knew a seven-character code was given the
 link's total, its bucketed timeline and its device and browser split,
 while the same caller asking `/api/v1/links/<code>` got `clicks: null` and
@@ -447,6 +450,52 @@ endpoints with no check on it at all.
 than a span of zeroes, for everybody. The existence of a code is public
 anyway — the redirect and the basic endpoint answer it — and it is only
 the traffic behind it that is not.
+
+### Your own statistics are opened by `link:view_own`
+
+**Decided** (2026-08-22): `/api/v1/stats/visits` and
+`/api/v1/stats/visits/daily` take either permission at the door and pick
+the one the request needs inside — `stats:view_basic` for the
+service-wide count, `link:view_own` for `scope=mine`.
+
+**Why.** They held `stats:view_basic` alone, so seeing one's own traffic
+depended on holding the permission for the *service's* — whose own
+description is "basic service statistics". Everything else about an
+account's own material is behind `link:view_own`: `/links/mine`,
+`/stats/mine`, and the dashboard page these very charts are drawn on. The
+page said so in three places and the route did the opposite. Measured
+against the running stack: a role holding `link:view_own` and not
+`stats:view_basic` opened `/dashboard/stats` with 200, was served its
+tiles by `/stats/mine` with 200, and got 403 from both charts on the same
+screen — the empty screen the comment above those page routes promises
+not to serve.
+
+**Why a decorator and a check rather than one or the other.** The answer
+depends on what the request asked for, and `?scope=` is not something a
+decorator can read. `require_any_permission` lets a holder of either
+through — which is what decides whether the address is worth opening at
+all — and `_require` inside names the one this request actually needed,
+so the refusal carries it into the audit journal. The journal page is
+built the same way: one permission opens it, and each panel's endpoint
+enforces its own.
+
+**A named `?code=` is a third question, with a third door.** It is checked
+against that link's owner by `require_can_view_link_details` — the gate in
+*One link's traffic belongs to whoever owns the link* — and needs neither of
+the other two on top. Requiring the service-wide permission for it as well
+shut a holder of `stats:view_any` out of the page written for exactly that
+holder: measured on a role carrying `link:view_own` and `stats:view_any`,
+`/dashboard/links/<code>/stats` answered 200 and both charts on it 403. The
+same shape of defect this entry opened with, one door over, and it was this
+entry's own fix that made it — found by walking the perimeter again
+afterwards rather than by any test.
+
+**What it costs.** A caller holding `stats:view_basic` and not
+`link:view_own` can no longer ask for `scope=mine`. No seeded role is in
+that position — `user` and `analyst` carry both — which is exactly why
+every branch is asserted rather than left true by accident.
+
+---
 
 ### An account's responses are not stored by the browser
 
@@ -917,6 +966,80 @@ system they mean refused and warning.
 shortest possible interval stays a decision made here rather than in a text
 box. The daily chart is refreshed with the page and by the button, never by
 the timer — it answers from a roll-up that gains one row a day.
+
+---
+
+### One link's page asks under its reader's entitlement
+
+**Decided** (2026-08-22): `link_stats.html` sends `scope=service` beside the
+code for a holder of `stats:view_any`, and `scope=mine` for everybody else.
+
+**Why.** The tiles at the top of that page come from
+`/links/<code>/extended`, which answers the link's owner, an administrator
+and a holder of `stats:view_any` — the three named in *One link's traffic
+belongs to whoever owns the link*. The charts beneath them were fetched
+under `scope=mine` for all three, and the service applies the owner and the
+code as one condition, so the third of those three was shown a stranger's
+link reporting five visits in the tiles and none in the chart under them.
+Measured against the running stack: `/extended` answered `clicks: 5`,
+`/stats/visits?scope=mine&code=…` answered `total: 0`, and the same
+question without the owner condition answered `5`. The page's own script
+said the two halves answered for the same three people, and the controller
+behind it said they did not; both are true now.
+
+**The owner condition is not gone, it is scoped.** Every reader without the
+entitlement still sends it, which leaves it as a second lock behind
+`require_can_view_link_details` on an address that carries a short code —
+and short codes are guessable by construction. What it stopped being is the
+only thing keeping the page honest: the endpoint refuses a stranger's code
+by itself, and has since that entry was written.
+
+**What the controller's docstring claimed.** That a stranger's code
+"answers with zeroes rather than with its figures", which stopped being
+true the day the guard went in — it answers 403, to the page and to the API
+alike. Measured: both halves of the page, 403.
+
+---
+
+### One table of spans, and one place that decides where each begins
+
+**Decided** (2026-08-22): `PERIODS` and `span_of` live in
+`application/utils/chart_spans.py`. Both the visit charts and the security
+counters import them; neither keeps a copy.
+
+**Why.** They kept a copy each, and a test held the two dictionaries equal.
+What that test could see was the names and the widths. What it could not
+see was the alignment, which lives in the code that turns a span into two
+moments — and there the two had drifted: the counters moved a span drawn in
+whole days onto the days themselves, while the visit charts took the last
+N days from the instant the question was asked.
+
+Measured at 14:37:05 UTC on 2026-03-10:
+
+```
+30d  visits  2026-02-08T14:37:05Z .. 2026-03-10T14:37:05Z
+30d  events  2026-02-09T00:00:00Z .. 2026-03-11T00:00:00Z
+```
+
+Nine hours and twenty-three minutes apart, on two charts a reader is
+invited to compare — which is the thing the shared span table existed to
+prevent, and it was the half nobody was comparing that broke it.
+
+**The alignment matters on its own, not only for the comparison.** The two
+long spans are drawn in day-wide buckets and their axis is labelled by
+`formatDate`, which prints a date and no time. A bucket beginning at 14:37
+labelled "8 February" holds an afternoon and the morning after it. It is
+also what makes a folded day readable: a total between midnights cannot be
+laid on a bucket that straddles two of them, and `link_visit_days` exists
+so that the sweep does not take the long-range chart's past with it.
+
+**The short spans are deliberately not aligned.** An hour of a 24-hour span
+means the hour that just passed; rounding it to the clock would answer a
+different question.
+
+**What holds it now.** The two use cases are asserted to hold the *same
+object* rather than equal ones, and the alignment is asserted from three
+sides: the helper, each use case, and the endpoint the page fetches.
 
 ---
 
@@ -1488,9 +1611,11 @@ refused these numbers, and the panel is not rendered for a reader holding
 `logs:view` alone: a panel whose every request answers 403 reads as the
 service being broken rather than as the reader being unentitled.
 
-**The spans are the visit charts' spans.** Two charts on one screen must be
-about the same week. A test holds the two lists against each other rather
-than trusting that they were copied correctly.
+**The spans are the visit charts' spans.** Two charts about one service
+must be about the same days. They were two copies held equal by a test that
+compared them, which saw the names and the widths and not where a span
+begins — see *One table of spans, and one place that decides where each
+begins*.
 
 **What looking at it changed.** Two faults the suite had no opinion about,
 both found by opening the page. The axis along the bottom was empty:
@@ -1659,6 +1784,37 @@ reader is wired in.
 
 Things that are wrong, understood, and deliberately left. Each says what it
 would cost to fix.
+
+<details>
+<summary><b>The bucketed span stops where the raw rows do</b> — accepted 2026-08-22</summary>
+
+`daily_totals` merges the folded days with the raw visits, so the daily
+chart outlives the retention sweep. `summary` — the chart above it, the one
+with the span buttons — reads the raw rows alone, so it reaches back
+exactly as far as `VISIT_RETENTION_DAYS` and no further.
+
+**Why it is not simply fixed.** `summary` returns three breakdowns beside
+its timeline: by device, by browser, and by link. A folded day keeps none
+of them — `link_visit_days` holds a total and a robot count. Filling the
+timeline from the fold while the breakdowns beside it still came from the
+raw rows would put ninety visits above a handful of devices, on one panel,
+with nothing saying which figure was the true one. That is a worse defect
+than the one it would close: a panel whose figures contradict each other is
+worse than a panel that reaches back less far.
+
+**What it costs, and when.** Nothing at the seeded settings: the sweep and
+the longest span on offer are both ninety days, and measured on a full
+window the two charts agree. Shorten `VISIT_RETENTION_DAYS` below ninety
+and they part — measured at seven days, the ninety-day view showed 8 visits
+above a daily chart showing 90.
+
+**What it would cost to fix.** Columns on `link_visit_days` for the device
+class, the browser family and the link, which turns one row per link per day
+into one row per link per day per combination — the table the fold exists to
+keep small. The two numbers are held apart by a test rather than left to
+drift.
+
+</details>
 
 <details>
 <summary><b>The mail-on-request routes answer at two speeds</b> — accepted 2026-08-20</summary>

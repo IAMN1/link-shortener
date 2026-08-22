@@ -164,7 +164,7 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
             browsers=self._breakdown(
                 LinkVisitModel.browser, since, until, link_id, owner_id
             ),
-            top_links=self._top_links(since, until, owner_id),
+            top_links=self._top_links(since, until, link_id, owner_id),
         )
 
     @staticmethod
@@ -275,7 +275,11 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
         ]
 
     def _top_links(
-        self, since: datetime, until: datetime, owner_id: Optional[str]
+        self,
+        since: datetime,
+        until: datetime,
+        link_id: Optional[str],
+        owner_id: Optional[str],
     ) -> List[VisitBreakdown]:
         """
         The ten most visited links in the span, by short code.
@@ -283,9 +287,18 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
         The label is the code rather than the id: the id means nothing on
         a page, and joining here saves the caller ten lookups.
 
+        Narrowed by ``link_id`` like every other figure in the summary.
+        It was the one that was not, so an answer about one link carried a
+        table of other people's codes: measured, a span asked for a link
+        with two visits came back with ``total`` 2, its own device split,
+        and a top table naming three links, the busiest of them somebody
+        else's with nine. Every other field answered the question that was
+        asked and this one answered a different one, in the same object.
+
         Args:
             since: Start of the span.
             until: End of the span.
+            link_id: Restrict to one link.
             owner_id: Restrict to the links of one account.
 
         Returns:
@@ -302,6 +315,8 @@ class SQLAlchemyLinkVisitRepository(LinkVisitRepository):
             .order_by(func.count(LinkVisitModel.id).desc())
             .limit(10)
         )
+        if link_id is not None:
+            statement = statement.where(LinkVisitModel.link_id == link_id)
         if owner_id is not None:
             statement = statement.where(LinkModel.owner_id == owner_id)
 

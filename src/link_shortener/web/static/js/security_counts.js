@@ -212,10 +212,19 @@ function mountSecurityCounts(root) {
         // What the figures are of, said in words: a chart with no span on
         // it is a chart that means whatever the reader last remembers
         // choosing.
+        //
+        // The far end is the last interval counted, not `until` itself.
+        // `until` is exclusive -- a span drawn in whole days ends at the
+        // midnight *after* today -- while "A — B" reads as including B,
+        // so on the thirty- and ninety-day spans the note named tomorrow:
+        // read on 10 March, it said "Counted: 9 February — 11 March".
         if (note) {
+            var from = new Date(answer.since).getTime();
+            var width = (new Date(answer.until).getTime() - from)
+                / Math.max(1, answer.buckets);
             note.textContent = t('counts_span', {
                 since: formatDate(answer.since),
-                until: formatDate(answer.until)
+                until: formatDate(new Date(answer.until).getTime() - width)
             });
         }
     }

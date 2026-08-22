@@ -17,10 +17,13 @@
    The interval on the freshness note comes from the pressed button's own
    text for the same reason: "every 5 min" and the control that set it
    cannot then disagree. #}
-{# `code` narrows every figure to one link. It is only ever passed together
-   with `mine`: the service applies the owner and the code as one condition,
-   so the pair is what keeps a guessable address from reading somebody
-   else's traffic. #}
+{# `code` narrows every figure to one link. Who may read one is decided by
+   the endpoint -- `require_can_view_link_details`, the same gate the
+   extended link endpoint passes through -- so a stranger's code is refused
+   rather than answered with zeroes. The page that passes a code sends
+   `mine` beside it for every reader not entitled to somebody else's
+   traffic, which leaves the owner condition as a second lock on an address
+   whose short code is guessable by construction. #}
 {% macro visit_charts(scope, code=None) %}
 <div data-visit-scope="{{ scope }}"{% if code %} data-visit-code="{{ code }}"{% endif %}>
 

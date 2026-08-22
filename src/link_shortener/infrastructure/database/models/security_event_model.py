@@ -75,9 +75,14 @@ class SecurityEventDayModel(Base):
     days that are over and cannot change; the raw rows behind them are
     then free to be swept without the long-range chart losing its past.
 
-    The primary key is the pair, so rolling the same day twice replaces
-    the row instead of adding a second one -- a retried task and a second
-    operator land on the same state.
+    The primary key is the pair, and it refuses a second row for a day
+    already folded rather than replacing the first: the insert is a plain
+    one, not an upsert, so an overlapping run is rolled back by the key
+    instead of overwriting what the other wrote. What keeps an ordinary
+    repeat from reaching the key at all is the fold's own lower bound,
+    which starts it at the day after the latest one written -- the same
+    arrangement ``link_visit_days`` keeps, since the two are folded from
+    one template.
 
     Attributes:
         day: Midnight UTC of the day being summarised.
