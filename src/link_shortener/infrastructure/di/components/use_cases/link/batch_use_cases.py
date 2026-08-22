@@ -64,7 +64,6 @@ class BatchUseCasesComponent:
 
         return BatchCreateLinksUseCase(
             uow_factory=self.uow_factory,
-            cache=self.cache,
             stats_cache=self.stats_cache,
             base_url=self.base_url,
             logger=self.logger,
@@ -73,6 +72,7 @@ class BatchUseCasesComponent:
             guest_link_limit=self.guest_link_limit,
             guest_link_window_days=self.guest_link_window_days,
             default_guest_ttl_seconds=self.default_guest_ttl_seconds,
+            max_collision_attempts=self.max_collision_attempts,
             grouper=grouper,
             fetcher=fetcher,
             creator=creator,

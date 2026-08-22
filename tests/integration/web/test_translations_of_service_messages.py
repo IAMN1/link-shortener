@@ -256,7 +256,7 @@ class TestABatchRefusesInTheReadersLanguage:
 
         body = response.get_json()
         assert response.status_code == 200, body
-        assert body["results"][0]["error"] == expected
+        assert body["results"][0]["message"] == expected
 
     def test_the_same_refusal_reads_the_same_on_both_routes(self, app):
         """The property that was broken, stated as one comparison.
@@ -264,6 +264,12 @@ class TestABatchRefusesInTheReadersLanguage:
         One URL, one reason, two endpoints: whatever the single-link route
         says, the batch says. This is what a per-item sentence written in
         the application layer cannot hold, however carefully it is worded.
+
+        Both halves, because a refusal is both: the code a caller branches
+        on and the sentence a reader reads. The batch used to answer with
+        the sentence under the name the envelope gives the code, so a
+        client that read ``error`` got a reason from one route and a
+        translation from the other.
         """
         client = in_language(app, "ru")
 
@@ -272,7 +278,7 @@ class TestABatchRefusesInTheReadersLanguage:
             "/api/v1/batch/shorten", json={"urls": [self.BAD_URL]}
         )
 
-        assert (
-            batch.get_json()["results"][0]["error"]
-            == single.get_json()["message"]
-        )
+        item = batch.get_json()["results"][0]
+        envelope = single.get_json()
+        assert item["message"] == envelope["message"]
+        assert item["error"] == envelope["error"]

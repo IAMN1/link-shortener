@@ -1119,6 +1119,23 @@ def _():
     r = guest.post("/api/v1/batch/shorten", json={})
     assert r.status_code == 400
 
+@test("POST /api/v1/batch/shorten (a refused item names its code)")
+def _():
+    # The fourth of the five requests a minute this address is allowed
+    # here, and the last one this section spends.
+    #
+    # A per-item refusal reads the way the error envelope does: `error` is
+    # the code, `message` is the sentence. It used to hold the sentence
+    # under the envelope's name for the code, so the only way to tell a
+    # malformed URL from a spent quota was to match on text -- text that
+    # changes with the reader's language.
+    r = guest.post("/api/v1/batch/shorten", json={"urls": ["not-a-url"]})
+    assert r.status_code == 200
+    item = r.get_json()["results"][0]
+    assert item["success"] is False
+    assert item["error"] == "VALIDATION_ERROR"
+    assert item["message"] and item["message"] != item["error"]
+
 
 # ─── 10. Authenticated: Create link ────────────────────────────────────
 print("\n=== AUTHENTICATED: CREATE LINK ===")
@@ -2222,7 +2239,7 @@ success = result.summary()
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 156
+EXPECTED_CHECKS = 157
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")

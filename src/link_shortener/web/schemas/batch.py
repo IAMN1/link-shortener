@@ -2,6 +2,10 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_serializer
 
+from link_shortener.application.dtos.batch import (
+    BatchCreateResponse as ApplicationBatchResponse,
+    BatchItemResponse as ApplicationBatchItem,
+)
 from link_shortener.web.i18n import translate_error
 
 class BatchItemResponse(BaseModel):
@@ -12,6 +16,23 @@ class BatchItemResponse(BaseModel):
     who shortened ten URLs at once could not take back any of them, while a
     guest who shortened one could. The token is filled in by the controller,
     which is where the signing key lives.
+
+    ``retry_after_seconds`` is present on the refusals that clear by
+    themselves, and it is here because a ``Retry-After`` header describes a
+    whole response. A batch that ran out of the guest's allowance partway
+    down the list answers 200 -- some items were created -- and the refused
+    ones had nothing to say about when to come back, while the same
+    refusal, raised for a batch that got nothing done at all, answers 429
+    and sends the header.
+
+    ``error`` is the machine-readable code and ``message`` is the sentence,
+    which is what ``ErrorResponse`` means by the same two names. It was the
+    other way round here -- ``error`` held the finished sentence and the
+    code was dropped -- so one field name meant a reason in one half of the
+    API and a translation of it in the other, and the only way to tell a
+    malformed URL from a spent quota was to match on text that changes with
+    the reader's language. The ``Refusal`` the DTO carries has held the code
+    the whole way for exactly this, and the boundary threw it away.
     """
 
     success: bool
@@ -19,6 +40,8 @@ class BatchItemResponse(BaseModel):
     short_code: Optional[str] = None
     short_url: Optional[str] = None
     error: Optional[str] = None
+    message: Optional[str] = None
+    retry_after_seconds: Optional[int] = None
     is_new: Optional[bool] = None
     from_cache: Optional[bool] = None
     duplicate_of: Optional[str] = None
@@ -55,20 +78,27 @@ class BatchItemResponse(BaseModel):
     )
 
     @classmethod
-    def from_dto(cls, dto) -> "BatchItemResponse":
+    def from_dto(cls, dto: ApplicationBatchItem) -> "BatchItemResponse":
         """Build schema from the application DTO.
 
         This is where a refused item gets its sentence. The DTO carries the
         refusal with its msgid intact precisely so that the wording happens
         here, in the request whose language is known -- the same place the
         error envelope words a refusal that was raised.
+
+        The code goes out beside it, untranslated, because it is the half a
+        caller can act on.
         """
         return cls(
             success=dto.success,
             url=dto.url,
             short_code=dto.short_code,
             short_url=dto.short_url,
-            error=translate_error(dto.error) if dto.error else None,
+            error=dto.error.code if dto.error else None,
+            message=translate_error(dto.error) if dto.error else None,
+            retry_after_seconds=(
+                dto.error.retry_after_seconds if dto.error else None
+            ),
             is_new=dto.is_new,
             from_cache=dto.from_cache,
             duplicate_of=dto.duplicate_of,
@@ -97,7 +127,8 @@ class BatchCreateResponse(BaseModel):
                     {
                         "success": False,
                         "url": "invalid-url",
-                        "error": "Invalid URL"
+                        "error": "VALIDATION_ERROR",
+                        "message": "URL must have a scheme!"
                     }
                 ],
                 "total": 2,
@@ -108,7 +139,7 @@ class BatchCreateResponse(BaseModel):
     )
 
     @classmethod
-    def from_dto(cls, dto) -> "BatchCreateResponse":
+    def from_dto(cls, dto: ApplicationBatchResponse) -> "BatchCreateResponse":
         """Build schema from the application DTO."""
         return cls(
             results=[BatchItemResponse.from_dto(item) for item in dto.items],

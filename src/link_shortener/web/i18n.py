@@ -38,11 +38,26 @@ class Marked(Protocol):
     and translated by the same function -- a second implementation would be
     a second answer, and the batch endpoint is where the two would part
     company.
+
+    Read-only, because reading is all this does with them. Declared as
+    plain attributes, the protocol was asking for the right to assign, and
+    a frozen ``Refusal`` does not grant it: it satisfied this only as long
+    as nothing said out loud that a ``Refusal`` was what came in. The batch
+    schema said it, and the gate reported the mismatch that had been there
+    all along.
     """
 
-    message: str
-    template: str
-    params: Dict[str, Any]
+    @property
+    def message(self) -> str:
+        """The sentence in English."""
+
+    @property
+    def template(self) -> str:
+        """The msgid the sentence is looked up by."""
+
+    @property
+    def params(self) -> Dict[str, Any]:
+        """What the placeholders in the template stand for."""
 
 LANGUAGE_COOKIE_NAME = "lang"
 """Name of the cookie holding a deliberate choice of language.

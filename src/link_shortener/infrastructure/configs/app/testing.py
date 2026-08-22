@@ -1,6 +1,5 @@
-from link_shortener.infrastructure.configs.app.base import (
-    BaseConfig, MAX_BATCH_ITEMS
-)
+from link_shortener.application.dtos.batch import MAX_BATCH_ITEMS
+from link_shortener.infrastructure.configs.app.base import BaseConfig
 
 
 class TestingConfig(BaseConfig):

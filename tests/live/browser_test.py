@@ -430,7 +430,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 64
+    expected = 65
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -567,6 +567,35 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         assert not is_a_code(message), (
             f"the page shows a machine-readable code: {message!r}"
         )
+
+    @check("a refused item of a batch shows a sentence, not a code")
+    def _():
+        """The same property, on the form beside it.
+
+        The check above covers the single form only, and the two scripts
+        read different fields off different shapes: the batch reads a
+        per-item verdict, where ``error`` is the code and ``message`` is
+        the sentence. Nothing here would have noticed the batch printing
+        the code -- the API test suite reads the JSON, and the check above
+        never touches this form.
+        """
+        page = page_for("/")
+        # The batch form lives behind the mode switch, so the run reaches
+        # it the way a visitor does rather than by filling a hidden field.
+        page.click('.mode-btn[data-mode="batch"]')
+        page.wait_for_selector("#mode-batch.active", timeout=5000)
+        page.fill("#urls-batch", "https://a_b.example/x")
+        page.click("#form-batch button[type=submit]")
+        page.wait_for_selector("#result .alert--error", timeout=5000)
+        message = page.inner_text("#result .alert--error").strip()
+
+        assert message, "the error area stayed empty"
+        assert not is_a_code(message), (
+            f"the page shows a machine-readable code: {message!r}"
+        )
+        # And the address it was about, so a row that refuses the wrong
+        # item reads as a failure rather than as a refusal of everything.
+        assert "a_b.example" in page.inner_text("#result")
 
     @check("registration refuses a weak password in words")
     def _():

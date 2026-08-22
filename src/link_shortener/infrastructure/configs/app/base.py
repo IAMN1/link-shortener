@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from sqlalchemy.engine import URL, make_url
 
+from link_shortener.application.dtos.batch import MAX_BATCH_ITEMS
 from link_shortener.domain.value_objects.email import EMAIL_PATTERN_RE
 from link_shortener.domain.value_objects.short_code import (
     MAX_LENGTH as CODE_MAX_LENGTH,
@@ -163,17 +164,6 @@ def normalise_backend(url: str) -> str:
         ).render_as_string(hide_password=False)
 
     return url
-
-
-MAX_BATCH_ITEMS = 100
-"""Hard ceiling on how many URLs one request may carry.
-
-The request schema refuses a longer list before anything looks at it, so a
-body cannot be turned into unbounded work. ``BATCH_CREATE_LIMIT`` is the
-policy inside that ceiling and cannot be set past it: above it, the setting
-silently did nothing, because the schema refused the request first and with
-its own message.
-"""
 
 
 class BaseConfig:

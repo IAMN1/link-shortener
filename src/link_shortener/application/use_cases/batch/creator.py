@@ -1,6 +1,7 @@
 from collections import defaultdict
 from typing import Dict, List, Optional
 
+from link_shortener.application.use_cases.batch.groups import UrlGroup
 from link_shortener.domain import (
     Link, CodeGenerator, LinkRepository, ShortCode, UrlHash
 )
@@ -30,7 +31,7 @@ class BatchLinkCreator:
     def create_new_links(
         self,
         repository: LinkRepository,
-        groups: List[Dict],
+        groups: List[UrlGroup],
         owner_id: Optional[OwnerID] = None,
         guest_identifier: Optional[str] = None,
         ttl_seconds: int = 0,
@@ -52,7 +53,7 @@ class BatchLinkCreator:
 
         Args:
             repository: Link repository (for existence checks).
-            groups: List of group dicts with keys ``hash``, ``original_url``, ``urls``.
+            groups: The batch's groups that still need a link.
             owner_id: OwnerID of the creator, or ``None`` for guests.
             guest_identifier: Identifier a guest's links are counted under.
             ttl_seconds: Time-to-live for the new links; 0 means forever.
@@ -66,9 +67,9 @@ class BatchLinkCreator:
         # 1. Generate initial codes
         hash_to_code = {}
         for group in groups:
-            original_url = group["original_url"]
+            original_url = group.original_url
             code = self.code_generator.generate_for_url(original_url)
-            hash_to_code[group["hash"]] = code
+            hash_to_code[group.hash] = code
 
         # 2. Resolve collisions, asking the repository about every candidate
         resolved = self._resolve_collisions(hash_to_code, repository, groups)
@@ -76,7 +77,7 @@ class BatchLinkCreator:
         # 3. Create Link entities
         new_links = []
         for group in groups:
-            url_hash = group["hash"]
+            url_hash = group.hash
             # Its own name, not the ``code`` above: that one is what the
             # generator produced for every group, this one is what survived
             # collision resolution, and a hash may have nothing here.
@@ -90,7 +91,7 @@ class BatchLinkCreator:
                 Link.create(
                     url_hash=url_hash,
                     short_code=resolved_code,
-                    original_url=group["original_url"],
+                    original_url=group.original_url,
                     owner=owner_id,
                     guest_identifier=guest_identifier,
                     ttl_seconds=ttl_seconds,
@@ -102,7 +103,7 @@ class BatchLinkCreator:
         self,
         hash_to_code: Dict[UrlHash, ShortCode],
         repository: LinkRepository,
-        groups: List[Dict],
+        groups: List[UrlGroup],
     ) -> Dict[UrlHash, ShortCode]:
         """
         Give every hash a code nobody holds.
@@ -126,7 +127,7 @@ class BatchLinkCreator:
         Args:
             hash_to_code: Mapping from URL hash to initially generated code.
             repository: Link repository, asked once per round.
-            groups: Original groups (needed for hash → group lookup).
+            groups: The same groups, for the hash → group lookup.
 
         Returns:
             Dictionary mapping each URL hash to a unique short code.
@@ -134,7 +135,7 @@ class BatchLinkCreator:
         resolved = {}
         attempts: defaultdict = defaultdict(int)
         occupied: set = set()
-        hash_to_group = {g["hash"]: g for g in groups}
+        hash_to_group = {g.hash: g for g in groups}
         candidates = dict(hash_to_code)
 
         while candidates:
@@ -163,7 +164,7 @@ class BatchLinkCreator:
                 group = hash_to_group[url_hash]
                 if attempts[url_hash] <= self.max_attempts:
                     next_round[url_hash] = self.code_generator.generate_unique(
-                        group["original_url"], attempts[url_hash]
+                        group.original_url, attempts[url_hash]
                     )
                 else:
                     # The salted ladder is a pure function of the URL, so it
@@ -171,7 +172,7 @@ class BatchLinkCreator:
                     # anything new. Giving up there dropped an item from a
                     # batch that could perfectly well have been created.
                     next_round[url_hash] = self.code_generator.generate_fresh(
-                        group["original_url"]
+                        group.original_url
                     )
 
             candidates = next_round
