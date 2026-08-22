@@ -1,6 +1,7 @@
 from typing import Dict, List, Tuple
 
 from link_shortener.application.dtos.batch import BatchItemResponse
+from link_shortener.application.use_cases.batch.groups import UrlGroup
 from link_shortener.domain import DedupScope, Link, LinkRepository
 from link_shortener.application.ports.cache.link_cache import LinkCache
 
@@ -12,7 +13,7 @@ class BatchLinkFetcher:
     Returns three collections:
         - Results for items already found.
         - Groups that still need link creation.
-        - Links that were fetched from DB and should be cached.
+        - Links a repository lookup found, for the caller to count.
     """
 
     def __init__(self, cache: LinkCache):
@@ -25,10 +26,10 @@ class BatchLinkFetcher:
     def fetch(
         self,
         repository: LinkRepository,
-        groups: List[Dict],
+        groups: List[UrlGroup],
         base_url: str,
         scope: DedupScope,
-    ) -> Tuple[List[BatchItemResponse], List[Dict], List[Link]]:
+    ) -> Tuple[List[BatchItemResponse], List[UrlGroup], List[Link]]:
         """
         Look up existing links for each group, within one scope.
 
@@ -44,8 +45,7 @@ class BatchLinkFetcher:
 
         Args:
             repository: Link repository for DB queries.
-            groups: List of valid group dicts (must contain ``hash``, ``original_url``,
-                ``urls``).
+            groups: The batch's groups, one per distinct address.
             base_url: Base URL for constructing short URLs.
             scope: The scope to deduplicate within.
 
@@ -53,24 +53,30 @@ class BatchLinkFetcher:
             Tuple of:
                 - ``results``: list of BatchItemResponse for found items.
                 - ``groups_to_create``: list of groups that need new links.
-                - ``links_to_cache``: list of Link objects (from DB) to be cached.
+                - ``links_found_in_db``: the links the repository
+                  answered with. Named for what they are rather than
+                  for what was once done with them: the batch does not
+                  warm the cache, and has not since the write was found
+                  to undo a DELETE that committed while it ran. The
+                  reason is written where that decision is taken, in
+                  ``BatchCreateLinksUseCase.execute``.
         """
         if not groups:
             return [], [], []
 
         # ---- 1. Cache lookup ----
-        hashes = [g["hash"] for g in groups]
+        hashes = [g.hash for g in groups]
         cached_map = self.cache.get_by_hashes(hashes, scope)
 
         confirmed = self._confirm(cached_map, repository, scope)
 
         cache_results = []
-        groups_not_in_cache = []
+        groups_not_in_cache: List[UrlGroup] = []
 
         for group in groups:
-            link = confirmed.get(group["hash"])
+            link = confirmed.get(group.hash)
             if link:
-                for url in group["urls"]:
+                for url in group.urls:
                     cache_results.append(
                         BatchItemResponse.success_(
                             url=url,
@@ -89,17 +95,17 @@ class BatchLinkFetcher:
             return cache_results, [], []
         
         # ---- 2. Database lookup for missing ----
-        missing_hashes = [g["hash"] for g in groups_not_in_cache]
+        missing_hashes = [g.hash for g in groups_not_in_cache]
         db_map = repository.find_live_by_hashes(missing_hashes, scope)
 
         db_results = []
-        groups_to_create = []
-        links_to_cache = []
+        groups_to_create: List[UrlGroup] = []
+        links_found_in_db = []
 
         for group in groups_not_in_cache:
-            link = db_map.get(group["hash"])
+            link = db_map.get(group.hash)
             if link:
-                for url in group["urls"]:
+                for url in group.urls:
                     db_results.append(
                         BatchItemResponse.success_(
                             url=url,
@@ -111,12 +117,12 @@ class BatchLinkFetcher:
                             expires_at=link.expires_at,
                         )
                     )
-                links_to_cache.append(link)
+                links_found_in_db.append(link)
             else:
                 groups_to_create.append(group)
 
         all_results = cache_results + db_results
-        return all_results, groups_to_create, links_to_cache
+        return all_results, groups_to_create, links_found_in_db
 
     def _confirm(
         self,

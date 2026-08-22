@@ -135,9 +135,14 @@
                             // the one thing the caller needed to know,
                             // which of their addresses was not taken and
                             // why, was the one thing not shown.
+                            // `message` is the sentence and `error` is the
+                            // code, as everywhere else in this API. They
+                            // were the other way round on this route alone,
+                            // and this line read the field that now holds
+                            // the code.
                             html += '<div class="text-xs text-muted">' + escapeHtml(r.url) + '</div>'
                                 + '<div class="alert alert--error mb-1">'
-                                + escapeHtml(r.error || t('refused')) + '</div>';
+                                + escapeHtml(r.message || t('refused')) + '</div>';
                             return;
                         }
                         var status = r.is_new ? t('status_created') : t('status_existing');

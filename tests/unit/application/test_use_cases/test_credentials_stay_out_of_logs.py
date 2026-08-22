@@ -319,18 +319,23 @@ class TestGroupingABatch:
         """The line has to stay findable against the response.
 
         The caller is told which URL failed -- ``BatchItemResponse`` echoes
-        it back -- so the log needs the key that ties the two together, not
-        the address.
+        it back -- so the log needs what ties the two together, not the
+        address.
+
+        Where it sat in the request, which is what a reader holding the
+        request can look up. Counting refusals instead, as this line used
+        to, made the second URL of a batch ``invalid_0`` and pointed at the
+        first.
         """
-        groups = grouper.group(["https://example.com/ok", WITH_CREDENTIALS])
+        _, rejected = grouper.group(["https://example.com/ok", WITH_CREDENTIALS])
 
         warnings = [
             call for call in logger.method_calls
             if call.args and call.args[0] == "Invalid URL in batch"
         ]
         assert len(warnings) == 1
-        assert warnings[0].kwargs["item"] == "invalid_0"
-        assert "invalid_0" in groups
+        assert warnings[0].kwargs["item"] == 1
+        assert [item.url for item in rejected] == [WITH_CREDENTIALS]
 
     def test_what_goes_back_to_the_caller_carries_no_secret_either(
         self, grouper
@@ -347,9 +352,9 @@ class TestGroupingABatch:
         sentence alone would not look, and a field added later is covered
         by this without anybody remembering to come back here.
         """
-        groups = grouper.group([BREAKS_NFKC])
+        _, rejected = grouper.group([BREAKS_NFKC])
 
-        refusal = groups["invalid_0"]["error"]
+        refusal = rejected[0].refusal
 
         assert SECRET not in str(refusal)
         assert SECRET not in refusal.message

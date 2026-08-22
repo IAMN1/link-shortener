@@ -22,7 +22,7 @@ from link_shortener.domain import (
     LinkConflictError
 )
 from link_shortener.domain.policies.guest_quota_policy import (
-    guest_quota_spent, links_left_for_guest,
+    guest_allowance, guest_quota_spent,
 )
 from link_shortener.domain.policies.reserved_codes import is_reserved
 from link_shortener.domain.i18n import N_
@@ -343,15 +343,14 @@ class CreateShortLinkUseCase(BaseUseCase):
             # while the batch endpoint, asked the same question, answered
             # 200 with the very same link.
             if guest_id is not None:
-                # Serialised first: counting and inserting are two
-                # statements, and without this every simultaneous request
-                # from the same guest reads the same allowance and spends
-                # it in full.
-                uow.links.lock_guest_quota(guest_id)
-                count = uow.links.count_guest_links_by_identifier(
-                    guest_id, self.guest_link_window_days
-                )
-                if not links_left_for_guest(count, self.guest_link_limit):
+                # One link is wanted, so any allowance at all is enough.
+                # The batch path asks the same question and reads the
+                # number instead, which is why the locking and the counting
+                # behind it live on ``guest_allowance`` rather than here.
+                if not guest_allowance(
+                    uow.links, guest_id, self.guest_link_limit,
+                    self.guest_link_window_days,
+                ):
                     raise guest_quota_spent(
                         self.guest_link_limit, self.guest_link_window_days
                     )

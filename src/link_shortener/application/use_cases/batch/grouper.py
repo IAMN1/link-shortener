@@ -1,6 +1,9 @@
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from link_shortener.application.dtos.refusal import Refusal
+from link_shortener.application.use_cases.batch.groups import (
+    RejectedUrl, UrlGroup,
+)
 from link_shortener.domain import (
     DomainError, HashCalculator, OriginalUrl, ValidationError
 )
@@ -11,8 +14,8 @@ class UrlGrouper:
     """
     Validates input URLs, computes their hashes, and groups them for deduplication.
 
-    URLs the domain refuses are grouped separately with an error flag, so
-    one bad entry costs its own item and not the whole batch.
+    URLs the domain refuses are returned separately, so one bad entry costs
+    its own item and not the whole batch.
     """
     def __init__(
         self,
@@ -36,34 +39,32 @@ class UrlGrouper:
         self.allow_internal_targets = allow_internal_targets
         self.hash_calculator = hash_calculator
         self.logger = logger
-    
-    def group(self, urls: List[str]) -> Dict[str, Dict]:
+
+    def group(self, urls: List[str]) -> Tuple[List[UrlGroup], List[RejectedUrl]]:
         """
         Group URLs by their computed hash.
 
         For each URL:
             - Create an ``OriginalUrl`` value object (validates scheme).
             - Compute the hash.
-            - Add to a group keyed by the hash string.
-        Invalid URLs are grouped under a synthetic key and marked with an error.
+            - Add to the group that hash already has, or open one.
+
+        Returns the two outcomes apart rather than mixed under a flag: the
+        caller wanted them apart in every case, and separating them here is
+        what lets a group promise a hash instead of carrying ``None``.
 
         Args:
             urls: Raw URL strings.
 
         Returns:
-            Dictionary where key is hash (for valid) or ``"invalid_{n}"`` (for invalid).
-            Each value is a dict with keys:
-                - ``hash``: UrlHash (if valid) else None
-                - ``original_url``: OriginalUrl (if valid) else None
-                - ``urls``: list of input strings falling into this group
-                - ``is_valid``: boolean
-                - ``error``: the refusal, if invalid
+            Tuple of the groups, one per distinct address in input order,
+            and the URLs the domain refused.
         """
 
-        groups: Dict[str, Dict] = {}
-        invalid_counter = 0
+        by_hash: Dict[str, UrlGroup] = {}
+        rejected: List[RejectedUrl] = []
 
-        for url in urls:
+        for position, url in enumerate(urls):
             try:
                 original_url = OriginalUrl(
                     url,
@@ -74,44 +75,44 @@ class UrlGrouper:
                 url_hash = self.hash_calculator.calculate(original_url)
                 key = url_hash.value
 
-                if key not in groups:
-                    groups[key] = {
-                        "hash": url_hash,
-                        "original_url": original_url,
-                        "urls": [],
-                        "is_valid": True,
-                    }
-                groups[key]["urls"].append(url)
+                if key not in by_hash:
+                    by_hash[key] = UrlGroup(
+                        hash=url_hash, original_url=original_url
+                    )
+                by_hash[key].urls.append(url)
             except (ValidationError, ValueError) as e:
                 # ``ValidationError`` is a domain error, not a ValueError, so
                 # catching only the latter meant nothing was ever caught: a
                 # single rejected URL escaped and failed the entire request
                 # with a 400, and this whole branch -- the per-item error the
                 # response format is built around -- was dead code.
-                key = f"invalid_{invalid_counter}"
-                invalid_counter += 1
-                groups[key] = {
-                    "hash": None,
-                    "original_url": None,
-                    "urls": [url],
-                    "is_valid": False,
-                    # The refusal itself, not ``str(e)``. Flattened here,
-                    # it reached the boundary as finished English and the
-                    # batch answered a Russian reader in a language the
-                    # single-link route had already stopped using.
-                    "error": (
-                        Refusal.from_error(e)
-                        if isinstance(e, DomainError)
-                        else Refusal.of(str(e), "VALIDATION_ERROR")
-                    ),
-                }
+                rejected.append(
+                    RejectedUrl(
+                        url=url,
+                        # The refusal itself, not ``str(e)``. Flattened here,
+                        # it reached the boundary as finished English and the
+                        # batch answered a Russian reader in a language the
+                        # single-link route had already stopped using.
+                        refusal=(
+                            Refusal.from_error(e)
+                            if isinstance(e, DomainError)
+                            else Refusal.of(str(e), "VALIDATION_ERROR")
+                        ),
+                    )
+                )
                 # Same reason as in ``create_short_link``: the URL that
                 # reaches this branch is one the domain has just refused,
                 # so it is unchecked input and may hold a password. The
                 # caller is told which URL failed -- it is echoed back in
                 # ``BatchItemResponse`` -- so the log loses no one's
-                # ability to find it. ``key`` ties this line to that item.
+                # ability to find it.
+                #
+                # Named by where it sat in the request. The old ``item``
+                # counted refusals rather than items -- the second URL of a
+                # batch was logged as ``invalid_0`` -- so the one thing the
+                # line was for, pointing at an item the address is withheld
+                # for, is the one thing it could not do.
                 self.logger.warning(
-                    "Invalid URL in batch", item=key, error=str(e)
+                    "Invalid URL in batch", item=position, error=str(e)
                 )
-        return groups
+        return list(by_hash.values()), rejected

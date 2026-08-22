@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from link_shortener.domain import DomainError
 
@@ -28,12 +28,20 @@ class Refusal:
         message: The sentence in English.
         template: The msgid the boundary looks the sentence up by.
         params: What the placeholders in the template stand for.
+        retry_after_seconds: When the refusal clears, for the refusals that
+            do. A raised one says this in a ``Retry-After`` header, which a
+            200 has no way of carrying: a batch that spent the guest's
+            allowance halfway through refused the rest of the items and
+            told nobody it was a refusal that clears in a day -- while the
+            very same refusal, raised for the whole batch, said so. A
+            header cannot say it per item, so the item says it.
     """
 
     code: str
     message: str
     template: str
     params: Dict[str, Any] = field(default_factory=dict)
+    retry_after_seconds: Optional[int] = None
 
     @classmethod
     def from_error(cls, error: DomainError) -> "Refusal":
@@ -51,6 +59,9 @@ class Refusal:
             message=error.message,
             template=error.template,
             params=dict(error.params),
+            # Read the way the error handler reads it off a raised one, so
+            # the two answers cannot disagree about how long to wait.
+            retry_after_seconds=getattr(error, "retry_after_seconds", None),
         )
 
     @classmethod

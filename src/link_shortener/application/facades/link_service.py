@@ -144,7 +144,10 @@ class LinkService:
             BatchCreateResponse with per‑URL results and aggregates.
 
         Raises:
-            ValueError: If the batch size exceeds the configured limit.
+            ValidationError: If the batch size exceeds the configured
+                limit. A domain error, not a ``ValueError``: this said the
+                latter, and the CLI is a caller that reads this docstring
+                and cannot read the use case.
         """
         return self.batch_create_links_use_case.execute(urls, context)
 
