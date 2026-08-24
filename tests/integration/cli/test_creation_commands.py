@@ -16,7 +16,7 @@ account created.
 
 import pytest
 from flask.testing import FlaskCliRunner
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from link_shortener.domain.value_objects.email import Email
 from link_shortener.domain.value_objects.short_code import ShortCode
@@ -1009,3 +1009,152 @@ class TestTheAlembicGroupWithAlembicOff:
                 inspect(app.container.get_db_manager().engine).get_table_names()
             )
         assert after == before
+
+
+class AuditedConfig(CreationConfig):
+    """The same profile with the audit trail switched on.
+
+    The rest of this file runs with ``AUDIT_ENABLED = False``, which is
+    right for what those tests ask: they are about accounts and links.
+    The records are a separate claim and need the journal actually wired,
+    so they get a profile of their own rather than a flag flipped under
+    everything else.
+    """
+
+    AUDIT_ENABLED = True
+
+
+@pytest.fixture
+def audited_app(db_manager):
+    """Application with the audit trail wired to that database."""
+    from link_shortener.web.app_factory import create_app
+
+    application = create_app(config=AuditedConfig())
+    application.container.db_component._manager = db_manager
+    return application
+
+
+@pytest.fixture
+def audited_runner(audited_app):
+    """CLI runner bound to the audited app."""
+    return FlaskCliRunner(audited_app)
+
+
+def _events(app):
+    """The security events recorded so far, oldest first.
+
+    Read out of the table rather than asserted at the call site: the
+    counting wrapper is what puts an event in front of the charts, and a
+    command calling ``log_...`` on a logger of its own would satisfy a
+    mock while leaving both the table and the journal empty.
+    """
+    with app.app_context():
+        with app.container.get_db_manager().session() as session:
+            return [
+                row[0]
+                for row in session.execute(
+                    text(
+                        "SELECT event_type FROM security_events "
+                        "ORDER BY occurred_at, id"
+                    )
+                ).all()
+            ]
+
+
+class TestTheCommandsLeaveARecord:
+    """Creating an account and resetting a password are recorded.
+
+    Both are acts that change who may do what, which is the one rule the
+    vocabulary admits events by -- and both went unrecorded from the
+    shell while the same acts through the API were written down. The
+    account an operator seeds a deployment with is typically the only
+    administrator it has, and its creation was the one the journal did
+    not hold; the reset is reached for an account believed to be
+    compromised, which is where an investigation starts.
+    """
+
+    def test_create_admin_is_recorded_with_the_role_it_granted(
+        self, audited_runner, audited_app
+    ):
+        result = audited_runner.invoke(
+            audited_app.cli,
+            [
+                "create-admin",
+                "--email", "seeded@example.test",
+                "--password", "AdminPass1!",
+                "--non-interactive",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        assert _events(audited_app) == ["USER_CREATED"]
+
+    def test_create_user_is_recorded_too(self, audited_runner, audited_app):
+        """One function behind both commands, so one record either way."""
+        result = audited_runner.invoke(
+            audited_app.cli,
+            [
+                "create-user",
+                "--email", "member@example.test",
+                "--password", "UserPass1!",
+                "--role", "user",
+                "--non-interactive",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        assert _events(audited_app) == ["USER_CREATED"]
+
+    def test_a_reset_is_recorded_as_the_operator_s_own_event(
+        self, audited_runner, audited_app
+    ):
+        """``USER_PASSWORD_RESET``, not the account's own two.
+
+        ``PASSWORD_CHANGED`` is the owner from the settings page and
+        ``PASSWORD_RESET`` is the owner through the mailed link. Neither
+        describes this: nobody proved they can read the mailbox and
+        nobody knew the old password.
+        """
+        audited_runner.invoke(
+            audited_app.cli,
+            [
+                "create-user",
+                "--email", "victim@example.test",
+                "--password", "OldPass1!",
+                "--role", "user",
+                "--non-interactive",
+            ],
+        )
+
+        result = audited_runner.invoke(
+            audited_app.cli,
+            [
+                "security", "reset-password",
+                "--email", "victim@example.test",
+                "--password", "NewPass1!",
+                "--non-interactive",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        assert _events(audited_app) == [
+            "USER_CREATED",
+            "USER_PASSWORD_RESET",
+        ]
+
+    def test_a_reset_that_found_no_account_records_nothing(
+        self, audited_runner, audited_app
+    ):
+        """An event says something happened, and here nothing did."""
+        result = audited_runner.invoke(
+            audited_app.cli,
+            [
+                "security", "reset-password",
+                "--email", "nobody@example.test",
+                "--password", "NewPass1!",
+                "--non-interactive",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert _events(audited_app) == []

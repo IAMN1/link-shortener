@@ -64,15 +64,25 @@ def get_link_info(
 
     Returns:
         The use case's own response, or ``None`` when no link carries that
-        code. Handed back whole rather than flattened into a dictionary:
-        the fields are already named and typed, and copying them into
-        strings only moves the names somewhere a checker cannot see them.
+        code -- a code the format rules refuse included. Handed back whole
+        rather than flattened into a dictionary: the fields are already
+        named and typed, and copying them into strings only moves the
+        names somewhere a checker cannot see them.
     """
+    # One refusal, because the use case gives one: ``_code_to_look_up``
+    # answers ``LinkNotFoundError`` for a malformed code as well as for an
+    # unused one, and says so in its own docstring -- "a malformed code
+    # raises no ValueError here".
+    #
+    # There was a second clause catching ``ValueError`` beneath this one.
+    # It could not run: ``ShortCode`` refuses a bad code with
+    # ``ValidationError``, which descends from ``DomainError`` and not
+    # from ``ValueError`` -- and the use case does not let it out anyway.
+    # What it did instead was tell the next reader that this call can fail
+    # in a way it cannot.
     try:
         return use_case.execute(short_code, context)
     except LinkNotFoundError:
-        return None
-    except ValueError:
         return None
 
 def list_links(

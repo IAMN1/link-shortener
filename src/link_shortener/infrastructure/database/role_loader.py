@@ -17,6 +17,29 @@ from link_shortener.infrastructure.database.models.role_model import RoleModel
 
 
 @dataclass
+class RegrantedRole:
+    """
+    A role whose permissions this pass replaced, and what it replaced.
+
+    Carried out of the loader because the caller has to record it: a
+    change to what a role grants moves every account wearing it at once,
+    which is the widest-reaching act the audit vocabulary has a name for.
+    ``--update-existing`` performs it, and the journal could not see it --
+    the summary said what had been created and what had been left alone,
+    and nothing about what had been rewritten.
+
+    Attributes:
+        name: The role.
+        permissions_before: What it granted when the pass found it.
+        permissions_after: What it grants now.
+    """
+
+    name: str
+    permissions_before: List[str]
+    permissions_after: List[str]
+
+
+@dataclass
 class LoadSummary:
     """
     What one seeding pass did, so the operator is not left guessing.
@@ -33,12 +56,18 @@ class LoadSummary:
             touched, neither their fields nor their permissions.
         roles_reprotected: Names of roles that existed but had lost their
             system flag, and had it restored.
+        roles_regranted: Roles whose permissions this pass replaced, with
+            what they granted before and after. Only where the set
+            actually changed: running the same file twice rewrites the
+            same associations, and a record of that says something
+            happened when nothing did.
     """
 
     permissions_created: List[str] = field(default_factory=list)
     roles_created: List[str] = field(default_factory=list)
     roles_left_alone: List[str] = field(default_factory=list)
     roles_reprotected: List[str] = field(default_factory=list)
+    roles_regranted: List[RegrantedRole] = field(default_factory=list)
 
     def describe(self) -> str:
         """
@@ -237,10 +266,30 @@ class RoleLoader:
                 summary.roles_created.append(role_name)
 
         if not existed or update_existing:
+            # What it granted before the replacement, read while it is
+            # still there. The caller records the change, and a record
+            # that cannot say what was taken away answers half of what an
+            # investigator asks.
+            granted_before = sorted(p.name for p in role.permissions)
+
             # Replace permission associations
             perms = self.session.query(PermissionModel).filter(
                 PermissionModel.name.in_(perm_names)
             ).all()
             role.permissions = perms
+
+            granted_after = sorted(p.name for p in perms)
+            # Only a real change, and only for a role that already
+            # existed: a role created a moment ago is reported as created,
+            # and reporting it as regranted as well would put two records
+            # against one act.
+            if existed and granted_before != granted_after and summary is not None:
+                summary.roles_regranted.append(
+                    RegrantedRole(
+                        name=role_name,
+                        permissions_before=granted_before,
+                        permissions_after=granted_after,
+                    )
+                )
 
         return role

@@ -18,12 +18,15 @@ prints the count the use case returned, and ``reset-password`` says
 write that happened from one that did not.
 """
 
+import re
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from flask.testing import FlaskCliRunner
 from sqlalchemy import text
 
+from link_shortener.domain.entities.link_visit import LinkVisit
 from link_shortener.domain.entities.password_reset import PasswordReset
 from link_shortener.domain.entities.refresh_session import RefreshSession
 from link_shortener.domain.entities.user import User
@@ -132,6 +135,17 @@ def _make_user(app, address, password_hash="hashed-password"):
             return saved.id
 
 
+def _record_visit(app, code, when):
+    """Store one visit against a link, at a chosen moment."""
+    with app.app_context():
+        with app.container.get_uow_factory()() as uow:
+            link = uow.links.find_by_code(ShortCode(code))
+            visit = LinkVisit.record(link_id=link.id, user_agent="curl/8")
+            uow.link_visits.record(
+                replace(visit, occurred_at=when)
+            )
+            uow.commit()
+
 class TestLinkCommands:
     """``link list``, ``link info`` and ``link delete``."""
 
@@ -198,7 +212,15 @@ class TestLinkCommands:
         assert result.exit_code == 0, result.output
         assert "https://example.com/destination" in result.output
         assert "Clicks: 42" in result.output
-        assert stored.created_at.isoformat() in result.output
+        # To the second and in UTC, the way `security validate-token`
+        # states a moment: `isoformat()` carried microseconds, which
+        # answer no question an operator reading a link has.
+        assert (
+            stored.created_at.astimezone(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            in result.output
+        )
         assert "Last accessed: never" in result.output
 
     def test_info_refuses_an_unknown_code(self, runner, app):
@@ -248,7 +270,7 @@ class TestCacheCommands:
         result = runner.invoke(app.cli, ["stats", "refresh"])
 
         assert result.exit_code == 0, result.output
-        assert "Total URL's: 1" in result.output
+        assert "Total URLs:      1" in result.output
         with app.app_context():
             cached = app.container.get_cache().get_stats()
         assert cached is not None
@@ -327,7 +349,7 @@ class TestMaintenanceSweeps:
         result = runner.invoke(app.cli, ["maintenance", "clean-expired"])
 
         assert result.exit_code == 0, result.output
-        assert "Deleted 1 expired links" in result.output
+        assert "Deleted 1 expired link." in result.output
         codes = _stored_codes(app)
         assert "cli-live" in codes
         assert "cli-dead" not in codes
@@ -357,7 +379,7 @@ class TestMaintenanceSweeps:
         result = runner.invoke(app.cli, ["maintenance", "clean-sessions"])
 
         assert result.exit_code == 0, result.output
-        assert "Deleted 1 expired refresh sessions" in result.output
+        assert "Deleted 1 expired refresh session." in result.output
         with app.app_context():
             with app.container.get_uow_factory()(read_only=True) as uow:
                 assert uow.refresh_sessions.find_by_token_id("token-expired") is None
@@ -516,3 +538,58 @@ class TestPasswordReset:
 
         assert result.exit_code == 1
         assert "not found" in result.output
+
+
+class TestRollUpCommands:
+    """The two commands a schedule runs, which nothing ran here before.
+
+    Their use cases were tested; the commands were not. What sits between
+    them is a container lookup, a context and the unpacking of a pair --
+    enough for a renamed factory method to reach an operator's cron line
+    as an ``AttributeError`` with the whole suite green. The use-case test
+    could not have caught it: it builds the very ``RequestContext`` the
+    command builds, rather than asking the command to build one.
+    """
+
+    def test_roll_up_visits_folds_finished_days_and_sweeps_the_rows(
+        self, runner, app
+    ):
+        """A visit from a day that is over is folded, and its row goes."""
+        code = "rollup"
+        _create_link(runner, app, "https://example.com/rollup", code)
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        _record_visit(app, code, yesterday)
+
+        result = runner.invoke(app.cli, ["maintenance", "roll-up-visits"])
+
+        assert result.exit_code == 0, result.output
+        assert "Folded 1 link-day;" in result.output, result.output
+        # Read back rather than believed: the sweep keeps rows inside the
+        # retention window, so what the day was folded into is what says
+        # the fold happened.
+        with app.app_context():
+            with app.container.get_uow_factory()() as uow:
+                link = uow.links.find_by_code(ShortCode(code))
+                days = uow.link_visits.rolled_days(
+                    link_id=link.id,
+                    since=yesterday - timedelta(days=1),
+                    until=datetime.now(timezone.utc),
+                )
+        assert [day.total for day in days] == [1]
+
+    def test_roll_up_security_events_reports_both_halves(self, runner, app):
+        """It runs, and says what it folded and what it deleted.
+
+        Separate from the visits command on purpose -- the two tables keep
+        their history for different lengths of time -- so it is run
+        separately here too.
+        """
+        result = runner.invoke(
+            app.cli, ["maintenance", "roll-up-security-events"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert re.search(
+            r"^Folded \d+ event-days?; deleted \d+ raw events?\.$",
+            result.output.strip(),
+        ), result.output

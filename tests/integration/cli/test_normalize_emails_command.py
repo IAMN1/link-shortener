@@ -323,7 +323,9 @@ class TestAnAddressOutsideAscii:
         assert "1 to change" in result.output
         assert "käthe@example.test" in result.output
 
-    def test_the_account_becomes_reachable_again(self, runner, app):
+    def test_the_account_outside_ascii_becomes_reachable_again(
+        self, runner, app
+    ):
         """The remedy the repository's warning names has to be one.
 
         Reachability, not sign-in: the row carries a fixed hash no
@@ -394,7 +396,7 @@ class TestAFailureToReadIsReportedLikeOne:
         result = runner.invoke(app.cli, ["maintenance", "normalize-emails"])
 
         assert result.exit_code == 1
-        assert "ERROR" in result.stderr
+        assert "Could not read the accounts" in result.stderr
         assert "connection refused" in result.stderr, (
             "the reason was swallowed"
         )
@@ -471,7 +473,7 @@ class TestAFailureToReadIsReportedLikeOne:
         )
 
         assert result.exit_code == 1
-        assert "ERROR" in result.stderr
+        assert "Could not read the accounts" in result.stderr
 
 
 class TestTheExitCodeSaysWhetherTheWorkGotDone:
@@ -602,3 +604,158 @@ class TestTheDatabaseSErrorDoesNotCarryTheRow:
         assert "[SQL:" not in result.output, result.output
 
 
+def _manager_intercepting_writes(db_manager, on_update):
+    """A manager whose sessions run ``on_update`` before every UPDATE.
+
+    Built the way ``failing_with_sql`` below builds its own, and for the
+    same reason: what these tests need to stage happens between the read
+    and the write, where a fixture on the database alone cannot reach.
+
+    Args:
+        db_manager: The real manager to borrow sessions from.
+        on_update: Called with ``(real_execute, parameters)`` just before
+            an UPDATE would run. Whatever it returns is returned instead
+            of running the statement; returning ``None`` lets it through.
+    """
+
+    class _Intercepting:
+        def session(self):
+            inner = db_manager.session()
+
+            class _Ctx:
+                def __enter__(ctx):
+                    session = inner.__enter__()
+                    real_execute = session.execute
+
+                    def execute(statement, *args, **kwargs):
+                        if "UPDATE" in str(statement):
+                            answer = on_update(
+                                real_execute, args[0] if args else {}
+                            )
+                            if answer is not None:
+                                return answer
+                        return real_execute(statement, *args, **kwargs)
+
+                    session.execute = execute
+                    return session
+
+                def __exit__(ctx, *exc):
+                    return inner.__exit__(*exc)
+
+            return _Ctx()
+
+    return _Intercepting()
+
+
+class TestWhatHappensBetweenTheReportAndTheWrite:
+    """The three outcomes the command reports and nothing exercised.
+
+    Each has a sentence of its own in the command, written with the
+    reasoning behind it, and none of the three had ever been printed: the
+    counters behind them -- ``refused``, ``moved`` and ``remaining`` --
+    were computed by lines no test reached. The module read 92% covered
+    and the adapter 92% with all three missing, which is how a whole
+    outcome hides inside a high number.
+
+    They cannot be staged through the database alone, because what each
+    describes is a change somebody else makes *while the command runs*.
+    """
+
+    def test_an_address_taken_in_between_is_reported_as_a_conflict_now(
+        self, runner, app, db_manager
+    ):
+        """The unique index refuses the write, and the run says so.
+
+        A second account claimed the lowered form after this run listed
+        the row and before it wrote it. Nothing here can merge the two,
+        and the next run will see the pair and leave both alone.
+        """
+        from sqlalchemy.exc import IntegrityError
+
+        _store(app, "Taken@Example.test")
+
+        def refuse(real_execute, parameters):
+            raise IntegrityError(
+                "UPDATE users", parameters, Exception("duplicate key")
+            )
+
+        app.container.db_component._manager = _manager_intercepting_writes(
+            db_manager, refuse
+        )
+        try:
+            result = runner.invoke(
+                app.cli, ["maintenance", "normalize-emails", "--apply"]
+            )
+        finally:
+            app.container.db_component._manager = db_manager
+
+        assert "1 were taken by another account" in result.stderr, result.stderr
+        # Non-zero: the account is still unreachable, which is the state
+        # this command exists to clear.
+        assert result.exit_code == 1, result.output
+
+    def test_a_row_changed_in_between_is_left_alone(
+        self, runner, app, db_manager
+    ):
+        """The write matches on the stored address as well as the id.
+
+        Its owner changed the address between the read and the write, so
+        the UPDATE matches nothing -- and a lowered copy of the old
+        address is not something to write over the new one.
+        """
+        _store(app, "Moved@Example.test")
+
+        def move_it_first(real_execute, parameters):
+            real_execute(
+                text("UPDATE users SET email = :fresh WHERE id = :id"),
+                {"fresh": "elsewhere@example.test", "id": parameters["id"]},
+            )
+            return None
+
+        app.container.db_component._manager = _manager_intercepting_writes(
+            db_manager, move_it_first
+        )
+        try:
+            result = runner.invoke(
+                app.cli, ["maintenance", "normalize-emails", "--apply"]
+            )
+        finally:
+            app.container.db_component._manager = db_manager
+
+        assert "1 were deleted or changed by somebody else" in result.stderr, (
+            result.stderr
+        )
+        # Zero: the row is gone or already somebody else's, and no second
+        # run would change that.
+        assert result.exit_code == 0, result.output
+
+    def test_an_interrupted_run_says_what_is_left(
+        self, runner, app, db_manager
+    ):
+        """Ctrl-C stops the work and not the report.
+
+        The rows already lowered are counted, and the remainder is what
+        tells the operator that running again picks up the rest.
+        """
+        _store(app, "First@Example.test", "Second@Example.test")
+        done = []
+
+        def stop_after_the_first(real_execute, parameters):
+            if done:
+                raise KeyboardInterrupt
+            done.append(parameters["id"])
+            return None
+
+        app.container.db_component._manager = _manager_intercepting_writes(
+            db_manager, stop_after_the_first
+        )
+        try:
+            result = runner.invoke(
+                app.cli, ["maintenance", "normalize-emails", "--apply"]
+            )
+        finally:
+            app.container.db_component._manager = db_manager
+
+        assert "Lowered 1 address." in result.output, result.output
+        assert "1 addresses were not attempted" in result.stderr, result.stderr
+        assert result.exit_code == 1, result.output

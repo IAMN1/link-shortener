@@ -110,6 +110,45 @@ class AlembicCommands:
         )
 
     @staticmethod
+    def _answer(
+        result: subprocess.CompletedProcess,
+        empty: str,
+        both_streams: bool = False,
+    ) -> tuple[bool, str]:
+        """
+        Turn a finished alembic run into the pair every command returns.
+
+        Written once because it was written six times and only two of the
+        copies were right. Alembic reports a configuration failure on
+        *stdout* -- measured: ``No 'script_location' key found`` arrives
+        there with an empty stderr and exit 255 -- so the four copies that
+        read ``result.stderr`` alone answered a literal ``"Error: "``.
+        ``status`` and ``history`` had been fixed for exactly that case,
+        and the reason was written down in ``status``; the fix stayed
+        where it was typed while ``upgrade``, which is what ``flask
+        alembic upgrade`` and ``flask db migrate`` both run, went on
+        losing the sentence naming what was wrong.
+
+        Args:
+            result: The finished subprocess.
+            empty: What to say when the run succeeded quietly.
+            both_streams: Join stderr onto stdout for the success text.
+                Alembic narrates an upgrade on stderr ("Running upgrade
+                X -> Y"), so without it the report is the same whether
+                eight tables were created or nothing was.
+
+        Returns:
+            Tuple of (success, output).
+        """
+        if result.returncode != 0:
+            return False, f"Error: {result.stderr or result.stdout}".strip()
+
+        if both_streams:
+            return True, (result.stdout + result.stderr).strip() or empty
+
+        return True, result.stdout or empty
+
+    @staticmethod
     def status(database_url: Optional[str] = None) -> tuple[bool, str]:
         """Show current migration status.
 
@@ -117,14 +156,12 @@ class AlembicCommands:
             database_url: URL of the database to report on.
 
         Returns:
-            Tuple of (success, output). Alembic prints its own failures to
-            stdout as well as stderr, so both are reported – otherwise a
-            missing alembic.ini surfaced as an empty "Error: " line.
+            Tuple of (success, output).
         """
-        result = AlembicCommands._run_alembic("current", database_url=database_url)
-        if result.returncode != 0:
-            return False, f"Error: {result.stderr or result.stdout}".strip()
-        return True, result.stdout or "No migrations applied."
+        return AlembicCommands._answer(
+            AlembicCommands._run_alembic("current", database_url=database_url),
+            empty="No migrations applied.",
+        )
 
     @staticmethod
     def history(
@@ -142,10 +179,10 @@ class AlembicCommands:
         args = ["history"]
         if revision:
             args.extend(["-r", revision])
-        result = AlembicCommands._run_alembic(*args, database_url=database_url)
-        if result.returncode != 0:
-            return False, f"Error: {result.stderr or result.stdout}".strip()
-        return True, result.stdout or "No migration history."
+        return AlembicCommands._answer(
+            AlembicCommands._run_alembic(*args, database_url=database_url),
+            empty="No migration history.",
+        )
 
     @staticmethod
     def upgrade(
@@ -160,15 +197,13 @@ class AlembicCommands:
         Returns:
             Tuple of (success, output).
         """
-        result = AlembicCommands._run_alembic(
-            "upgrade", target, database_url=database_url
+        return AlembicCommands._answer(
+            AlembicCommands._run_alembic(
+                "upgrade", target, database_url=database_url
+            ),
+            empty="Migrations applied.",
+            both_streams=True,
         )
-        if result.returncode != 0:
-            return False, f"Error: {result.stderr}"
-        # Alembic reports "Running upgrade X -> Y" on stderr, so on success
-        # stdout is empty. Both streams are joined: without stderr the output
-        # is the same whether eight tables were created or nothing was.
-        return True, (result.stdout + result.stderr).strip() or "Migrations applied."
 
     @staticmethod
     def downgrade(
@@ -183,13 +218,13 @@ class AlembicCommands:
         Returns:
             Tuple of (success, output).
         """
-        result = AlembicCommands._run_alembic(
-            "downgrade", target, database_url=database_url
+        return AlembicCommands._answer(
+            AlembicCommands._run_alembic(
+                "downgrade", target, database_url=database_url
+            ),
+            empty="Migrations rolled back.",
+            both_streams=True,
         )
-        if result.returncode != 0:
-            return False, f"Error: {result.stderr}"
-        # See `upgrade`: alembic's own account of what it did is on stderr.
-        return True, (result.stdout + result.stderr).strip() or "Migrations rolled back."
 
     @staticmethod
     def migrate(
@@ -204,26 +239,10 @@ class AlembicCommands:
         Returns:
             Tuple of (success, output).
         """
-        result = AlembicCommands._run_alembic(
-            "revision", "--autogenerate", "-m", message, database_url=database_url
+        return AlembicCommands._answer(
+            AlembicCommands._run_alembic(
+                "revision", "--autogenerate", "-m", message,
+                database_url=database_url,
+            ),
+            empty="Migration created.",
         )
-        if result.returncode != 0:
-            return False, f"Error: {result.stderr}"
-        return True, result.stdout or "Migration created."
-
-    @staticmethod
-    def current(database_url: Optional[str] = None) -> tuple[bool, str]:
-        """Show current revision.
-
-        Args:
-            database_url: URL of the database to report on.
-
-        Returns:
-            Tuple of (success, output).
-        """
-        result = AlembicCommands._run_alembic(
-            "current", "--verbose", database_url=database_url
-        )
-        if result.returncode != 0:
-            return False, f"Error: {result.stderr}"
-        return True, result.stdout or "No current revision."

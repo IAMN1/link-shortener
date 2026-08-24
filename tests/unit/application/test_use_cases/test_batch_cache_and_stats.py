@@ -199,6 +199,7 @@ class TestRefreshingStatisticsActuallyRefreshes:
     """
 
     def test_the_cached_entry_is_dropped_before_reading(self):
+        from link_shortener.application.context import RequestContext
         from link_shortener.infrastructure.cli.commands.stats import refresh_stats
 
         order = []
@@ -210,6 +211,8 @@ class TestRefreshingStatisticsActuallyRefreshes:
             total_urls=1, total_clicks=0, avg_clicks_per_url=0.0, popular_links=[]
         )
 
-        refresh_stats(use_case, stats_cache)
+        refresh_stats(
+            use_case, stats_cache, RequestContext(request_id="cli-stats-refresh")
+        )
 
         assert order == ["drop", "read"]

@@ -31,7 +31,7 @@ answer.
 
 ```bash
 flask alembic upgrade head        # apply
-flask alembic current             # where the database stands
+flask alembic status              # where the database stands
 flask alembic history             # the chain of revisions
 flask alembic migrate "what changed"   # autogenerate a new revision
 flask alembic downgrade -1        # step back one
@@ -241,7 +241,8 @@ With `LOG_TO_FILE=true` the journals go to `LOG_DIR` (`datas/logs` by
 default): `application.log`, `error.log`, `audit.log`.
 
 The audit journal is separate on purpose: it records what was done to
-links and accounts, and it is the one an incident is reconstructed from.
+links, accounts and roles — through the API, the admin panel and the
+commands alike — and it is the one an incident is reconstructed from.
 
 ### How fast they grow
 

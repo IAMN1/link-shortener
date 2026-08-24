@@ -14,6 +14,8 @@ code is derived from no longer matches. Neither may follow from a setup
 command being run twice.
 """
 
+import os
+
 import pytest
 
 from link_shortener.infrastructure.cli.commands.security import write_secrets
@@ -135,3 +137,38 @@ class TestRefusingToOverwriteWhatIsAlreadyThere:
     def test_a_missing_file_says_so(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             write_secrets(tmp_path / "nothing-here")
+
+
+class TestThePathsThatAreNotAWritableFile:
+    """What an operator hits before the file is ever parsed.
+
+    Both reached them as a traceback or as a wrong sentence: the command
+    caught ``FileNotFoundError`` and ``ValueError`` only, so a ``.env``
+    owned by root -- the ordinary case on a deployed host -- came out as
+    a ``PermissionError`` with an empty error stream, and a directory was
+    reported as not existing.
+    """
+
+    def test_a_directory_is_not_reported_as_missing(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="is not a file"):
+            write_secrets(tmp_path)
+
+    def test_a_path_that_is_really_absent_still_says_so(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="does not exist"):
+            write_secrets(tmp_path / "absent.env")
+
+    def test_a_file_that_cannot_be_written_raises_an_os_error(self, tmp_path):
+        """Left as ``OSError`` for the caller to render.
+
+        The command turns it into a sentence on stderr; what matters here
+        is that it is the kind of error the command catches, rather than
+        one that travels past it.
+        """
+        locked = tmp_path / "locked.env"
+        locked.write_text("SECRET_KEY=\n", encoding="utf-8")
+        os.chmod(locked, 0o444)
+        try:
+            with pytest.raises(OSError):
+                write_secrets(locked)
+        finally:
+            os.chmod(locked, 0o644)
