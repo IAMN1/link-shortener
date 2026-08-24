@@ -14,7 +14,7 @@ from link_shortener.application.use_cases.auth.resend_verification import (
     ResendOutcome,
 )
 from link_shortener.domain import (
-    DomainError, RoleNotFoundError, SystemPermissions
+    DomainError, RoleNotFoundError, SystemPermissions, UserNotFoundError
 )
 from link_shortener.web.schemas.admin.admin_request import (
     CreateRoleRequest, CreateUserRequest,
@@ -112,12 +112,7 @@ class AdminApiController:
         context = create_request_context()
         user = self.admin_service.get_user(user_id, context)
         if not user:
-            raise DomainError(
-                      f"User with id {user_id} not found",
-                      code="USER_NOT_FOUND",
-                      template=N_("User with id %(id)s not found"),
-                      params={"id": user_id},
-                  )
+            raise UserNotFoundError(user_id)
         return jsonify(UserResponseSchema.from_dto(user).model_dump())
 
     @require_permission(SystemPermissions.ADMIN_MANAGE_USERS.value)
@@ -215,18 +210,27 @@ class AdminApiController:
         context = create_request_context()
         deleted = self.admin_service.delete_user(user_id, context)
         if not deleted:
-            raise DomainError(
-                      f"User with id {user_id} not found",
-                      code="USER_NOT_FOUND",
-                      template=N_("User with id %(id)s not found"),
-                      params={"id": user_id},
-                  )
+            raise UserNotFoundError(user_id)
         return jsonify({"message": "User deleted"})
 
     @require_permission(SystemPermissions.ADMIN_VIEW_USERS.value)
     def get_user_stats(self, user_id):
-        """Retrieve activity statistics for any user (admin only)."""
+        """
+        Retrieve activity statistics for any user (admin only).
+
+        The account is looked up first, as it is on every other route
+        that takes an id from the address. Without that this answered
+        200 with four zeroes for an id nothing carries -- the same
+        answer as a real account that has never made a link -- because
+        the use case takes the id as an argument and asks the link
+        repository about it rather than loading the account. Measured
+        against the seven neighbouring routes, which all answer 404,
+        and against the panel's page for the same id, which answers 404
+        as well.
+        """
         context = create_request_context()
+        if not self.admin_service.get_user(user_id, context):
+            raise UserNotFoundError(user_id)
         stats = self.admin_service.get_user_activity_stats(user_id, context)
         return jsonify({
             "total_links": stats.total_links,

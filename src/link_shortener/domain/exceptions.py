@@ -106,7 +106,11 @@ class ValidationError(DomainError):
 
     Attributes:
         message: Error description.
-        code: Always ``"VALIDATION_ERROR"``.
+        code: ``"VALIDATION_ERROR"`` unless a subclass names its own. A
+            subclass does that when the situation has an answer of its
+            own -- see ``EmailAlreadyRegisteredError``, which stays a
+            validation error for everything that catches one and still
+            carries a code of its own to the caller.
         field: Optional name of the field that caused the validation error.
     """
 
@@ -115,11 +119,12 @@ class ValidationError(DomainError):
         message: str,
         field: Optional[str] = None,
         *,
+        code: str = "VALIDATION_ERROR",
         template: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            message, code="VALIDATION_ERROR", template=template, params=params
+            message, code=code, template=template, params=params
         )
         self.field = field
 
@@ -242,6 +247,64 @@ class GuestLinkLimitExceededError(DomainError):
             message, "GUEST_LINK_LIMIT", template=template, params=params
         )
         self.retry_after_seconds = retry_after_seconds
+
+
+class UserNotFoundError(DomainError):
+    """Raised when an account is asked for by an id nothing carries.
+
+    The sentence was assembled by hand in seven places -- the controller
+    twice, the facade, the service three times, and the confirmation use
+    case -- for one fact. ``RoleNotFoundError`` beside it was made a class
+    for exactly this reason, written out there: one situation should not
+    be seven chances to disagree about its code, its status or its
+    wording.
+
+    The status table answers it 404, which is what all seven already
+    said -- except the one route that did not raise at all. ``GET
+    /api/v1/admin/users/<id>/stats`` answered 200 with zeroes for an
+    account that does not exist, indistinguishable from a real one that
+    has never made a link, while the panel's page for the same id
+    answered 404. Measured on the running stack, against the seven
+    neighbouring routes that all answered 404.
+    """
+
+    def __init__(self, user_id: str):
+        self.user_id = user_id
+        super().__init__(
+            f"User with id {user_id} not found",
+            "USER_NOT_FOUND",
+            template=N_("User with id %(id)s not found"),
+            params={"id": user_id},
+        )
+
+
+class EmailAlreadyRegisteredError(ValidationError):
+    """Raised when an account is created under an address somebody holds.
+
+    A ``ValidationError`` subclass, and that is load-bearing rather than
+    tidy: public registration catches this exact error to keep quiet
+    about it -- it answers 202 and mails the address a notice instead of
+    telling the caller whether an account exists, which is what OWASP's
+    Authentication Cheat Sheet asks for -- and it recognises it by type
+    and by ``field == "email"``. A class that stopped being a
+    ``ValidationError`` would leave that catch unmatched, and the public
+    endpoint would answer 500 where it answers 202, which is the very
+    disclosure the 202 is worded to prevent.
+
+    What it adds is the code. The administrative route answered a taken
+    address `400 VALIDATION_ERROR` while the role route beside it
+    answered a taken name `409 ROLE_ALREADY_EXISTS` -- one situation,
+    two statuses and two codes, so a client telling a taken address from
+    a malformed one had to read the sentence. Measured on the running
+    stack before the change.
+    """
+
+    def __init__(self):
+        super().__init__(
+            N_("Email already registered"),
+            field="email",
+            code="EMAIL_ALREADY_REGISTERED",
+        )
 
 
 class RoleNotFoundError(DomainError):

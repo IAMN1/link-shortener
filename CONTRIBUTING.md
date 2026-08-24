@@ -29,7 +29,7 @@ expected output of every step.
 ## What a change has to pass
 
 ```bash
-uv run pytest tests/                      # 3873 tests, 88% coverage floor
+uv run pytest tests/                      # 3891 tests, 88% coverage floor
 uv run flake8 src tests
 uv run pylint src                         # floor 9.0
 uv run bandit -r src -q

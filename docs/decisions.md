@@ -1981,6 +1981,45 @@ so, and the records that matter would sit among them.
 reached its own expiry is not somebody losing an entitlement, and the
 account that owns it is untouched.
 
+### A missing account and a taken address answer what the spec already promised
+
+**Decided** (2026-08-25): `UserNotFoundError` and
+`EmailAlreadyRegisteredError` are domain errors; a validation error's
+status comes from its code.
+
+**Why.** Both situations were already documented the way they are now
+answered, and the code disagreed with the documentation rather than with
+an opinion. `openapi.py` listed `404 No account carries that id` for
+`GET /api/v1/admin/users/{user_id}/stats`, which answered **200** with
+four zeroes for an id nothing carries — indistinguishable from a real
+account that has never made a link, while the panel's page for that id
+answered 404. It listed `409 That address is already registered` for
+`POST /api/v1/admin/users`, which answered **400 VALIDATION_ERROR**, the
+same code a malformed address carries, while the role route beside it
+answered a taken name `409 ROLE_ALREADY_EXISTS`.
+
+**Classes rather than seven hand-built errors.** The "no such account"
+sentence was assembled in seven places — the controller twice, the facade,
+the service three times, the confirmation use case — for one fact.
+`RoleNotFoundError` was made a class for exactly this reason and says so
+in its own docstring; the account half had simply never been done.
+
+**`EmailAlreadyRegisteredError` stays a `ValidationError`, and that is
+load-bearing.** Public registration does not refuse a taken address out
+loud: it answers 202 and mails the address a notice, per OWASP's
+Authentication Cheat Sheet. It recognises the clash of a lost race by
+catching `ValidationError` with `field == "email"`. A class of its own —
+the obvious tidying, since it carries a code of its own — leaves that
+catch unmatched and the public endpoint answers 500 where it answers 202,
+which is the disclosure the 202 exists to prevent. Measured: with the
+class detached, 1178 tests still passed. A test now stands on that path.
+
+**The status now comes from the code** for validation errors too. The
+handler returned 400 whatever was raised, so a subclass carrying its own
+code could not be answered by it. `VALIDATION_ERROR` is still 400 — that
+is what the table says — and a subclass that names a code is answered by
+the table, like every other domain error.
+
 
 ## Known limits
 

@@ -73,6 +73,12 @@ STATUS_BY_CODE = {
     # as LINK_CODE_TAKEN, and answered the same way: their request, and a
     # fix only they can make.
     "ROLE_ALREADY_EXISTS": 409,
+    # The same answer as the name a role already carries: the
+    # request is well formed and the service simply has it. It
+    # answered 400 under the generic validation code, so a client
+    # could not tell a taken address from a malformed one without
+    # reading the sentence.
+    "EMAIL_ALREADY_REGISTERED": 409,
     # The role is there and the service owns it. 400 rather than 403: the
     # caller holds `admin:manage_roles` and is refused by what they named,
     # not by who they are.
@@ -393,7 +399,16 @@ class ErrorHandlerMiddleware:
                 "Domain validation error", field=error.field, code=error.code
             )
 
-            return jsonify(response.model_dump()), 400
+            # The status comes from the code, as it does for every other
+            # domain error, rather than being 400 whatever was raised. A
+            # validation error that names no code of its own still gets
+            # 400 -- that is what `VALIDATION_ERROR` is, and it is not in
+            # the table -- but a subclass that carries one is answered by
+            # it: a taken address is `EMAIL_ALREADY_REGISTERED`, and the
+            # table answers that 409, the way it answers a taken role name.
+            return jsonify(response.model_dump()), STATUS_BY_CODE.get(
+                error.code, 400
+            )
 
         @self.app.errorhandler(LinkNotFoundError)
         def handle_link_not_found(error: LinkNotFoundError):

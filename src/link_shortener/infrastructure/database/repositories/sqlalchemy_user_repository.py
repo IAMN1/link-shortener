@@ -9,10 +9,9 @@ from link_shortener.infrastructure.database.models.role_model import RoleModel
 from link_shortener.infrastructure.database.models.user_model import UserModel
 from link_shortener.application import Logger
 from link_shortener.domain import (
-    Role, RoleNotFoundError, User, UserRepository, ValidationError,
-    Email, PasswordHash, Permission
+    EmailAlreadyRegisteredError, Role, RoleNotFoundError, User,
+    UserRepository, Email, PasswordHash, Permission
 )
-from link_shortener.domain.i18n import N_
 
 
 class SQLAlchemyUserRepository(UserRepository):
@@ -104,9 +103,7 @@ class SQLAlchemyUserRepository(UserRepository):
             # both routes to the same fact carry one sentence and one
             # field. The session is unusable afterwards; the unit of work
             # rolls it back on the way out.
-            raise ValidationError(
-                N_("Email already registered"), field="email"
-            ) from clash
+            raise EmailAlreadyRegisteredError() from clash
         return user
 
     def record_login(self, user_id: str, when: datetime) -> bool:
