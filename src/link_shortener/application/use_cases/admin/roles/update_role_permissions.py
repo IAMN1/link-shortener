@@ -113,11 +113,21 @@ class UpdateRolePermissionsUseCase(BaseUseCase):
             )
             uow.commit()
 
-        log.info("Role updated", role_name=role.name, holders=holders)
-        audit.log_role_permissions_changed(
-            role=role.name,
-            permissions_before=permissions_before,
-            permissions_after=[p.name for p in role.permissions],
-            holders=holders,
+        permissions_after = [p.name for p in role.permissions]
+        # See ``UpdateUserRolesUseCase``: only a real change is recorded,
+        # and the comparison ignores the order the request happened to
+        # list them in.
+        changed = sorted(permissions_before) != sorted(permissions_after)
+
+        log.info(
+            "Role updated", role_name=role.name, holders=holders,
+            changed=changed,
         )
+        if changed:
+            audit.log_role_permissions_changed(
+                role=role.name,
+                permissions_before=permissions_before,
+                permissions_after=permissions_after,
+                holders=holders,
+            )
         return RoleResponse.from_role(role)

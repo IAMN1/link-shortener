@@ -1904,6 +1904,20 @@ the `request_id` the command builds — `cli-create-admin`,
 `cli-reset-password`, `cli-load-custom-roles` — which is what tells a
 reader it came from the console rather than from a request.
 
+**The same rule now stands at the HTTP door** (2026-08-25). "Only where the
+set actually changed" was written here for `db load-custom-roles` and
+applied to that door alone. Measured on the running stack: `PUT
+/api/v1/admin/users/<id>/roles` with the roles the account already held
+answered 200 and wrote `ROLES_CHANGED` with `roles_before: ['user']` and
+`roles_after: ['user']`; `PUT /api/v1/admin/roles/<name>/permissions` did
+the same. The panel makes exactly that request — its edit form sends every
+ticked checkbox on save — so an operator who opened a form, changed
+nothing and saved left an entry saying they had moved an account's
+privileges. Both use cases now compare the sets, ignoring the order the
+request listed them in, and record only a real change. The application log
+still notes every call, with a `changed` field: what was asked for is
+worth keeping, it just is not a security event.
+
 ### The account listing is ordered by address
 
 **Decided** (2026-08-24): `SQLAlchemyUserRepository.list_all` sorts by

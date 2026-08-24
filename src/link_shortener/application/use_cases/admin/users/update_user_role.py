@@ -108,10 +108,23 @@ class UpdateUserRolesUseCase(BaseUseCase):
             updated_user = self.user_service.update_roles(uow, user_id, roles)
             uow.commit()
 
-        log.info("User roles updated", target_user_id=user_id)
-        audit.log_roles_changed(
-            target_user_id=user_id,
-            roles_before=roles_before,
-            roles_after=[role.name for role in updated_user.roles],
-        )
+        roles_after = [role.name for role in updated_user.roles]
+        # Compared as sets, because the request names roles and does not
+        # order them: the same three roles sent in another order is the
+        # same account.
+        changed = sorted(roles_before) != sorted(roles_after)
+
+        log.info("User roles updated", target_user_id=user_id, changed=changed)
+        # Only a real change, the way ``db load-custom-roles`` records only
+        # a set it actually replaced -- the rule is written down in
+        # ``docs/decisions.md`` and stood at that door alone. Saving the
+        # panel's form without touching a checkbox sends this request, so
+        # the journal an investigation reads was collecting entries that
+        # say somebody moved an account's privileges when nobody did.
+        if changed:
+            audit.log_roles_changed(
+                target_user_id=user_id,
+                roles_before=roles_before,
+                roles_after=roles_after,
+            )
         return UserResponse.from_user(updated_user)
