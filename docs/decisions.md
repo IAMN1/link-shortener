@@ -1338,7 +1338,7 @@ for the search.*
 
 **Decided** (2026-08-18): the audit journal carried three events — a link
 created, followed, deleted — and nothing about accounts at all. It now
-carries thirteen more, through one method on `AuditLogger`
+carries seventeen more, through one method on `AuditLogger`
 (`log_security_event`) and a named wrapper per event above it.
 
 **Which events, by one rule.** An act that changes who may do what leaves a
@@ -1347,10 +1347,26 @@ an account (`USER_CREATED`, `USER_DELETED`, `USER_ACTIVATED`,
 `USER_DEACTIVATED`, `USER_EMAIL_CONFIRMED`), an address proving itself
 (`EMAIL_CONFIRMED`), the roles on an account (`ROLES_CHANGED`), the three
 things that happen to a role itself (`ROLE_CREATED`, `ROLE_DELETED`,
-`ROLE_PERMISSIONS_CHANGED`) and the reading of a journal
-(`AUDIT_VIEWED`). It excludes listing accounts, reading one, and seeding
-the database: they change nothing, and a journal that records reads as
-loudly as writes buries the writes.
+`ROLE_PERMISSIONS_CHANGED`), the three ways a password is replaced
+(`PASSWORD_CHANGED`, `PASSWORD_RESET`, `USER_PASSWORD_RESET`) and the
+reading of a journal (`AUDIT_VIEWED`). It excludes listing accounts,
+reading one, and seeding the database: they change nothing, and a journal
+that records reads as loudly as writes buries the writes.
+
+`USER_PASSWORD_RESET` is the third one this rule caught late, and the
+first caught from the shell rather than from a route. `flask security
+reset-password` is the operator's path, reached for an account believed
+to be compromised, and it wrote nothing: the account then showed a
+password that had changed at a time nothing in the journal accounted for,
+which is precisely the shape of the takeover an investigation is opened
+over. It is its own event and not a field on `PASSWORD_RESET`, by the
+naming the enum already followed — `USER_*` is an operator acting on
+somebody else's account, a bare name is the account acting for itself.
+Creating an account from the shell was unrecorded for the same reason and
+is fixed the same way, by calling the wrapper that already existed
+(`USER_CREATED`): the account an operator seeds a deployment with is
+typically its only administrator, and it was the one account whose
+creation the journal did not hold.
 
 `EMAIL_CONFIRMED` is the second one this rule caught late, and it was
 caught by the same reading of it. `USER_EMAIL_CONFIRMED` below is an
@@ -1779,6 +1795,115 @@ of the file reader, but it is also part of the contract: a caller that must
 refuse an excess before the read has to know what an excess is, and a
 caller told "at most this many" should get the same answer from whichever
 reader is wired in.
+
+### A command says what happened; the layer under it only reports
+
+**Decided** (2026-08-24): the modules under `infrastructure/cli/commands/`
+return values. The adapter prints them, and it alone decides the exit code.
+
+**Why.** Two of the nine printed for themselves — fourteen `print()` calls
+in `cache.py` and `database.py` — and one of them exited as well. That is
+not only a matter of taste. `flask cache clear` produced no output of its
+own at all: every line an operator saw came from a module that has no
+business knowing there is a terminal. And `flask db migrate` was the one
+migration command with no error handling in the adapter, because there was
+nothing left for it to handle — `migrate_db` had already printed to stderr
+and raised `SystemExit`, so the command could not say which database the
+failure came from. It returns `(success, output)` now, in the shape
+`AlembicCommands` answers in, and the adapter prints and decides.
+
+**What that buys, measured.** The refusal path of `db migrate` had never
+been executed by any test; with the decision came the test, and breaking
+the exit code reddens it.
+
+### A refusal is one sentence on the error stream, and nothing else
+
+**Decided** (2026-08-24): every command that fails writes a plain sentence
+to stderr and exits 1. No prefix, no frame, no report.
+
+**Why.** All three parts were measured as broken, in different commands.
+
+Six refusals of twenty-four carried a prefix, in three spellings —
+`ERROR:` four times, `Error:` once, `Error creating link:` once — so a
+script grepping for `ERROR` found a quarter of them and read the rest as
+success. On stderr the prefix says nothing the stream has not said. A
+seventh went through `click.ClickException`, which renders `Error: ` of
+its own accord and so survived the sweep that dropped the literals; the
+scan that guards this rule now forbids the call as well as the string.
+
+Two commands exited 1 having written nothing to stderr at all —
+`maintenance health` and `security check-secrets`, which are precisely the
+two most likely to run with their output redirected, being a monitoring
+line and a deployment gate. The report stays whole on stdout, because
+splitting a table across two streams leaves whoever keeps one of them a
+report with holes; what moved is the verdict.
+
+And `link delete` and `link info` printed their rules of `=` around a
+refusal that went to the other stream, so a redirected run kept two rules
+with nothing between them.
+
+**Measured against the running stack.** With Redis stopped, `maintenance
+health` now writes `Unhealthy: Cache, Rate limiter` to stderr and exits 1,
+while the four-line report stays on stdout.
+
+### A port declares what its callers need
+
+**Decided** (2026-08-24): `clear_all` and `get_cache_info` are declared by
+`CacheMaintenance`, the fifth role `ServiceCache` carries.
+
+**Why.** They were declared by no port at all — present on the Redis and
+in-memory implementations, absent from the null one — and two callers
+depended on them anyway. The CLI probed with `hasattr` and carried three
+branches for what it might find, none of which could run: `delete_stats`
+is abstract on `StatsCache`, so the branch reporting it missing was
+unreachable, and so were the two below it. The end-to-end test that empties
+Redis between journeys said in its own comment that it "reaches past
+`ServiceCache`" to call a method the port does not declare. A capability
+two callers depend on is one the port owes them.
+
+**The same reading closed a defect next door.** `maintenance check-redis`
+reached for `RedisLinkCache._ensure_connection`, a private method of one
+implementation, which is documented to answer from what it holds rather
+than by asking. Measured against a cache whose backend had gone away:
+`_ensure_connection()` returned `True` while `ping()` returned `False`, so
+the command an operator runs precisely to find out whether Redis is up
+printed "healthy" and exited 0 over a dead one — in the same second
+`maintenance health`, which asks the port, printed `Cache: FAILED` and
+exited 1. Both questions are now put to the cache, through `CacheHealth`.
+
+### The commands leave the same record the API leaves
+
+**Decided** (2026-08-24): `create-admin`, `create-user`, `security
+reset-password` and `db load-custom-roles` write to the audit journal.
+
+**Why.** Each is a second door to an act the HTTP path records, and none of
+them recorded anything. The account an operator seeds a deployment with is
+typically its only administrator, and it was the one account whose creation
+the journal did not hold. The reset is reached for an account believed to
+be compromised — the start of exactly the investigation this journal
+serves — and it left the account showing a password that changed at a time
+nothing accounted for.
+
+`db load-custom-roles` was the widest of them. Measured on the running
+stack before the change: one command took `probe:read` off a role and gave
+it `admin:manage_users`, and the journal held nothing. It writes
+`ROLE_CREATED` for a role it inserts and `ROLE_PERMISSIONS_CHANGED` for one
+whose grants it replaces, with what was taken, what was given and how many
+accounts wear it. Only where the set actually changed: running the same
+file twice rewrites the same associations, and a record of that reports a
+change nobody made.
+
+**What is not recorded, and why.** `db load-base-roles` writes nothing.
+Seeding is excluded by the rule the vocabulary is built on — the
+installation putting its own four roles in place is not somebody being
+granted anything, and a journal that records it buries the entries that
+matter under every deployment.
+
+**No actor is bound.** A shell has no signed-in user, so the record carries
+the `request_id` the command builds — `cli-create-admin`,
+`cli-reset-password`, `cli-load-custom-roles` — which is what tells a
+reader it came from the console rather than from a request.
+
 
 ## Known limits
 

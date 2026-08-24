@@ -13,6 +13,8 @@ each component separately drifted apart from each other". The command was
 one of the callers that asked separately.
 """
 
+import re
+
 import pytest
 from flask.testing import FlaskCliRunner
 
@@ -141,3 +143,64 @@ class TestTheCommandReadsEveryDependencyTheProbeReads:
 
         assert result.exit_code == 0, result.output
         assert "not configured" in result.output.lower()
+
+
+class TestTheRefusalReachesTheErrorStream:
+    """A cron line that keeps only stderr still learns what was wrong.
+
+    The report itself stays whole on stdout, because splitting a table
+    across two streams leaves whoever reads one of them a report with
+    holes in it. What was missing was the verdict: the command exited 1
+    and wrote nothing to stderr at all, so a schedule that redirects
+    output away -- which is what a schedule usually does -- had an exit
+    code and no sentence anywhere.
+    """
+
+    def test_the_failing_dependency_is_named_on_stderr(self, app, runner):
+        answering(app, LIMITER_DOWN)
+
+        result = runner.invoke(app.cli, ["maintenance", "health"])
+
+        assert result.exit_code == 1
+        assert "Unhealthy" in result.stderr, result.stderr
+        assert "Rate limiter" in result.stderr, result.stderr
+
+    def test_the_report_still_goes_to_stdout_whole(self, app, runner):
+        """Four lines, none of them diverted to the other stream."""
+        answering(app, LIMITER_DOWN)
+
+        result = runner.invoke(app.cli, ["maintenance", "health"])
+
+        for name in ("Database", "Cache", "Task queue", "Rate limiter"):
+            assert re.search(rf"^{name}: ", result.stdout, re.M), result.stdout
+
+    def test_a_healthy_run_says_nothing_on_stderr(self, app, runner):
+        """Silence is the whole point of the error stream."""
+        answering(app, EVERYTHING_UP)
+
+        result = runner.invoke(app.cli, ["maintenance", "health"])
+
+        assert result.exit_code == 0
+        assert result.stderr == "", result.stderr
+
+    def test_a_dependency_that_hung_is_named_too(self, app, runner):
+        """A hang reaches the verdict the same way a refusal does.
+
+        ``timed_out`` is a distinct finding, but it is not a separate
+        state: the implementation marks the dependency that did not
+        answer as down as well, so it shows FAILED in the table and the
+        verdict picks it up from there. A snapshot claiming a component
+        both answered and timed out is not one the probe produces, and a
+        test that built one would hold a rule nothing has.
+        """
+        answering(app, HealthSnapshot(
+            database=True, cache=False, cache_configured=True,
+            task_queue=True, rate_limiter=True, timed_out=("cache",),
+        ))
+
+        result = runner.invoke(app.cli, ["maintenance", "health"])
+
+        assert result.exit_code == 1
+        assert "Unhealthy: Cache" in result.stderr, result.stderr
+        # The distinction survives on stdout, where the report is.
+        assert "timed out" in result.stdout.lower()

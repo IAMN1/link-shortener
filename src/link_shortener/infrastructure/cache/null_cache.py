@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from link_shortener.application.ports.cache.redirect_cache import CachedRedirect
 from link_shortener.application.ports.cache.service_cache import ServiceCache
@@ -24,6 +24,21 @@ class NullCache(ServiceCache):
     def ping(self) -> bool:
         """A cache with nothing to connect to cannot be unreachable."""
         return True
+
+    # ========== CacheMaintenance methods ==========
+    def clear_all(self) -> None:
+        """No-op: a cache that stores nothing has nothing to drop."""
+
+    def get_cache_info(self) -> Dict[str, Any]:
+        """
+        Report that there is nothing to report.
+
+        An ``error`` key rather than zeroed counters: a null cache holding
+        no entries and a Redis cache that has just lost its server both
+        hold nothing, and an operator reading "0 keys" cannot tell which
+        one they are looking at.
+        """
+        return {"error": "No cache is configured"}
 
     # ========== Link Cache methods ==========
     def get_by_code(self, short_code: ShortCode) -> Optional[Link]:

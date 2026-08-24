@@ -216,3 +216,144 @@ class TestFoundNowhere:
 
         with pytest.raises(FileNotFoundError):
             _project_root()
+
+
+WRAPPERS = [
+    ("status", lambda: AlembicCommands.status()),
+    ("history", lambda: AlembicCommands.history()),
+    ("upgrade", lambda: AlembicCommands.upgrade("head")),
+    ("downgrade", lambda: AlembicCommands.downgrade("-1")),
+    ("migrate", lambda: AlembicCommands.migrate("a message")),
+]
+"""Every wrapper on the class, and how it is called.
+
+A list rather than a test written per method: the defect below was one
+copy of five getting a fix that the other four did not, so a test that
+names them one at a time is a test that can be added for one at a time.
+"""
+
+
+class TestAFailureKeepsItsText:
+    """What alembic said reaches the operator, whichever command ran.
+
+    Alembic reports a configuration failure on *stdout* with an empty
+    stderr -- measured: ``No 'script_location' key found`` arrives there
+    with exit 255. ``status`` and ``history`` had been fixed for exactly
+    that, and the reason was written down in ``status``; ``upgrade``,
+    ``downgrade`` and ``migrate`` still read ``result.stderr`` alone and
+    answered a literal ``"Error: "``. ``upgrade`` is what both ``flask
+    alembic upgrade`` and ``flask db migrate`` run.
+    """
+
+    @pytest.fixture
+    def a_root_with_no_migrations(self, tmp_path, monkeypatch):
+        """Point the commands at a configuration alembic will refuse."""
+        (tmp_path / "alembic.ini").write_text("[alembic]\n", encoding="utf-8")
+        monkeypatch.setattr(alembic_mod, "_project_root", lambda: tmp_path)
+        return tmp_path
+
+    @pytest.mark.parametrize("name, call", WRAPPERS)
+    def test_the_reason_is_reported(
+        self, name, call, a_root_with_no_migrations
+    ):
+        """Not "Error: " on its own, which names nothing."""
+        success, output = call()
+
+        assert success is False
+        assert "script_location" in output, f"{name} lost the reason: {output!r}"
+
+    @pytest.mark.parametrize("name, call", WRAPPERS)
+    def test_the_report_is_never_the_word_error_alone(
+        self, name, call, a_root_with_no_migrations
+    ):
+        """The shape the four broken copies produced, asserted against.
+
+        Kept separate from the check above so that a wrapper which starts
+        answering an empty string, rather than the wrong stream, is still
+        caught.
+        """
+        _, output = call()
+
+        assert output.strip() not in ("Error:", "Error"), name
+
+
+class TestASuccessSaysWhatWasDone:
+    """A quiet run still reports, and an upgrade reports what it ran."""
+
+    def test_an_upgrade_carries_alembics_own_account_of_it(self, monkeypatch):
+        """Alembic narrates an upgrade on stderr, so both streams are read.
+
+        Without it the report is the same whether eight tables were
+        created or nothing was.
+        """
+        monkeypatch.setattr(
+            AlembicCommands,
+            "_run_alembic",
+            staticmethod(
+                lambda *a, **k: subprocess.CompletedProcess(
+                    args=list(a),
+                    returncode=0,
+                    stdout="",
+                    stderr="INFO Running upgrade 0001 -> 0002\n",
+                )
+            ),
+        )
+
+        success, output = AlembicCommands.upgrade("head")
+
+        assert success is True
+        assert "Running upgrade 0001 -> 0002" in output
+
+    def test_a_run_that_said_nothing_gets_a_sentence(self, monkeypatch):
+        """Each wrapper supplies its own, and it is not the other's."""
+        monkeypatch.setattr(
+            AlembicCommands,
+            "_run_alembic",
+            staticmethod(
+                lambda *a, **k: subprocess.CompletedProcess(
+                    args=list(a), returncode=0, stdout="", stderr=""
+                )
+            ),
+        )
+
+        assert AlembicCommands.upgrade("head")[1] == "Migrations applied."
+        assert AlembicCommands.downgrade("-1")[1] == "Migrations rolled back."
+        assert AlembicCommands.status()[1] == "No migrations applied."
+        assert AlembicCommands.history()[1] == "No migration history."
+        assert AlembicCommands.migrate("m")[1] == "Migration created."
+
+
+class TestTheRevisionArgumentReachesAlembic:
+    """``history -r <rev>`` narrows the listing, or is silently dropped.
+
+    The option is built into the argument list by a branch nothing ran:
+    a wrapper that stopped forwarding it would answer the full history to
+    every question, which reads like a correct answer to the wrong one.
+    """
+
+    @pytest.fixture
+    def recorded(self, monkeypatch):
+        """Capture the arguments handed to the subprocess."""
+        seen = []
+
+        def remember(*args, **kwargs):
+            seen.append(args)
+            return subprocess.CompletedProcess(
+                args=list(args), returncode=0, stdout="a history", stderr=""
+            )
+
+        monkeypatch.setattr(
+            AlembicCommands, "_run_alembic", staticmethod(remember)
+        )
+        return seen
+
+    def test_it_is_forwarded_when_given(self, recorded):
+        AlembicCommands.history(revision="0001")
+
+        assert recorded == [("history", "-r", "0001")]
+
+    def test_nothing_is_forwarded_when_it_is_not(self, recorded):
+        """No empty ``-r``, which alembic reads as a revision named ""."""
+        AlembicCommands.history()
+
+        assert recorded == [("history",)]

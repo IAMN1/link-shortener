@@ -1,7 +1,7 @@
 """
 Redis-backed cache with automatic reconnection and graceful degradation.
 
-Implements the four roles of ``ServiceCache``. Falls back silently
+Implements the five roles of ``ServiceCache``. Falls back silently
 when Redis is unavailable.
 """
 

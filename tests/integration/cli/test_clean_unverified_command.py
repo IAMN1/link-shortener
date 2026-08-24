@@ -114,7 +114,7 @@ class TestWhatItSweeps:
 
         result = runner.invoke(app.cli, ["maintenance", "clean-unverified"])
 
-        assert "Deleted 1 unconfirmed accounts." in result.output
+        assert "Deleted 1 unconfirmed account." in result.output
 
     def test_it_spares_an_account_still_within_the_window(self, runner, app):
         """48 hours is this profile's window; two hours old is waiting,

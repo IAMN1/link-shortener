@@ -1,7 +1,7 @@
 from collections import Counter
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast as as_type
 
-from sqlalchemy import text
+from sqlalchemy import CursorResult, text
 from sqlalchemy.exc import IntegrityError
 
 from link_shortener.application import (
@@ -9,6 +9,7 @@ from link_shortener.application import (
     CleanUnverifiedAccountsUseCase
 )
 from link_shortener.domain.value_objects.email import Email
+from link_shortener.infrastructure.database.manager import DatabaseManager
 
 
 def what_the_database_said(error: BaseException) -> str:
@@ -121,7 +122,9 @@ def clean_unverified_accounts(
     return use_case.execute(context)
 
 
-def find_addresses_needing_normalising(db_manager) -> List[Dict[str, Any]]:
+def find_addresses_needing_normalising(
+    db_manager: DatabaseManager,
+) -> List[Dict[str, Any]]:
     """
     List stored addresses that are not in lower case.
 
@@ -166,7 +169,7 @@ def find_addresses_needing_normalising(db_manager) -> List[Dict[str, Any]]:
 
 
 def normalise_addresses(
-    db_manager, rows: List[Dict[str, Any]]
+    db_manager: DatabaseManager, rows: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
     Lower the stored addresses that can be lowered without collision.
@@ -219,12 +222,21 @@ def normalise_addresses(
         counted = False
         try:
             with db_manager.session() as session:
-                result = session.execute(
-                    text(
-                        "UPDATE users SET email = :email "
-                        "WHERE id = :id AND email = :stored"
+                # Named as what a statement with no rows to return
+                # actually produces, the way the repositories that read
+                # ``rowcount`` do it: ``Session.execute`` is declared to
+                # return ``Result``, which has no such attribute, so the
+                # count below is unreachable to the checker until this is
+                # said. The object is the same one either way.
+                result = as_type(
+                    CursorResult,
+                    session.execute(
+                        text(
+                            "UPDATE users SET email = :email "
+                            "WHERE id = :id AND email = :stored"
+                        ),
+                        {"id": user_id, "email": normalised, "stored": stored},
                     ),
-                    {"id": user_id, "email": normalised, "stored": stored},
                 )
                 session.commit()
 

@@ -62,6 +62,15 @@ class AuditEvent(Enum):
     PASSWORD_CHANGED = "PASSWORD_CHANGED"  # nosec B105
     # The same mark and the same reason as the line above.
     PASSWORD_RESET = "PASSWORD_RESET"  # nosec B105
+    # The operator's version of the act above, named by the convention the
+    # members here already follow: a bare name is the account acting for
+    # itself, ``USER_*`` is somebody acting on it. The two are not one
+    # event with a field, for the reason PASSWORD_RESET gives against
+    # folding itself into PASSWORD_CHANGED -- an investigator asking "did
+    # the owner do this" reads a different fact in each. This one says
+    # nobody proved they can read the mailbox: an operator at a shell
+    # replaced the password of an account they do not own.
+    USER_PASSWORD_RESET = "USER_PASSWORD_RESET"  # nosec B105
 
     ROLE_CREATED = "ROLE_CREATED"
     ROLE_DELETED = "ROLE_DELETED"
@@ -426,6 +435,48 @@ class AuditLogger(ABC):
         """
         self.log_security_event(
             AuditEvent.PASSWORD_RESET,
+            target_user_id=target_user_id,
+            sessions_revoked=sessions_revoked,
+            **fields,
+        )
+
+    def log_user_password_reset(
+        self, target_user_id: str, sessions_revoked: int, **fields
+    ) -> None:
+        """
+        Record a password replaced by an operator, on somebody else's account.
+
+        The third way a password changes in this service, and the only one
+        that left no record. ``flask security reset-password`` is reached
+        for an account believed to be compromised -- which is to say, at
+        the start of exactly the investigation this journal exists to
+        serve -- and the account it acts on then shows a password that
+        changed at a time nobody can account for, with nothing saying an
+        operator did it deliberately.
+
+        Its own event rather than ``PASSWORD_RESET`` with a field, for the
+        reason that member gives against folding itself into
+        ``PASSWORD_CHANGED``: the reader's question is who did this, and
+        an answer that depends on remembering to filter by a field is an
+        answer that gets read wrong. Here nobody proved they can read the
+        mailbox and nobody knew the old password.
+
+        No actor is bound: a command run at a shell has no signed-in user
+        to name. What the record carries instead is the ``request_id`` the
+        command builds -- ``cli-reset-password`` -- which is what tells a
+        reader this came from the console rather than from a request.
+
+        ``sessions_revoked`` for the reason it is carried on the two
+        members above: the count is the only trace that anything was
+        thrown out, and on this path it is the whole point of the command.
+
+        Args:
+            target_user_id: The account whose password was replaced.
+            sessions_revoked: How many refresh sessions were closed with it.
+            **fields: Additional context.
+        """
+        self.log_security_event(
+            AuditEvent.USER_PASSWORD_RESET,
             target_user_id=target_user_id,
             sessions_revoked=sessions_revoked,
             **fields,

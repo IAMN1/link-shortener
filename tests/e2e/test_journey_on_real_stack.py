@@ -103,8 +103,10 @@ def _empty_between_tests(app):
         # Everything, not only the statistics entry: with the tables
         # truncated and Redis left full, a redirect to a link that no
         # longer exists is still answered 302 out of the cache -- measured,
-        # not supposed. ``clear_all`` is on the implementations rather than
-        # on the port, which is why this reaches past ``ServiceCache``.
+        # not supposed. ``clear_all`` is declared by ``CacheMaintenance``,
+        # which ``ServiceCache`` carries, so this is the port talking and
+        # not a reach past it; the note that said otherwise was written
+        # when no port declared it.
         app.container.get_cache().clear_all()
 
 
