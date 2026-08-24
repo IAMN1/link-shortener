@@ -11,7 +11,9 @@ import uuid
 import yaml
 from sqlalchemy.orm import Session
 
-from link_shortener.domain.policies.role_policy import require_valid_role_name
+from link_shortener.domain.policies.role_policy import (
+    require_valid_role_description, require_valid_role_name
+)
 from link_shortener.infrastructure.database.models.permission_model import PermissionModel
 from link_shortener.infrastructure.database.models.role_model import RoleModel
 
@@ -224,13 +226,19 @@ class RoleLoader:
 
         Raises:
             ValidationError: If the file names a role something a role may
-                not be called.
+                not be called, or describes it at a length the column
+                cannot hold.
         """
         role_name = role_def["name"]
         # The other door the admin API's schema does not stand at. A name
         # with a slash in it makes a role no route can address: created
         # here, it could then be removed by nothing short of SQL.
         require_valid_role_name(role_name)
+        # And the width of what the column holds, which the schema states
+        # for the API's door and nothing stated for this one: measured, a
+        # 256-character description here came back as a driver traceback
+        # rather than as a sentence naming the field.
+        require_valid_role_description(role_def.get("description"))
         perm_names = role_def.pop("permissions", [])
 
         role = self.session.query(RoleModel).filter_by(name=role_name).first()

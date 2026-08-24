@@ -389,6 +389,10 @@ WRAPPERS = [
         ),
         "ROLE_PERMISSIONS_CHANGED",
     ),
+    (
+        lambda log: log.log_unverified_accounts_swept(3, 5),
+        "UNVERIFIED_ACCOUNTS_SWEPT",
+    ),
     (lambda log: log.log_audit_viewed("audit", "opened"), "AUDIT_VIEWED"),
     (
         lambda log: log.log_permission_denied(["admin:manage_roles"]),

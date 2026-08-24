@@ -192,5 +192,6 @@ class AuthUseCasesComponent:
         return CleanUnverifiedAccountsUseCase(
             uow_factory=self.uow_factory,
             logger=self.logger,
+            audit_logger=self.audit_logger,
             unverified_ttl_hours=self.unverified_ttl_hours,
         )

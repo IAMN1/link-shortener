@@ -5,7 +5,9 @@ from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.domain import (
     PermissionsNotFoundError, Role, RoleAlreadyExistsError, RoleNotFoundError
 )
-from link_shortener.domain.policies.role_policy import require_valid_role_name
+from link_shortener.domain.policies.role_policy import (
+    require_valid_role_description, require_valid_role_name
+)
 
 
 class RoleManagementService:
@@ -115,7 +117,8 @@ class RoleManagementService:
             The newly created Role entity.
 
         Raises:
-            ValidationError: If the name is not one a role may be called.
+            ValidationError: If the name is not one a role may be called,
+                or the description is wider than the column holding it.
             RoleAlreadyExistsError: If the name is already taken.
             PermissionsNotFoundError: If any permission is missing.
         """
@@ -123,6 +126,10 @@ class RoleManagementService:
         # of two doors, and the other is a YAML file read by
         # ``flask db load-custom-roles``.
         require_valid_role_name(name)
+        # The same reasoning, and the half that was left out of it: a
+        # description past the column's width reached PostgreSQL as a
+        # ``StringDataRightTruncation``, which a caller meets as a 500.
+        require_valid_role_description(description)
 
         existing = uow.roles.get_by_name(name)
         if existing:

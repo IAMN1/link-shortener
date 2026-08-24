@@ -42,6 +42,16 @@ class AuditEvent(Enum):
     USER_ACTIVATED = "USER_ACTIVATED"
     USER_EMAIL_CONFIRMED = "USER_EMAIL_CONFIRMED"
     USER_DEACTIVATED = "USER_DEACTIVATED"
+    # Accounts removed by the schedule rather than by anybody, which is
+    # why it sits with the ``USER_*`` members and not with the roles: it
+    # belongs by the rule above read at the outcome instead of at the
+    # actor. An account ceasing to exist is the widest change to who may
+    # do what there is, and ``USER_DELETED`` above records exactly that
+    # when an operator does it. The sweep did it in silence -- measured,
+    # the journal stood at 111 records before and 111 after a run that
+    # deleted an account -- so the same fact was on the record through
+    # one door and off it through the other.
+    UNVERIFIED_ACCOUNTS_SWEPT = "UNVERIFIED_ACCOUNTS_SWEPT"
     ROLES_CHANGED = "ROLES_CHANGED"
 
     # The address proved itself, from the link that was mailed to it.
@@ -590,6 +600,37 @@ class AuditLogger(ABC):
             target_user_id=target_user_id,
             roles_before=list(roles_before),
             roles_after=list(roles_after),
+            **fields,
+        )
+
+    def log_unverified_accounts_swept(
+        self, accounts_deleted: int, tokens_deleted: int, **fields
+    ) -> None:
+        """
+        Record a sweep of registrations nobody confirmed.
+
+        Counts rather than the accounts themselves, for the reason
+        ``log_role_deleted`` gives against listing holders: a sweep after
+        a bulk of registrations would put thousands of addresses into one
+        field of one line, in a journal kept at a size. What the record
+        answers is that the service removed accounts, how many, and when
+        -- which is the question asked of it, because the actor here is a
+        schedule and there is no operator to look up.
+
+        Written only for a sweep that removed something. A schedule
+        running hourly over a service with nothing to clean would
+        otherwise write a line an hour saying so, and a journal of those
+        is a journal nobody reads.
+
+        Args:
+            accounts_deleted: Registrations removed by this sweep.
+            tokens_deleted: Confirmation tokens removed with them.
+            **fields: Additional context.
+        """
+        self.log_security_event(
+            AuditEvent.UNVERIFIED_ACCOUNTS_SWEPT,
+            accounts_deleted=accounts_deleted,
+            tokens_deleted=tokens_deleted,
             **fields,
         )
 

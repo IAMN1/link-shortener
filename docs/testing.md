@@ -1,6 +1,6 @@
 # Testing
 
-**3833 tests**, 97.26% coverage against a floor of 88%, plus two live runs
+**3873 tests**, 97.33% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -410,7 +410,7 @@ catch tests that read configuration nobody gave them.
 flowchart TD
     subgraph clean["clean"]
         C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
-        C2 --> C3[count collected tests<br/>minimum 3825] --> C4[pytest --error-for-skips]
+        C2 --> C3[count collected tests<br/>minimum 3865] --> C4[pytest --error-for-skips]
         C4 --> C5[smoke_test.py<br/>157 checks] --> C6[browser_test.py<br/>65 checks]
     end
     subgraph hostile["hostile"]

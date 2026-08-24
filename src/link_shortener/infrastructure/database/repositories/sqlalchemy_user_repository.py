@@ -168,18 +168,30 @@ class SQLAlchemyUserRepository(UserRepository):
         return self._orm_to_domain(model) if model else None
 
     def list_all(self, limit: int = 100, offset: int = 0) -> List[User]:
-        """Paginated list of all users.
+        """Paginated list of all users, in address order.
+
+        The order is the port's requirement, and the reason it is one is
+        written there. What is decided here is how it is met: by
+        ``users.email``, which is unique and already carries an index, so
+        the order is total without a tie-break and costs no index this
+        schema does not have. Ordering by ``created_at`` -- which the link
+        listing next door does -- would sort the table on every page,
+        there being no index on it.
+
+        A signed-in administrator is worth naming as the commonest way
+        the unordered listing used to move: ``last_login`` is a write.
 
         Args:
             limit: Maximum number of users to return.
             offset: Number of users to skip.
 
         Returns:
-            List of User entities.
+            List of User entities, in address order.
         """
         models = (
             self.session.query(UserModel)
             .options(selectinload(UserModel.roles).selectinload(RoleModel.permissions))
+            .order_by(UserModel.email.asc())
             .limit(limit)
             .offset(offset)
             .all()

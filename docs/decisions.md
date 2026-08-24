@@ -1904,6 +1904,83 @@ the `request_id` the command builds — `cli-create-admin`,
 `cli-reset-password`, `cli-load-custom-roles` — which is what tells a
 reader it came from the console rather than from a request.
 
+### The account listing is ordered by address
+
+**Decided** (2026-08-24): `SQLAlchemyUserRepository.list_all` sorts by
+`users.email`.
+
+**Why.** It sorted by nothing, and a listing that takes `limit` and
+`offset` needs an order or the paging means nothing. PostgreSQL falls back
+to where the row physically sits, so any write moves an account through the
+listing. Measured on the running stack: twelve accounts, two windows of
+six, then `POST /api/v1/admin/users/<id>/deactivate` on the account at the
+top of the first window — it moved past the end of the second, and appeared
+on neither. A signed-in administrator does it to themselves, since
+`last_login` is a write. The panel walks this listing fifty rows at a time.
+
+**By address rather than by creation time**, which is what the link listing
+next door sorts by. `users.email` is unique and already indexed, so the
+order is total without a tie-break and costs no index this schema does not
+have; `created_at` carries no index, so ordering by it would sort the table
+on every page. It is also the column an operator scans a list of accounts
+by.
+
+### The two link-and-account listings read their window in one place
+
+**Decided** (2026-08-24): `limit` and `offset` are read by
+`web/paging.py`, with a floor of one row, an offset never below zero and a
+ceiling of two hundred.
+
+**Why.** The rule was written twice and the copies disagreed. `GET
+/api/v1/links/mine` clamped what it read; `GET /api/v1/admin/users` passed
+it through. Measured: `?offset=-1` and `?limit=-5` answered 500 on the
+account listing and 200 on the link listing — a negative `OFFSET` is not a
+query PostgreSQL runs, and there is nothing a caller can do about a 500.
+`?limit=100000000` answered 200 with the whole table, a cost the caller
+sets and the service pays.
+
+**The ceiling is not a rule about what may be read.** A caller entitled to
+the table can still walk it; two hundred is how much of it arrives at once.
+The account listing keeps its own default of a hundred, and the link
+listing its fifty.
+
+**Not every listing, and deliberately.** The journal endpoints read their
+own window through `JournalQuery`, which *refuses* a limit above
+`HARD_LIMIT` instead of trimming to it — there a trimmed window would tell
+a reader the journal is shorter than it is. The dashboard's account list
+reads `page`, not `limit`, and derives the offset from it. What is shared
+is the pair of listings that answer "here is some of what you own or
+administer", where a window is a convenience rather than a claim.
+
+### A sweep that removed accounts leaves a record
+
+**Decided** (2026-08-24): `CleanUnverifiedAccountsUseCase` writes
+`UNVERIFIED_ACCOUNTS_SWEPT`.
+
+**Why.** The accounts go for a reason nobody argues with — an unconfirmed
+registration holds its address against its owner — but they go, and an
+account ceasing to exist is the widest change to who may do what there is.
+`DELETE /api/v1/admin/users/<id>` records exactly that outcome as
+`USER_DELETED`. Measured on the running stack before the change: the
+security journal held 111 records before a sweep that deleted an account
+and 111 after. One fact, on the record through one door and off it through
+the other.
+
+**Counts rather than addresses**, for the reason `log_role_deleted` gives
+against listing holders: a sweep after a bulk of registrations would put
+thousands of addresses into one field of one line, in a journal kept at a
+size. The actor is a schedule, so there is no operator to look up either;
+what the record answers is that the service removed accounts, how many, and
+when.
+
+**Only a sweep that removed something.** A schedule running hourly over a
+service with nothing to clean would otherwise write a line an hour saying
+so, and the records that matter would sit among them.
+
+**`clean-expired` still writes nothing**, and that stays: a link that
+reached its own expiry is not somebody losing an entitlement, and the
+account that owns it is untouched.
+
 
 ## Known limits
 

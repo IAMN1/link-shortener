@@ -22,6 +22,7 @@ from link_shortener.web.schemas.admin.admin_request import (
 )
 from link_shortener.web.schemas.admin.admin_responses import RoleResponseSchema, UserResponseSchema
 from link_shortener.web.schemas.link import ShortLinkResponse
+from link_shortener.web.paging import window_from_query
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.decorators import require_permission
 from link_shortener.domain.i18n import N_
@@ -89,11 +90,15 @@ class AdminApiController:
         """
         Handle GET /api/v1/admin/users – list users.
 
-        Supports ``limit`` and ``offset`` query parameters.
+        Supports ``limit`` and ``offset`` query parameters, read the way
+        the link listing reads them -- see ``web/paging.py`` for what
+        passing them through unbounded did here. Not the way the journal
+        endpoints read theirs: those refuse a window above their ceiling
+        rather than trimming it, because there a trimmed window would be
+        a claim about how much there is.
         """
         context = create_request_context()
-        limit = request.args.get("limit", 100, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        limit, offset = window_from_query(default_limit=100)
         users = self.admin_service.list_users(context, limit=limit, offset=offset)
         return jsonify([UserResponseSchema.from_dto(u).model_dump() for u in users])
 

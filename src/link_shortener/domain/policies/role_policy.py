@@ -25,7 +25,7 @@ of defense"). The four names this application ships -- ``guest``,
 """
 
 import re
-from typing import Iterable, TYPE_CHECKING
+from typing import Iterable, Optional, TYPE_CHECKING
 
 from link_shortener.domain.exceptions import (
     RoleNotAssignableError, ValidationError
@@ -156,3 +156,55 @@ into ``VARCHAR(255)`` raise ``StringDataRightTruncation``, which a request
 meets as a 500. SQLite does not check the width at all, so the suite alone
 would never have shown it.
 """
+
+
+def require_valid_role_description(description: Optional[str]) -> None:
+    """
+    Refuse a role description the column cannot hold.
+
+    The other half of ``require_valid_role_name``, and it was missing at
+    the same door. The bound was stated twice -- as this constant and as
+    the Pydantic field built from it -- and roles also arrive through
+    ``flask db load-custom-roles``, which reads a YAML file and never
+    meets the schema. Measured on the running stack: a 256-character
+    description in that file came back as
+    ``sqlalchemy.exc.DataError: (psycopg.errors.StringDataRightTruncation)
+    value too long for type character varying(255)``, a traceback out of
+    the driver, where the same file's ``a/b`` name is refused by name with
+    a sentence saying what is wrong.
+
+    Absent, ``None``, and empty are all allowed: the column is nullable
+    and the admin API's schema defaults the field to ``""``.
+
+    Anything that is not a string is refused rather than measured, the
+    way ``require_valid_role_name`` refuses one. The YAML door is the
+    reason both need it: a file may put anything at all under
+    ``description``, and without this ``description: 123`` left by
+    ``len()`` as a ``TypeError`` -- a traceback naming no field, which is
+    the outcome this whole rule exists to replace -- while
+    ``description: [a, b]`` measured four and went into the column.
+
+    Args:
+        description: The description a role is about to be created with.
+
+    Raises:
+        ValidationError: If it is not a string, or is longer than the
+            column is wide.
+    """
+    if description is None:
+        return
+    if not isinstance(description, str):
+        raise ValidationError(
+            N_("A role description must be text"),
+            field="description",
+        )
+    if len(description) > ROLE_DESCRIPTION_MAX_LENGTH:
+        raise ValidationError(
+            f"A role description must be at most "
+            f"{ROLE_DESCRIPTION_MAX_LENGTH} characters long",
+            field="description",
+            template=N_(
+                "A role description must be at most %(most)s characters long"
+            ),
+            params={"most": ROLE_DESCRIPTION_MAX_LENGTH},
+        )
