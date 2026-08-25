@@ -75,12 +75,24 @@ class RoleManagementService:
         had two codes, two statuses, and two msgids in the catalogue that
         a translator had to keep in step by hand.
 
+        A name repeated in the request yields one role, the way
+        ``resolve_permissions`` yields one permission for a name repeated
+        there: what a request carries is the set an account is to wear,
+        and naming a role twice does not name two roles. Without this the
+        repeated role reached the association table as two identical rows
+        and the primary key refused them -- measured on the running stack,
+        ``{"roles": ["user", "user"]}`` was answered `409
+        EMAIL_ALREADY_REGISTERED`, because that flush writes the
+        associations too and every violation in it was read as the address
+        index. That reading is narrowed now, but the request is a
+        reasonable one and should simply work.
+
         Args:
             uow: Active unit of work.
             role_names: Names as the caller wrote them, in their order.
 
         Returns:
-            The roles, in the order they were asked for.
+            The roles, in the order they were asked for, without repeats.
 
         Raises:
             RoleNotFoundError: At the first name nothing carries. The
@@ -90,10 +102,18 @@ class RoleManagementService:
                 cost there that it is for permissions.
         """
         roles = []
+        seen = set()
         for name in role_names:
             role = uow.roles.get_by_name(name)
             if not role:
                 raise RoleNotFoundError(name)
+            # Deduplicated by identity rather than by the name asked for:
+            # a role deleted and made again under its old name is a
+            # different role, which is the same reason ``_sync_roles``
+            # matches on the id.
+            if role.id in seen:
+                continue
+            seen.add(role.id)
             roles.append(role)
         return roles
 

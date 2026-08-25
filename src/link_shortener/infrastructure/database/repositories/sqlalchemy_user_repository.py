@@ -6,12 +6,55 @@ from sqlalchemy.orm import Session, selectinload
 
 from link_shortener.infrastructure.database.models.permission_model import PermissionModel
 from link_shortener.infrastructure.database.models.role_model import RoleModel
+from link_shortener.infrastructure.database.models.base import Base
 from link_shortener.infrastructure.database.models.user_model import UserModel
 from link_shortener.application import Logger
 from link_shortener.domain import (
     EmailAlreadyRegisteredError, Role, RoleNotFoundError, User,
     UserRepository, Email, PasswordHash, Permission
 )
+
+
+EMAIL_INDEX_NAME = next(
+    index.name
+    for index in Base.metadata.tables[UserModel.__tablename__].indexes
+    if [column.name for column in index.columns] == ["email"]
+)
+"""Name of the unique index on ``users.email``.
+
+Read off the model rather than written out, because the name is what
+PostgreSQL reports a violation of and the two would otherwise have to be
+kept in step by hand. The migration creates it under this name as well,
+and ``test_schema_matches_migration`` is what holds those together.
+"""
+
+
+def _is_email_clash(error: IntegrityError) -> bool:
+    """
+    Report whether an integrity error is the address index refusing.
+
+    Asked because a single ``flush`` writes the account and its role
+    associations, so "something violated a constraint" is not the same
+    question as "that address is taken".
+
+    The two databases say it differently, and both forms are measured:
+    PostgreSQL 15 names the constraint --
+    ``duplicate key value violates unique constraint "ix_users_email"``,
+    reachable as ``diag.constraint_name`` -- while SQLite names the column
+    in the message and offers no diagnostics: ``UNIQUE constraint failed:
+    users.email``.
+
+    Args:
+        error: The integrity error the flush raised.
+
+    Returns:
+        ``True`` if the address index is what refused the write.
+    """
+    diagnostics = getattr(error.orig, "diag", None)
+    constraint = getattr(diagnostics, "constraint_name", None)
+    if constraint:
+        return constraint == EMAIL_INDEX_NAME
+    return "users.email" in str(error.orig)
 
 
 class SQLAlchemyUserRepository(UserRepository):
@@ -76,8 +119,9 @@ class SQLAlchemyUserRepository(UserRepository):
             is not re-hydrated from the ORM).
 
         Raises:
-            ValidationError: If the write collides with an address
-                somebody else has just registered.
+            EmailAlreadyRegisteredError: If the write collides with an
+                address somebody else has just registered -- that index
+                and no other constraint this flush can touch.
             RoleNotFoundError: If the user carries a role no row answers to.
         """
         model = self.session.get(UserModel, user.id)
@@ -103,6 +147,19 @@ class SQLAlchemyUserRepository(UserRepository):
             # both routes to the same fact carry one sentence and one
             # field. The session is unusable afterwards; the unit of work
             # rolls it back on the way out.
+            #
+            # Only that index, though. This ``flush`` also writes the role
+            # associations ``_sync_roles`` just built, and every violation
+            # they can raise arrived here as "Email already registered":
+            # measured on the running stack, ``PUT
+            # /api/v1/admin/users/<id>/roles`` naming one role twice was
+            # answered `409 EMAIL_ALREADY_REGISTERED` for a request that
+            # carries no address at all. Anything that is not the address
+            # is re-raised as it came, because a wrong answer is worse
+            # than an unhandled one: 500 says the service does not know,
+            # and this said it knew something untrue.
+            if not _is_email_clash(clash):
+                raise
             raise EmailAlreadyRegisteredError() from clash
         return user
 
