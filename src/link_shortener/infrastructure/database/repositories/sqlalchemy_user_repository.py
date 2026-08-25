@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.orm import Session, selectinload
 
 from link_shortener.infrastructure.database.models.permission_model import PermissionModel
@@ -351,17 +352,44 @@ class SQLAlchemyUserRepository(UserRepository):
     def delete(self, user_id: str) -> bool:
         """Permanently delete a user.
 
+        Answers ``False`` for an account that is not there, and an account
+        somebody else deleted a moment ago is not there either. The read
+        above is a hint that goes stale the moment another transaction
+        commits, exactly as the address lookup is in ``save``: measured on
+        the running stack, two simultaneous ``DELETE
+        /api/v1/admin/users/<id>`` answered 200 and **500**, because the
+        second flushed a cascade whose rows the first had already taken --
+        ``StaleDataError: DELETE statement on table 'user_roles' expected
+        to delete 1 row(s); Only 0 were matched``. That is the service
+        blaming itself for a request that was merely late, which is the
+        arrangement `save` and ``SQLAlchemyRoleRepository.save`` were both
+        given for their own races. The caller now gets ``False`` and the
+        route answers 404, which is what the account's absence is.
+
+        Flushed here rather than left to the commit, because that is where
+        the error surfaces and there is nothing above this to turn it into
+        an answer.
+
         Args:
             user_id: UUID string of the user.
 
         Returns:
-            ``True`` if a user was deleted, ``False`` if it did not exist.
+            ``True`` if a user was deleted, ``False`` if it did not exist
+            or had just been deleted by somebody else.
         """
         model = self.session.get(UserModel, user_id)
-        if model:
-            self.session.delete(model)
-            return True
-        return False
+        if not model:
+            return False
+
+        self.session.delete(model)
+        try:
+            self.session.flush()
+        except StaleDataError:
+            # The session cannot be used further; the unit of work rolls
+            # it back on the way out, which is what the losing side of
+            # this race wants -- it has nothing left to write.
+            return False
+        return True
 
     def delete_unverified_before(self, cutoff: datetime) -> int:
         """Delete accounts that were never confirmed and have run out of time.

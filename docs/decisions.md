@@ -2034,6 +2034,39 @@ code could not be answered by it. `VALIDATION_ERROR` is still 400 — that
 is what the table says — and a subclass that names a code is answered by
 the table, like every other domain error.
 
+### A request that merely arrived late is not a fault of the service
+
+**Decided** (2026-08-25): a lost race is answered as the state it lost to.
+
+**Why.** The pattern had been settled twice already and applied to two
+routes. Registrations racing on one address answered `202, 500, 500` until
+`SQLAlchemyUserRepository.save` translated the unique-index violation; six
+simultaneous creations of one role name answered `201, 409, 409, 500, 500,
+500` until `SQLAlchemyRoleRepository.save` did the same. Deletion was the
+third door and had never been through it: measured, two simultaneous
+`DELETE /api/v1/admin/users/<id>` answered **200 and 500**, with
+`StaleDataError: DELETE statement on table 'user_roles' expected to delete
+1 row(s); Only 0 were matched` in the error journal — the second request
+flushed a cascade whose rows the first had already taken.
+
+`delete` now flushes where it can answer for the failure and reports
+`False`, which the route turns into 404. That is what the account's
+absence is, and the caller asked for it to be absent. Re-measured: 200 and
+404, on an account with links and on one without.
+
+**Only that error, and only there.** `StaleDataError` from this flush means
+the rows this delete meant to take are already gone. Anything else is left
+to raise, for the reason the address index was narrowed to in the same
+file: a wrong answer is worse than an unhandled one.
+
+**What is deliberately not done.** The same broad-catch shape stands in
+`SQLAlchemyRoleRepository.save` and `SQLAlchemyLinkRepository`, where a
+flush also writes an association table. Neither is reachable today: role
+permissions are resolved by a query over names, which cannot produce a
+duplicate, and the YAML loader resolves them the same way — measured, a
+permission named twice in one file yields one row. It stays a mine rather
+than a defect, and narrowing it would be tidying rather than fixing.
+
 
 ## Known limits
 
