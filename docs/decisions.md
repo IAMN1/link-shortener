@@ -1904,6 +1904,263 @@ the `request_id` the command builds — `cli-create-admin`,
 `cli-reset-password`, `cli-load-custom-roles` — which is what tells a
 reader it came from the console rather than from a request.
 
+**The same rule now stands at the HTTP door** (2026-08-25). "Only where the
+set actually changed" was written here for `db load-custom-roles` and
+applied to that door alone. Measured on the running stack: `PUT
+/api/v1/admin/users/<id>/roles` with the roles the account already held
+answered 200 and wrote `ROLES_CHANGED` with `roles_before: ['user']` and
+`roles_after: ['user']`; `PUT /api/v1/admin/roles/<name>/permissions` did
+the same. The panel makes exactly that request — its edit form sends every
+ticked checkbox on save — so an operator who opened a form, changed
+nothing and saved left an entry saying they had moved an account's
+privileges. Both use cases now compare the sets, ignoring the order the
+request listed them in, and record only a real change. The application log
+still notes every call, with a `changed` field: what was asked for is
+worth keeping, it just is not a security event.
+
+### The account listing is ordered by address
+
+**Decided** (2026-08-24): `SQLAlchemyUserRepository.list_all` sorts by
+`users.email`.
+
+**Why.** It sorted by nothing, and a listing that takes `limit` and
+`offset` needs an order or the paging means nothing. PostgreSQL falls back
+to where the row physically sits, so any write moves an account through the
+listing. Measured on the running stack: twelve accounts, two windows of
+six, then `POST /api/v1/admin/users/<id>/deactivate` on the account at the
+top of the first window — it moved past the end of the second, and appeared
+on neither. A signed-in administrator does it to themselves, since
+`last_login` is a write. The panel walks this listing fifty rows at a time.
+
+**By address rather than by creation time**, which is what the link listing
+next door sorts by. `users.email` is unique and already indexed, so the
+order is total without a tie-break and costs no index this schema does not
+have; `created_at` carries no index, so ordering by it would sort the table
+on every page. It is also the column an operator scans a list of accounts
+by.
+
+### The two link-and-account listings read their window in one place
+
+**Decided** (2026-08-24): `limit` and `offset` are read by
+`web/paging.py`, with a floor of one row, an offset never below zero and a
+ceiling of two hundred.
+
+**Why.** The rule was written twice and the copies disagreed. `GET
+/api/v1/links/mine` clamped what it read; `GET /api/v1/admin/users` passed
+it through. Measured: `?offset=-1` and `?limit=-5` answered 500 on the
+account listing and 200 on the link listing — a negative `OFFSET` is not a
+query PostgreSQL runs, and there is nothing a caller can do about a 500.
+`?limit=100000000` answered 200 with the whole table, a cost the caller
+sets and the service pays.
+
+**The ceiling is not a rule about what may be read.** A caller entitled to
+the table can still walk it; two hundred is how much of it arrives at once.
+The account listing keeps its own default of a hundred, and the link
+listing its fifty.
+
+**Not every listing, and deliberately.** The journal endpoints read their
+own window through `JournalQuery`, which *refuses* a limit above
+`HARD_LIMIT` instead of trimming to it — there a trimmed window would tell
+a reader the journal is shorter than it is. The dashboard's account list
+reads `page`, not `limit`, and derives the offset from it. What is shared
+is the pair of listings that answer "here is some of what you own or
+administer", where a window is a convenience rather than a claim.
+
+### A sweep that removed accounts leaves a record
+
+**Decided** (2026-08-24): `CleanUnverifiedAccountsUseCase` writes
+`UNVERIFIED_ACCOUNTS_SWEPT`.
+
+**Why.** The accounts go for a reason nobody argues with — an unconfirmed
+registration holds its address against its owner — but they go, and an
+account ceasing to exist is the widest change to who may do what there is.
+`DELETE /api/v1/admin/users/<id>` records exactly that outcome as
+`USER_DELETED`. Measured on the running stack before the change: the
+security journal held 111 records before a sweep that deleted an account
+and 111 after. One fact, on the record through one door and off it through
+the other.
+
+**Counts rather than addresses**, for the reason `log_role_deleted` gives
+against listing holders: a sweep after a bulk of registrations would put
+thousands of addresses into one field of one line, in a journal kept at a
+size. The actor is a schedule, so there is no operator to look up either;
+what the record answers is that the service removed accounts, how many, and
+when.
+
+**Only a sweep that removed something.** A schedule running hourly over a
+service with nothing to clean would otherwise write a line an hour saying
+so, and the records that matter would sit among them.
+
+**`clean-expired` still writes nothing**, and that stays: a link that
+reached its own expiry is not somebody losing an entitlement, and the
+account that owns it is untouched.
+
+### A missing account and a taken address answer what the spec already promised
+
+**Decided** (2026-08-25): `UserNotFoundError` and
+`EmailAlreadyRegisteredError` are domain errors; a validation error's
+status comes from its code.
+
+**Why.** Both situations were already documented the way they are now
+answered, and the code disagreed with the documentation rather than with
+an opinion. `openapi.py` listed `404 No account carries that id` for
+`GET /api/v1/admin/users/{user_id}/stats`, which answered **200** with
+four zeroes for an id nothing carries — indistinguishable from a real
+account that has never made a link, while the panel's page for that id
+answered 404. It listed `409 That address is already registered` for
+`POST /api/v1/admin/users`, which answered **400 VALIDATION_ERROR**, the
+same code a malformed address carries, while the role route beside it
+answered a taken name `409 ROLE_ALREADY_EXISTS`.
+
+**Classes rather than seven hand-built errors.** The "no such account"
+sentence was assembled in seven places — the controller twice, the facade,
+the service three times, the confirmation use case — for one fact.
+`RoleNotFoundError` was made a class for exactly this reason and says so
+in its own docstring; the account half had simply never been done.
+
+**`EmailAlreadyRegisteredError` stays a `ValidationError`, and that is
+load-bearing.** Public registration does not refuse a taken address out
+loud: it answers 202 and mails the address a notice, per OWASP's
+Authentication Cheat Sheet. It recognises the clash of a lost race by
+catching `ValidationError` with `field == "email"`. A class of its own —
+the obvious tidying, since it carries a code of its own — leaves that
+catch unmatched and the public endpoint answers 500 where it answers 202,
+which is the disclosure the 202 exists to prevent. Measured: with the
+class detached, 1178 tests still passed. A test now stands on that path.
+
+**The status now comes from the code** for validation errors too. The
+handler returned 400 whatever was raised, so a subclass carrying its own
+code could not be answered by it. `VALIDATION_ERROR` is still 400 — that
+is what the table says — and a subclass that names a code is answered by
+the table, like every other domain error.
+
+### A request that merely arrived late is not a fault of the service
+
+**Decided** (2026-08-25): a lost race is answered as the state it lost to.
+
+**Why.** The pattern had been settled twice already and applied to two
+routes. Registrations racing on one address answered `202, 500, 500` until
+`SQLAlchemyUserRepository.save` translated the unique-index violation; six
+simultaneous creations of one role name answered `201, 409, 409, 500, 500,
+500` until `SQLAlchemyRoleRepository.save` did the same. Deletion was the
+third door and had never been through it: measured, two simultaneous
+`DELETE /api/v1/admin/users/<id>` answered **200 and 500**, with
+`StaleDataError: DELETE statement on table 'user_roles' expected to delete
+1 row(s); Only 0 were matched` in the error journal — the second request
+flushed a cascade whose rows the first had already taken.
+
+`delete` now flushes where it can answer for the failure and reports
+`False`, which the route turns into 404. That is what the account's
+absence is, and the caller asked for it to be absent. Re-measured: 200 and
+404, on an account with links and on one without.
+
+**Only that error, and only there.** `StaleDataError` from this flush means
+the rows this delete meant to take are already gone. Anything else is left
+to raise, for the reason the address index was narrowed to in the same
+file: a wrong answer is worse than an unhandled one.
+
+**What was deliberately not done, and did not survive.** The same
+broad-catch shape stood in `SQLAlchemyRoleRepository.save` and
+`SQLAlchemyLinkRepository`, and both were left as mines nothing could
+reach: role permissions are resolved by a query over names, which cannot
+produce a duplicate, and the YAML loader resolves them the same way —
+measured, a permission named twice in one file yields one row.
+
+That reasoning held for the request in isolation and not for two of them.
+A race reaches the role one: `PUT /admin/roles/<name>/permissions`
+against a simultaneous `DELETE` of that role writes an association
+pointing at a row that is no longer there, and the catch read the foreign
+key violation as the unique one — `409 ROLE_ALREADY_EXISTS`, measured,
+for a request that asks to take no name at all. It is narrowed now, the
+way the address was. The link repository's is untouched: nothing deletes
+a `short_code`'s owner mid-write in the same way, and it stays on the
+list above.
+
+### The three doors the same race was still open on
+
+**Decided** (2026-08-25): the rule above is applied to the writes, not
+only to the deletions.
+
+**Why.** Deletion was made to answer for its lost race; the writes it
+races against were not, and each was measured on the running stack with
+two simultaneous requests against one account or role.
+
+`POST /api/v1/admin/users/<id>/deactivate` against a simultaneous
+`DELETE` of that account answered **500** in two attempts of three —
+`StaleDataError: UPDATE statement on table 'users' expected to update 1
+row(s); 0 were matched`. `PUT /users/<id>/roles` reached the same failure
+two milliseconds behind the delete. `activate` and `verify-email` did not
+show it in the same probe, having a shorter path and a narrower window,
+and run the identical `save`. So the answer is given once, in `save`: a
+stale write is `UserNotFoundError`, which the table answers 404 — what
+the account's absence already is on every route around it.
+
+`PUT /api/v1/admin/users/<id>/roles` naming a role, against a `DELETE
+/api/v1/admin/roles/<name>` of that role two milliseconds later, answered
+**500** with `ForeignKeyViolation` on `user_roles`. `_sync_roles` already
+promises `RoleNotFoundError` for this exact situation — a role deleted
+between one administrator's lookup and another's save — and delivered it
+only when the deletion committed before the lookup. It is now delivered
+on the other side of that read too.
+
+`PUT /api/v1/admin/roles/<name>/permissions` against a `DELETE` of that
+role answered 200 and **500** — `StaleDataError` on `role_permissions`,
+the deletion flushing a cascade whose rows the permission change had
+already replaced. `SQLAlchemyRoleRepository.delete` now raises
+`RoleNotFoundError`, so the losing side is answered 404 by the same
+sentence as a name that was never there.
+
+That pair loses both ways round, which the first fix did not cover. With
+the deletion answered, a finer grid over the shift between the two
+requests put the *write* on the losing side: **500** twice with the same
+`StaleDataError`, and **409 ROLE_ALREADY_EXISTS** once — the broad catch
+in `save`, described just above as unreachable, reading a foreign key
+violation as the unique one. Both are answered 404 now. The lesson is
+worth more than the fix: a race has two losers, and measuring one of them
+proves nothing about the other.
+
+**Which role went, and how that is known.** The foreign keys on
+`user_roles` are declared without names, so the constraint in the message
+is whatever the database generated and is not worth matching on. What is
+read instead is the diagnostics — which table refused, and which key it
+named — and the key is matched back against the roles that write was
+carrying. A violation from another table, one naming a role the write
+never carried, or a database that reports no diagnostics at all (which is
+every engine here but PostgreSQL) is re-raised as it came: a wrong answer
+is worse than an unhandled one.
+
+**Not reproducible in the suite.** All three races need two transactions,
+and the suite's database is one in-memory SQLite connection. What the
+tests hold is the translation each race depends on; the races themselves
+were measured against the stack, before and after.
+
+### A 5xx an operator caused is worded for the operator
+
+**Decided** (2026-08-25): `MAIL_NOT_HANDED_OFF` keeps its own sentence.
+
+**Why.** `client_message` replaces the sentence of any 5xx whose code is
+not listed in `CODES_WORDED_FOR_THE_CLIENT`, because a 5xx usually
+describes the service's own state — a role from the configuration, a
+broker — to somebody who is not the audience for it.
+
+That proxy is wrong for this code. It is raised by one route, `POST
+/admin/users/<id>/resend-verification`, which sits behind
+`admin:manage_users` and tells three answers apart on purpose: 202 the
+message is on its way, 200 there was nothing to send, 503 the queue would
+not take it. The sentence names the address the message was meant for,
+which its own docstring argues is no disclosure — the caller reads the
+whole account list already — and it is translated into both catalogues.
+
+Measured with the broker stopped: `503 {"error":
+"MAIL_NOT_HANDED_OFF", "message": "An internal error occurred"}`. The
+operator that route distinguishes three answers for saw what any other
+failure looks like, and a sentence carried through two translation files
+reached nobody. The suite asked for the status and never for the body.
+
+**The list stays a list of codes.** Its own docstring says the audience
+is a property of the code and not of the moment, and this is the second
+code where the proxy misses: one raiser, one reader, one sentence.
+
 
 ## Known limits
 

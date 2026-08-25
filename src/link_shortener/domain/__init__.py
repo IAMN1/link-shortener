@@ -41,6 +41,7 @@ from .exceptions import (
     LinkExpiredError,
     GuestLinkLimitExceededError,
     RoleNotFoundError, RoleAlreadyExistsError, RoleIsSystemError,
+    UserNotFoundError, EmailAlreadyRegisteredError,
     PermissionDeniedError,
     RoleNotAssignableError,
     PermissionsNotFoundError
@@ -102,6 +103,8 @@ __all__ = [
     "GuestLinkLimitExceededError",
     "RoleNotFoundError",
     "RoleAlreadyExistsError",
+    "UserNotFoundError",
+    "EmailAlreadyRegisteredError",
     "RoleIsSystemError",
     "PermissionDeniedError",
     "RoleNotAssignableError",

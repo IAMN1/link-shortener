@@ -3,6 +3,9 @@
 import pytest
 
 from link_shortener.domain import ValidationError
+from link_shortener.domain.policies.role_policy import (
+    ROLE_DESCRIPTION_MAX_LENGTH,
+)
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.infrastructure.database.models.permission_model import (
     PermissionModel
@@ -291,6 +294,40 @@ class TestTheNameRuleStandsAtThisDoorToo:
         assert sorted(summary.roles_created) == [
             "admin", "analyst", "auditor", "guest", "user",
         ]
+
+    def test_a_description_wider_than_the_column_is_refused(
+        self, fresh_db, tmp_path
+    ):
+        """
+        The half of the rule this door was still missing. Measured on
+        the running stack before the fix: ``flask db load-custom-roles``
+        with a 256-character description came back
+        ``sqlalchemy.exc.DataError: (psycopg.errors.StringDataRight
+        Truncation) value too long for type character varying(255)`` --
+        out of the driver, naming no field, where the bad name above is
+        refused with a sentence. SQLite does not check the width at all,
+        so the row simply went in here and the suite saw nothing.
+        """
+        too_wide = tmp_path / "wide-description.yaml"
+        too_wide.write_text(
+            "permissions:\n"
+            "  - name: \"link:create\"\n"
+            "    resource: \"link\"\n"
+            "    action: \"create\"\n"
+            "roles:\n"
+            "  - name: \"wide-description\"\n"
+            f"    description: \"{'d' * (ROLE_DESCRIPTION_MAX_LENGTH + 1)}\"\n"
+            "    permissions: [\"link:create\"]\n"
+        )
+
+        with fresh_db.session() as session:
+            with pytest.raises(ValidationError):
+                RoleLoader(session).load_from_yaml(too_wide)
+
+        with fresh_db.session() as session:
+            assert session.query(RoleModel).filter_by(
+                name="wide-description"
+            ).first() is None
 
 
 class TestWhatUpdateExistingActuallyUpdates:

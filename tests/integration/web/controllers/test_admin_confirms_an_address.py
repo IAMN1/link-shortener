@@ -246,6 +246,44 @@ class TestSendingTheMessageAgain:
 
         assert response.status_code == 503, response.get_json()
 
+    def test_the_refusal_says_what_did_not_happen_and_to_whom(
+        self, app, operator, monkeypatch
+    ):
+        """
+        The status alone was all this asked for, and the sentence behind
+        it had gone missing: measured with the broker stopped, 503
+        arrived as ``"message": "An internal error occurred"``.
+
+        ``client_message`` blanks a 5xx sentence unless its code is
+        listed, and the rule it applies is a proxy -- a 5xx usually
+        describes the service's own state to somebody who is not the
+        audience for it. Here the audience is an operator holding
+        ``admin:manage_users``, the sentence was assembled for them with
+        the address in it, and it is translated into both catalogues. So
+        the one route that tells three answers apart told the operator
+        exactly what every other failure tells them.
+        """
+        client, token, _ = operator
+        email = "queue-refuses-out-loud@example.test"
+        user_id = unconfirmed_account(app, email)
+
+        with app.app_context():
+            queue = app.container.get_task_queue()
+            monkeypatch.setattr(
+                queue, "enqueue_verification_email",
+                lambda *args, **kwargs: False,
+            )
+
+            response = client.post(
+                f"/api/v1/admin/users/{user_id}/resend-verification",
+                headers=auth_headers(token),
+            )
+
+        body = response.get_json()
+        assert body["error"] == "MAIL_NOT_HANDED_OFF"
+        assert email in body["message"], body
+        assert "internal error" not in body["message"].lower()
+
     def test_an_account_that_is_not_there_is_a_404(self, operator):
         """
         Unlike the public endpoint, which answers the same for every

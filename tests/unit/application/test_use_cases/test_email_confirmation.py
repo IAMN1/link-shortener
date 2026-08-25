@@ -652,10 +652,11 @@ class TestTheMessageItself:
 class TestTheSweep:
     """Old unconfirmed registrations, and the tokens left behind."""
 
-    def _use_case(self, uow_factory, ttl_hours=72):
+    def _use_case(self, uow_factory, ttl_hours=72, audit=None):
         return CleanUnverifiedAccountsUseCase(
             uow_factory=uow_factory,
             logger=Mock(),
+            audit_logger=audit or Mock(),
             unverified_ttl_hours=ttl_hours,
         )
 
@@ -695,3 +696,41 @@ class TestTheSweep:
 
         assert self._use_case(uow_factory).execute(context()) == 0
         assert uow.users.users == [settled]
+
+    def test_a_sweep_that_removed_accounts_reaches_the_audit_trail(
+        self, uow_factory, uow
+    ):
+        """
+        The accounts go for a reason nobody argues with, and they still
+        go. Measured on the running stack before this was written: the
+        security journal held 111 records before a sweep that deleted an
+        account and 111 after, while ``DELETE /api/v1/admin/users/<id>``
+        -- the same outcome through the other door -- writes
+        ``USER_DELETED`` every time.
+        """
+        audit = Mock()
+        stale = User.create(Email("swept@example.com"), PasswordHash(HASH))
+        stale.created_at = datetime.now(timezone.utc) - timedelta(hours=100)
+        uow.users.save(stale)
+
+        self._use_case(uow_factory, audit=audit).execute(context())
+
+        audit.bind.return_value.log_unverified_accounts_swept.assert_called_once()
+        _, kwargs = (
+            audit.bind.return_value.log_unverified_accounts_swept.call_args
+        )
+        assert kwargs["accounts_deleted"] == 1
+
+    def test_a_sweep_that_removed_nothing_writes_no_record(
+        self, uow_factory, uow
+    ):
+        """
+        A schedule running over a clean service would otherwise write a
+        record every run saying it did nothing, and the records that
+        matter would sit among them.
+        """
+        audit = Mock()
+
+        self._use_case(uow_factory, audit=audit).execute(context())
+
+        audit.bind.return_value.log_unverified_accounts_swept.assert_not_called()

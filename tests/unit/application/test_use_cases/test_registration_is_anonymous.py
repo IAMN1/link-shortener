@@ -27,7 +27,9 @@ from link_shortener.application.use_cases.auth.register import RegisterUseCase
 from link_shortener.application.use_cases.auth.send_account_exists_email import (
     SendAccountExistsEmailUseCase,
 )
-from link_shortener.domain import Email, PasswordHash, Role, User
+from link_shortener.domain import (
+    Email, EmailAlreadyRegisteredError, PasswordHash, Role, User,
+)
 
 
 PASSWORD = "StrongPass1!"
@@ -323,3 +325,67 @@ class TestTheNoticeItself:
         use_case.execute("user@example.com", context())
 
         assert mailer.send.call_args.kwargs["to"] == "user@example.com"
+
+
+class TestTheAddressLosingARaceIsStillSilent:
+    """
+    The path taken when two registrations of one address overlap.
+
+    ``_register`` reads first and writes after, so a second registration
+    landing in between reaches the unique index and the repository raises.
+    Registration catches that and answers exactly as it answers a taken
+    address it saw coming -- 202, with the notice mailed to the address --
+    because the alternative is a 500 on a public endpoint, and the
+    difference between 202 and 500 says what the 202 is worded to
+    withhold. Measured before that catch existed: five simultaneous
+    registrations of one address answered 202, 500, 500 and two throttled.
+
+    The catch recognises the clash as a ``ValidationError`` carrying
+    ``field == "email"``. Nothing held that until this file did: making
+    ``EmailAlreadyRegisteredError`` a class of its own -- an obvious
+    tidying, since it has a code of its own -- left the whole suite green
+    and the endpoint answering 500 in a race.
+    """
+
+    @pytest.fixture
+    def racing_uow(self):
+        """A unit of work that sees a free address and then loses it."""
+
+        class LosesTheRace(FakeUow):
+            def __init__(self):
+                super().__init__(users=[])
+                self.users.save = self._save_into_a_taken_address
+
+            @staticmethod
+            def _save_into_a_taken_address(user):
+                raise EmailAlreadyRegisteredError()
+
+        return LosesTheRace()
+
+    @pytest.fixture
+    def racing_register(self, racing_uow, queue, auth):
+        return RegisterUseCase(
+            uow_factory=lambda read_only=False, _u=racing_uow: _u,
+            authentication_service=auth,
+            logger=Mock(),
+            default_role_name="user",
+            task_queue=queue,
+            verification_ttl_hours=24,
+        )
+
+    def test_the_race_is_not_raised_to_the_caller(self, racing_register):
+        """A raised clash is a 500 on a public endpoint."""
+        racing_register.execute(FREE, PASSWORD, context())
+
+    def test_the_owner_of_the_address_is_notified(
+        self, racing_register, queue
+    ):
+        """
+        The same thing the seen-in-advance path does: the notice goes to
+        the address, and no confirmation token is mailed to whoever
+        typed it.
+        """
+        racing_register.execute(FREE, PASSWORD, context())
+
+        queue.enqueue_account_exists_email.assert_called_once()
+        queue.enqueue_verification_email.assert_not_called()

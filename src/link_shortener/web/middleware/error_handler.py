@@ -73,6 +73,12 @@ STATUS_BY_CODE = {
     # as LINK_CODE_TAKEN, and answered the same way: their request, and a
     # fix only they can make.
     "ROLE_ALREADY_EXISTS": 409,
+    # The same answer as the name a role already carries: the
+    # request is well formed and the service simply has it. It
+    # answered 400 under the generic validation code, so a client
+    # could not tell a taken address from a malformed one without
+    # reading the sentence.
+    "EMAIL_ALREADY_REGISTERED": 409,
     # The role is there and the service owns it. 400 rather than 403: the
     # caller holds `admin:manage_roles` and is refused by what they named,
     # not by who they are.
@@ -106,7 +112,19 @@ def status_for(code: str) -> int:
     return STATUS_BY_CODE.get(code, 500)
 
 
-CODES_WORDED_FOR_THE_CLIENT = frozenset({"REGISTRATION_UNAVAILABLE"})
+CODES_WORDED_FOR_THE_CLIENT = frozenset({
+    "REGISTRATION_UNAVAILABLE",
+    # Raised by one route, and that route is an administrative one:
+    # ``POST /admin/users/<id>/resend-verification`` tells three answers
+    # apart on purpose, and the sentence it assembles names the address
+    # the message was meant for -- which its docstring argues is no
+    # disclosure, the caller reading the whole account list already.
+    # Measured with the broker stopped: 503 arrived as "An internal error
+    # occurred", so the operator who is the whole reason this route
+    # answers three ways saw what any other failure looks like, and a
+    # sentence translated into both catalogues reached nobody.
+    "MAIL_NOT_HANDED_OFF",
+})
 """5xx codes whose sentence was written for whoever is reading it.
 
 The rule below is a proxy: a 5xx code usually means the service is
@@ -393,7 +411,16 @@ class ErrorHandlerMiddleware:
                 "Domain validation error", field=error.field, code=error.code
             )
 
-            return jsonify(response.model_dump()), 400
+            # The status comes from the code, as it does for every other
+            # domain error, rather than being 400 whatever was raised. A
+            # validation error that names no code of its own still gets
+            # 400 -- that is what `VALIDATION_ERROR` is, and it is not in
+            # the table -- but a subclass that carries one is answered by
+            # it: a taken address is `EMAIL_ALREADY_REGISTERED`, and the
+            # table answers that 409, the way it answers a taken role name.
+            return jsonify(response.model_dump()), STATUS_BY_CODE.get(
+                error.code, 400
+            )
 
         @self.app.errorhandler(LinkNotFoundError)
         def handle_link_not_found(error: LinkNotFoundError):

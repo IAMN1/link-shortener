@@ -2,17 +2,104 @@ from datetime import datetime
 from typing import List, Optional
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.orm import Session, selectinload
 
+from link_shortener.infrastructure.database.models.associations import (
+    user_role_table,
+)
 from link_shortener.infrastructure.database.models.permission_model import PermissionModel
 from link_shortener.infrastructure.database.models.role_model import RoleModel
+from link_shortener.infrastructure.database.models.base import Base
 from link_shortener.infrastructure.database.models.user_model import UserModel
 from link_shortener.application import Logger
 from link_shortener.domain import (
-    Role, RoleNotFoundError, User, UserRepository, ValidationError,
-    Email, PasswordHash, Permission
+    EmailAlreadyRegisteredError, Role, RoleNotFoundError, User,
+    UserNotFoundError, UserRepository, Email, PasswordHash, Permission
 )
-from link_shortener.domain.i18n import N_
+
+
+EMAIL_INDEX_NAME = next(
+    index.name
+    for index in Base.metadata.tables[UserModel.__tablename__].indexes
+    if [column.name for column in index.columns] == ["email"]
+)
+"""Name of the unique index on ``users.email``.
+
+Read off the model rather than written out, because the name is what
+PostgreSQL reports a violation of and the two would otherwise have to be
+kept in step by hand. The migration creates it under this name as well,
+and ``test_schema_matches_migration`` is what holds those together.
+"""
+
+
+def _is_email_clash(error: IntegrityError) -> bool:
+    """
+    Report whether an integrity error is the address index refusing.
+
+    Asked because a single ``flush`` writes the account and its role
+    associations, so "something violated a constraint" is not the same
+    question as "that address is taken".
+
+    The two databases say it differently, and both forms are measured:
+    PostgreSQL 15 names the constraint --
+    ``duplicate key value violates unique constraint "ix_users_email"``,
+    reachable as ``diag.constraint_name`` -- while SQLite names the column
+    in the message and offers no diagnostics: ``UNIQUE constraint failed:
+    users.email``.
+
+    Args:
+        error: The integrity error the flush raised.
+
+    Returns:
+        ``True`` if the address index is what refused the write.
+    """
+    diagnostics = getattr(error.orig, "diag", None)
+    constraint = getattr(diagnostics, "constraint_name", None)
+    if constraint:
+        return constraint == EMAIL_INDEX_NAME
+    return "users.email" in str(error.orig)
+
+
+def _role_that_went_away(error: IntegrityError, user: User) -> Optional[Role]:
+    """
+    Say which of the account's roles the write found already gone.
+
+    The other way this ``flush`` can fail, and the mirror of
+    ``_is_email_clash``: ``_sync_roles`` reads each role before writing
+    the association, and that read goes stale the moment another
+    transaction commits. Measured on the running stack -- ``PUT
+    /api/v1/admin/users/<id>/roles`` naming a role, ``DELETE
+    /api/v1/admin/roles/<name>`` two milliseconds later -- the assignment
+    was answered **500** with ``ForeignKeyViolation: insert or update on
+    table "user_roles" violates foreign key constraint``. That is the
+    situation ``_sync_roles`` already raises ``RoleNotFoundError`` for,
+    reached a moment later, so it is worth the same answer rather than a
+    different one.
+
+    Read off the diagnostics rather than off the constraint's name,
+    because these foreign keys are declared without one and the name in
+    the message is whatever the database chose to generate. What is
+    asked instead is which table refused and which key it named, and the
+    key is matched back to the roles this write was carrying -- so a
+    violation from anywhere else answers ``None`` and is re-raised as it
+    came.
+
+    Args:
+        error: The integrity error the flush raised.
+        user: The account whose roles were being written.
+
+    Returns:
+        The role the association pointed at, or ``None`` if this is not
+        that failure -- including on a database that reports no
+        diagnostics at all, which is every engine but PostgreSQL here.
+    """
+    diagnostics = getattr(error.orig, "diag", None)
+    if getattr(diagnostics, "table_name", None) != user_role_table.name:
+        return None
+
+    detail = getattr(diagnostics, "message_detail", None) or ""
+    return next((role for role in user.roles if role.id in detail), None)
 
 
 class SQLAlchemyUserRepository(UserRepository):
@@ -77,9 +164,14 @@ class SQLAlchemyUserRepository(UserRepository):
             is not re-hydrated from the ORM).
 
         Raises:
-            ValidationError: If the write collides with an address
-                somebody else has just registered.
-            RoleNotFoundError: If the user carries a role no row answers to.
+            EmailAlreadyRegisteredError: If the write collides with an
+                address somebody else has just registered -- that index
+                and no other constraint this flush can touch.
+            RoleNotFoundError: If the user carries a role no row answers
+                to, whether that was already so when the roles were read
+                or became so before they were written.
+            UserNotFoundError: If the account was deleted between this
+                write's read and its flush.
         """
         model = self.session.get(UserModel, user.id)
         if not model:
@@ -104,9 +196,41 @@ class SQLAlchemyUserRepository(UserRepository):
             # both routes to the same fact carry one sentence and one
             # field. The session is unusable afterwards; the unit of work
             # rolls it back on the way out.
-            raise ValidationError(
-                N_("Email already registered"), field="email"
-            ) from clash
+            #
+            # Only that index, though. This ``flush`` also writes the role
+            # associations ``_sync_roles`` just built, and every violation
+            # they can raise arrived here as "Email already registered":
+            # measured on the running stack, ``PUT
+            # /api/v1/admin/users/<id>/roles`` naming one role twice was
+            # answered `409 EMAIL_ALREADY_REGISTERED` for a request that
+            # carries no address at all. Anything that is not the address
+            # is re-raised as it came, because a wrong answer is worse
+            # than an unhandled one: 500 says the service does not know,
+            # and this said it knew something untrue.
+            if not _is_email_clash(clash):
+                vanished = _role_that_went_away(clash, user)
+                if vanished is None:
+                    raise
+                raise RoleNotFoundError(vanished.name) from clash
+            raise EmailAlreadyRegisteredError() from clash
+        except StaleDataError as gone:
+            # The account was there when this write read it and is not
+            # there now: somebody deleted it in between. The same
+            # arrangement ``delete`` was given for two simultaneous
+            # deletions, on the other side of the same race -- measured
+            # on the running stack, ``POST
+            # /api/v1/admin/users/<id>/deactivate`` against a
+            # simultaneous ``DELETE`` of that account answered **500**
+            # twice in three attempts, with ``StaleDataError: UPDATE
+            # statement on table 'users' expected to update 1 row(s); 0
+            # were matched``.
+            #
+            # Every administrative write on an account comes through
+            # here -- activation, suspension, confirmation, re-roling --
+            # so the answer is given once here rather than four times
+            # above, and it is the answer the account's absence already
+            # has everywhere else: 404.
+            raise UserNotFoundError(user.id) from gone
         return user
 
     def record_login(self, user_id: str, when: datetime) -> bool:
@@ -168,18 +292,30 @@ class SQLAlchemyUserRepository(UserRepository):
         return self._orm_to_domain(model) if model else None
 
     def list_all(self, limit: int = 100, offset: int = 0) -> List[User]:
-        """Paginated list of all users.
+        """Paginated list of all users, in address order.
+
+        The order is the port's requirement, and the reason it is one is
+        written there. What is decided here is how it is met: by
+        ``users.email``, which is unique and already carries an index, so
+        the order is total without a tie-break and costs no index this
+        schema does not have. Ordering by ``created_at`` -- which the link
+        listing next door does -- would sort the table on every page,
+        there being no index on it.
+
+        A signed-in administrator is worth naming as the commonest way
+        the unordered listing used to move: ``last_login`` is a write.
 
         Args:
             limit: Maximum number of users to return.
             offset: Number of users to skip.
 
         Returns:
-            List of User entities.
+            List of User entities, in address order.
         """
         models = (
             self.session.query(UserModel)
             .options(selectinload(UserModel.roles).selectinload(RoleModel.permissions))
+            .order_by(UserModel.email.asc())
             .limit(limit)
             .offset(offset)
             .all()
@@ -285,17 +421,44 @@ class SQLAlchemyUserRepository(UserRepository):
     def delete(self, user_id: str) -> bool:
         """Permanently delete a user.
 
+        Answers ``False`` for an account that is not there, and an account
+        somebody else deleted a moment ago is not there either. The read
+        above is a hint that goes stale the moment another transaction
+        commits, exactly as the address lookup is in ``save``: measured on
+        the running stack, two simultaneous ``DELETE
+        /api/v1/admin/users/<id>`` answered 200 and **500**, because the
+        second flushed a cascade whose rows the first had already taken --
+        ``StaleDataError: DELETE statement on table 'user_roles' expected
+        to delete 1 row(s); Only 0 were matched``. That is the service
+        blaming itself for a request that was merely late, which is the
+        arrangement `save` and ``SQLAlchemyRoleRepository.save`` were both
+        given for their own races. The caller now gets ``False`` and the
+        route answers 404, which is what the account's absence is.
+
+        Flushed here rather than left to the commit, because that is where
+        the error surfaces and there is nothing above this to turn it into
+        an answer.
+
         Args:
             user_id: UUID string of the user.
 
         Returns:
-            ``True`` if a user was deleted, ``False`` if it did not exist.
+            ``True`` if a user was deleted, ``False`` if it did not exist
+            or had just been deleted by somebody else.
         """
         model = self.session.get(UserModel, user_id)
-        if model:
-            self.session.delete(model)
-            return True
-        return False
+        if not model:
+            return False
+
+        self.session.delete(model)
+        try:
+            self.session.flush()
+        except StaleDataError:
+            # The session cannot be used further; the unit of work rolls
+            # it back on the way out, which is what the losing side of
+            # this race wants -- it has nothing left to write.
+            return False
+        return True
 
     def delete_unverified_before(self, cutoff: datetime) -> int:
         """Delete accounts that were never confirmed and have run out of time.

@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 
 
 from link_shortener.application.context import RequestContext
-from link_shortener.domain import DomainError
+from link_shortener.domain import UserNotFoundError
 from link_shortener.application.dtos.admin.role import RoleResponse
 from link_shortener.application.dtos.user import UserResponse
 from link_shortener.application.dtos.user_activity import UserActivityResponse
@@ -25,7 +25,6 @@ from link_shortener.application.use_cases.admin.users.list_user import ListUsers
 from link_shortener.application.use_cases.admin.users.update_user_role import UpdateUserRolesUseCase
 from link_shortener.application.use_cases.stats.get_service_health import GetServiceHealthUseCase, ServiceHealthStatus
 from link_shortener.application.use_cases.stats.get_user_activity_stats import GetUserActivityStatsUseCase
-from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -222,12 +221,7 @@ class AdminService:
         """
         user = self.get_user(user_id, context)
         if user is None:
-            raise DomainError(
-                      f"User with id {user_id} not found",
-                      code="USER_NOT_FOUND",
-                      template=N_("User with id %(id)s not found"),
-                      params={"id": user_id},
-                  )
+            raise UserNotFoundError(user_id)
 
         return user.email, self.resend_verification_uc.execute(
             user.email, context

@@ -46,6 +46,7 @@ from link_shortener.web.security.deletion_token import (
     issue as issue_deletion_token,
     link_id_from,
 )
+from link_shortener.web.paging import window_from_query
 from link_shortener.web.request_body import json_object
 from link_shortener.web.security.decorators import (
     login_required, require_any_permission, require_permission,
@@ -467,10 +468,7 @@ class ApiController:
         """Get links created by the current user with pagination."""
         user = g.current_user
         context = create_request_context()
-        offset = request.args.get("offset", 0, type=int)
-        limit = request.args.get("limit", 50, type=int)
-        offset = max(0, offset)
-        limit = max(1, min(limit, 200))
+        limit, offset = window_from_query(default_limit=50)
         links = self.link_service.get_user_links(user.id, context, offset=offset, limit=limit)
         return jsonify([ShortLinkResponse.from_dto(link).model_dump() for link in links])
 

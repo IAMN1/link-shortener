@@ -93,14 +93,27 @@ class UserRepository(ABC):
     @abstractmethod
     def list_all(self, limit: int = 100, offset: int = 0) -> List[User]:
         """
-        Retrieve a paginated list of users.
+        Retrieve a paginated list of users, in address order.
+
+        The order is part of what is asked for here rather than a habit of
+        one implementation. Paging an unordered listing is not paging: the
+        database is free to answer two identical windows differently, and
+        PostgreSQL does -- it falls back to where the row physically sits,
+        so any write moves an account through the listing. Measured on the
+        running stack, deactivating the account at the top of a twelve-row
+        listing put it past the end of the second page, where an operator
+        paging through saw it on neither.
+
+        By address because ``email`` is the column a caller scans a list
+        of accounts by, and the one that can carry the order without a
+        tie-break.
 
         Args:
             limit: Maximum number of users to return.
             offset: Number of users to skip (for pagination).
 
         Returns:
-            List of User entities.
+            List of User entities, ordered by address.
         """
         ...
 

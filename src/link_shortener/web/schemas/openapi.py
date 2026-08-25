@@ -31,6 +31,7 @@ from typing import Any, Dict, Optional, Type
 
 from pydantic import BaseModel
 
+from link_shortener.web.paging import MAX_PAGE_SIZE
 from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.error import ErrorResponse
 from link_shortener.web.schemas.security import SecurityCountsResponse
@@ -866,7 +867,9 @@ PATHS: Dict[str, Any] = {
                 "Needs admin:view_users. Paginated through limit and "
                 "offset; the default page is a hundred, and there is no "
                 "total -- ask for one more than you mean to show to learn "
-                "whether another page exists."
+                "whether another page exists. Accounts come back in "
+                "address order, so a window means the same thing from one "
+                "request to the next."
             ),
             "tags": ["admin"],
             "parameters": [
@@ -874,15 +877,27 @@ PATHS: Dict[str, Any] = {
                     "name": "limit",
                     "in": "query",
                     "required": False,
-                    "description": "How many accounts to return. Default 100.",
-                    "schema": {"type": "integer"},
+                    "description": (
+                        "How many accounts to return. Brought inside the "
+                        "bounds rather than refused, unlike the journal "
+                        "endpoints: a window is a convenience here, not a "
+                        "claim about how much there is."
+                    ),
+                    "schema": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": MAX_PAGE_SIZE,
+                        "default": 100,
+                    },
                 },
                 {
                     "name": "offset",
                     "in": "query",
                     "required": False,
-                    "description": "How many to skip. Default 0.",
-                    "schema": {"type": "integer"},
+                    "description": (
+                        "How many to skip. Below zero is read as zero."
+                    ),
+                    "schema": {"type": "integer", "minimum": 0, "default": 0},
                 },
             ],
             "responses": {

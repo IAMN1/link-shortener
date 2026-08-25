@@ -4,8 +4,8 @@ from typing import List, Optional
 from link_shortener.application.ports.auth.auth_service import AuthenticationService
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.domain import (
-    User, DomainError, ValidationError,
-    Email, PasswordHash, Role
+    User, DomainError, EmailAlreadyRegisteredError, UserNotFoundError,
+    ValidationError, Email, PasswordHash, Role
 )
 from link_shortener.domain.i18n import N_
 from link_shortener.domain.policies.role_policy import (
@@ -58,7 +58,7 @@ class UserManagementService:
         
         # Check uniqueness
         if uow.users.find_by_email(email_vo):
-            raise ValidationError(N_("Email already registered"), field="email")
+            raise EmailAlreadyRegisteredError()
         
         # Hash password using authentication service
         hashed_password = self.authentication_service.hash_password(password)
@@ -113,12 +113,7 @@ class UserManagementService:
 
         user = uow.users.find_by_id(user_id)
         if not user:
-            raise DomainError(
-                      f"User with id {user_id} not found",
-                      code="USER_NOT_FOUND",
-                      template=N_("User with id %(id)s not found"),
-                      params={"id": user_id},
-                  )
+            raise UserNotFoundError(user_id)
         
         # ``User.create`` asks this on the way in; this is the other way
         # a role reaches an account, and it goes around the factory.
@@ -140,12 +135,7 @@ class UserManagementService:
         """
         user = uow.users.find_by_id(user_id)
         if not user:
-            raise DomainError(
-                      f"User with id {user_id} not found",
-                      code="USER_NOT_FOUND",
-                      template=N_("User with id %(id)s not found"),
-                      params={"id": user_id},
-                  )
+            raise UserNotFoundError(user_id)
         user.deactivate()
 
         return uow.users.save(user)
@@ -163,12 +153,7 @@ class UserManagementService:
         """
         user = uow.users.find_by_id(user_id)
         if not user:
-            raise DomainError(
-                      f"User with id {user_id} not found",
-                      code="USER_NOT_FOUND",
-                      template=N_("User with id %(id)s not found"),
-                      params={"id": user_id},
-                  )
+            raise UserNotFoundError(user_id)
         user.activate()
         return uow.users.save(user)
     
