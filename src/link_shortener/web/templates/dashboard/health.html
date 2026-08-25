@@ -39,6 +39,16 @@
    difference between having evidence and believing you have it. #}
 <div class="card narrow mt-2">
     <p class="lab mb-1">{{ _('Logging') }}</p>
+    {# Which process the counters below came from. They are kept in one
+       worker's memory and a deployment runs several, so the same service
+       in the same state answers different numbers depending on which
+       worker took the request. Unlabelled, the number read as the
+       service's -- which is the "everything is fine" this block exists to
+       end. #}
+    <div class="status-row">
+        <span>{{ _('Counters from') }}</span>
+        <em id="logging-worker">&mdash;</em>
+    </div>
     <div class="status-row">
         <span>{{ _('Application log') }}</span>
         <em id="logging-logger">&mdash;</em>

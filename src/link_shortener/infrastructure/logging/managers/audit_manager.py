@@ -53,6 +53,9 @@ class AuditManager:
         self.logger = logger if logger is not None else MinimalLogger()
         self._failover_service: Optional[FailoverService] = None
         self._active_audit_logger: Optional[AuditLogger] = None
+        # The name the implementation was built under, kept rather than
+        # read off its class later: see ``active_name``.
+        self._active_audit_name = "unknown"
         self._init_failover_service(audit_type)
 
     def _init_failover_service(self, audit_type: str):
@@ -110,7 +113,7 @@ class AuditManager:
         # If only one logger (Null), no failover is needed
         if len(audit_loggers) == 1:
             self._failover_service = None
-            self._active_audit_logger = audit_loggers[0][0]
+            self._active_audit_logger, self._active_audit_name = audit_loggers[0]
         else:
             # Use health checker based on is_healthy method
             def health_check(audit: AuditLogger) -> bool:
@@ -165,6 +168,14 @@ class AuditManager:
         """
         Name the audit implementation currently doing the work.
 
+        The name it was built under, in both branches. Without failover
+        this answered ``type(...).__name__`` -- so the same chain called
+        itself ``null_audit`` where failover happened to be built and
+        ``NullAuditLogger`` where it was not, and ``/api/v1/admin/health``
+        published a Python class name beside the journal chain's
+        ``null``. One field, two vocabularies, decided by a wiring detail
+        the reader cannot see.
+
         Returns:
             The failover service's current pick, or the single
             implementation's own name when no failover was built.
@@ -172,7 +183,7 @@ class AuditManager:
         if self._failover_service is not None:
             return self._failover_service.get_current_service_name()
 
-        return type(self._active_audit_logger).__name__
+        return self._active_audit_name
 
     def counters(self) -> Tuple[int, int, int]:
         """

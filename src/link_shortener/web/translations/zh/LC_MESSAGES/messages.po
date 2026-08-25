@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-25 00:00+0300\n"
+"POT-Creation-Date: 2026-08-25 23:26+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -19,23 +19,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: src/link_shortener/application/facades/admin_service.py:228
-#: src/link_shortener/application/services/user_management_service.py:119
-#: src/link_shortener/application/services/user_management_service.py:146
-#: src/link_shortener/application/services/user_management_service.py:169
-#: src/link_shortener/application/use_cases/admin/users/confirm_user_email.py:71
-#: src/link_shortener/web/controllers/admin_api_controller.py:118
-#: src/link_shortener/web/controllers/admin_api_controller.py:221
-#, python-format
-msgid "User with id %(id)s not found"
-msgstr "找不到 id 为 %(id)s 的账户"
-
-#: src/link_shortener/application/services/user_management_service.py:61
-#: src/link_shortener/infrastructure/database/repositories/sqlalchemy_user_repository.py:108
-msgid "Email already registered"
-msgstr "该邮箱地址已被注册"
-
-#: src/link_shortener/application/services/user_management_service.py:214
+#: src/link_shortener/application/services/user_management_service.py:199
 msgid "Password must not be empty"
 msgstr "密码不能为空"
 
@@ -126,55 +110,64 @@ msgstr "未知的时间段「%(period)s」。请从以下选择：%(choices)s"
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr "days 必须在 1 到 730 之间，收到的是 %(days)s"
 
-#: src/link_shortener/domain/exceptions.py:143
+#: src/link_shortener/domain/exceptions.py:148
 #, python-format
 msgid "Link with code (%(code)s) not found"
 msgstr "找不到代码为 (%(code)s) 的链接"
 
-#: src/link_shortener/domain/exceptions.py:147
-#: src/link_shortener/web/middleware/error_handler.py:407
+#: src/link_shortener/domain/exceptions.py:152
+#: src/link_shortener/web/middleware/error_handler.py:434
 msgid "Link not found"
 msgstr "找不到该链接"
 
-#: src/link_shortener/domain/exceptions.py:204
+#: src/link_shortener/domain/exceptions.py:209
 #, python-format
 msgid "Short code '%(code)s' is already taken"
 msgstr "短代码「%(code)s」已被占用"
 
-#: src/link_shortener/domain/exceptions.py:217
+#: src/link_shortener/domain/exceptions.py:222
 #, python-format
 msgid "Link with code (%(code)s) has expired"
 msgstr "代码为 (%(code)s) 的链接已过期"
 
-#: src/link_shortener/domain/exceptions.py:221
+#: src/link_shortener/domain/exceptions.py:226
 msgid "Link has expired"
 msgstr "链接已过期"
 
-#: src/link_shortener/domain/exceptions.py:235
+#: src/link_shortener/domain/exceptions.py:240
 msgid "Guest link limit exceeded"
 msgstr "已超出访客链接上限"
 
-#: src/link_shortener/domain/exceptions.py:260
+#: src/link_shortener/domain/exceptions.py:276
+#, python-format
+msgid "User with id %(id)s not found"
+msgstr "找不到 id 为 %(id)s 的账户"
+
+#: src/link_shortener/domain/exceptions.py:304
+msgid "Email already registered"
+msgstr "该邮箱地址已被注册"
+
+#: src/link_shortener/domain/exceptions.py:323
 #, python-format
 msgid "Role %(name)s not found"
 msgstr "找不到角色 %(name)s"
 
-#: src/link_shortener/domain/exceptions.py:279
+#: src/link_shortener/domain/exceptions.py:342
 #, python-format
 msgid "Role %(name)s already exists"
 msgstr "角色 %(name)s 已存在"
 
-#: src/link_shortener/domain/exceptions.py:299
+#: src/link_shortener/domain/exceptions.py:362
 #, python-format
 msgid "Role %(name)s belongs to the service and cannot be modified or deleted"
 msgstr "角色 %(name)s 属于服务，无法修改或删除"
 
-#: src/link_shortener/domain/exceptions.py:325
+#: src/link_shortener/domain/exceptions.py:388
 #, python-format
 msgid "Role %(name)s cannot be assigned to an account"
 msgstr "角色 %(name)s 无法分配给账户"
 
-#: src/link_shortener/domain/exceptions.py:345
+#: src/link_shortener/domain/exceptions.py:408
 #, python-format
 msgid "Permissions not found: %(names)s"
 msgstr "未找到权限：%(names)s"
@@ -700,9 +693,22 @@ msgstr "正常响应"
 msgid "not answering"
 msgstr "无响应"
 
-#: src/link_shortener/web/i18n.py:435
+#: src/link_shortener/web/i18n.py:439
+msgid "timed out"
+msgstr "超时"
+
+#: src/link_shortener/web/i18n.py:443
+msgid "not configured"
+msgstr "未配置"
+
+#: src/link_shortener/web/i18n.py:444
 msgid "unknown"
 msgstr "未知"
+
+#: src/link_shortener/web/i18n.py:447
+#, python-format
+msgid "Worker process %(pid)s"
+msgstr "工作进程 %(pid)s"
 
 #: src/link_shortener/web/request_body.py:58
 msgid "Request body is nested too deeply"
@@ -712,7 +718,7 @@ msgstr "请求体嵌套过深"
 msgid "Request body must be a JSON object"
 msgstr "请求体必须是 JSON 对象"
 
-#: src/link_shortener/web/controllers/admin_api_controller.py:184
+#: src/link_shortener/web/controllers/admin_api_controller.py:179
 #, python-format
 msgid "Confirmation for %(email)s could not be queued"
 msgstr "无法将发往 %(email)s 的确认邮件加入队列"
@@ -771,65 +777,65 @@ msgstr "没有名为 %(name)s 的日志"
 msgid "This request could not be verified. Reload the page and try again."
 msgstr "无法验证此请求。请刷新页面后重试。"
 
-#: src/link_shortener/web/middleware/error_handler.py:153
-#: src/link_shortener/web/middleware/error_handler.py:523
+#: src/link_shortener/web/middleware/error_handler.py:171
+#: src/link_shortener/web/middleware/error_handler.py:550
 msgid "An internal error occurred"
 msgstr "发生了内部错误"
 
-#: src/link_shortener/web/middleware/error_handler.py:249
+#: src/link_shortener/web/middleware/error_handler.py:267
 msgid "The request could not be understood"
 msgstr "无法理解该请求"
 
-#: src/link_shortener/web/middleware/error_handler.py:250
+#: src/link_shortener/web/middleware/error_handler.py:268
 msgid "You do not have access to this"
 msgstr "您无权访问"
 
-#: src/link_shortener/web/middleware/error_handler.py:251
+#: src/link_shortener/web/middleware/error_handler.py:269
 msgid "That conflicts with something already stored"
 msgstr "这与已保存的内容冲突"
 
-#: src/link_shortener/web/middleware/error_handler.py:252
+#: src/link_shortener/web/middleware/error_handler.py:270
 msgid "What was sent is too large"
 msgstr "发送的内容过大"
 
-#: src/link_shortener/web/middleware/error_handler.py:253
+#: src/link_shortener/web/middleware/error_handler.py:271
 msgid "The service expects a JSON body"
 msgstr "服务需要 JSON 格式的请求体"
 
-#: src/link_shortener/web/middleware/error_handler.py:254
+#: src/link_shortener/web/middleware/error_handler.py:272
 msgid "The service is unavailable right now"
 msgstr "服务当前不可用"
 
-#: src/link_shortener/web/middleware/error_handler.py:303
+#: src/link_shortener/web/middleware/error_handler.py:321
 msgid "Page not found"
 msgstr "找不到页面"
 
-#: src/link_shortener/web/middleware/error_handler.py:306
+#: src/link_shortener/web/middleware/error_handler.py:324
 msgid "Resource not found"
 msgstr "找不到资源"
 
-#: src/link_shortener/web/middleware/error_handler.py:317
+#: src/link_shortener/web/middleware/error_handler.py:335
 msgid "Method not allowed"
 msgstr "不允许使用该方法"
 
-#: src/link_shortener/web/middleware/error_handler.py:326
+#: src/link_shortener/web/middleware/error_handler.py:344
 #, python-format
 msgid "Method %(method)s not allowed"
 msgstr "不允许使用 %(method)s 方法"
 
-#: src/link_shortener/web/middleware/error_handler.py:349
+#: src/link_shortener/web/middleware/error_handler.py:367
 msgid "Request validation failed"
 msgstr "请求校验未通过"
 
-#: src/link_shortener/web/middleware/error_handler.py:487
+#: src/link_shortener/web/middleware/error_handler.py:514
 msgid "Bad request"
 msgstr "错误的请求"
 
-#: src/link_shortener/web/middleware/error_handler.py:491
+#: src/link_shortener/web/middleware/error_handler.py:518
 msgid "Malformed request body"
 msgstr "请求体格式有误"
 
-#: src/link_shortener/web/middleware/error_handler.py:518
+#: src/link_shortener/web/middleware/error_handler.py:545
 msgid "Internal server error"
 msgstr "服务器内部错误"
 
@@ -1238,35 +1244,39 @@ msgstr "限流器"
 msgid "Logging"
 msgstr "日志记录"
 
-#: src/link_shortener/web/templates/dashboard/health.html:43
+#: src/link_shortener/web/templates/dashboard/health.html:49
+msgid "Counters from"
+msgstr "计数来源"
+
+#: src/link_shortener/web/templates/dashboard/health.html:53
 msgid "Application log"
 msgstr "应用日志"
 
-#: src/link_shortener/web/templates/dashboard/health.html:47
+#: src/link_shortener/web/templates/dashboard/health.html:57
 msgid "Audit log"
 msgstr "审计日志"
 
-#: src/link_shortener/web/templates/dashboard/health.html:53
+#: src/link_shortener/web/templates/dashboard/health.html:63
 msgid "Records that did not survive"
 msgstr "未能留存的记录"
 
-#: src/link_shortener/web/templates/dashboard/health.html:55
+#: src/link_shortener/web/templates/dashboard/health.html:65
 msgid "Calls dropped"
 msgstr "丢弃的调用"
 
-#: src/link_shortener/web/templates/dashboard/health.html:60
+#: src/link_shortener/web/templates/dashboard/health.html:70
 msgid "Health checks that failed"
 msgstr "失败的健康检查"
 
-#: src/link_shortener/web/templates/dashboard/health.html:65
+#: src/link_shortener/web/templates/dashboard/health.html:75
 msgid "Lines lost"
 msgstr "丢失的行数"
 
-#: src/link_shortener/web/templates/dashboard/health.html:70
+#: src/link_shortener/web/templates/dashboard/health.html:80
 msgid "Application log · audit log."
 msgstr "应用日志 · 审计日志。"
 
-#: src/link_shortener/web/templates/dashboard/health.html:76
+#: src/link_shortener/web/templates/dashboard/health.html:86
 #, python-format
 msgid "Reported by %(name)s, read once when this page opens."
 msgstr "由 %(name)s 提供，打开本页时读取一次。"

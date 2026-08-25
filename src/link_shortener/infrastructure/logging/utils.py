@@ -2,6 +2,10 @@ import logging
 import re
 from urllib.parse import urlsplit, urlunsplit
 
+from link_shortener.application.ports.journal_reader import (
+    HEALTH_PROBE_EVENT_TYPE,
+)
+
 UTC_SECONDS = "%Y-%m-%dT%H:%M:%SZ"
 """How a machine-read journal states a moment, and the only way it may.
 
@@ -222,3 +226,79 @@ def mask_email(email: str) -> str:
         return f"***@{domain}"
 
     return f"{local[0]}***@{domain}"
+
+
+HEALTH_PROBE_MESSAGE = "logging chain health probe"
+"""What the four ``is_healthy`` implementations write.
+
+One text, because the line lands in the journals an operator reads and has
+to be recognisable there as the chain checking itself rather than as
+something the service was asked to do.
+
+It is written under ``HEALTH_PROBE_EVENT_TYPE`` as well, which is what
+keeps it off the journals page unless somebody asks for it by name --
+see that constant for the count that made it necessary.
+"""
+
+HEALTH_PROBE_FIELDS = {"event_type": HEALTH_PROBE_EVENT_TYPE}
+"""The probe's own fields, in the shape both chains pass them.
+
+A mapping rather than a keyword at four call sites: the standard chain
+hands it to ``extra`` and the structlog chain expands it, and the two
+would drift apart the first time one of them gained a second field.
+"""
+
+
+def probe_level(name: str) -> int:
+    """
+    Return the level a health probe has to be written at to be a probe.
+
+    The four ``is_healthy`` implementations answer "can this chain still
+    write" by writing, which is the only honest way to ask it. They wrote
+    at ``DEBUG``, and a record is dropped on the first level test it fails:
+    ``bootstrap`` gives every handler a level of its own -- the journal
+    handlers ``LOG_LEVEL``, the audit handlers ``INFO`` unconditionally --
+    so at the documented ``LOG_LEVEL=INFO`` the probe never reached a
+    handler at all. Nothing raised, and the chain called itself healthy
+    while its real records were being refused.
+
+    Measured on the running stack, with the journal file replaced by a
+    directory and four workers under load for two minutes: not one
+    ``Demoting`` line, eight ``Upgrading`` lines -- four of them onto the
+    implementation that was refusing every write. Every step down came
+    from an exception in ``FailoverService.execute``, which is to say at
+    the cost of the record that hit it.
+
+    The logger's effective level, not the handlers'. It is the level this
+    logger passes records at, so a probe written there travels exactly as
+    far as a real record does. A handler stricter than its logger drops
+    the probe -- and drops the real records of that level with it, so its
+    state is not what the probe was asked about.
+
+    Capped at ``WARNING``, and that cap is a limit worth stating. Above it
+    the probe would be an ``ERROR`` or a ``CRITICAL`` record, which
+    ``bootstrap`` routes to ``error.log`` -- a journal read as a list of
+    things that went wrong, and one a monitor watches. A health check
+    that files itself there every interval is worse than the failure it
+    is looking for. ``LOG_LEVEL`` takes ``ERROR`` and ``CRITICAL``, and
+    logging switched off sets the root to ``CRITICAL`` outright: measured
+    before the cap, the suite printed five ``[critical] logging chain
+    health probe`` lines.
+
+    What the cap costs: a deployment whose journal drops everything below
+    ``ERROR`` gets the old answer, ``True`` from a chain that may not be
+    writing. Nothing there can be probed without writing into the error
+    journal, and such a deployment has already given up the journal as
+    something to watch. The way down through ``FailoverService.execute``
+    still works -- at the cost of the record that finds it.
+
+    Args:
+        name: Logger name whose chain is being probed.
+
+    Returns:
+        The level to write the probe at: never below ``DEBUG`` -- an
+        unset hierarchy answers ``0``, which is not a level anything is
+        written at -- and never above ``WARNING``.
+    """
+    level = logging.getLogger(name).getEffectiveLevel()
+    return min(max(level, logging.DEBUG), logging.WARNING)

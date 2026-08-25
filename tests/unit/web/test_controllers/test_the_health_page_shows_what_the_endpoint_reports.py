@@ -35,6 +35,26 @@ TEMPLATE = (
     / "src" / "link_shortener" / "web" / "templates" / "dashboard" / "health.html"
 )
 
+def CHAINS(body):
+    """
+    The two logging chains of a health body, without what surrounds them.
+
+    ``logging`` carries the worker id beside them, and it is neither a
+    chain nor a counter: iterating the section whole walked into an
+    integer and asked what its keys were.
+
+    Args:
+        body: The answer the endpoint gave.
+
+    Returns:
+        The ``logger`` and ``audit`` sections, by name.
+    """
+    return {
+        name: section for name, section in body["logging"].items()
+        if isinstance(section, dict)
+    }
+
+
 @pytest.fixture
 def body(client, health_of):
     """The body the endpoint answers with everything up."""
@@ -63,7 +83,7 @@ class TestNothingTheEndpointReportsIsDroppedOnTheWay:
         script = SCRIPT.read_text()
 
         assert "logging" in script
-        for chain in body["logging"]:
+        for chain in CHAINS(body):
             assert chain in script, chain
 
     def test_the_page_reads_every_counter_of_each_chain(self, body):
@@ -71,12 +91,26 @@ class TestNothingTheEndpointReportsIsDroppedOnTheWay:
 
         missing = [
             counter
-            for chain in body["logging"].values()
+            for chain in CHAINS(body).values()
             for counter in chain
             if counter not in script
         ]
 
         assert missing == [], missing
+
+    def test_the_page_says_whose_counters_these_are(self, body):
+        """
+        They are one worker process's, and a deployment runs several.
+
+        The same service in the same state answered ``dropped_calls`` 16,
+        27, 28 and 6 across twelve requests, by which worker took each
+        one. Unlabelled on the page, the number reads as the service's --
+        and a worker that served no traffic during an outage answers
+        zero, which is the "everything is fine" this block exists to end.
+        """
+        script = SCRIPT.read_text()
+
+        assert "logging.worker" in script
 
     def test_the_markup_has_somewhere_to_put_them(self):
         """
@@ -86,6 +120,6 @@ class TestNothingTheEndpointReportsIsDroppedOnTheWay:
         """
         markup = TEMPLATE.read_text()
 
-        for anchor in ("health-limiter", "dot-limiter",
+        for anchor in ("health-limiter", "dot-limiter", "logging-worker",
                        "logging-logger", "logging-audit"):
             assert anchor in markup, anchor

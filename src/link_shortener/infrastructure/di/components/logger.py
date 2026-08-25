@@ -1,5 +1,7 @@
-from typing import Optional
+from typing import Optional, Tuple
+
 from link_shortener.application import Logger
+from link_shortener.application.ports.logging_status import NOT_STARTED
 from link_shortener.infrastructure.logging.managers.logger_manager import LoggerManager
 
 
@@ -48,6 +50,31 @@ class LoggerComponent:
             )
         return self._manager.get_logger(module_name)
 
+    def chain_status(self) -> Tuple[str, int, int, int]:
+        """
+        Report the chain without building it.
+
+        Here rather than at the reader that publishes it: that reader took
+        ``self._manager`` off this object directly -- a private attribute
+        of somebody else's -- and worked out from it both the name and the
+        counters, which is this component's own business and was already
+        half-written here. Renaming the attribute would have broken
+        ``/api/v1/admin/health`` with an ``AttributeError`` and nothing
+        would have said so until a request arrived.
+
+        Asking must not be what starts the chain: a manager is built on
+        the first logger somebody wants, and a health check is not that.
+
+        Returns:
+            Active implementation, dropped calls, failed check rounds and
+            lost failover log lines -- or ``NOT_STARTED`` and zeroes where
+            no manager has been built.
+        """
+        if self._manager is None:
+            return NOT_STARTED, 0, 0, 0
+
+        return (self._manager.get_active_logger_name(), *self._manager.counters())
+
     def get_active_logger_name(self) -> str:
         """
         Return the name of the currently active logger implementation.
@@ -56,11 +83,9 @@ class LoggerComponent:
 
         Returns:
             One of ``"structlog"``, ``"standard"``, ``"null"``, or
-            ``"unknown"``.
+            ``NOT_STARTED``.
         """
-        if self._manager:
-            return self._manager.get_active_logger_name()
-        return "unknown"
+        return self.chain_status()[0]
 
     def shutdown(self):
         """Stop background failover checks and release resources."""

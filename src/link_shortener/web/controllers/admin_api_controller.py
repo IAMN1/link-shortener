@@ -329,8 +329,20 @@ class AdminApiController:
         body: Dict[str, Any] = {
             "database": health.database,
             "cache": health.redis,
+            # Beside the boolean, because the boolean cannot say it: a
+            # cache nobody configured answers every probe well, so
+            # ``cache`` reads True on a deployment running without one
+            # and the health page drew a green Redis over a service that
+            # has no Redis. ``/health`` and ``flask maintenance health``
+            # both told the two apart already, off this same field.
+            "cache_configured": health.cache_configured,
             "task_queue": health.task_queue,
             "rate_limiter": health.rate_limiter,
+            # "Did not answer in time" is not the finding "answered no"
+            # is, and it names the dependency that is hanging. It reached
+            # the other two surfaces and stopped here, at the one an
+            # operator watches.
+            "timed_out": list(health.timed_out),
         }
 
         # Reported here because nothing else reports it. The counters are
@@ -341,6 +353,11 @@ class AdminApiController:
         # one that was fine.
         if health.logging is not None:
             body["logging"] = {
+                # Whose counters these are. They live in one worker's
+                # memory, a deployment runs several, and the same service
+                # in the same state answered 16, 27, 28 and 6 across
+                # twelve requests -- by which worker took each one.
+                "worker": health.logging.worker,
                 "logger": {
                     "active": health.logging.logger_active,
                     "dropped_calls": health.logging.logger_dropped_calls,

@@ -1,5 +1,7 @@
-from typing import Optional
+from typing import Optional, Tuple
+
 from link_shortener.application import AuditLogger
+from link_shortener.application.ports.logging_status import NOT_STARTED
 from link_shortener.infrastructure.logging.managers.audit_manager import AuditManager
 
 
@@ -44,6 +46,25 @@ class AuditComponent:
                 failover_check_interval=self.failover_check_interval
             )
         return self._manager.get_audit_logger()
+
+    def chain_status(self) -> Tuple[str, int, int, int]:
+        """
+        Report the chain without building it.
+
+        The audit half of what ``LoggerComponent.chain_status`` reports,
+        and here for the same reason: the reader that publishes it was
+        reaching into ``self._manager``, and this component offered no way
+        to ask.
+
+        Returns:
+            Active implementation, dropped calls, failed check rounds and
+            lost failover log lines -- or ``NOT_STARTED`` and zeroes where
+            no manager has been built.
+        """
+        if self._manager is None:
+            return NOT_STARTED, 0, 0, 0
+
+        return (self._manager.active_name(), *self._manager.counters())
 
     def shutdown(self):
         """Gracefully stop background failover checks."""

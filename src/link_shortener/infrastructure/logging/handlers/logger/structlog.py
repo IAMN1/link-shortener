@@ -10,6 +10,9 @@ from typing import Any, Optional
 import structlog
 
 from link_shortener.application import Logger
+from link_shortener.infrastructure.logging.utils import (
+    HEALTH_PROBE_FIELDS, HEALTH_PROBE_MESSAGE, probe_level,
+)
 
 
 class StructLogger(Logger):
@@ -30,8 +33,13 @@ class StructLogger(Logger):
             bound_logger: An existing ``BoundLogger``; if ``None``, a new one
                 is created.
         """
+        # Kept beside the bound logger because ``is_healthy`` needs it: the
+        # level a probe has to be written at is a property of the standard
+        # library logger underneath, and structlog's own object does not
+        # offer it without reaching into a private attribute.
+        self._name = name or __name__
         if bound_logger is None:
-            self._logger = structlog.get_logger(name or __name__).bind()
+            self._logger = structlog.get_logger(self._name).bind()
         else:
             self._logger = bound_logger
 
@@ -45,7 +53,10 @@ class StructLogger(Logger):
             A new ``StructLogger`` instance with the combined bound fields.
         """
         new_logger = self._logger.bind(**kwargs)
-        return StructLogger(bound_logger=new_logger)
+        # The name travels with the copy. Left behind, every bound logger
+        # answered ``is_healthy`` about this module's name rather than
+        # about the chain it writes to.
+        return StructLogger(name=self._name, bound_logger=new_logger)
 
     def debug(self, message: str, **kwargs: Any) -> None:
         """Log a debug message.
@@ -101,11 +112,20 @@ class StructLogger(Logger):
     def is_healthy(self) -> bool:
         """Check whether the logger is operational.
 
+        Written at the level this chain actually passes records at, for
+        the reason ``probe_level`` gives: structlog hands the record to
+        the standard library, where a ``DEBUG`` probe was dropped by the
+        handler's own level test before it could fail on a broken one.
+
         Returns:
-            ``True`` if a simple debug log call succeeds, ``False`` otherwise.
+            ``True`` if a probe record reaches the handlers, ``False``
+            otherwise.
         """
         try:
-            self._logger.debug("health_check")
+            self._logger.log(
+                probe_level(self._name), HEALTH_PROBE_MESSAGE,
+                **HEALTH_PROBE_FIELDS,
+            )
             return True
         except Exception:
             return False

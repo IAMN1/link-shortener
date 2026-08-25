@@ -37,7 +37,10 @@ def use_case(mock_health_check, mock_logger):
     )
 
 
-def _snapshot(database=True, cache=True, task_queue=True, rate_limiter=True):
+def _snapshot(
+    database=True, cache=True, task_queue=True, rate_limiter=True,
+    cache_configured=True, timed_out=(),
+):
     """
     Build a health snapshot with the given component states.
 
@@ -46,6 +49,8 @@ def _snapshot(database=True, cache=True, task_queue=True, rate_limiter=True):
         cache: Whether the cache answered.
         task_queue: Whether the queue can accept work.
         rate_limiter: Whether request limits are being enforced.
+        cache_configured: Whether a cache backend exists at all.
+        timed_out: Components that ran out of the check's budget.
 
     Returns:
         A ``HealthSnapshot``.
@@ -53,9 +58,10 @@ def _snapshot(database=True, cache=True, task_queue=True, rate_limiter=True):
     return HealthSnapshot(
         database=database,
         cache=cache,
-        cache_configured=True,
+        cache_configured=cache_configured,
         task_queue=task_queue,
         rate_limiter=rate_limiter,
+        timed_out=timed_out,
     )
 
 
@@ -120,6 +126,7 @@ class TestTheLoggingStateIsReadWhenThereIsAReaderForIt:
         )
 
         state = LoggingStatus(
+            worker=4242,
             logger_active="structlog",
             logger_dropped_calls=11,
             logger_failed_checks=12,
@@ -192,6 +199,61 @@ class TestEachFieldComesFromItsOwnFieldOfTheSnapshot:
             other for _, other in self.FIELDS
             if other != reported_as and getattr(result, other) is not True
         ] == []
+
+
+class TestWhatTheBooleansCannotSayIsCarriedBeside:
+    """Two fields of the snapshot stopped here, and both are distinctions.
+
+    ``cache`` is ``True`` on a deployment with no cache at all -- a cache
+    with nothing to connect to cannot be down -- so the admin surfaces
+    drew "Redis: answering" over a service running ``REDIS_ENABLED=false``.
+    ``timed_out`` names the dependency that is hanging, which "answered
+    no" cannot. ``/health`` and ``flask maintenance health`` read both
+    off this same snapshot; only the answer an operator watches dropped
+    them.
+    """
+
+    def test_a_cache_nobody_configured_is_told_from_a_working_one(
+        self, use_case, mock_health_check, context
+    ):
+        mock_health_check.snapshot.return_value = _snapshot(
+            cache=True, cache_configured=False
+        )
+
+        result = use_case.execute(context)
+
+        # Both, and they say different things: the cache answered, and
+        # there is no cache to answer.
+        assert result.redis is True
+        assert result.cache_configured is False
+
+    def test_a_configured_cache_says_so(
+        self, use_case, mock_health_check, context
+    ):
+        # The premise: without it the assertion above is satisfied by a
+        # field that is False whatever the snapshot holds.
+        mock_health_check.snapshot.return_value = _snapshot()
+
+        assert use_case.execute(context).cache_configured is True
+
+    def test_what_ran_out_of_budget_is_named(
+        self, use_case, mock_health_check, context
+    ):
+        mock_health_check.snapshot.return_value = _snapshot(
+            task_queue=False, timed_out=("task_queue",)
+        )
+
+        result = use_case.execute(context)
+
+        assert result.task_queue is False
+        assert result.timed_out == ("task_queue",)
+
+    def test_nothing_hanging_names_nothing(
+        self, use_case, mock_health_check, context
+    ):
+        mock_health_check.snapshot.return_value = _snapshot(task_queue=False)
+
+        assert use_case.execute(context).timed_out == ()
 
 
 class TestAdminHealthMatchesTheProbe:

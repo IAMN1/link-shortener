@@ -19,6 +19,7 @@ from link_shortener.application.use_cases.stats.get_service_health import (
 HEALTH_PATH = "/api/v1/admin/health"
 
 LOGGING = LoggingStatus(
+    worker=4242,
     logger_active="structlog",
     logger_dropped_calls=11,
     logger_failed_checks=12,
@@ -28,11 +29,12 @@ LOGGING = LoggingStatus(
     audit_failed_checks=22,
     audit_lost_log_lines=23,
 )
-"""Eight values, no two alike.
+"""Eight values, no two alike, beside the process that holds them.
 
 A counter published under another's name then shows up as the wrong
 number rather than as the same one -- three of the eight were zero once,
 and a body publishing one chain's count under both names read as correct.
+The worker id is unlike all eight for the same reason.
 """
 
 
@@ -73,8 +75,14 @@ def health_of(admin_controller):
         fields = {
             "database": True,
             "redis": True,
+            # A configured cache that answers, unless a test says
+            # otherwise: the two are separate questions, and a default of
+            # "no cache here" would make every other assertion in these
+            # files about a deployment nobody runs.
+            "cache_configured": True,
             "task_queue": True,
             "rate_limiter": True,
+            "timed_out": (),
             "logging": LOGGING,
         }
         fields.update(overrides)

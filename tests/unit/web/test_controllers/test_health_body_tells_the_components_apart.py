@@ -87,6 +87,7 @@ class TestEachCounterIsPublishedUnderItsOwnName:
         body = client.get("/api/v1/admin/health").get_json()
 
         assert body["logging"] == {
+            "worker": 4242,
             "logger": {
                 "active": "structlog",
                 "dropped_calls": 11,
@@ -110,5 +111,6 @@ class TestEachCounterIsPublishedUnderItsOwnName:
         body = client.get("/api/v1/admin/health").get_json()
 
         assert set(body) == {
-            "database", "cache", "task_queue", "rate_limiter", "logging"
+            "database", "cache", "cache_configured", "task_queue",
+            "rate_limiter", "timed_out", "logging"
         }

@@ -1,55 +1,43 @@
 """
 The reader that puts the chain counters on the health endpoint.
 
-``ComponentLoggingStatus`` is the only thing between the two managers and
+``ComponentLoggingStatus`` is the only thing between the two components and
 the ``logging`` section of ``GET /api/v1/admin/health``, and nothing tested
 it: the controller test builds ``LoggingStatus`` by hand, so a reader that
 swapped the logger's counters for the audit's, or reported one chain twice,
 would go through green: swapping the two triples in ``read()`` passes
 everything else.
+
+What each component answers is that component's own test below. The reader
+used to work it out itself, off a private ``_manager`` attribute it took
+from both of them.
 """
+
+import os
 
 import pytest
 
+from link_shortener.application.ports.logging_status import NOT_STARTED
+from link_shortener.infrastructure.di.components.audit import AuditComponent
+from link_shortener.infrastructure.di.components.logger import LoggerComponent
 from link_shortener.infrastructure.logging.status_reader import (
     ComponentLoggingStatus,
 )
 
 
-class FakeManager:
-    """A manager that answers the two questions the reader asks."""
-
-    def __init__(self, name, counters):
-        """
-        Args:
-            name: Active implementation to report.
-            counters: ``(dropped, failed, lost)`` for this chain.
-        """
-        self._name = name
-        self._counters = counters
-
-    def counters(self):
-        """Return this chain's three counters."""
-        return self._counters
-
-    def get_active_logger_name(self):
-        """Answer as ``LoggerManager`` does."""
-        return self._name
-
-    def active_name(self):
-        """Answer as ``AuditManager`` does."""
-        return self._name
-
-
 class FakeComponent:
-    """A DI component holding a manager, or not holding one yet."""
+    """A component answering for its chain, as the DI ones do."""
 
-    def __init__(self, manager=None):
+    def __init__(self, status):
         """
         Args:
-            manager: The manager this component has built, if any.
+            status: ``(active, dropped, failed, lost)`` to report.
         """
-        self._manager = manager
+        self._status = status
+
+    def chain_status(self):
+        """Return the four things this component reports."""
+        return self._status
 
 
 class TestEachChainIsReportedAsItself:
@@ -58,8 +46,8 @@ class TestEachChainIsReportedAsItself:
     def status(self):
         """Two chains whose every number differs from the other's."""
         return ComponentLoggingStatus(
-            FakeComponent(FakeManager("structlog", (1, 2, 3))),
-            FakeComponent(FakeManager("structlog_audit", (4, 5, 6))),
+            FakeComponent(("structlog", 1, 2, 3)),
+            FakeComponent(("structlog_audit", 4, 5, 6)),
         ).read()
 
     def test_the_logger_counters_are_the_logger_manager_s(self, status):
@@ -80,6 +68,19 @@ class TestEachChainIsReportedAsItself:
             status.audit_lost_log_lines,
         ) == (4, 5, 6)
 
+    def test_the_process_holding_them_is_named(self, status):
+        """
+        The counters are one worker's, and a deployment runs several.
+
+        Measured on the running stack after one broken journal: twelve
+        requests to ``/api/v1/admin/health``, in one state of one
+        service, answered ``dropped_calls`` 16, 27, 28 and 6 -- by which
+        worker happened to take each request. A worker that served no
+        traffic during the outage answers zero, which is exactly the
+        "everything is fine" this section exists to end.
+        """
+        assert status.worker == os.getpid()
+
 
 class TestAChainNobodyHasAskedFor:
     """Zeroes need the name beside them to be read correctly.
@@ -99,7 +100,14 @@ class TestAChainNobodyHasAskedFor:
         lost" rather than as "nobody looked".
         """
         status = ComponentLoggingStatus(
-            FakeComponent(), FakeComponent()
+            LoggerComponent(
+                logging_enabled=True, logger_type="auto",
+                failover_check_interval=None,
+            ),
+            AuditComponent(
+                audit_enabled=True, audit_type="auto",
+                failover_check_interval=None,
+            ),
         ).read()
 
         assert status.logger_active == "not started"
@@ -108,11 +116,52 @@ class TestAChainNobodyHasAskedFor:
         assert status.audit_lost_log_lines == 0
 
     def test_one_chain_started_does_not_start_the_other(self):
-        component = FakeComponent()
-        status = ComponentLoggingStatus(
-            FakeComponent(FakeManager("standard", (7, 8, 9))), component
-        ).read()
+        audit = AuditComponent(
+            audit_enabled=True, audit_type="auto", failover_check_interval=None,
+        )
+        logger = LoggerComponent(
+            logging_enabled=True, logger_type="null", failover_check_interval=None,
+        )
+        logger.get_logger(__name__)
+        try:
+            status = ComponentLoggingStatus(logger, audit).read()
 
-        assert status.logger_active == "standard"
-        assert status.audit_active == ComponentLoggingStatus.NOT_STARTED
+            assert status.logger_active == "null"
+            assert status.audit_active == NOT_STARTED
+        finally:
+            logger.shutdown()
+            audit.shutdown()
+
+    def test_asking_does_not_build_the_chain(self):
+        """
+        A health check is not a request for a logger.
+
+        Building one here would start a background thread and a pair of
+        file handlers on every call to ``/api/v1/admin/health`` -- an
+        endpoint an orchestrator polls.
+        """
+        component = LoggerComponent(
+            logging_enabled=True, logger_type="auto",
+            failover_check_interval=None,
+        )
+
+        component.chain_status()
+
         assert component._manager is None
+
+
+class TestTheComponentsSpeakOneVocabulary:
+    """One question, one word for the answer.
+
+    The DI component answered ``unknown`` where the reader beside it
+    answered ``not started``, about the same chain in the same state.
+    """
+
+    def test_the_name_a_component_gives_is_the_name_it_reports(self):
+        component = LoggerComponent(
+            logging_enabled=True, logger_type="auto",
+            failover_check_interval=None,
+        )
+
+        assert component.get_active_logger_name() == NOT_STARTED
+        assert component.chain_status()[0] == NOT_STARTED

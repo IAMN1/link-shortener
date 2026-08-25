@@ -23,6 +23,26 @@ class Journal(Enum):
     AUDIT = "audit"
 
 
+HEALTH_PROBE_EVENT_TYPE = "LOGGING_CHAIN_PROBE"
+"""The ``event_type`` the logging chains write their own health probe under.
+
+The probe is a real record -- it has to be, or it would not find out
+whether the chain can still write -- so it lands in the journal it is
+probing, once per chain per check interval per worker: measured at eight
+lines a minute in each of ``application.log`` and ``audit.log`` on four
+workers at the seeded interval. Left unmarked it filled 25 of the 50
+lines on the first screen of the journals page, which is a reader coming
+to see what happened and being shown the service checking itself.
+
+Named here rather than in the logging package because this is where it is
+acted on: ``JournalFilter`` drops these lines unless the caller asks for
+this exact type, and that makes the existing search the way to see them
+-- no new switch on the page, no second vocabulary. The lines stay in the
+file either way: a gap in them is how a reader afterwards can tell the
+chain stopped writing.
+"""
+
+
 @dataclass(frozen=True)
 class JournalFilter:
     """What a caller is looking for in a journal, if anything.
@@ -95,6 +115,13 @@ class JournalFilter:
         Returns:
             ``True`` if every field that was asked for matches.
         """
+        # Before the empty-filter shortcut, so that the plain tail -- the
+        # read that has asked for nothing -- is the one this hides them
+        # from. Asked for by name they come back, which is what makes the
+        # search the way to see them.
+        if fields.get("event_type") == HEALTH_PROBE_EVENT_TYPE:
+            return self.event_type == HEALTH_PROBE_EVENT_TYPE
+
         if self.is_empty:
             return True
 

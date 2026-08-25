@@ -23,7 +23,9 @@ import json
 
 import pytest
 
-from link_shortener.application.ports.journal_reader import Journal, JournalFilter
+from link_shortener.application.ports.journal_reader import (
+    HEALTH_PROBE_EVENT_TYPE, Journal, JournalFilter,
+)
 from link_shortener.infrastructure.logging.journal_reader import (
     BLOCK, HARD_LIMIT, SCAN_LIMIT, FileJournalReader, _lines_backwards,
 )
@@ -608,3 +610,103 @@ class TestSearchingRatherThanTailing:
 
         assert len(plain.lines) == 2
         assert [line.fields["index"] for line in searched.lines] == [7]
+
+
+def probe_record(index: int) -> str:
+    """One line in the shape the chains' own health probe writes.
+
+    Args:
+        index: Number to identify the line by.
+
+    Returns:
+        The line, without its newline.
+    """
+    return json.dumps({
+        "event": "logging chain health probe",
+        "event_type": HEALTH_PROBE_EVENT_TYPE,
+        "level": "info",
+        "logger": "audit",
+        "timestamp": "2026-08-17T10:44:13Z",
+        "index": index,
+    })
+
+
+class TestTheChainsOwnProbeIsNotPartOfTheTail:
+    """
+    The probe writes into the journal it is probing, and a reader did not
+    come for it.
+
+    Eight lines a minute per journal at four workers and the seeded
+    interval -- measured on the running stack -- which filled 25 of the 50
+    lines on the first screen of the journals page. ``JournalFilter``
+    drops them; this is the half that keeps the page full anyway.
+    """
+
+    def test_the_plain_tail_leaves_them_out(self, journals):
+        reader, _dir, write = journals
+        write("audit.log", [probe_record(1), record(2), probe_record(3)])
+
+        page = reader.tail(Journal.AUDIT, limit=10)
+
+        assert [line.fields["index"] for line in page.lines] == [2]
+
+    def test_the_page_still_fills_up(self, journals):
+        """Dropping records must not shorten the window that was asked for.
+
+        A plain tail reads exactly the page it was asked for, so with the
+        probes interleaved a window of five came back holding two. It
+        looks further now, and only when it has to.
+        """
+        reader, _dir, write = journals
+        lines = []
+        for index in range(1, 41):
+            lines.append(probe_record(index))
+            lines.append(record(index))
+        write("audit.log", lines)
+
+        page = reader.tail(Journal.AUDIT, limit=5)
+
+        assert len(page.lines) == 5
+        assert page.total_scanned > 5
+
+    def test_a_journal_without_probes_is_read_as_cheaply_as_before(
+        self, journals
+    ):
+        """The cost of looking further is paid only where it buys something.
+
+        Measured on this tree: a plain tail costs 0.3 ms and a full scan
+        17 ms, and on a gigabyte the same two are 2 ms and 117 ms. A
+        journal nothing was dropped from must not pay the second.
+        """
+        reader, _dir, write = journals
+        write("application.log", [record(index) for index in range(1, 101)])
+
+        page = reader.tail(Journal.APPLICATION, limit=10)
+
+        assert len(page.lines) == 10
+        assert page.total_scanned == 10
+
+    def test_asking_for_the_probe_by_name_returns_it(self, journals):
+        reader, _dir, write = journals
+        write("audit.log", [probe_record(1), record(2)])
+
+        page = reader.tail(
+            Journal.AUDIT, limit=10,
+            where=JournalFilter(event_type=HEALTH_PROBE_EVENT_TYPE),
+        )
+
+        assert [line.fields["index"] for line in page.lines] == [1]
+
+    def test_a_journal_that_is_all_probes_reads_as_empty(self, journals):
+        """And says so rather than looking for ever.
+
+        The deep re-read is bounded by ``SCAN_LIMIT`` like any other
+        scan, and a file it exhausts reports that it reached the start.
+        """
+        reader, _dir, write = journals
+        write("audit.log", [probe_record(index) for index in range(1, 21)])
+
+        page = reader.tail(Journal.AUDIT, limit=10)
+
+        assert page.lines == ()
+        assert page.reached_start is True

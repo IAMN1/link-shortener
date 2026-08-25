@@ -138,9 +138,14 @@ class FailoverService(Generic[T]):
             self._thread.start()
 
     def get_current_service_name(self) -> str:
-        """Return the name of the currently active service"""
-        with self._lock:
-            return self._services[self._current_index][1]
+        """
+        Return the name of the currently active service.
+
+        Read without the lock, as the three counters below are, and for
+        the same reason: see ``dropped_calls``. One attribute read, from
+        a list that never changes length.
+        """
+        return self._services[self._current_index][1]
 
     def _say(self, message: str) -> None:
         """
@@ -481,12 +486,22 @@ class FailoverService(Generic[T]):
         counter at all: it calls the service instance directly rather than
         through ``execute``.
 
+        Read without the lock, unlike every write to it. The reader is
+        ``/api/v1/admin/health``, and this lock is held by the background
+        round for as long as a health probe takes -- which since that
+        probe became a real write is a write to disk. Taking it here put
+        the endpoint that reports on the logging chain behind the chain's
+        own disk, outside the time budget the rest of that answer is
+        bounded by: measured at 2.80 s against a probe holding the lock.
+        A single attribute read is atomic, and the lock bought nothing
+        else here: it cannot make three counters that move at different
+        moments agree with each other, and nobody asked them to.
+
         Returns:
             Count since this service was built. Non-zero means work this
             service was asked to do that nobody did.
         """
-        with self._lock:
-            return self._dropped_calls
+        return self._dropped_calls
 
     @property
     def failed_checks(self) -> int:
@@ -506,11 +521,12 @@ class FailoverService(Generic[T]):
         refusing a line is counted on ``lost_log_lines`` instead, and no
         longer costs the round it was written in.
 
+        Read without the lock: see ``dropped_calls``.
+
         Returns:
             Count since this service was built.
         """
-        with self._lock:
-            return self._failed_checks
+        return self._failed_checks
 
     @property
     def lost_log_lines(self) -> int:
@@ -529,11 +545,12 @@ class FailoverService(Generic[T]):
         is itself broken -- so the account of what the chain did is
         missing exactly when it is worth reading.
 
+        Read without the lock: see ``dropped_calls``.
+
         Returns:
             Count since this service was built.
         """
-        with self._lock:
-            return self._lost_log_lines
+        return self._lost_log_lines
 
     def shutdown(self, timeout: float = 1.0) -> bool:
         """

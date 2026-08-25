@@ -2162,6 +2162,133 @@ is a property of the code and not of the moment, and this is the second
 code where the proxy misses: one raiser, one reader, one sentence.
 
 
+### A health probe that cannot fail is not a probe
+
+**Decided** (2026-08-25): the four `is_healthy` implementations write their
+probe at the level their chain actually passes records at.
+
+**Why.** They wrote at `DEBUG`. A record is dropped at the first level test
+it fails, and `bootstrap` gives every handler a level of its own: the
+journal handlers take `LOG_LEVEL`, the audit handlers take `INFO`
+whatever `LOG_LEVEL` says. At the documented `LOG_LEVEL=INFO` the probe
+reached no handler at all — so it could not fail, and a chain refusing
+every real record answered `True` about itself. For the audit chain that
+held under *any* configuration.
+
+Measured on the running stack, with `datas/logs/application.log` replaced
+by a directory, four gunicorn workers, two minutes of traffic: **zero**
+`Demoting` lines and **eight** `Upgrading` lines, four of them onto the
+implementation that was refusing every write — after which the next
+record failed on it and the work came straight back down. Every step down
+came from an exception in `FailoverService.execute`, which is to say at
+the cost of the record that hit it.
+
+Both halves of the failover service rest on that answer. `_attempt_demotion`
+exists so the work leaves an implementation that has stopped writing
+*before* a record is lost on it, and `_attempt_upgrade` decides on the same
+probe whether to give the work back. With the probe unable to fail, the
+first never ran and the second ran on a guess every cooldown.
+
+**Re-measured after the change**, same outage, same stack: four
+`standard reports itself unhealthy and nothing below it answers` lines --
+one per worker, within twenty seconds -- and **zero** `Upgrading`. The
+work no longer climbs back onto a chain that cannot write.
+
+**What it costs.** A probe that writes leaves a line. `logging chain
+health probe`, once per chain per check interval per worker: at the
+seeded `FAILOVER_CHECK_INTERVAL=30` and four workers that is **8 lines a
+minute** in `application.log` and the same in `audit.log`, or 11 520 a day
+each — counted on the running stack over eight consecutive minutes, eight
+in every one of them. Against the journal
+that is small beside the two lines every request already writes; against
+the audit trail it is visible, and it is the price of the trail being
+able to say it has stopped. A probe that does not write cannot tell a
+chain that writes from one that does not, which is the whole finding.
+
+**The plain tail does not show them.** The probe carries
+`event_type: LOGGING_CHAIN_PROBE`, and `JournalFilter` drops that type
+unless a caller names it. Measured before the mark, on the journals page
+as an `auditor`: 25 of the 50 lines on the first screen were probes — a
+reader who came to see what happened, shown the service checking itself.
+The lines stay in the file, and that is the point: a gap in them is how a
+reader afterwards can tell the chain stopped writing. Seeing them is the
+existing search, `event_type=LOGGING_CHAIN_PROBE`, rather than a new
+switch on the page.
+
+The mark travels on whichever chain the journal is formatted for, which
+is the chain doing the work: `LOGGER_TYPE=auto` formats through
+structlog, so the standard implementation's probe arrives unmarked. It is
+not written while the primary is well — `_attempt_demotion` stops at a
+healthy active implementation and `_attempt_upgrade` returns at index
+zero, so the standby is not probed at all — and during an outage the
+lines showing up on the page are worth seeing.
+
+**Capped at `WARNING`, which is a limit and not a detail.** The level is
+the logger's own, and `LOG_LEVEL` accepts `ERROR` and `CRITICAL`;
+logging switched off sets the root to `CRITICAL` outright. Uncapped, the
+probe becomes a record `bootstrap` routes to `error.log` — the journal
+read as a list of things that went wrong, and the one a monitor watches
+— filed there every interval. Measured before the cap: the suite printed
+five `[critical] logging chain health probe` lines.
+
+So a deployment whose journal drops everything below `ERROR` gets the old
+answer: `True` from a chain that may not be writing. Nothing there can be
+probed without writing into the error journal, and that deployment has
+already given up the journal as something to watch. The way down through
+`FailoverService.execute` still works there — at the cost of the record
+that finds it, which at that level is an error report.
+
+### The chain counters are one worker's, and the answer says so
+
+**Decided** (2026-08-25): `logging.worker` names the process the counters
+were taken in, rather than the counters being summed across processes.
+
+**Why.** `dropped_calls`, `failed_checks` and `lost_log_lines` live in the
+memory of one `FailoverService`, and the deployment runs `gunicorn
+--workers 4` without `--preload`, so each worker builds its own container,
+its own chains and its own counts. Measured after one broken journal:
+twelve consecutive requests to `GET /api/v1/admin/health`, against one
+service in one state, answered `dropped_calls` **16** and **27**; a second
+series answered **6, 16, 27, 28** — four workers, four numbers. A worker
+that served no traffic during the outage answers **0**, which is exactly
+the "everything is fine" the block was added to end.
+
+**Why not summed.** Summing needs a store every worker can reach, and the
+only one here is Redis — the cache, which is a thing that fails, and whose
+failure is among what this endpoint reports. A counter that reads zero
+because its store is down, on the panel an operator opens *because*
+something is down, is a worse answer than an honest partial one. The
+service already carries the same shape elsewhere and says so out loud:
+`create_app` warns "Running on generated secrets; each worker process has
+its own".
+
+**What the reader gets instead.** The number is labelled. The page reads
+`Counters from — Worker process 16`, so a figure that moves between two
+refreshes reads as two processes rather than as a service changing its
+mind. Reaching every worker is still possible from outside: poll the
+endpoint until each worker id has appeared.
+
+### Reading a counter waits for nothing
+
+**Decided** (2026-08-25): the three counters and the active name are read
+without taking `FailoverService`'s lock.
+
+**Why.** Their reader is `GET /api/v1/admin/health`, and the background
+round holds that lock for the whole of a health check — which, since the
+probe above became a real write, is a write to disk. Taking the lock to
+read one integer put the endpoint that reports on the logging chain behind
+that chain's own disk. Measured with a probe holding the lock: **2.80 s**
+to read the counters, against a `HEALTH_CHECK_TIMEOUT` of 5 s that bounds
+the infrastructure half of the same answer and does not reach this half at
+all.
+
+**Why it is safe.** Each read is one attribute, which is atomic; the list
+of implementations never changes length, so the active name is one index
+into it. The lock could not have bought agreement between three counters
+that move at different moments, and nothing asks them to agree. Every
+*write* to them stays under the lock, because `+= 1` is not atomic.
+
+
 ## Known limits
 
 Things that are wrong, understood, and deliberately left. Each says what it

@@ -1598,3 +1598,75 @@ class TestALoggerThatThrowsIsNotTheCallersProblem:
 
         assert failover.shutdown(timeout=0.01) is False
         assert failover.lost_log_lines >= 1
+
+
+class TestReadingTheCountersWaitsForNothing:
+    """
+    The counters answer while a check is in flight.
+
+    Their reader is ``GET /api/v1/admin/health``, and the background round
+    holds this service's lock for as long as a health probe takes -- which
+    since that probe became a real write is a write to disk. Taking the
+    lock to read one integer put the endpoint that reports on the logging
+    chain behind that chain's own disk, and outside the time budget the
+    rest of its answer is bounded by: measured at 2.80 s with a probe
+    holding the lock, against a ``HEALTH_CHECK_TIMEOUT`` of 5 s that does
+    not cover this half of the answer at all.
+    """
+
+    def _service(self):
+        """Return a service whose background thread never runs."""
+        return FailoverService(
+            services=[(Service("only"), "only")],
+            check_interval=None,
+            logger=RecordingLogger(),
+        )
+
+    def test_the_counters_answer_while_somebody_holds_the_lock(self):
+        failover = self._service()
+        held = threading.Event()
+        release = threading.Event()
+
+        def hold():
+            with failover._lock:
+                held.set()
+                release.wait(5.0)
+
+        holder = threading.Thread(target=hold, daemon=True)
+        holder.start()
+        try:
+            assert held.wait(1.0), "the lock was never taken"
+
+            started = time.monotonic()
+            counters = (
+                failover.dropped_calls,
+                failover.failed_checks,
+                failover.lost_log_lines,
+                failover.get_current_service_name(),
+            )
+            waited = time.monotonic() - started
+
+            assert counters == (0, 0, 0, "only")
+            assert waited < 1.0, f"the read waited {waited:.2f}s for the lock"
+        finally:
+            release.set()
+            holder.join(timeout=2.0)
+            failover.shutdown()
+
+    def test_what_the_counters_report_is_still_what_happened(self):
+        """The premise: a read that waits for nothing still reads.
+
+        Without this the assertions above are satisfied by properties
+        that answer zero whatever the service has been through.
+        """
+        failover = FailoverService(
+            services=[(Service("broken", broken=True), "broken")],
+            check_interval=None,
+            logger=RecordingLogger(),
+        )
+        try:
+            failover.execute("speak")
+
+            assert failover.dropped_calls == 1
+        finally:
+            failover.shutdown()

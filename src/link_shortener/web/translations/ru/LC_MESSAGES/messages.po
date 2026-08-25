@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-25 00:00+0300\n"
+"POT-Creation-Date: 2026-08-25 23:26+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -20,23 +20,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: src/link_shortener/application/facades/admin_service.py:228
-#: src/link_shortener/application/services/user_management_service.py:119
-#: src/link_shortener/application/services/user_management_service.py:146
-#: src/link_shortener/application/services/user_management_service.py:169
-#: src/link_shortener/application/use_cases/admin/users/confirm_user_email.py:71
-#: src/link_shortener/web/controllers/admin_api_controller.py:118
-#: src/link_shortener/web/controllers/admin_api_controller.py:221
-#, python-format
-msgid "User with id %(id)s not found"
-msgstr "Учётная запись с id %(id)s не найдена"
-
-#: src/link_shortener/application/services/user_management_service.py:61
-#: src/link_shortener/infrastructure/database/repositories/sqlalchemy_user_repository.py:108
-msgid "Email already registered"
-msgstr "Этот адрес уже зарегистрирован"
-
-#: src/link_shortener/application/services/user_management_service.py:214
+#: src/link_shortener/application/services/user_management_service.py:199
 msgid "Password must not be empty"
 msgstr "Пароль не может быть пустым"
 
@@ -127,55 +111,64 @@ msgstr "Неизвестный период «%(period)s». Выберите о�
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr "days должно быть от 1 до 730, получено %(days)s"
 
-#: src/link_shortener/domain/exceptions.py:143
+#: src/link_shortener/domain/exceptions.py:148
 #, python-format
 msgid "Link with code (%(code)s) not found"
 msgstr "Ссылка с кодом (%(code)s) не найдена"
 
-#: src/link_shortener/domain/exceptions.py:147
-#: src/link_shortener/web/middleware/error_handler.py:407
+#: src/link_shortener/domain/exceptions.py:152
+#: src/link_shortener/web/middleware/error_handler.py:434
 msgid "Link not found"
 msgstr "Ссылка не найдена"
 
-#: src/link_shortener/domain/exceptions.py:204
+#: src/link_shortener/domain/exceptions.py:209
 #, python-format
 msgid "Short code '%(code)s' is already taken"
 msgstr "Короткий код «%(code)s» уже занят"
 
-#: src/link_shortener/domain/exceptions.py:217
+#: src/link_shortener/domain/exceptions.py:222
 #, python-format
 msgid "Link with code (%(code)s) has expired"
 msgstr "Срок ссылки с кодом (%(code)s) истёк"
 
-#: src/link_shortener/domain/exceptions.py:221
+#: src/link_shortener/domain/exceptions.py:226
 msgid "Link has expired"
 msgstr "Срок ссылки истёк"
 
-#: src/link_shortener/domain/exceptions.py:235
+#: src/link_shortener/domain/exceptions.py:240
 msgid "Guest link limit exceeded"
 msgstr "Превышен гостевой предел ссылок"
 
-#: src/link_shortener/domain/exceptions.py:260
+#: src/link_shortener/domain/exceptions.py:276
+#, python-format
+msgid "User with id %(id)s not found"
+msgstr "Учётная запись с id %(id)s не найдена"
+
+#: src/link_shortener/domain/exceptions.py:304
+msgid "Email already registered"
+msgstr "Этот адрес уже зарегистрирован"
+
+#: src/link_shortener/domain/exceptions.py:323
 #, python-format
 msgid "Role %(name)s not found"
 msgstr "Роль %(name)s не найдена"
 
-#: src/link_shortener/domain/exceptions.py:279
+#: src/link_shortener/domain/exceptions.py:342
 #, python-format
 msgid "Role %(name)s already exists"
 msgstr "Роль %(name)s уже существует"
 
-#: src/link_shortener/domain/exceptions.py:299
+#: src/link_shortener/domain/exceptions.py:362
 #, python-format
 msgid "Role %(name)s belongs to the service and cannot be modified or deleted"
 msgstr "Роль %(name)s принадлежит службе: её нельзя ни изменить, ни удалить"
 
-#: src/link_shortener/domain/exceptions.py:325
+#: src/link_shortener/domain/exceptions.py:388
 #, python-format
 msgid "Role %(name)s cannot be assigned to an account"
 msgstr "Роль %(name)s нельзя назначить учётной записи"
 
-#: src/link_shortener/domain/exceptions.py:345
+#: src/link_shortener/domain/exceptions.py:408
 #, python-format
 msgid "Permissions not found: %(names)s"
 msgstr "Права не найдены: %(names)s"
@@ -711,9 +704,22 @@ msgstr "отвечает"
 msgid "not answering"
 msgstr "не отвечает"
 
-#: src/link_shortener/web/i18n.py:435
+#: src/link_shortener/web/i18n.py:439
+msgid "timed out"
+msgstr "время вышло"
+
+#: src/link_shortener/web/i18n.py:443
+msgid "not configured"
+msgstr "не настроен"
+
+#: src/link_shortener/web/i18n.py:444
 msgid "unknown"
 msgstr "неизвестно"
+
+#: src/link_shortener/web/i18n.py:447
+#, python-format
+msgid "Worker process %(pid)s"
+msgstr "Рабочий процесс %(pid)s"
 
 #: src/link_shortener/web/request_body.py:58
 msgid "Request body is nested too deeply"
@@ -723,7 +729,7 @@ msgstr "Тело запроса вложено слишком глубоко"
 msgid "Request body must be a JSON object"
 msgstr "Тело запроса должно быть объектом JSON"
 
-#: src/link_shortener/web/controllers/admin_api_controller.py:184
+#: src/link_shortener/web/controllers/admin_api_controller.py:179
 #, python-format
 msgid "Confirmation for %(email)s could not be queued"
 msgstr "Не удалось поставить письмо с подтверждением для %(email)s в очередь"
@@ -782,65 +788,65 @@ msgstr "Журнала с именем %(name)s нет"
 msgid "This request could not be verified. Reload the page and try again."
 msgstr "Этот запрос не удалось проверить. Обновите страницу и повторите."
 
-#: src/link_shortener/web/middleware/error_handler.py:153
-#: src/link_shortener/web/middleware/error_handler.py:523
+#: src/link_shortener/web/middleware/error_handler.py:171
+#: src/link_shortener/web/middleware/error_handler.py:550
 msgid "An internal error occurred"
 msgstr "Произошла внутренняя ошибка"
 
-#: src/link_shortener/web/middleware/error_handler.py:249
+#: src/link_shortener/web/middleware/error_handler.py:267
 msgid "The request could not be understood"
 msgstr "Запрос не удалось разобрать"
 
-#: src/link_shortener/web/middleware/error_handler.py:250
+#: src/link_shortener/web/middleware/error_handler.py:268
 msgid "You do not have access to this"
 msgstr "У вас нет доступа к этому"
 
-#: src/link_shortener/web/middleware/error_handler.py:251
+#: src/link_shortener/web/middleware/error_handler.py:269
 msgid "That conflicts with something already stored"
 msgstr "Это спорит с тем, что уже сохранено"
 
-#: src/link_shortener/web/middleware/error_handler.py:252
+#: src/link_shortener/web/middleware/error_handler.py:270
 msgid "What was sent is too large"
 msgstr "Присланное слишком велико"
 
-#: src/link_shortener/web/middleware/error_handler.py:253
+#: src/link_shortener/web/middleware/error_handler.py:271
 msgid "The service expects a JSON body"
 msgstr "Служба ждёт тело в формате JSON"
 
-#: src/link_shortener/web/middleware/error_handler.py:254
+#: src/link_shortener/web/middleware/error_handler.py:272
 msgid "The service is unavailable right now"
 msgstr "Служба сейчас недоступна"
 
-#: src/link_shortener/web/middleware/error_handler.py:303
+#: src/link_shortener/web/middleware/error_handler.py:321
 msgid "Page not found"
 msgstr "Страница не найдена"
 
-#: src/link_shortener/web/middleware/error_handler.py:306
+#: src/link_shortener/web/middleware/error_handler.py:324
 msgid "Resource not found"
 msgstr "Ресурс не найден"
 
-#: src/link_shortener/web/middleware/error_handler.py:317
+#: src/link_shortener/web/middleware/error_handler.py:335
 msgid "Method not allowed"
 msgstr "Метод не разрешён"
 
-#: src/link_shortener/web/middleware/error_handler.py:326
+#: src/link_shortener/web/middleware/error_handler.py:344
 #, python-format
 msgid "Method %(method)s not allowed"
 msgstr "Метод %(method)s не разрешён"
 
-#: src/link_shortener/web/middleware/error_handler.py:349
+#: src/link_shortener/web/middleware/error_handler.py:367
 msgid "Request validation failed"
 msgstr "Проверка запроса не пройдена"
 
-#: src/link_shortener/web/middleware/error_handler.py:487
+#: src/link_shortener/web/middleware/error_handler.py:514
 msgid "Bad request"
 msgstr "Неверный запрос"
 
-#: src/link_shortener/web/middleware/error_handler.py:491
+#: src/link_shortener/web/middleware/error_handler.py:518
 msgid "Malformed request body"
 msgstr "Неверное тело запроса"
 
-#: src/link_shortener/web/middleware/error_handler.py:518
+#: src/link_shortener/web/middleware/error_handler.py:545
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
 
@@ -1257,35 +1263,39 @@ msgstr "Ограничитель частоты"
 msgid "Logging"
 msgstr "Журналирование"
 
-#: src/link_shortener/web/templates/dashboard/health.html:43
+#: src/link_shortener/web/templates/dashboard/health.html:49
+msgid "Counters from"
+msgstr "Источник счётчиков"
+
+#: src/link_shortener/web/templates/dashboard/health.html:53
 msgid "Application log"
 msgstr "Журнал приложения"
 
-#: src/link_shortener/web/templates/dashboard/health.html:47
+#: src/link_shortener/web/templates/dashboard/health.html:57
 msgid "Audit log"
 msgstr "Журнал аудита"
 
-#: src/link_shortener/web/templates/dashboard/health.html:53
+#: src/link_shortener/web/templates/dashboard/health.html:63
 msgid "Records that did not survive"
 msgstr "Записи, которые не дошли"
 
-#: src/link_shortener/web/templates/dashboard/health.html:55
+#: src/link_shortener/web/templates/dashboard/health.html:65
 msgid "Calls dropped"
 msgstr "Потеряно вызовов"
 
-#: src/link_shortener/web/templates/dashboard/health.html:60
+#: src/link_shortener/web/templates/dashboard/health.html:70
 msgid "Health checks that failed"
 msgstr "Проверок с отказом"
 
-#: src/link_shortener/web/templates/dashboard/health.html:65
+#: src/link_shortener/web/templates/dashboard/health.html:75
 msgid "Lines lost"
 msgstr "Потеряно строк"
 
-#: src/link_shortener/web/templates/dashboard/health.html:70
+#: src/link_shortener/web/templates/dashboard/health.html:80
 msgid "Application log · audit log."
 msgstr "Журнал приложения · журнал аудита."
 
-#: src/link_shortener/web/templates/dashboard/health.html:76
+#: src/link_shortener/web/templates/dashboard/health.html:86
 #, python-format
 msgid "Reported by %(name)s, read once when this page opens."
 msgstr "Сообщает %(name)s, читается один раз при открытии страницы."

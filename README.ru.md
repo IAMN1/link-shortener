@@ -9,7 +9,7 @@
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![тестов: 3927](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-3927-0b5d3b)](docs/testing.md)
+[![тестов: 3960](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-3960-0b5d3b)](docs/testing.md)
 [![покрытие: 96%](https://img.shields.io/badge/%D0%BF%D0%BE%D0%BA%D1%80%D1%8B%D1%82%D0%B8%D0%B5-96%25-0b5d3b)](docs/testing.md)
 [![mypy: 0](https://img.shields.io/badge/mypy-0%20%D0%BE%D1%88%D0%B8%D0%B1%D0%BE%D0%BA-0b5d3b)](docs/testing.md)
 [![лицензия: Apache 2.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-Apache%202.0-blue)](LICENSE)
@@ -202,7 +202,7 @@ flowchart LR
 ## Тестирование
 
 ```bash
-uv run pytest tests/                      # 3927 тестов
+uv run pytest tests/                      # 3960 тестов
 uv run python tests/live/smoke_test.py    # 157 проверок по HTTP
 uv run python tests/live/browser_test.py  # 65 проверок настоящим браузером
 ```

@@ -311,7 +311,9 @@ _DEPENDENCY = {
 _LOG_CHANNEL = {
     "type": "object",
     "properties": {
-        "active": {"type": "boolean"},
+        # A string, not a boolean: it names the implementation doing the
+        # work -- "structlog", "standard_audit", "not started".
+        "active": {"type": "string"},
         "dropped_calls": {"type": "integer"},
         "failed_checks": {"type": "integer"},
         "lost_log_lines": {"type": "integer"},
@@ -323,17 +325,50 @@ HEALTH_SCHEMA = {
     "properties": {
         "database": _DEPENDENCY,
         "cache": _DEPENDENCY,
+        "cache_configured": {
+            "type": "boolean",
+            "description": (
+                "Whether a cache backend is configured at all. A cache "
+                "nobody configured cannot be down, so it answers `cache` "
+                "true; this tells that apart from a cache that is working."
+            ),
+        },
         "task_queue": _DEPENDENCY,
         "rate_limiter": _DEPENDENCY,
+        "timed_out": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Dependencies that did not answer within the check's "
+                "budget. Reported false above as well, and named here "
+                "because \"did not answer in time\" says which one is "
+                "hanging where \"answered no\" does not."
+            ),
+        },
         "logging": {
             "type": "object",
             "description": (
                 "Present only where a failover logger is configured."
             ),
-            "properties": {"logger": _LOG_CHANNEL, "audit": _LOG_CHANNEL},
+            "properties": {
+                "worker": {
+                    "type": "integer",
+                    "description": (
+                        "Process the counters were taken in. They live in "
+                        "one worker's memory and a deployment runs "
+                        "several, so they are that worker's, not the "
+                        "service's."
+                    ),
+                },
+                "logger": _LOG_CHANNEL,
+                "audit": _LOG_CHANNEL,
+            },
         },
     },
-    "required": ["database", "cache", "task_queue", "rate_limiter"],
+    "required": [
+        "database", "cache", "cache_configured", "task_queue",
+        "rate_limiter", "timed_out",
+    ],
 }
 """
 The health body, written out because the endpoint assembles it by hand.
@@ -356,7 +391,11 @@ JOURNAL_SEARCH_PARAMETERS = [
         (
             "event_type",
             "Match the event's own type exactly, as the audit journal "
-            "writes it: LOGIN_FAILED, ROLES_CHANGED, URL_ACCESSED.",
+            "writes it: LOGIN_FAILED, ROLES_CHANGED, URL_ACCESSED. "
+            "LOGGING_CHAIN_PROBE is the one type a read without terms "
+            "does not return: the logging chains write a probe record "
+            "into the journal they are probing, and naming this type is "
+            "how to see them.",
             {"type": "string", "maxLength": 64},
         ),
         (

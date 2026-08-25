@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-25 00:00+0300\n"
+"POT-Creation-Date: 2026-08-25 23:26+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,23 +18,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: src/link_shortener/application/facades/admin_service.py:228
-#: src/link_shortener/application/services/user_management_service.py:119
-#: src/link_shortener/application/services/user_management_service.py:146
-#: src/link_shortener/application/services/user_management_service.py:169
-#: src/link_shortener/application/use_cases/admin/users/confirm_user_email.py:71
-#: src/link_shortener/web/controllers/admin_api_controller.py:118
-#: src/link_shortener/web/controllers/admin_api_controller.py:221
-#, python-format
-msgid "User with id %(id)s not found"
-msgstr ""
-
-#: src/link_shortener/application/services/user_management_service.py:61
-#: src/link_shortener/infrastructure/database/repositories/sqlalchemy_user_repository.py:108
-msgid "Email already registered"
-msgstr ""
-
-#: src/link_shortener/application/services/user_management_service.py:214
+#: src/link_shortener/application/services/user_management_service.py:199
 msgid "Password must not be empty"
 msgstr ""
 
@@ -125,55 +109,64 @@ msgstr ""
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:143
+#: src/link_shortener/domain/exceptions.py:148
 #, python-format
 msgid "Link with code (%(code)s) not found"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:147
-#: src/link_shortener/web/middleware/error_handler.py:407
+#: src/link_shortener/domain/exceptions.py:152
+#: src/link_shortener/web/middleware/error_handler.py:434
 msgid "Link not found"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:204
+#: src/link_shortener/domain/exceptions.py:209
 #, python-format
 msgid "Short code '%(code)s' is already taken"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:217
+#: src/link_shortener/domain/exceptions.py:222
 #, python-format
 msgid "Link with code (%(code)s) has expired"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:221
+#: src/link_shortener/domain/exceptions.py:226
 msgid "Link has expired"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:235
+#: src/link_shortener/domain/exceptions.py:240
 msgid "Guest link limit exceeded"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:260
+#: src/link_shortener/domain/exceptions.py:276
+#, python-format
+msgid "User with id %(id)s not found"
+msgstr ""
+
+#: src/link_shortener/domain/exceptions.py:304
+msgid "Email already registered"
+msgstr ""
+
+#: src/link_shortener/domain/exceptions.py:323
 #, python-format
 msgid "Role %(name)s not found"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:279
+#: src/link_shortener/domain/exceptions.py:342
 #, python-format
 msgid "Role %(name)s already exists"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:299
+#: src/link_shortener/domain/exceptions.py:362
 #, python-format
 msgid "Role %(name)s belongs to the service and cannot be modified or deleted"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:325
+#: src/link_shortener/domain/exceptions.py:388
 #, python-format
 msgid "Role %(name)s cannot be assigned to an account"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:345
+#: src/link_shortener/domain/exceptions.py:408
 #, python-format
 msgid "Permissions not found: %(names)s"
 msgstr ""
@@ -699,8 +692,21 @@ msgstr ""
 msgid "not answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:435
+#: src/link_shortener/web/i18n.py:439
+msgid "timed out"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:443
+msgid "not configured"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:444
 msgid "unknown"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:447
+#, python-format
+msgid "Worker process %(pid)s"
 msgstr ""
 
 #: src/link_shortener/web/request_body.py:58
@@ -711,7 +717,7 @@ msgstr ""
 msgid "Request body must be a JSON object"
 msgstr ""
 
-#: src/link_shortener/web/controllers/admin_api_controller.py:184
+#: src/link_shortener/web/controllers/admin_api_controller.py:179
 #, python-format
 msgid "Confirmation for %(email)s could not be queued"
 msgstr ""
@@ -770,65 +776,65 @@ msgstr ""
 msgid "This request could not be verified. Reload the page and try again."
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:153
-#: src/link_shortener/web/middleware/error_handler.py:523
+#: src/link_shortener/web/middleware/error_handler.py:171
+#: src/link_shortener/web/middleware/error_handler.py:550
 msgid "An internal error occurred"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:249
+#: src/link_shortener/web/middleware/error_handler.py:267
 msgid "The request could not be understood"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:250
+#: src/link_shortener/web/middleware/error_handler.py:268
 msgid "You do not have access to this"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:251
+#: src/link_shortener/web/middleware/error_handler.py:269
 msgid "That conflicts with something already stored"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:252
+#: src/link_shortener/web/middleware/error_handler.py:270
 msgid "What was sent is too large"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:253
+#: src/link_shortener/web/middleware/error_handler.py:271
 msgid "The service expects a JSON body"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:254
+#: src/link_shortener/web/middleware/error_handler.py:272
 msgid "The service is unavailable right now"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:303
+#: src/link_shortener/web/middleware/error_handler.py:321
 msgid "Page not found"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:306
+#: src/link_shortener/web/middleware/error_handler.py:324
 msgid "Resource not found"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:317
+#: src/link_shortener/web/middleware/error_handler.py:335
 msgid "Method not allowed"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:326
+#: src/link_shortener/web/middleware/error_handler.py:344
 #, python-format
 msgid "Method %(method)s not allowed"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:349
+#: src/link_shortener/web/middleware/error_handler.py:367
 msgid "Request validation failed"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:487
+#: src/link_shortener/web/middleware/error_handler.py:514
 msgid "Bad request"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:491
+#: src/link_shortener/web/middleware/error_handler.py:518
 msgid "Malformed request body"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:518
+#: src/link_shortener/web/middleware/error_handler.py:545
 msgid "Internal server error"
 msgstr ""
 
@@ -1238,35 +1244,39 @@ msgstr ""
 msgid "Logging"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:43
-msgid "Application log"
-msgstr ""
-
-#: src/link_shortener/web/templates/dashboard/health.html:47
-msgid "Audit log"
+#: src/link_shortener/web/templates/dashboard/health.html:49
+msgid "Counters from"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/health.html:53
+msgid "Application log"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:57
+msgid "Audit log"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:63
 msgid "Records that did not survive"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:55
+#: src/link_shortener/web/templates/dashboard/health.html:65
 msgid "Calls dropped"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:60
+#: src/link_shortener/web/templates/dashboard/health.html:70
 msgid "Health checks that failed"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:65
+#: src/link_shortener/web/templates/dashboard/health.html:75
 msgid "Lines lost"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:70
+#: src/link_shortener/web/templates/dashboard/health.html:80
 msgid "Application log · audit log."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:76
+#: src/link_shortener/web/templates/dashboard/health.html:86
 #, python-format
 msgid "Reported by %(name)s, read once when this page opens."
 msgstr ""

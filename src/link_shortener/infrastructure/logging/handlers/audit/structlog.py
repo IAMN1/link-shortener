@@ -11,7 +11,10 @@ from typing import Optional, Any, Dict
 import structlog
 
 from link_shortener.application import AuditEvent, AuditLogger
-from link_shortener.infrastructure.logging.utils import mask_email, mask_url
+from link_shortener.infrastructure.logging.utils import (
+    HEALTH_PROBE_FIELDS, HEALTH_PROBE_MESSAGE, mask_email, mask_url,
+    probe_level,
+)
 
 
 class StructlogAuditLogger(AuditLogger):
@@ -26,6 +29,14 @@ class StructlogAuditLogger(AuditLogger):
         _bound_fields: Dictionary of fields bound to this logger instance.
     """
 
+    NAME = "audit"
+    """The standard library logger this chain writes through.
+
+    Named here because two things need it: the logger built when no bound
+    one is handed in, and ``is_healthy``, which asks that hierarchy what
+    level a probe has to be written at to reach a handler.
+    """
+
     def __init__(self, bound_logger=None, bound_fields: Optional[Dict[str, Any]] = None):
         """Initialise the structlog audit logger.
 
@@ -36,7 +47,7 @@ class StructlogAuditLogger(AuditLogger):
         """
         self._bound_fields = bound_fields or {}
         if bound_logger is None:
-            self._logger = structlog.get_logger("audit")
+            self._logger = structlog.get_logger(self.NAME)
         else:
             self._logger = bound_logger
 
@@ -174,11 +185,21 @@ class StructlogAuditLogger(AuditLogger):
     def is_healthy(self) -> bool:
         """Check whether the audit logger is operational.
 
+        Written at the level this chain actually passes records at, for
+        the reason ``probe_level`` gives. ``bootstrap`` sets the audit
+        handlers to ``INFO`` unconditionally, so the old ``DEBUG`` probe
+        reached none of them under any configuration -- this chain called
+        itself healthy whatever state it was in.
+
         Returns:
-            ``True`` if a simple debug log call succeeds, ``False`` otherwise.
+            ``True`` if a probe record reaches the handlers, ``False``
+            otherwise.
         """
         try:
-            self._logger.debug("health_check")
+            self._logger.log(
+                probe_level(self.NAME), HEALTH_PROBE_MESSAGE,
+                **HEALTH_PROBE_FIELDS,
+            )
             return True
         except Exception:
             return False

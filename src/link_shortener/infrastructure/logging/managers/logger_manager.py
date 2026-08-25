@@ -49,6 +49,9 @@ class LoggerManager:
         self.logger = logger if logger is not None else MinimalLogger()
         self._failover_service: Optional[FailoverService] = None
         self._active_logger: Optional[Logger] = None
+        # The name the implementation was built under, kept rather than
+        # worked out again later: see ``get_active_logger_name``.
+        self._active_logger_name = "unknown"
         self._loggers_cache: Dict[str, Logger] = {}
         self._init_failover_service(logger_type)
 
@@ -113,7 +116,7 @@ class LoggerManager:
         # Single logger: no failover
         if len(loggers) == 1:
             self._failover_service = None
-            self._active_logger = loggers[0][0]
+            self._active_logger, self._active_logger_name = loggers[0]
         else:
             # Health checker using is_healthy
             def health_check(logger: Logger) -> bool:
@@ -176,19 +179,20 @@ class LoggerManager:
         """
         Return the name of the currently active logger implementation.
 
+        The name the implementation was built under, in both branches. It
+        was worked out again here, by ``isinstance`` over the classes --
+        a second answer to a question the list of implementations had
+        already answered, and one that could disagree with it. It is the
+        same string either way now, so a chain reports itself the same
+        whether or not failover was built for it.
+
         Returns:
-            One of ``"structlog"``, ``"standard"``, ``"null"``, or ``"unknown"``.
+            One of ``"structlog"``, ``"standard"``, ``"null"``, or
+            ``"unknown"`` where nothing was built.
         """
         if self._failover_service:
             return self._failover_service.get_current_service_name()
-        elif self._active_logger:
-            if isinstance(self._active_logger, StructLogger):
-                return "structlog"
-            elif isinstance(self._active_logger, StandardLogger):
-                return "standard"
-            else:
-                return "null"
-        return "unknown"
+        return self._active_logger_name
 
     def counters(self) -> Tuple[int, int, int]:
         """

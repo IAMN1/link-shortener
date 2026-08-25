@@ -214,8 +214,12 @@ class TestStructlogAuditLogger:
         assert kwargs["request_id"] == "req-1"
 
     def test_reports_unhealthy_when_the_backend_fails(self):
+        # ``log``, not ``debug``: the probe is written at the level this
+        # chain passes records at, because a ``DEBUG`` one was dropped by
+        # the audit handlers -- they are ``INFO`` whatever ``LOG_LEVEL``
+        # says -- before it could fail on anything.
         logger, backend = self._logger()
-        backend.debug.side_effect = RuntimeError("backend down")
+        backend.log.side_effect = RuntimeError("backend down")
 
         assert logger.is_healthy() is False
 

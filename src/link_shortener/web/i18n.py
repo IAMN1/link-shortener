@@ -432,7 +432,19 @@ def script_strings() -> Dict[str, str]:
         "counts_failed": gettext("The counters could not be read"),
         "answering": gettext("answering"),
         "not_answering": gettext("not answering"),
+        # Beside "not answering" rather than folded into it. A dependency
+        # that ran out of the health check's budget and one that answered
+        # no are both unusable, but only the first names what is hanging,
+        # and the snapshot has kept them apart all along.
+        "timed_out": gettext("timed out"),
+        # A cache nobody configured is not a broken cache. Without this
+        # the row read "Redis: answering" on a deployment that runs
+        # without Redis at all.
+        "not_configured": gettext("not configured"),
         "unknown": gettext("unknown"),
+        # The counters below it belong to one worker process out of
+        # several, and the number is the only thing that says so.
+        "logging_worker": gettext("Worker process %(pid)s"),
     }
 
 
