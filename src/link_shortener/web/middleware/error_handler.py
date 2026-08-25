@@ -112,7 +112,19 @@ def status_for(code: str) -> int:
     return STATUS_BY_CODE.get(code, 500)
 
 
-CODES_WORDED_FOR_THE_CLIENT = frozenset({"REGISTRATION_UNAVAILABLE"})
+CODES_WORDED_FOR_THE_CLIENT = frozenset({
+    "REGISTRATION_UNAVAILABLE",
+    # Raised by one route, and that route is an administrative one:
+    # ``POST /admin/users/<id>/resend-verification`` tells three answers
+    # apart on purpose, and the sentence it assembles names the address
+    # the message was meant for -- which its docstring argues is no
+    # disclosure, the caller reading the whole account list already.
+    # Measured with the broker stopped: 503 arrived as "An internal error
+    # occurred", so the operator who is the whole reason this route
+    # answers three ways saw what any other failure looks like, and a
+    # sentence translated into both catalogues reached nobody.
+    "MAIL_NOT_HANDED_OFF",
+})
 """5xx codes whose sentence was written for whoever is reading it.
 
 The rule below is a proxy: a 5xx code usually means the service is

@@ -2059,13 +2059,107 @@ the rows this delete meant to take are already gone. Anything else is left
 to raise, for the reason the address index was narrowed to in the same
 file: a wrong answer is worse than an unhandled one.
 
-**What is deliberately not done.** The same broad-catch shape stands in
-`SQLAlchemyRoleRepository.save` and `SQLAlchemyLinkRepository`, where a
-flush also writes an association table. Neither is reachable today: role
-permissions are resolved by a query over names, which cannot produce a
-duplicate, and the YAML loader resolves them the same way — measured, a
-permission named twice in one file yields one row. It stays a mine rather
-than a defect, and narrowing it would be tidying rather than fixing.
+**What was deliberately not done, and did not survive.** The same
+broad-catch shape stood in `SQLAlchemyRoleRepository.save` and
+`SQLAlchemyLinkRepository`, and both were left as mines nothing could
+reach: role permissions are resolved by a query over names, which cannot
+produce a duplicate, and the YAML loader resolves them the same way —
+measured, a permission named twice in one file yields one row.
+
+That reasoning held for the request in isolation and not for two of them.
+A race reaches the role one: `PUT /admin/roles/<name>/permissions`
+against a simultaneous `DELETE` of that role writes an association
+pointing at a row that is no longer there, and the catch read the foreign
+key violation as the unique one — `409 ROLE_ALREADY_EXISTS`, measured,
+for a request that asks to take no name at all. It is narrowed now, the
+way the address was. The link repository's is untouched: nothing deletes
+a `short_code`'s owner mid-write in the same way, and it stays on the
+list above.
+
+### The three doors the same race was still open on
+
+**Decided** (2026-08-25): the rule above is applied to the writes, not
+only to the deletions.
+
+**Why.** Deletion was made to answer for its lost race; the writes it
+races against were not, and each was measured on the running stack with
+two simultaneous requests against one account or role.
+
+`POST /api/v1/admin/users/<id>/deactivate` against a simultaneous
+`DELETE` of that account answered **500** in two attempts of three —
+`StaleDataError: UPDATE statement on table 'users' expected to update 1
+row(s); 0 were matched`. `PUT /users/<id>/roles` reached the same failure
+two milliseconds behind the delete. `activate` and `verify-email` did not
+show it in the same probe, having a shorter path and a narrower window,
+and run the identical `save`. So the answer is given once, in `save`: a
+stale write is `UserNotFoundError`, which the table answers 404 — what
+the account's absence already is on every route around it.
+
+`PUT /api/v1/admin/users/<id>/roles` naming a role, against a `DELETE
+/api/v1/admin/roles/<name>` of that role two milliseconds later, answered
+**500** with `ForeignKeyViolation` on `user_roles`. `_sync_roles` already
+promises `RoleNotFoundError` for this exact situation — a role deleted
+between one administrator's lookup and another's save — and delivered it
+only when the deletion committed before the lookup. It is now delivered
+on the other side of that read too.
+
+`PUT /api/v1/admin/roles/<name>/permissions` against a `DELETE` of that
+role answered 200 and **500** — `StaleDataError` on `role_permissions`,
+the deletion flushing a cascade whose rows the permission change had
+already replaced. `SQLAlchemyRoleRepository.delete` now raises
+`RoleNotFoundError`, so the losing side is answered 404 by the same
+sentence as a name that was never there.
+
+That pair loses both ways round, which the first fix did not cover. With
+the deletion answered, a finer grid over the shift between the two
+requests put the *write* on the losing side: **500** twice with the same
+`StaleDataError`, and **409 ROLE_ALREADY_EXISTS** once — the broad catch
+in `save`, described just above as unreachable, reading a foreign key
+violation as the unique one. Both are answered 404 now. The lesson is
+worth more than the fix: a race has two losers, and measuring one of them
+proves nothing about the other.
+
+**Which role went, and how that is known.** The foreign keys on
+`user_roles` are declared without names, so the constraint in the message
+is whatever the database generated and is not worth matching on. What is
+read instead is the diagnostics — which table refused, and which key it
+named — and the key is matched back against the roles that write was
+carrying. A violation from another table, one naming a role the write
+never carried, or a database that reports no diagnostics at all (which is
+every engine here but PostgreSQL) is re-raised as it came: a wrong answer
+is worse than an unhandled one.
+
+**Not reproducible in the suite.** All three races need two transactions,
+and the suite's database is one in-memory SQLite connection. What the
+tests hold is the translation each race depends on; the races themselves
+were measured against the stack, before and after.
+
+### A 5xx an operator caused is worded for the operator
+
+**Decided** (2026-08-25): `MAIL_NOT_HANDED_OFF` keeps its own sentence.
+
+**Why.** `client_message` replaces the sentence of any 5xx whose code is
+not listed in `CODES_WORDED_FOR_THE_CLIENT`, because a 5xx usually
+describes the service's own state — a role from the configuration, a
+broker — to somebody who is not the audience for it.
+
+That proxy is wrong for this code. It is raised by one route, `POST
+/admin/users/<id>/resend-verification`, which sits behind
+`admin:manage_users` and tells three answers apart on purpose: 202 the
+message is on its way, 200 there was nothing to send, 503 the queue would
+not take it. The sentence names the address the message was meant for,
+which its own docstring argues is no disclosure — the caller reads the
+whole account list already — and it is translated into both catalogues.
+
+Measured with the broker stopped: `503 {"error":
+"MAIL_NOT_HANDED_OFF", "message": "An internal error occurred"}`. The
+operator that route distinguishes three answers for saw what any other
+failure looks like, and a sentence carried through two translation files
+reached nobody. The suite asked for the status and never for the body.
+
+**The list stays a list of codes.** Its own docstring says the audience
+is a property of the code and not of the moment, and this is the second
+code where the proxy misses: one raiser, one reader, one sentence.
 
 
 ## Known limits

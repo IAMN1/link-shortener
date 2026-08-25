@@ -5,6 +5,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.orm import Session, selectinload
 
+from link_shortener.infrastructure.database.models.associations import (
+    user_role_table,
+)
 from link_shortener.infrastructure.database.models.permission_model import PermissionModel
 from link_shortener.infrastructure.database.models.role_model import RoleModel
 from link_shortener.infrastructure.database.models.base import Base
@@ -12,7 +15,7 @@ from link_shortener.infrastructure.database.models.user_model import UserModel
 from link_shortener.application import Logger
 from link_shortener.domain import (
     EmailAlreadyRegisteredError, Role, RoleNotFoundError, User,
-    UserRepository, Email, PasswordHash, Permission
+    UserNotFoundError, UserRepository, Email, PasswordHash, Permission
 )
 
 
@@ -56,6 +59,47 @@ def _is_email_clash(error: IntegrityError) -> bool:
     if constraint:
         return constraint == EMAIL_INDEX_NAME
     return "users.email" in str(error.orig)
+
+
+def _role_that_went_away(error: IntegrityError, user: User) -> Optional[Role]:
+    """
+    Say which of the account's roles the write found already gone.
+
+    The other way this ``flush`` can fail, and the mirror of
+    ``_is_email_clash``: ``_sync_roles`` reads each role before writing
+    the association, and that read goes stale the moment another
+    transaction commits. Measured on the running stack -- ``PUT
+    /api/v1/admin/users/<id>/roles`` naming a role, ``DELETE
+    /api/v1/admin/roles/<name>`` two milliseconds later -- the assignment
+    was answered **500** with ``ForeignKeyViolation: insert or update on
+    table "user_roles" violates foreign key constraint``. That is the
+    situation ``_sync_roles`` already raises ``RoleNotFoundError`` for,
+    reached a moment later, so it is worth the same answer rather than a
+    different one.
+
+    Read off the diagnostics rather than off the constraint's name,
+    because these foreign keys are declared without one and the name in
+    the message is whatever the database chose to generate. What is
+    asked instead is which table refused and which key it named, and the
+    key is matched back to the roles this write was carrying -- so a
+    violation from anywhere else answers ``None`` and is re-raised as it
+    came.
+
+    Args:
+        error: The integrity error the flush raised.
+        user: The account whose roles were being written.
+
+    Returns:
+        The role the association pointed at, or ``None`` if this is not
+        that failure -- including on a database that reports no
+        diagnostics at all, which is every engine but PostgreSQL here.
+    """
+    diagnostics = getattr(error.orig, "diag", None)
+    if getattr(diagnostics, "table_name", None) != user_role_table.name:
+        return None
+
+    detail = getattr(diagnostics, "message_detail", None) or ""
+    return next((role for role in user.roles if role.id in detail), None)
 
 
 class SQLAlchemyUserRepository(UserRepository):
@@ -123,7 +167,11 @@ class SQLAlchemyUserRepository(UserRepository):
             EmailAlreadyRegisteredError: If the write collides with an
                 address somebody else has just registered -- that index
                 and no other constraint this flush can touch.
-            RoleNotFoundError: If the user carries a role no row answers to.
+            RoleNotFoundError: If the user carries a role no row answers
+                to, whether that was already so when the roles were read
+                or became so before they were written.
+            UserNotFoundError: If the account was deleted between this
+                write's read and its flush.
         """
         model = self.session.get(UserModel, user.id)
         if not model:
@@ -160,8 +208,29 @@ class SQLAlchemyUserRepository(UserRepository):
             # than an unhandled one: 500 says the service does not know,
             # and this said it knew something untrue.
             if not _is_email_clash(clash):
-                raise
+                vanished = _role_that_went_away(clash, user)
+                if vanished is None:
+                    raise
+                raise RoleNotFoundError(vanished.name) from clash
             raise EmailAlreadyRegisteredError() from clash
+        except StaleDataError as gone:
+            # The account was there when this write read it and is not
+            # there now: somebody deleted it in between. The same
+            # arrangement ``delete`` was given for two simultaneous
+            # deletions, on the other side of the same race -- measured
+            # on the running stack, ``POST
+            # /api/v1/admin/users/<id>/deactivate`` against a
+            # simultaneous ``DELETE`` of that account answered **500**
+            # twice in three attempts, with ``StaleDataError: UPDATE
+            # statement on table 'users' expected to update 1 row(s); 0
+            # were matched``.
+            #
+            # Every administrative write on an account comes through
+            # here -- activation, suspension, confirmation, re-roling --
+            # so the answer is given once here rather than four times
+            # above, and it is the answer the account's absence already
+            # has everywhere else: 404.
+            raise UserNotFoundError(user.id) from gone
         return user
 
     def record_login(self, user_id: str, when: datetime) -> bool:
