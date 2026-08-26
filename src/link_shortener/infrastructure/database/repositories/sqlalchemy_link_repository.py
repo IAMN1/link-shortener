@@ -20,7 +20,54 @@ from link_shortener.domain import (Link, LinkRepository, OriginalUrl,
                                    ShortCode, UrlHash, LinkConflictError,
                                    LinkNotFoundError, DedupScope, OwnerID,
                                    ServiceLinkStats, UserLinkStats)
+from link_shortener.infrastructure.database.models.base import Base
 from link_shortener.infrastructure.database.models.link_model import LinkModel
+
+
+SHORT_CODE_INDEX_NAME = next(
+    index.name
+    for index in Base.metadata.tables[LinkModel.__tablename__].indexes
+    if [column.name for column in index.columns] == ["short_code"]
+)
+"""Name of the unique index on ``urls.short_code``.
+
+Read off the model rather than written out, for the reason given beside
+``EMAIL_INDEX_NAME``: the name is what PostgreSQL reports a violation of,
+and the two would otherwise have to be kept in step by hand. The migration
+creates it under this name as well.
+"""
+
+
+def _is_code_clash(error: IntegrityError) -> bool:
+    """
+    Report whether an integrity error is the short code index refusing.
+
+    Asked because ``urls`` is refused by more than one constraint, so
+    "something violated a constraint" is not the same question as "that
+    code is taken". Measured on the running stack: saving a link whose
+    owner had gone answered ``ForeignKeyViolation`` on
+    ``fk_urls_owner_id_users``, and reported as a lost race it sent the
+    creation round its five retries and out as "every attempt lost a race
+    with a concurrent creation" -- a cause that had nothing to do with it.
+
+    The two databases say it differently, and both forms are covered:
+    PostgreSQL names the constraint and offers it as
+    ``diag.constraint_name``, while SQLite names the column in the message
+    and offers no diagnostics -- ``UNIQUE constraint failed:
+    urls.short_code``.
+
+    Args:
+        error: The integrity error the flush raised.
+
+    Returns:
+        ``True`` if the short code index is what refused the write.
+    """
+    diagnostics = getattr(error.orig, "diag", None)
+    constraint = getattr(diagnostics, "constraint_name", None)
+    if constraint:
+        return constraint == SHORT_CODE_INDEX_NAME
+    return "urls.short_code" in str(error.orig)
+
 
 class SQLAlchemyLinkRepository(LinkRepository):
     """
@@ -46,13 +93,20 @@ class SQLAlchemyLinkRepository(LinkRepository):
         say "somebody got there first" instead of surfacing a driver error
         as a 500.
 
+        That index and no other: every other way ``urls`` can refuse a
+        write is a different fault, and answering all of them with "lost a
+        race" hands the caller a retry loop that cannot succeed and a
+        reason that is not the reason. Anything else leaves as it came, to
+        be answered as the failure it is.
+
         Raises:
-            LinkConflictError: On any integrity violation from the wrapped
-                statements.
+            LinkConflictError: If the short code index refused the write.
         """
         try:
             yield
         except IntegrityError as error:
+            if not _is_code_clash(error):
+                raise
             # The session is unusable after this; the unit of work rolls it
             # back on the way out and the caller retries in a fresh one.
             raise LinkConflictError() from error

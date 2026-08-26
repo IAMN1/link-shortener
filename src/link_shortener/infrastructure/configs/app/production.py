@@ -75,20 +75,6 @@ class ProductionConfig(BaseConfig):
     USE_HTTPS: bool = env_bool("USE_HTTPS", True)
     """Production is expected to be served over TLS, so this defaults to true."""
 
-    @property
-    def BASE_URL(self) -> str:
-        """Base URL for production – uses DOMAIN environment variable if set."""
-
-        # ``domain_value`` rather than ``DOMAIN``: stripped, so a value
-        # arriving from a Secret with a trailing newline does not put one
-        # inside every short link, and so this agrees with the check.
-        domain = self.domain_value
-        if domain:
-            scheme = "https" if self.USE_HTTPS else "http"
-            return f"{scheme}://{domain}"
-        return f"http://{self.HOST}:{self.PORT}/"
-
-
     # --------------------------------------------------------------------------
     # Limits
     # --------------------------------------------------------------------------

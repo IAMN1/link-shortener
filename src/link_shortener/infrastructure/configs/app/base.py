@@ -463,7 +463,20 @@ class BaseConfig:
     def BASE_URL(self) -> str:
         """
         Base URL of the service used for constructing full short URLs.
+
+        Every profile is served by this one. ``production`` carried a copy
+        of it, word for word, which decided nothing: the three names it
+        reads are resolved on the instance, so the profile's own ``HOST``,
+        ``PORT`` and ``USE_HTTPS`` reach this body anyway. What a second
+        copy could do was drift from the first.
+
+        Returns:
+            The address short links are written against.
         """
+        # ``domain_value`` rather than ``DOMAIN``: stripped, so a value
+        # arriving from a Secret with a trailing newline does not put one
+        # inside every short link, and so this agrees with the check that
+        # a deployed profile names a domain at all.
         domain = self.domain_value
         if domain:
             scheme = "https" if self.USE_HTTPS else "http"
