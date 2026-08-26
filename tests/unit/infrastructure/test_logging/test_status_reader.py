@@ -17,7 +17,9 @@ import os
 
 import pytest
 
-from link_shortener.application.ports.logging_status import NOT_STARTED
+from link_shortener.application.ports.logging_status import (
+    ChainStatus, NOT_STARTED,
+)
 from link_shortener.infrastructure.di.components.audit import AuditComponent
 from link_shortener.infrastructure.di.components.logger import LoggerComponent
 from link_shortener.infrastructure.logging.status_reader import (
@@ -31,12 +33,12 @@ class FakeComponent:
     def __init__(self, status):
         """
         Args:
-            status: ``(active, dropped, failed, lost)`` to report.
+            status: The ``ChainStatus`` to report.
         """
         self._status = status
 
     def chain_status(self):
-        """Return the four things this component reports."""
+        """Return what this component reports about its chain."""
         return self._status
 
 
@@ -46,26 +48,40 @@ class TestEachChainIsReportedAsItself:
     def status(self):
         """Two chains whose every number differs from the other's."""
         return ComponentLoggingStatus(
-            FakeComponent(("structlog", 1, 2, 3)),
-            FakeComponent(("structlog_audit", 4, 5, 6)),
+            FakeComponent(ChainStatus("structlog", 1, 2, 3, "healthy")),
+            FakeComponent(
+                ChainStatus("structlog_audit", 4, 5, 6, "unhealthy")
+            ),
         ).read()
 
     def test_the_logger_counters_are_the_logger_manager_s(self, status):
-        assert status.logger_active == "structlog"
+        assert status.logger.active == "structlog"
         assert (
-            status.logger_dropped_calls,
-            status.logger_failed_checks,
-            status.logger_lost_log_lines,
+            status.logger.dropped_calls,
+            status.logger.failed_checks,
+            status.logger.lost_log_lines,
         ) == (1, 2, 3)
+
+    def test_each_chain_keeps_its_own_finding(self, status):
+        """
+        The state no counter beside it can report.
+
+        Distinct between the chains for the reason every number here is:
+        one finding repeated is a reader that can publish either chain's
+        under both names and still look right.
+        """
+        assert (status.logger.last_check, status.audit.last_check) == (
+            "healthy", "unhealthy"
+        )
 
     def test_the_audit_counters_are_the_audit_manager_s(self, status):
         """Every number distinct from the logger's, so a reader reporting
         one chain under both names cannot come out looking right."""
-        assert status.audit_active == "structlog_audit"
+        assert status.audit.active == "structlog_audit"
         assert (
-            status.audit_dropped_calls,
-            status.audit_failed_checks,
-            status.audit_lost_log_lines,
+            status.audit.dropped_calls,
+            status.audit.failed_checks,
+            status.audit.lost_log_lines,
         ) == (4, 5, 6)
 
     def test_the_process_holding_them_is_named(self, status):
@@ -110,10 +126,15 @@ class TestAChainNobodyHasAskedFor:
             ),
         ).read()
 
-        assert status.logger_active == "not started"
-        assert status.audit_active == "not started"
-        assert status.logger_lost_log_lines == 0
-        assert status.audit_lost_log_lines == 0
+        assert status.logger.active == "not started"
+        assert status.audit.active == "not started"
+        assert status.logger.lost_log_lines == 0
+        assert status.audit.lost_log_lines == 0
+        # A chain nobody built has had no round to find anything, which
+        # is not the finding "well": the two read alike from the zeroes
+        # alone, and only this word tells them apart.
+        assert status.logger.last_check == "not run"
+        assert status.audit.last_check == "not run"
 
     def test_one_chain_started_does_not_start_the_other(self):
         audit = AuditComponent(
@@ -126,8 +147,8 @@ class TestAChainNobodyHasAskedFor:
         try:
             status = ComponentLoggingStatus(logger, audit).read()
 
-            assert status.logger_active == "null"
-            assert status.audit_active == NOT_STARTED
+            assert status.logger.active == "null"
+            assert status.audit.active == NOT_STARTED
         finally:
             logger.shutdown()
             audit.shutdown()
@@ -164,4 +185,4 @@ class TestTheComponentsSpeakOneVocabulary:
         )
 
         assert component.get_active_logger_name() == NOT_STARTED
-        assert component.chain_status()[0] == NOT_STARTED
+        assert component.chain_status().active == NOT_STARTED

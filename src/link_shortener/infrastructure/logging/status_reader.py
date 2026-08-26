@@ -1,21 +1,24 @@
 import os
-from typing import Protocol, Tuple
+from typing import Protocol
 
 from link_shortener.application.ports.logging_status import (
-    LoggingStatus, LoggingStatusPort,
+    ChainStatus, LoggingStatus, LoggingStatusPort,
+)
+from link_shortener.infrastructure.logging.bootstrap import (
+    journals_unavailable, journals_written,
 )
 
 
 class LoggingChain(Protocol):
     """A component that can report its chain without building it."""
 
-    def chain_status(self) -> Tuple[str, int, int, int]:
+    def chain_status(self) -> ChainStatus:
         """
-        Return the active implementation and the three counters.
+        Return what the chain has been doing, without starting it.
 
         Returns:
-            Active implementation, dropped calls, failed check rounds and
-            lost failover log lines.
+            The active implementation, the three counters and what the
+            last background round found.
         """
         ...
 
@@ -49,24 +52,23 @@ class ComponentLoggingStatus(LoggingStatusPort):
         Returns:
             The counters and the active implementations.
         """
-        logger_active, logger_dropped, logger_failed, logger_lost = (
-            self._logger_component.chain_status()
-        )
-        audit_active, audit_dropped, audit_failed, audit_lost = (
-            self._audit_component.chain_status()
-        )
-
         return LoggingStatus(
             # Read here rather than passed in, because it is what makes
             # the counters readable: they live in the memory of this
             # process and nowhere else.
             worker=os.getpid(),
-            logger_active=logger_active,
-            logger_dropped_calls=logger_dropped,
-            logger_failed_checks=logger_failed,
-            logger_lost_log_lines=logger_lost,
-            audit_active=audit_active,
-            audit_dropped_calls=audit_dropped,
-            audit_failed_checks=audit_failed,
-            audit_lost_log_lines=audit_lost,
+            # The same reason, one step earlier in the same process: which
+            # journals this worker could open is settled while it starts,
+            # by `setup_logging`, and is remembered where it was found.
+            # Both halves, because neither is readable alone: no failures
+            # is the answer for a worker writing three journals and for
+            # one writing none.
+            journals_written=journals_written(),
+            journals_unavailable=journals_unavailable(),
+            # Each component answers for its own chain, and answers with
+            # one object: this used to unpack two tuples of four into
+            # eight names on the way into a flat status, where a pair
+            # swapped between the chains read as a plausible answer.
+            logger=self._logger_component.chain_status(),
+            audit=self._audit_component.chain_status(),
         )

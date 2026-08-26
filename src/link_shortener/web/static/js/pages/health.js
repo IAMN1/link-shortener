@@ -118,7 +118,21 @@
             // two unrelated things spelled alike.
             var chainState = logging ? logging[chain] : null;
             var name = document.getElementById('logging-' + chain);
-            if (name) name.textContent = chainState ? chainState.active : t('unknown');
+            if (name) {
+                // The name of the implementation was the whole report,
+                // and it does not move when there is nowhere to move the
+                // work to: with both audit implementations writing one
+                // broken file, `active` read `structlog_audit`
+                // throughout while the background round was calling it
+                // unhealthy every check.
+                name.textContent = chainState
+                    ? t('chain_state', {
+                        active: chainState.active,
+                        finding: finding(chainState.last_check)
+                    })
+                    : t('unknown');
+            }
+            markChain(chain, chainState);
 
             ['dropped_calls', 'failed_checks', 'lost_log_lines']
                 .forEach(function(counter) {
@@ -127,5 +141,105 @@
                     cell.textContent = chainState ? chainState[counter] : '\u2014';
                 });
         });
+
+        renderJournals(logging);
+    }
+
+    // Each key sits as a literal inside its own `t(...)`, for the reason
+    // written beside `render` above: the test that reads the scripts
+    // against the catalogue takes these calls out of the file, and a key
+    // it cannot see is a key it reports as unused.
+    function finding(outcome) {
+        if (outcome === 'healthy') return t('chain_healthy');
+        if (outcome === 'unhealthy') return t('chain_unhealthy');
+        // A probe that raises answers nothing, which is why no work is
+        // moved on one -- a different finding from "answered no", and
+        // told apart here the way `timed_out` is told apart above.
+        if (outcome === 'probe failed') return t('chain_probe_failed');
+        return t('chain_not_checked');
+    }
+
+    // Neutral until a round has found something: a chain nothing has
+    // asked about is unexamined, and a green dot over it is the guess
+    // this row exists to stop being made.
+    function markChain(chain, chainState) {
+        var dot = document.getElementById('dot-' + chain);
+        if (!dot) return;
+
+        var mark = '';
+        if (chainState && chainState.last_check === 'healthy') {
+            mark = ' dot--ok';
+        } else if (
+            chainState
+            && (chainState.last_check === 'unhealthy'
+                || chainState.last_check === 'probe failed')
+        ) {
+            mark = ' dot--danger';
+        }
+        dot.className = 'dot' + mark;
+    }
+
+    // The failure none of the counters above can report. A journal whose
+    // file would not open has no handler at all, so nothing was dropped,
+    // nothing was lost and no check failed -- every number reads zero
+    // over a file being written by nobody.
+    function renderJournals(logging) {
+        // Asked by type and not for truth: `[]` is a truthy value in
+        // this language and it is also the answer "every journal
+        // opened", so a plain `logging.journals_unavailable ? ... :
+        // null` cannot tell that answer from a body that carries no
+        // such field at all. Only the second is unknown.
+        var missing = logging && Array.isArray(logging.journals_unavailable)
+            ? logging.journals_unavailable : null;
+
+        var written = logging && Array.isArray(logging.journals_written)
+            ? logging.journals_written : null;
+
+        var cell = document.getElementById('logging-journals');
+        if (cell) {
+            if (!missing) {
+                cell.textContent = t('unknown');
+            } else if (missing.length) {
+                // Each on its own, with the reason the operating system
+                // gave: "the journal is broken" does not say whether to
+                // fix a path, a mode or a disk.
+                cell.textContent = missing.map(function(entry) {
+                    return t('journal_unavailable', {
+                        journal: entry.journal, reason: entry.reason
+                    });
+                }).join(' · ');
+            } else if (written && written.length) {
+                // Named rather than summarised: two journals of three is
+                // also "nothing failed", and the row that says "all of
+                // them" cannot be told from the row that means it.
+                cell.textContent = written.join(' · ');
+            } else {
+                // No journals written and none refused -- a deployment
+                // that writes no files, which `LOG_TO_FILE=false` makes
+                // a configuration rather than a fault. The same word the
+                // cache row uses for the same shape of answer.
+                cell.textContent = t('not_configured');
+            }
+        }
+
+        var dot = document.getElementById('dot-journals');
+        if (!dot) return;
+        // Spelled out rather than nested into one expression: the four
+        // answers are unknown, refused, written and none configured, and
+        // written as a chain of `?:` the "refused" case was reached only
+        // when something else was being written -- a worker whose three
+        // journals all failed to open drew the neutral dot.
+        //
+        // The neutral dot for a deployment that keeps no journals, the
+        // way the cache row draws a cache nobody configured: nothing is
+        // wrong with it, and a red dot there would train an operator to
+        // ignore this row on the day it goes red for a reason.
+        var mark = '';
+        if (missing && missing.length) {
+            mark = ' dot--danger';
+        } else if (missing && written && written.length) {
+            mark = ' dot--ok';
+        }
+        dot.className = 'dot' + mark;
     }
 })();

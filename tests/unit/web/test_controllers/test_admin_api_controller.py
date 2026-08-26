@@ -1,7 +1,9 @@
 """Tests for the admin API controller."""
 from unittest.mock import MagicMock
 
-from link_shortener.application.ports.logging_status import LoggingStatus
+from link_shortener.application.ports.logging_status import (
+    ChainStatus, LoggingStatus,
+)
 from link_shortener.domain import RoleNotFoundError
 
 
@@ -224,14 +226,10 @@ class TestAdminApiController:
         mock_health.timed_out = ()
         mock_health.logging = LoggingStatus(
             worker=4242,
-            logger_active="structlog",
-            logger_dropped_calls=0,
-            logger_failed_checks=0,
-            logger_lost_log_lines=4,
-            audit_active="structlog_audit",
-            audit_dropped_calls=2,
-            audit_failed_checks=1,
-            audit_lost_log_lines=0,
+            logger=ChainStatus("structlog", 0, 0, 4, "healthy"),
+            audit=ChainStatus("structlog_audit", 2, 1, 0, "unhealthy"),
+            journals_written=("application",),
+            journals_unavailable=(),
         )
         ctrl.admin_service.get_service_health.return_value = mock_health
 

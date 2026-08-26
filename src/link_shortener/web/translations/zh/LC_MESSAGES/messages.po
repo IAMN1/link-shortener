@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-25 23:26+0300\n"
+"POT-Creation-Date: 2026-08-26 03:37+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -710,6 +710,32 @@ msgstr "未知"
 msgid "Worker process %(pid)s"
 msgstr "工作进程 %(pid)s"
 
+#: src/link_shortener/web/i18n.py:452
+msgid "well at the last check"
+msgstr "上次检查时正常"
+
+#: src/link_shortener/web/i18n.py:453
+msgid "reports itself unwell"
+msgstr "自报异常"
+
+#: src/link_shortener/web/i18n.py:456
+msgid "the check itself failed"
+msgstr "检查本身失败"
+
+#: src/link_shortener/web/i18n.py:457
+msgid "not checked yet"
+msgstr "尚未检查"
+
+#: src/link_shortener/web/i18n.py:460
+#, python-format
+msgid "%(active)s · %(finding)s"
+msgstr "%(active)s · %(finding)s"
+
+#: src/link_shortener/web/i18n.py:469
+#, python-format
+msgid "%(journal)s (%(reason)s)"
+msgstr "%(journal)s (%(reason)s)"
+
 #: src/link_shortener/web/request_body.py:58
 msgid "Request body is nested too deeply"
 msgstr "请求体嵌套过深"
@@ -718,7 +744,7 @@ msgstr "请求体嵌套过深"
 msgid "Request body must be a JSON object"
 msgstr "请求体必须是 JSON 对象"
 
-#: src/link_shortener/web/controllers/admin_api_controller.py:179
+#: src/link_shortener/web/controllers/admin_api_controller.py:212
 #, python-format
 msgid "Confirmation for %(email)s could not be queued"
 msgstr "无法将发往 %(email)s 的确认邮件加入队列"
@@ -1248,35 +1274,39 @@ msgstr "日志记录"
 msgid "Counters from"
 msgstr "计数来源"
 
-#: src/link_shortener/web/templates/dashboard/health.html:53
+#: src/link_shortener/web/templates/dashboard/health.html:60
 msgid "Application log"
 msgstr "应用日志"
 
-#: src/link_shortener/web/templates/dashboard/health.html:57
+#: src/link_shortener/web/templates/dashboard/health.html:64
 msgid "Audit log"
 msgstr "审计日志"
 
-#: src/link_shortener/web/templates/dashboard/health.html:63
+#: src/link_shortener/web/templates/dashboard/health.html:74
+msgid "Journal files"
+msgstr "日志文件"
+
+#: src/link_shortener/web/templates/dashboard/health.html:80
 msgid "Records that did not survive"
 msgstr "未能留存的记录"
 
-#: src/link_shortener/web/templates/dashboard/health.html:65
+#: src/link_shortener/web/templates/dashboard/health.html:82
 msgid "Calls dropped"
 msgstr "丢弃的调用"
 
-#: src/link_shortener/web/templates/dashboard/health.html:70
+#: src/link_shortener/web/templates/dashboard/health.html:87
 msgid "Health checks that failed"
 msgstr "失败的健康检查"
 
-#: src/link_shortener/web/templates/dashboard/health.html:75
+#: src/link_shortener/web/templates/dashboard/health.html:92
 msgid "Lines lost"
 msgstr "丢失的行数"
 
-#: src/link_shortener/web/templates/dashboard/health.html:80
+#: src/link_shortener/web/templates/dashboard/health.html:97
 msgid "Application log · audit log."
 msgstr "应用日志 · 审计日志。"
 
-#: src/link_shortener/web/templates/dashboard/health.html:86
+#: src/link_shortener/web/templates/dashboard/health.html:103
 #, python-format
 msgid "Reported by %(name)s, read once when this page opens."
 msgstr "由 %(name)s 提供，打开本页时读取一次。"

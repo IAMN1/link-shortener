@@ -318,7 +318,13 @@ class FileJournalReader(JournalReaderPort):
             The page, oldest line first.
         """
         wanted = max(0, min(limit, HARD_LIMIT))
-        looking_for = where if where and not where.is_empty else JournalFilter()
+        # Only the absence is filled in here. Whether the filter asks
+        # for anything is a different question, asked once below by
+        # `_is_plain` and answered there for the budget -- an empty
+        # filter a caller passed and an empty filter made here are the
+        # same frozen value, so normalising the first into the second
+        # buys nothing and reads as a second version of that question.
+        looking_for = where if where is not None else JournalFilter()
         live = self._path_of(journal)
         archives = _archives_of(live) if live.parent.is_dir() else []
         oldest = archives[-1].name if archives else None
@@ -335,9 +341,14 @@ class FileJournalReader(JournalReaderPort):
         scanned = 0
 
         # How far this read may look, as against how much it may return.
-        # They are the same number without a filter -- a line looked at is
-        # a line returned -- and with one the reader keeps going past the
-        # page it is filling, up to the ceiling it owes the deployment.
+        # They were the same number without a filter, back when a line
+        # looked at was a line returned; the chains' own probe records
+        # are dropped from every read now, so even a plain tail can look
+        # at more lines than it returns. `deep` is what says whether this
+        # read is the second attempt, the one paying for that -- the
+        # first still stops at the page it is filling, and only a page
+        # the dropped records emptied is read again to the ceiling this
+        # deployment is owed.
         budget = SCAN_LIMIT if (deep or not _is_plain(where)) else wanted
 
         # Newest first, and the collection is built backwards for the same

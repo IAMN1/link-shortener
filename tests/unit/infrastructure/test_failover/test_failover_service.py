@@ -22,6 +22,7 @@ import pytest
 
 from link_shortener.infrastructure.failover.failover_service import (
     ALL_SERVICES_FAILED,
+    CheckOutcome,
     FailoverService,
 )
 from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
@@ -1670,3 +1671,136 @@ class TestReadingTheCountersWaitsForNothing:
             assert failover.dropped_calls == 1
         finally:
             failover.shutdown()
+
+
+class TestWhatTheLastRoundFound:
+    """The state the three counters cannot report.
+
+    They count losses: a call nobody took, a round that threw, a line the
+    logger refused. A service can report itself unwell and produce none of
+    them -- nothing was asked of it, so nothing was dropped -- and
+    ``get_current_service_name`` does not move when there is nowhere to
+    move the work to.
+
+    Measured on the live stack with ``audit.log`` replaced by a directory
+    on a *running* application: the background round said "structlog_audit
+    reports itself unhealthy" eight times in ninety seconds, while
+    ``/api/v1/admin/health`` answered ``dropped_calls: 0, failed_checks: 0,
+    lost_log_lines: 0`` beside an unchanged ``active`` for the whole
+    window. Both audit implementations write the same file, so the chain
+    had nowhere to fail over to -- the defect the section exists to report
+    was the state it reported as health.
+    """
+
+    def test_nothing_has_been_found_before_the_first_round(self):
+        """
+        Unexamined is not well.
+
+        The two read alike from the counters -- zeroes either way -- and
+        a service whose first round has not come round yet has answered
+        nothing at all.
+        """
+        failover, _, _ = build([Service("primary"), Service("standby")])
+
+        assert failover.last_check is CheckOutcome.NOT_RUN
+
+    def test_a_service_that_answers_for_itself_is_found_well(self):
+        failover, _, _ = build([Service("primary"), Service("standby")])
+
+        failover._run_check()
+
+        assert failover.last_check is CheckOutcome.HEALTHY
+
+    def test_a_service_with_nowhere_to_fall_is_still_found_unwell(self):
+        """The measured case, and the one no other surface reported.
+
+        Two implementations that are both unwell -- which is what one
+        broken file behind both of them looks like -- leave the work
+        where it is and drop nothing, because nothing is being asked of
+        them.
+        """
+        failover, _, _ = build([
+            Service("primary", healthy=False),
+            Service("standby", healthy=False),
+        ])
+
+        failover._run_check()
+
+        assert failover.last_check is CheckOutcome.UNHEALTHY
+        # The counters beside it, in the same state: this is what the
+        # health answer had to go on, and why it read as health.
+        assert (
+            failover.dropped_calls,
+            failover.failed_checks,
+            failover.lost_log_lines,
+        ) == (0, 0, 0)
+        assert failover.get_current_service_name() == "primary"
+
+    def test_a_probe_that_raises_is_not_a_verdict(self):
+        """``PROBE_FAILED`` is not ``UNHEALTHY``.
+
+        A probe that raises answers nothing, which is why the round moves
+        no work on one -- and why an operator is owed the difference
+        rather than a verdict the round did not reach.
+        """
+        def explodes(service):
+            raise RuntimeError("the probe itself is broken")
+
+        failover, _, _ = build(
+            [Service("primary"), Service("standby")], health_checker=explodes
+        )
+
+        failover._run_check()
+
+        assert failover.last_check is CheckOutcome.PROBE_FAILED
+
+    def test_the_finding_is_about_whoever_holds_the_work_now(self):
+        """After a demotion the work is on a service that answered well.
+
+        Reporting ``unhealthy`` here would name the state of the service
+        that no longer has the work, beside the name of the one that does.
+        """
+        failover, _, _ = build([
+            Service("primary", healthy=False), Service("standby")
+        ])
+
+        failover._run_check()
+
+        assert failover.get_current_service_name() == "standby"
+        assert failover.last_check is CheckOutcome.HEALTHY
+
+    def test_the_finding_is_the_last_round_s_and_not_the_worst_seen(self):
+        """
+        It is a state, not a tally.
+
+        A field that remembered the worst answer ever given would report
+        a chain that recovered as unwell for the rest of the process --
+        and one that only ever improved would never report a chain that
+        stopped being well.
+        """
+        primary = Service("primary")
+        standby = Service("standby")
+        failover, _, _ = build([primary, standby])
+
+        failover._run_check()
+        assert failover.last_check is CheckOutcome.HEALTHY
+
+        primary.healthy = False
+        standby.healthy = False
+        failover._run_check()
+
+        assert failover.last_check is CheckOutcome.UNHEALTHY
+
+    def test_a_service_built_without_a_checker_has_found_nothing(self):
+        """Nothing to ask is not an answer of "well".
+
+        ``_attempt_demotion`` returns early where there is no checker, and
+        a round that asks nothing reaches no verdict.
+        """
+        failover, _, _ = build(
+            [Service("primary"), Service("standby")], health_checker=None
+        )
+
+        failover._run_check()
+
+        assert failover.last_check is CheckOutcome.NOT_RUN

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-25 23:26+0300\n"
+"POT-Creation-Date: 2026-08-26 03:37+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -721,6 +721,32 @@ msgstr "неизвестно"
 msgid "Worker process %(pid)s"
 msgstr "Рабочий процесс %(pid)s"
 
+#: src/link_shortener/web/i18n.py:452
+msgid "well at the last check"
+msgstr "здорова на последней проверке"
+
+#: src/link_shortener/web/i18n.py:453
+msgid "reports itself unwell"
+msgstr "сообщает, что нездорова"
+
+#: src/link_shortener/web/i18n.py:456
+msgid "the check itself failed"
+msgstr "сама проверка не удалась"
+
+#: src/link_shortener/web/i18n.py:457
+msgid "not checked yet"
+msgstr "ещё не проверялась"
+
+#: src/link_shortener/web/i18n.py:460
+#, python-format
+msgid "%(active)s · %(finding)s"
+msgstr "%(active)s · %(finding)s"
+
+#: src/link_shortener/web/i18n.py:469
+#, python-format
+msgid "%(journal)s (%(reason)s)"
+msgstr "%(journal)s (%(reason)s)"
+
 #: src/link_shortener/web/request_body.py:58
 msgid "Request body is nested too deeply"
 msgstr "Тело запроса вложено слишком глубоко"
@@ -729,7 +755,7 @@ msgstr "Тело запроса вложено слишком глубоко"
 msgid "Request body must be a JSON object"
 msgstr "Тело запроса должно быть объектом JSON"
 
-#: src/link_shortener/web/controllers/admin_api_controller.py:179
+#: src/link_shortener/web/controllers/admin_api_controller.py:212
 #, python-format
 msgid "Confirmation for %(email)s could not be queued"
 msgstr "Не удалось поставить письмо с подтверждением для %(email)s в очередь"
@@ -1267,35 +1293,39 @@ msgstr "Журналирование"
 msgid "Counters from"
 msgstr "Источник счётчиков"
 
-#: src/link_shortener/web/templates/dashboard/health.html:53
+#: src/link_shortener/web/templates/dashboard/health.html:60
 msgid "Application log"
 msgstr "Журнал приложения"
 
-#: src/link_shortener/web/templates/dashboard/health.html:57
+#: src/link_shortener/web/templates/dashboard/health.html:64
 msgid "Audit log"
 msgstr "Журнал аудита"
 
-#: src/link_shortener/web/templates/dashboard/health.html:63
+#: src/link_shortener/web/templates/dashboard/health.html:74
+msgid "Journal files"
+msgstr "Файлы журналов"
+
+#: src/link_shortener/web/templates/dashboard/health.html:80
 msgid "Records that did not survive"
 msgstr "Записи, которые не дошли"
 
-#: src/link_shortener/web/templates/dashboard/health.html:65
+#: src/link_shortener/web/templates/dashboard/health.html:82
 msgid "Calls dropped"
 msgstr "Потеряно вызовов"
 
-#: src/link_shortener/web/templates/dashboard/health.html:70
+#: src/link_shortener/web/templates/dashboard/health.html:87
 msgid "Health checks that failed"
 msgstr "Проверок с отказом"
 
-#: src/link_shortener/web/templates/dashboard/health.html:75
+#: src/link_shortener/web/templates/dashboard/health.html:92
 msgid "Lines lost"
 msgstr "Потеряно строк"
 
-#: src/link_shortener/web/templates/dashboard/health.html:80
+#: src/link_shortener/web/templates/dashboard/health.html:97
 msgid "Application log · audit log."
 msgstr "Журнал приложения · журнал аудита."
 
-#: src/link_shortener/web/templates/dashboard/health.html:86
+#: src/link_shortener/web/templates/dashboard/health.html:103
 #, python-format
 msgid "Reported by %(name)s, read once when this page opens."
 msgstr "Сообщает %(name)s, читается один раз при открытии страницы."

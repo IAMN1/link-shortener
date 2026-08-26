@@ -83,7 +83,7 @@ def configured_logging(tmp_path):
             logger_type=logger_type,
             audit_enabled=True,
         )
-        setup_logging(settings, logging_enabled=True, audit_enabled=True)
+        setup_logging(settings)
 
     yield configure
 

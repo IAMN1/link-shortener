@@ -127,7 +127,7 @@ group.
 | `maintenance clean-unverified` | Remove accounts nobody confirmed within `UNVERIFIED_ACCOUNT_TTL_HOURS`, and their dead tokens |
 | `maintenance clean-reset-tokens` | Remove `password_resets` rows that are spent or expired |
 | `maintenance normalize-emails --apply` | One-off, on an existing database |
-| `maintenance health` | A dependency report on the terminal |
+| `maintenance health` | A dependency report on the terminal, plus which journals this process could open |
 | `stats refresh` | Rebuild the statistics cache |
 
 ---

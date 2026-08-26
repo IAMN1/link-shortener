@@ -32,6 +32,7 @@ SHARED = (
     "sqlalchemy_log_level",
     "werkzeug_log_level",
     "logger_type",
+    "logging_enabled",
     "audit_enabled",
 )
 """The settings both sides state a default for, and must state alike."""

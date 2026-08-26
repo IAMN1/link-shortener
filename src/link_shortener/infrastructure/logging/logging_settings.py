@@ -27,6 +27,7 @@ class LoggingSettings:
                  werkzeug_log_level: str,
                  
                  logger_type: str = "auto",
+                 logging_enabled: bool = True,
                  audit_enabled: bool = True,
                  raise_on_write_failure: bool = True
     ):
@@ -45,6 +46,13 @@ class LoggingSettings:
             werkzeug_log_level: Log level for Werkzeug.
             logger_type: Desired logger type (``"auto"``, ``"structlog"``,
                 ``"standard"``, ``"null"``).
+            logging_enabled: Whether the application's own journal is
+                written at all. Here rather than passed to
+                ``setup_logging`` beside the settings: it is a logging
+                setting, read from ``LOGGING_ENABLED`` like the other
+                fourteen, and a switch that travels by a second road is a
+                switch that can disagree with itself -- which is what
+                ``audit_enabled`` did.
             audit_enabled: Whether audit logging is enabled.
             raise_on_write_failure: Whether a failed write reaches the
                 caller. True is for the web application, where
@@ -69,6 +77,7 @@ class LoggingSettings:
         self.werkzeug_log_level = werkzeug_log_level
 
         self.logger_type = logger_type
+        self.logging_enabled = logging_enabled
         self.audit_enabled = audit_enabled
         self.raise_on_write_failure = raise_on_write_failure
 
@@ -166,6 +175,7 @@ def logging_settings_from(
         sqlalchemy_log_level=read("SQLALCHEMY_LOG_LEVEL", "WARNING"),
         werkzeug_log_level=read("WERKZEUG_LOG_LEVEL", "WARNING"),
         logger_type=read("LOGGER_TYPE", "auto"),
+        logging_enabled=read("LOGGING_ENABLED", True),
         audit_enabled=read("AUDIT_ENABLED", True),
         raise_on_write_failure=raise_on_write_failure,
     )

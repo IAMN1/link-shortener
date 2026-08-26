@@ -1,10 +1,40 @@
 import threading
+from enum import Enum
 from typing import Any, Callable, Generic, List, Optional, Tuple, TypeVar
 import time
 
 from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
 
 T = TypeVar('T')
+
+
+class CheckOutcome(Enum):
+    """What the last background round found the active service to be.
+
+    Kept because the counters cannot say it. They count losses -- a call
+    nobody took, a round that threw, a line the logger refused -- and a
+    service can be thoroughly unwell without producing any of them.
+    Measured on the live stack with ``audit.log`` replaced by a directory
+    on a *running* application: the background check said "structlog_audit
+    reports itself unhealthy" eight times in ninety seconds, and
+    ``/api/v1/admin/health`` answered ``dropped_calls: 0, failed_checks:
+    0, lost_log_lines: 0`` beside ``active: structlog_audit`` throughout.
+    Nothing was dropped because no audit event was written in that window,
+    and ``active`` did not move because both audit implementations write
+    the same file -- there was nowhere to move to. The defect this whole
+    block exists to report was the state it reported as health.
+
+    ``PROBE_FAILED`` is not ``UNHEALTHY``: a probe that raises answers
+    nothing, which is why ``_attempt_demotion`` moves no work on one. Told
+    apart here for the same reason ``timed_out`` is told apart from
+    ``false`` in the dependency snapshot -- both are unusable answers, and
+    only one of them is an answer.
+    """
+
+    NOT_RUN = "not run"
+    HEALTHY = "healthy"
+    UNHEALTHY = "unhealthy"
+    PROBE_FAILED = "probe failed"
 
 
 class _AllServicesFailed:
@@ -118,6 +148,11 @@ class FailoverService(Generic[T]):
         self._dropped_calls = 0
         self._failed_checks = 0
         self._lost_log_lines = 0
+        # Nothing has been asked yet, which is not the same as an answer
+        # of "well" -- a service whose first round has not come round is
+        # unexamined, and saying "healthy" about it is the guess this
+        # field exists to stop being made.
+        self._last_check = CheckOutcome.NOT_RUN
 
         self._stop_event = threading.Event()
         self._thread = None
@@ -258,10 +293,21 @@ class FailoverService(Generic[T]):
             service, name = self._services[self._current_index]
             try:
                 if self._health_checker(service):
+                    self._last_check = CheckOutcome.HEALTHY
                     return False
             except Exception as e:
+                # Not `UNHEALTHY`: nothing was answered. The work is left
+                # where it is for that same reason a few lines down, and
+                # a reader of the health page is owed the distinction
+                # rather than a verdict this round did not reach.
+                self._last_check = CheckOutcome.PROBE_FAILED
                 self._say(f"Health check for {name} failed: {e}")
                 return False
+
+            # Said once here rather than at each way out below: every
+            # path from this line runs with the active service having
+            # answered for itself, and answered no.
+            self._last_check = CheckOutcome.UNHEALTHY
 
             for idx in range(self._current_index + 1, len(self._services)):
                 candidate, candidate_name = self._services[idx]
@@ -285,6 +331,13 @@ class FailoverService(Generic[T]):
                     # is now `_say`'s, and the order is kept because the
                     # message is about something already done.
                     self._current_index = idx
+                    # The active service is now the one that just
+                    # answered for itself, so the round's finding is
+                    # about that one: an operator reading "unhealthy"
+                    # beside the name of a service that took the work
+                    # because it was well would be reading the state of
+                    # the service that no longer has it.
+                    self._last_check = CheckOutcome.HEALTHY
                     self._say(
                         f"Demoting from {name} to {candidate_name}: "
                         f"{name} reports itself unhealthy"
@@ -362,6 +415,10 @@ class FailoverService(Generic[T]):
                     # about a move belongs after the move.
                     left_behind = self._services[self._current_index][1]
                     self._current_index = idx
+                    # Same as the demotion above: the work has moved onto
+                    # a service that answered this round, and the finding
+                    # is about whoever holds it now.
+                    self._last_check = CheckOutcome.HEALTHY
                     self._say(f"Upgrading from {left_behind} to {name}")
                     return
 
@@ -502,6 +559,32 @@ class FailoverService(Generic[T]):
             service was asked to do that nobody did.
         """
         return self._dropped_calls
+
+    @property
+    def last_check(self) -> CheckOutcome:
+        """
+        What the last background round found the active service to be.
+
+        The state the three counters beside it cannot report. They count
+        losses, and an unwell service produces none of them while nothing
+        is being asked of it: measured with ``audit.log`` replaced by a
+        directory on a running application, the background round said
+        "structlog_audit reports itself unhealthy" eight times in ninety
+        seconds while every counter in the answer stayed at zero and
+        ``active`` never moved -- both audit implementations write the
+        same file, so there was nowhere to move the work to.
+
+        About whoever holds the work now, which after a demotion or a
+        climb is not who held it when the round began.
+
+        Read without the lock: see ``dropped_calls``.
+
+        Returns:
+            The finding of the last round to reach a verdict, or
+            ``NOT_RUN`` where no round has -- including where this
+            service was built without a checker to ask.
+        """
+        return self._last_check
 
     @property
     def failed_checks(self) -> int:

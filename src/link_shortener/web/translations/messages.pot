@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-25 23:26+0300\n"
+"POT-Creation-Date: 2026-08-26 03:37+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -709,6 +709,32 @@ msgstr ""
 msgid "Worker process %(pid)s"
 msgstr ""
 
+#: src/link_shortener/web/i18n.py:452
+msgid "well at the last check"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:453
+msgid "reports itself unwell"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:456
+msgid "the check itself failed"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:457
+msgid "not checked yet"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:460
+#, python-format
+msgid "%(active)s · %(finding)s"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:469
+#, python-format
+msgid "%(journal)s (%(reason)s)"
+msgstr ""
+
 #: src/link_shortener/web/request_body.py:58
 msgid "Request body is nested too deeply"
 msgstr ""
@@ -717,7 +743,7 @@ msgstr ""
 msgid "Request body must be a JSON object"
 msgstr ""
 
-#: src/link_shortener/web/controllers/admin_api_controller.py:179
+#: src/link_shortener/web/controllers/admin_api_controller.py:212
 #, python-format
 msgid "Confirmation for %(email)s could not be queued"
 msgstr ""
@@ -1248,35 +1274,39 @@ msgstr ""
 msgid "Counters from"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:53
+#: src/link_shortener/web/templates/dashboard/health.html:60
 msgid "Application log"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:57
+#: src/link_shortener/web/templates/dashboard/health.html:64
 msgid "Audit log"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:63
-msgid "Records that did not survive"
-msgstr ""
-
-#: src/link_shortener/web/templates/dashboard/health.html:65
-msgid "Calls dropped"
-msgstr ""
-
-#: src/link_shortener/web/templates/dashboard/health.html:70
-msgid "Health checks that failed"
-msgstr ""
-
-#: src/link_shortener/web/templates/dashboard/health.html:75
-msgid "Lines lost"
+#: src/link_shortener/web/templates/dashboard/health.html:74
+msgid "Journal files"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/health.html:80
+msgid "Records that did not survive"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:82
+msgid "Calls dropped"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:87
+msgid "Health checks that failed"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:92
+msgid "Lines lost"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/health.html:97
 msgid "Application log · audit log."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/health.html:86
+#: src/link_shortener/web/templates/dashboard/health.html:103
 #, python-format
 msgid "Reported by %(name)s, read once when this page opens."
 msgstr ""

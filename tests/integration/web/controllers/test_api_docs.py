@@ -513,3 +513,42 @@ class TestTheHealthBodyMatchesWhatIsWrittenDown:
         sent = set(client.get("/api/v1/admin/health").get_json())
         described = set(HEALTH_SCHEMA["properties"]) - {"logging"}
         assert described <= sent, f"described and never sent: {sorted(described - sent)}"
+
+    def test_the_logging_section_is_described_down_to_each_chain(self, app):
+        """
+        The section is where the two hands actually drift.
+
+        Both tests above compare the top level only, so every field of
+        `logging` -- and every field of the two chains inside it -- was
+        outside what holds the endpoint and the document together. Three
+        were added to it in one change with nothing to notice if only one
+        of the two hands had been moved.
+        """
+        from link_shortener.web.schemas.openapi import HEALTH_SCHEMA
+
+        client, _, _ = account_with_permissions(
+            app,
+            "health-doc-3@example.com",
+            "Test1234!",
+            "health-doc-3",
+            ["admin:view_system_health"],
+        )
+
+        sent = client.get("/api/v1/admin/health").get_json().get("logging")
+        assert sent is not None, "the endpoint sent no logging section"
+
+        described = HEALTH_SCHEMA["properties"]["logging"]["properties"]
+        assert set(sent) <= set(described), (
+            f"undocumented logging fields: {sorted(set(sent) - set(described))}"
+        )
+
+        for chain in ("logger", "audit"):
+            fields = set(sent[chain])
+            written_down = set(described[chain]["properties"])
+            assert fields <= written_down, (
+                f"undocumented {chain} fields: {sorted(fields - written_down)}"
+            )
+            assert written_down <= fields, (
+                f"described and never sent by {chain}: "
+                f"{sorted(written_down - fields)}"
+            )

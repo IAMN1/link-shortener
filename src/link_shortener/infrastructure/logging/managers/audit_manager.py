@@ -13,7 +13,9 @@ to a healthy fallback logger if the primary one fails.
 from typing import List, Optional, Tuple
 
 from link_shortener.application import AuditEvent, AuditLogger
-from link_shortener.infrastructure.failover.failover_service import FailoverService
+from link_shortener.infrastructure.failover.failover_service import (
+    CheckOutcome, FailoverService,
+)
 from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
 from link_shortener.infrastructure.logging.handlers.audit.null_audit import NullAuditLogger
 from link_shortener.infrastructure.logging.handlers.audit.standard import StandardAuditLogger
@@ -204,6 +206,24 @@ class AuditManager:
             self._failover_service.failed_checks,
             self._failover_service.lost_log_lines,
         )
+
+    def last_check(self) -> str:
+        """
+        What the last background round found the active audit logger to be.
+
+        See ``LoggerManager.last_check``. Measured on the audit chain
+        because that is where it was measured missing: with ``audit.log``
+        replaced by a directory on a running application, the round said
+        "structlog_audit reports itself unhealthy" eight times in ninety
+        seconds and every counter beside it stayed at zero.
+
+        Returns:
+            One of ``CheckOutcome``'s values.
+        """
+        if self._failover_service is None:
+            return CheckOutcome.NOT_RUN.value
+
+        return self._failover_service.last_check.value
 
     def shutdown(self) -> bool:
         """

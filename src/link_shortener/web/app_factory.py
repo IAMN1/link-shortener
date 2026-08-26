@@ -119,11 +119,7 @@ def create_app(config=None) -> Flask:
     # see `logging_settings_from`. Failed writes raise here, because this
     # is the process that has `FailoverService` behind them.
     logging_settings = logging_settings_from(app.config.get)
-    setup_logging(
-        logging_settings, 
-        logging_enabled=app.config.get("LOGGING_ENABLED", True), 
-        audit_enabled=app.config.get("AUDIT_ENABLED", True)
-    )
+    setup_logging(logging_settings)
 
     # ------------------------------------------------------------------
     # Register CLI commands (must be done before first request)

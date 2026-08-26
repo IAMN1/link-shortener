@@ -112,7 +112,7 @@ def journals(tmp_path):
             logger_type=mode,
             audit_enabled=True,
         )
-        setup_logging(settings, logging_enabled=True, audit_enabled=True)
+        setup_logging(settings)
 
         # The interval is long rather than default: the background probe
         # would otherwise wake up mid-test and move a chain this file is

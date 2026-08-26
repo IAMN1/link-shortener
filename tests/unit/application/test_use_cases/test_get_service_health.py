@@ -122,19 +122,15 @@ class TestTheLoggingStateIsReadWhenThereIsAReaderForIt:
         self, mock_health_check, mock_logger, context
     ):
         from link_shortener.application.ports.logging_status import (
-            LoggingStatus,
+            ChainStatus, LoggingStatus,
         )
 
         state = LoggingStatus(
             worker=4242,
-            logger_active="structlog",
-            logger_dropped_calls=11,
-            logger_failed_checks=12,
-            logger_lost_log_lines=13,
-            audit_active="standard_audit",
-            audit_dropped_calls=21,
-            audit_failed_checks=22,
-            audit_lost_log_lines=23,
+            logger=ChainStatus("structlog", 11, 12, 13, "healthy"),
+            audit=ChainStatus("standard_audit", 21, 22, 23, "unhealthy"),
+            journals_written=("application", "error", "audit"),
+            journals_unavailable=(),
         )
         reader = Mock()
         reader.read.return_value = state

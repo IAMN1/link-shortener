@@ -14,7 +14,9 @@ Module-specific loggers are created via proxies that add ``module`` context.
 from typing import Dict, List, Optional, Tuple
 
 from link_shortener.application import Logger
-from link_shortener.infrastructure.failover.failover_service import FailoverService
+from link_shortener.infrastructure.failover.failover_service import (
+    CheckOutcome, FailoverService,
+)
 from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
 from link_shortener.infrastructure.logging.handlers.logger.null_logger import NullLogger
 from link_shortener.infrastructure.logging.handlers.logger.standard import StandardLogger
@@ -216,6 +218,24 @@ class LoggerManager:
             self._failover_service.failed_checks,
             self._failover_service.lost_log_lines,
         )
+
+    def last_check(self) -> str:
+        """
+        What the last background round found the active logger to be.
+
+        The state the counters cannot report: they count losses, and a
+        logger that reports itself unwell produces none of them while
+        nothing is being logged. Without failover there is no background
+        round to have found anything, and no round is not a verdict of
+        "well".
+
+        Returns:
+            One of ``CheckOutcome``'s values.
+        """
+        if self._failover_service is None:
+            return CheckOutcome.NOT_RUN.value
+
+        return self._failover_service.last_check.value
 
     def shutdown(self) -> bool:
         """

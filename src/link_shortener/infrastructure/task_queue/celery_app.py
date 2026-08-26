@@ -67,11 +67,7 @@ def configure_logging(**_kwargs) -> None:
     settings = logging_settings_from(
         attribute_reader(config), raise_on_write_failure=False
     )
-    setup_logging(
-        settings,
-        logging_enabled=getattr(config, "LOGGING_ENABLED", True),
-        audit_enabled=getattr(config, "AUDIT_ENABLED", True),
-    )
+    setup_logging(settings)
 
 
 # Create the Celery application instance.

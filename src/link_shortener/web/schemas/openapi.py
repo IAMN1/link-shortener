@@ -317,6 +317,22 @@ _LOG_CHANNEL = {
         "dropped_calls": {"type": "integer"},
         "failed_checks": {"type": "integer"},
         "lost_log_lines": {"type": "integer"},
+        # The state the three counters cannot report. They count losses,
+        # and a chain that reports itself unwell produces none of them
+        # while nothing is being written through it -- nor does `active`
+        # move where there is nowhere to move the work to.
+        "last_check": {
+            "type": "string",
+            "enum": ["not run", "healthy", "unhealthy", "probe failed"],
+            "description": (
+                "What the last background round found the active "
+                "implementation to be. `not run` where no round has "
+                "reached a verdict yet, including a chain built without "
+                "failover; `probe failed` where the probe itself threw, "
+                "which answers nothing and is why no work is moved on "
+                "one."
+            ),
+        },
     },
 }
 
@@ -362,6 +378,55 @@ HEALTH_SCHEMA = {
                 },
                 "logger": _LOG_CHANNEL,
                 "audit": _LOG_CHANNEL,
+                "journals_written": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["application", "error", "audit"],
+                    },
+                    "description": (
+                        "Journals this worker opened when it started. "
+                        "About the files, not the chains: one that broke "
+                        "afterwards is still named here, and what the "
+                        "chain writing it found last is that chain's "
+                        "`last_check`. Empty where the deployment writes "
+                        "no files at all, which `LOG_TO_FILE=false` "
+                        "makes a configuration rather than a fault -- "
+                        "and which an empty `journals_unavailable` "
+                        "cannot be told apart from otherwise."
+                    ),
+                },
+                "journals_unavailable": {
+                    "type": "array",
+                    "description": (
+                        "Journals this worker could not open when it "
+                        "started, so nothing is being written to them. "
+                        "Empty on a healthy deployment. No counter above "
+                        "reports it: a handler that was never built "
+                        "drops nothing."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "journal": {
+                                "type": "string",
+                                "enum": ["application", "error", "audit"],
+                                "description": (
+                                    "Which journal, by the names the "
+                                    "journal reader uses."
+                                ),
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": (
+                                    "What the operating system said, "
+                                    "naming the path and the cause."
+                                ),
+                            },
+                        },
+                        "required": ["journal", "reason"],
+                    },
+                },
             },
         },
     },

@@ -1,7 +1,10 @@
-from typing import Optional, Tuple
+from typing import Optional
 
 from link_shortener.application import AuditLogger
-from link_shortener.application.ports.logging_status import NOT_STARTED
+from link_shortener.application.ports.logging_status import (
+    ChainStatus, NOT_STARTED,
+)
+from link_shortener.infrastructure.failover.failover_service import CheckOutcome
 from link_shortener.infrastructure.logging.managers.audit_manager import AuditManager
 
 
@@ -47,7 +50,7 @@ class AuditComponent:
             )
         return self._manager.get_audit_logger()
 
-    def chain_status(self) -> Tuple[str, int, int, int]:
+    def chain_status(self) -> ChainStatus:
         """
         Report the chain without building it.
 
@@ -57,14 +60,26 @@ class AuditComponent:
         to ask.
 
         Returns:
-            Active implementation, dropped calls, failed check rounds and
-            lost failover log lines -- or ``NOT_STARTED`` and zeroes where
-            no manager has been built.
+            The chain's state -- or ``NOT_STARTED``, zeroes and a check
+            that has not run, where no manager has been built.
         """
         if self._manager is None:
-            return NOT_STARTED, 0, 0, 0
+            return ChainStatus(
+                active=NOT_STARTED,
+                dropped_calls=0,
+                failed_checks=0,
+                lost_log_lines=0,
+                last_check=CheckOutcome.NOT_RUN.value,
+            )
 
-        return (self._manager.active_name(), *self._manager.counters())
+        dropped, failed, lost = self._manager.counters()
+        return ChainStatus(
+            active=self._manager.active_name(),
+            dropped_calls=dropped,
+            failed_checks=failed,
+            lost_log_lines=lost,
+            last_check=self._manager.last_check(),
+        )
 
     def shutdown(self):
         """Gracefully stop background failover checks."""

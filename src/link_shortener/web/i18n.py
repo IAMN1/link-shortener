@@ -445,6 +445,28 @@ def script_strings() -> Dict[str, str]:
         # The counters below it belong to one worker process out of
         # several, and the number is the only thing that says so.
         "logging_worker": gettext("Worker process %(pid)s"),
+        # What the last background round found a chain to be. Said in
+        # words rather than left to the dot beside it: a colour is lost
+        # to a screenshot, to a printer and to whoever cannot see it,
+        # and this row is the one an operator opens the page for.
+        "chain_healthy": gettext("well at the last check"),
+        "chain_unhealthy": gettext("reports itself unwell"),
+        # Not the same as "unwell": a probe that raises answers nothing,
+        # which is why the failover service moves no work on one.
+        "chain_probe_failed": gettext("the check itself failed"),
+        "chain_not_checked": gettext("not checked yet"),
+        # Both halves of the row, in the order a reader wants them: which
+        # implementation holds the work, and what was last found of it.
+        "chain_state": gettext("%(active)s · %(finding)s"),
+        # A journal whose file would not open is written by nothing, and
+        # no counter beside it can say so -- a handler that was never
+        # built drops nothing. The journal's own name is not translated:
+        # it is the word the journal reader, the API and the shell all
+        # use for that file, and one file with two names is how two
+        # surfaces stop agreeing. The reason is the operating system's,
+        # in its own words -- it names the path and the cause, which is
+        # what says whether to fix a directory, a mode or a disk.
+        "journal_unavailable": gettext("%(journal)s (%(reason)s)"),
     }
 
 
