@@ -5,7 +5,7 @@ Serves HTML pages for the authenticated user's dashboard.
 All pages rely on client-side JS to fetch data from the API.
 """
 
-from flask import Blueprint, g, render_template, request
+from flask import Blueprint, render_template, request
 from flask_babel import gettext
 
 from link_shortener.application import LinkService, AdminService
@@ -74,7 +74,7 @@ class DashboardController:
     @login_required
     @require_permission(SystemPermissions.LINK_VIEW_OWN.value)
     def my_links(self):
-        return render_template("dashboard/my_links.html", user=g.current_user)
+        return render_template("dashboard/my_links.html")
 
     @login_required
     @require_permission(SystemPermissions.LINK_VIEW_OWN.value)

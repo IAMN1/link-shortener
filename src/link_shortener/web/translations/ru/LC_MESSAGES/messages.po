@@ -2128,35 +2128,3 @@ msgstr "страницы входа"
 #, python-format
 msgid "Ask for a new one from the %(link)s."
 msgstr "Запросите новую со %(link)s."
-
-#~ msgid "powered by"
-#~ msgstr ""
-
-#~ msgid "with"
-#~ msgstr ""
-
-#~ msgid ""
-#~ "The audit journal records destination "
-#~ "addresses and the accounts that followed"
-#~ " them; the application journal records "
-#~ "the email address of everyone who "
-#~ "registered or signed in. Both are "
-#~ "read here, and reading them is "
-#~ "itself a privilege somebody granted."
-#~ msgstr ""
-
-#~ msgid "Invalid short code: %(code)s"
-#~ msgstr "Неверный короткий код: %(code)s"
-
-#~ msgid "Links made without an account expire after 7 days."
-#~ msgstr "Ссылки без учётной записи живут 7 дней."
-
-#~ msgid "Role %(name)s is a system role and cannot be changed"
-#~ msgstr "Роль %(name)s — системная, изменить её нельзя"
-
-#~ msgid "The role %(name)s is a system role and cannot be modified"
-#~ msgstr "Роль %(name)s — системная, изменить её нельзя"
-
-#~ msgid "Role '%(name)s' not found"
-#~ msgstr "Роль «%(name)s» не найдена"
-

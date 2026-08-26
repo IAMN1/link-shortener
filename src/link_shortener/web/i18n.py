@@ -502,9 +502,7 @@ def init_babel(app: Flask) -> Babel:
         """Give the layout the same answer the catalogue was chosen by."""
         return {
             "current_language": select_language(),
-            "supported_languages": supported_languages(),
             "language_options": language_options,
-            "language_cookie_name": LANGUAGE_COOKIE_NAME,
             # The function, not its result. A context processor runs for
             # every render, and most of them are not a page -- an included
             # fragment, a mail body. Translating forty-odd sentences to
