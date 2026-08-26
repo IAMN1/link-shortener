@@ -23,9 +23,9 @@ def asking():
     """Ask the reader what it makes of a query string."""
     app = Flask(__name__)
 
-    def read(query, default_limit=50, **kwargs):
+    def read(query, default_limit=50):
         with app.test_request_context(f"/?{query}"):
-            return window_from_query(default_limit, **kwargs)
+            return window_from_query(default_limit)
 
     return read
 
@@ -64,8 +64,3 @@ class TestWhatTheCallerDoesNotGetToAskFor:
         limit, _ = asking("limit=100000000")
 
         assert limit == MAX_PAGE_SIZE
-
-    def test_a_listing_may_set_a_lower_ceiling_of_its_own(self, asking):
-        limit, _ = asking("limit=500", max_limit=10)
-
-        assert limit == 10

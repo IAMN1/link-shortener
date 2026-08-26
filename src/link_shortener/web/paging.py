@@ -32,9 +32,7 @@ still walk it -- but about how much of it arrives at once.
 """
 
 
-def window_from_query(
-    default_limit: int, max_limit: int = MAX_PAGE_SIZE
-) -> Tuple[int, int]:
+def window_from_query(default_limit: int) -> Tuple[int, int]:
     """
     Read ``limit`` and ``offset`` from the query string, within bounds.
 
@@ -42,13 +40,17 @@ def window_from_query(
     hands back the fallback rather than raising, which is the behaviour
     both listings already had.
 
+    The ceiling is the module's and not the caller's. Only the default
+    differs between the two listings -- fifty links, a hundred accounts --
+    and how much of a table may arrive at once is a decision about the
+    service rather than about either listing.
+
     Args:
         default_limit: Window size when the request names none.
-        max_limit: Largest window this listing will answer with.
 
     Returns:
         The limit and the offset, in that order.
     """
     limit = request.args.get("limit", default_limit, type=int)
     offset = request.args.get("offset", 0, type=int)
-    return max(1, min(limit, max_limit)), max(0, offset)
+    return max(1, min(limit, MAX_PAGE_SIZE)), max(0, offset)

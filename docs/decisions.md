@@ -2526,6 +2526,35 @@ in the schema and in the command, because a field named for the present
 tense would be read as a live answer once a quarter and be wrong.
 
 
+### The document's merge makes no special case of `$ref`
+
+**Decided** (2026-08-26): `_merge_response` folds a reason into whatever an
+operation already declares, and has no branch for a response written as a
+`$ref`.
+
+**Why.** The branch was there and never ran. Measured on the table as it
+stands: building one document puts 59 responses through the merge — 40
+declaring nothing under 403 or 429, 19 declaring a description of their own
+— and not one is a `$ref`. There is none under any other status code
+either. `PATHS` is written by hand in the module beside it, inline, so a
+reference would have to be typed there on purpose.
+
+**It was also wrong where it stood.** It handed back the declared object
+itself rather than a copy, and the caller writes `headers` onto what it
+gets — so the one thing the branch promised, leaving a `$ref` exactly as it
+is, is not what would have happened. Measured with a `$ref` planted under
+429: the throttle's `Retry-After` was written into `PATHS` itself, where
+every document built afterwards would have carried it, and the `$ref` came
+out with a sibling beside it regardless.
+`test_the_document_does_not_share_one_header_object_with_itself` holds that
+same property for every other path in the table.
+
+**What still stands.** A response that declares no description gets the
+reason as its description, and one that already spells the reason out is
+left alone. Both are about a table written by hand, which is what this one
+is; neither is about rebuilding the document, which cannot accumulate
+anything — the merge writes a new table and never into `PATHS`.
+
 ## Known limits
 
 Things that are wrong, understood, and deliberately left. Each says what it

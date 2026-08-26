@@ -26,6 +26,14 @@ JSON often comes out larger than it went in. The figure is the usual one and
 is not tuned to anything here.
 """
 
+LEVEL = 6
+"""How hard to compress.
+
+Six is the zlib default and sits where the curve bends; nine costs
+noticeably more processor for about a percent of size, which is a poor
+trade on a synchronous worker that a request holds for its whole duration.
+"""
+
 
 class CompressionMiddleware:
     """
@@ -43,21 +51,13 @@ class CompressionMiddleware:
     one is not either -- the caller gets the body regardless.
     """
 
-    def __init__(self, app: Flask, minimum_bytes: int = MINIMUM_BYTES,
-                 level: int = 6):
+    def __init__(self, app: Flask):
         """
         Args:
             app: Flask application instance.
-            minimum_bytes: Bodies smaller than this are sent as they are.
-            level: gzip level. Six is the zlib default and sits where the
-                curve bends; nine costs noticeably more processor for about
-                a percent of size, which is a poor trade on a synchronous
-                worker that a request holds for its whole duration.
         """
 
         self.app = app
-        self.minimum_bytes = minimum_bytes
-        self.level = level
         self._register_handlers()
 
     def _register_handlers(self):
@@ -143,10 +143,10 @@ class CompressionMiddleware:
                 return response
 
             body = response.get_data()
-            if len(body) < self.minimum_bytes:
+            if len(body) < MINIMUM_BYTES:
                 return response
 
-            packed = gzip.compress(body, self.level)
+            packed = gzip.compress(body, LEVEL)
             # A body that grew is a body sent as it was. It happens on
             # anything already dense, and refusing here costs nothing.
             if len(packed) >= len(body):
