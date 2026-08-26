@@ -16,8 +16,11 @@ class StatsCache(ABC):
         Retrieve cached service statistics.
 
         Returns:
-            Optional[dict]: Dictionary with statistics 
-            (format matches repository.get_stats()) or None if not cached/expired.
+            Optional[dict]: What ``save_stats`` was handed, which is
+            ``ServiceStatsResponse.to_dict()`` -- not the repository's
+            ``get_stats``, which returns a ``ServiceLinkStats`` holding
+            ``Link`` entities and no average. Or None if nothing is
+            cached, or what was cached has expired.
         """
         ...
 

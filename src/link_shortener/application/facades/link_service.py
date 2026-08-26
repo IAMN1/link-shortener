@@ -170,7 +170,6 @@ class LinkService:
         self,
         context: RequestContext,
         period: str = "7d",
-        short_code: Optional[str] = None,
         link_id: Optional[str] = None,
         owner_id: Optional[str] = None,
     ):
@@ -179,24 +178,21 @@ class LinkService:
         Args:
             context: Request context.
             period: One of ``24h``, ``7d``, ``30d``, ``90d``.
-            short_code: Restrict to one link, looked up by its code.
             link_id: Restrict to one link the caller has already looked
-                up. See the use case for why both exist.
+                up. See the use case for why the code is not taken here.
             owner_id: Restrict to the links of one account.
 
         Returns:
             A ``VisitSummary``; zero-filled when nothing was recorded.
         """
         return self.get_visit_stats_use_case.execute(
-            context, period=period, short_code=short_code,
-            link_id=link_id, owner_id=owner_id,
+            context, period=period, link_id=link_id, owner_id=owner_id,
         )
 
     def get_daily_visits(
         self,
         context: RequestContext,
         days: int = 90,
-        short_code: Optional[str] = None,
         link_id: Optional[str] = None,
         owner_id: Optional[str] = None,
     ):
@@ -205,17 +201,15 @@ class LinkService:
         Args:
             context: Request context.
             days: How many days back to go, at most 730.
-            short_code: Restrict to one link, looked up by its code.
             link_id: Restrict to one link the caller has already looked
-                up. See the use case for why both exist.
+                up. See the use case for why the code is not taken here.
             owner_id: Restrict to the links of one account.
 
         Returns:
             One bucket per day, oldest first.
         """
         return self.get_visit_stats_use_case.daily(
-            context, days=days, short_code=short_code,
-            link_id=link_id, owner_id=owner_id,
+            context, days=days, link_id=link_id, owner_id=owner_id,
         )
 
     # ------------------------------------------------------------------

@@ -19,7 +19,7 @@ from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.application.utils.chart_spans import (
     DEFAULT_PERIOD, PERIODS, span_of,
 )
-from link_shortener.domain import DomainError, ShortCode, VisitSummary
+from link_shortener.domain import DomainError, VisitSummary
 from link_shortener.domain.i18n import N_
 
 
@@ -58,7 +58,6 @@ class GetVisitStatsUseCase(BaseUseCase):
         context: RequestContext,
         *,
         period: str = DEFAULT_PERIOD,
-        short_code: Optional[str] = None,
         link_id: Optional[str] = None,
         owner_id: Optional[str] = None,
         now: Optional[datetime] = None,
@@ -69,17 +68,15 @@ class GetVisitStatsUseCase(BaseUseCase):
         Args:
             context: Request context, for logging.
             period: One of ``24h``, ``7d``, ``30d``, ``90d``.
-            short_code: Restrict to one link, by its code. Looked up here.
-            link_id: Restrict to one link whose id the caller already
-                holds. Both name one link and only one may be given: the
-                web routes check who may see a link before asking for its
-                traffic, which means they have looked it up already, and
-                passing the code as well made the same
+            link_id: Restrict to one link, by the id the caller holds
+                already. The web routes check who may see a link before
+                asking for its traffic, which means they have looked it up
+                already; taking the code here as well made the same
                 ``SELECT ... FROM urls`` run twice per request -- on an
                 endpoint a chart polls every ten seconds.
-            owner_id: Restrict to the links of one account. Applied with
-                either of the two above, so an owner asking about a link
-                that is not theirs gets zeroes.
+            owner_id: Restrict to the links of one account. Applied
+                together with the one above, so an owner asking about a
+                link that is not theirs gets zeroes.
             now: End of the span; defaults to the current time.
 
         Returns:
@@ -87,7 +84,7 @@ class GetVisitStatsUseCase(BaseUseCase):
 
         Raises:
             DomainError: With code ``VALIDATION_ERROR`` when the period is
-                not one of the offered ones, or the code is malformed.
+                not one of the offered ones.
         """
         log = self._get_logger(self.logger, context)
 
@@ -102,28 +99,6 @@ class GetVisitStatsUseCase(BaseUseCase):
                       params={"period": period, "choices": ", ".join(PERIODS)},
                   )
         span, buckets = PERIODS[period]
-
-        if link_id is None and short_code is not None:
-            # No handler around this. It used to be wrapped in one that
-            # caught `ValueError` and re-raised a `DomainError` saying
-            # "Invalid short code"; `ShortCode` raises `ValidationError`,
-            # which descends from `DomainError` rather than `ValueError`,
-            # so the handler never ran and the wording it produced was
-            # never seen. What is raised instead carries the same
-            # `VALIDATION_ERROR` code -- the same status, out of the same
-            # translation catalogue -- and says which lengths are allowed,
-            # which the replacement did not.
-            code = ShortCode(short_code)
-            with self.uow_factory(read_only=True) as uow:
-                link = uow.links.find_by_code(code)
-            if link is None:
-                # The same answer as a link that exists but has no visits.
-                # Which of the two it is, is not this endpoint's to tell:
-                # the info endpoint already decides who may learn that a
-                # code exists.
-                link_id = "no-such-link"
-            else:
-                link_id = link.id
 
         since, until = span_of(now or datetime.now(timezone.utc), span, buckets)
 
@@ -140,7 +115,7 @@ class GetVisitStatsUseCase(BaseUseCase):
             "Visit statistics read",
             period=period,
             total=summary.total,
-            scoped_to_link=short_code is not None,
+            scoped_to_link=link_id is not None,
         )
         return summary
 
@@ -149,7 +124,6 @@ class GetVisitStatsUseCase(BaseUseCase):
         context: RequestContext,
         *,
         days: int = 90,
-        short_code: Optional[str] = None,
         link_id: Optional[str] = None,
         owner_id: Optional[str] = None,
         now: Optional[datetime] = None,
@@ -165,9 +139,9 @@ class GetVisitStatsUseCase(BaseUseCase):
         Args:
             context: Request context, for logging.
             days: How many days back to go, at most 730.
-            short_code: Restrict to one link, by its code. Looked up here.
-            link_id: Restrict to one link whose id the caller holds
-                already. See ``execute`` for why both exist.
+            link_id: Restrict to one link, by the id the caller holds
+                already. See ``execute`` for why the code is not taken
+                here.
             owner_id: Restrict to the links of one account.
             now: End of the span; defaults to the current time.
 
@@ -176,7 +150,7 @@ class GetVisitStatsUseCase(BaseUseCase):
 
         Raises:
             DomainError: With code ``VALIDATION_ERROR`` when ``days`` is
-                outside 1..730 or the code is malformed.
+                outside 1..730.
         """
         if not 1 <= days <= 730:
             raise DomainError(
@@ -185,21 +159,6 @@ class GetVisitStatsUseCase(BaseUseCase):
                       template=N_("days must be between 1 and 730, got %(days)s"),
                       params={"days": days},
                   )
-
-        if link_id is None and short_code is not None:
-            # No handler around this. It used to be wrapped in one that
-            # caught `ValueError` and re-raised a `DomainError` saying
-            # "Invalid short code"; `ShortCode` raises `ValidationError`,
-            # which descends from `DomainError` rather than `ValueError`,
-            # so the handler never ran and the wording it produced was
-            # never seen. What is raised instead carries the same
-            # `VALIDATION_ERROR` code -- the same status, out of the same
-            # translation catalogue -- and says which lengths are allowed,
-            # which the replacement did not.
-            code = ShortCode(short_code)
-            with self.uow_factory(read_only=True) as uow:
-                link = uow.links.find_by_code(code)
-            link_id = link.id if link is not None else "no-such-link"
 
         # Whole days, ending with today: the span runs to midnight tonight
         # rather than to this instant, so "3 days" is the day before
@@ -220,6 +179,6 @@ class GetVisitStatsUseCase(BaseUseCase):
             )
 
         self._get_logger(self.logger, context).debug(
-            "Daily visit series read", days=days, scoped_to_link=short_code is not None
+            "Daily visit series read", days=days, scoped_to_link=link_id is not None
         )
         return series

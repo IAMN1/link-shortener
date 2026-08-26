@@ -1041,6 +1041,31 @@ different question.
 object* rather than equal ones, and the alignment is asserted from three
 sides: the helper, each use case, and the endpoint the page fetches.
 
+### The security counters are ordered where they are counted, not on the wire
+
+**Decided** (2026-08-26): `SecurityCounts.totals` stays a list of pairs
+sorted largest first, and `SecurityCountsResponse.totals` stays a
+`Dict[str, int]`. Neither is changed to match the other.
+
+**Why.** The sort looks like work nobody collects: the response converts
+the list with `dict(...)`, and `security_counts.js` reads it by key --
+`totals[one.key]` for each tile it knows about, `Object.keys(totals)` for
+the sum of the rest -- so the panel's order is the script's own list of
+tiles and never the counter's. The order does in fact survive the trip,
+because a Python dictionary keeps insertion order and so does the JSON
+built from it, but nothing on either side is entitled to that: a JSON
+object is unordered by definition, and a reader who relied on it would be
+relying on an implementation detail of two languages at once.
+
+So the two shapes say what each can honestly promise. The list is ordered
+where the ordering is computed and can be trusted; the response is a
+mapping, which is what a caller looking up one event type wants, and its
+docstring promises no order. Making the domain return a mapping would
+throw away an ordering that costs one `sorted` over at most a dozen event
+types; making the response return pairs would hand every caller an
+ordering the format cannot guarantee, and would complicate the one caller
+there is.
+
 ---
 
 ## Logging
