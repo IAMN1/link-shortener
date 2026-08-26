@@ -152,7 +152,7 @@ class TestTheWebProcessStillRaises:
             attribute_reader(ConfigurationObject(tmp_path))
         )
 
-        setup_logging(settings, logging_enabled=True, audit_enabled=True)
+        setup_logging(settings)
 
         assert file_handlers()
         for handler in file_handlers():

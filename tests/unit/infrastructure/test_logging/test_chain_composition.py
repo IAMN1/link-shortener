@@ -291,6 +291,30 @@ class TestTheNameTheOperatorIsGivenIsTheOneDoingTheWork:
 
         assert manager.active_name() == "standard_audit"
 
+    def test_one_chain_answers_the_same_with_and_without_failover(self):
+        """The wiring must not decide the vocabulary.
+
+        Without failover the audit chain read its name off the class --
+        ``NullAuditLogger`` -- while the same chain under failover called
+        itself ``null_audit``, and the journal chain beside it in the
+        same answer said ``null``. One field of
+        ``/api/v1/admin/health``, three spellings, chosen by a detail of
+        the wiring that no reader of the answer can see.
+        """
+        assert build_logger("null").get_active_logger_name() == "null"
+        assert build_audit("null").active_name() == "null_audit"
+
+    def test_the_names_are_the_ones_the_chain_was_built_from(self):
+        """The premise: the two above are not a pair of hardcoded words.
+
+        Each chain names itself out of the list it was built from, so a
+        slot renamed there is renamed in the answer too.
+        """
+        manager = build_audit("null")
+        manager._active_audit_name = "renamed"
+
+        assert manager.active_name() == "renamed"
+
 
 class TestTheCountersComeFromTheChain:
     """``counters()`` can be made to answer zero, and nothing noticed.

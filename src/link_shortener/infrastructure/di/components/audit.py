@@ -1,5 +1,10 @@
 from typing import Optional
+
 from link_shortener.application import AuditLogger
+from link_shortener.application.ports.logging_status import (
+    ChainStatus, NOT_STARTED,
+)
+from link_shortener.infrastructure.failover.failover_service import CheckOutcome
 from link_shortener.infrastructure.logging.managers.audit_manager import AuditManager
 
 
@@ -44,6 +49,37 @@ class AuditComponent:
                 failover_check_interval=self.failover_check_interval
             )
         return self._manager.get_audit_logger()
+
+    def chain_status(self) -> ChainStatus:
+        """
+        Report the chain without building it.
+
+        The audit half of what ``LoggerComponent.chain_status`` reports,
+        and here for the same reason: the reader that publishes it was
+        reaching into ``self._manager``, and this component offered no way
+        to ask.
+
+        Returns:
+            The chain's state -- or ``NOT_STARTED``, zeroes and a check
+            that has not run, where no manager has been built.
+        """
+        if self._manager is None:
+            return ChainStatus(
+                active=NOT_STARTED,
+                dropped_calls=0,
+                failed_checks=0,
+                lost_log_lines=0,
+                last_check=CheckOutcome.NOT_RUN.value,
+            )
+
+        dropped, failed, lost = self._manager.counters()
+        return ChainStatus(
+            active=self._manager.active_name(),
+            dropped_calls=dropped,
+            failed_checks=failed,
+            lost_log_lines=lost,
+            last_check=self._manager.last_check(),
+        )
 
     def shutdown(self):
         """Gracefully stop background failover checks."""

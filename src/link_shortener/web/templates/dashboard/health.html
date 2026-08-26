@@ -39,13 +39,40 @@
    difference between having evidence and believing you have it. #}
 <div class="card narrow mt-2">
     <p class="lab mb-1">{{ _('Logging') }}</p>
+    {# Which process the counters below came from. They are kept in one
+       worker's memory and a deployment runs several, so the same service
+       in the same state answers different numbers depending on which
+       worker took the request. Unlabelled, the number read as the
+       service's -- which is the "everything is fine" this block exists to
+       end. #}
     <div class="status-row">
-        <span>{{ _('Application log') }}</span>
+        <span>{{ _('Counters from') }}</span>
+        <em id="logging-worker">&mdash;</em>
+    </div>
+    {# The implementation doing the work, and what the last background
+       round found it to be. The name alone was the whole report, and a
+       chain can report itself unwell for as long as nothing is written
+       through it without the name moving or a counter below rising: with
+       `audit.log` replaced by a directory on a running application, the
+       round said "structlog_audit reports itself unhealthy" eight times
+       in ninety seconds under an unchanged name and three zeroes. #}
+    <div class="status-row">
+        <span><span class="dot" id="dot-logger"></span>{{ _('Application log') }}</span>
         <em id="logging-logger">&mdash;</em>
     </div>
     <div class="status-row">
-        <span>{{ _('Audit log') }}</span>
+        <span><span class="dot" id="dot-audit"></span>{{ _('Audit log') }}</span>
         <em id="logging-audit">&mdash;</em>
+    </div>
+    {# The row the counters above cannot fill. A journal whose file would
+       not open has no handler, so nothing is dropped, nothing is lost and
+       nothing failed a check -- every number reads zero while the file is
+       written by nobody. Measured with `application.log` replaced by a
+       directory: the service did not start at all, and once it did, this
+       is the only surface that says which of the three is missing. #}
+    <div class="status-row">
+        <span><span class="dot" id="dot-journals"></span>{{ _('Journal files') }}</span>
+        <em id="logging-journals">&mdash;</em>
     </div>
 </div>
 

@@ -204,3 +204,86 @@ class TestTheRefusalReachesTheErrorStream:
         assert "Unhealthy: Cache" in result.stderr, result.stderr
         # The distinction survives on stdout, where the report is.
         assert "timed out" in result.stdout.lower()
+
+
+class TestTheJournalsThisProcessCouldOpen:
+    """The command an operator runs when the journal is the thing wrong.
+
+    Measured with ``datas/logs/application.log`` replaced by a directory:
+    before the bootstrap survived it, this command ended in an
+    ``IsADirectoryError`` traceback and exit code 1, because building the
+    application to run it opened the same file. It now runs, and says
+    which of the three journals this process has.
+    """
+
+    def test_the_journals_that_opened_are_named(self, app, runner):
+        answering(app, EVERYTHING_UP)
+
+        result = runner.invoke(app.cli, ["maintenance", "health"])
+
+        assert re.search(r"^Opened: ", result.stdout, re.M), result.stdout
+
+    def test_a_journal_that_would_not_open_is_named_with_its_reason(
+        self, app, runner, monkeypatch
+    ):
+        """
+        Whole, and not clipped into the label column.
+
+        Put through the column formatter as ``Journal application:`` it
+        came out ``Journal appl… UNAVAILABLE``, which drops the one word
+        the reader is here for -- which of the three files it is. The
+        reason travels whole for the same reason: "the journal is
+        broken" does not say whether to fix a directory, a mode or a
+        disk.
+        """
+        from link_shortener.application.ports.logging_status import (
+            JournalUnavailable,
+        )
+        from link_shortener.infrastructure.cli.adapters import flask as adapter
+
+        answering(app, EVERYTHING_UP)
+        monkeypatch.setattr(
+            adapter, "journals_written", lambda: ("error", "audit")
+        )
+        monkeypatch.setattr(
+            adapter,
+            "journals_unavailable",
+            lambda: (
+                JournalUnavailable(
+                    "application",
+                    "[Errno 21] Is a directory: "
+                    "'/app/datas/logs/application.log'",
+                ),
+            ),
+        )
+
+        result = runner.invoke(app.cli, ["maintenance", "health"])
+
+        assert "application ([Errno 21] Is a directory:" in result.stdout, (
+            result.stdout
+        )
+        # Not part of the verdict: the exit code is the state of the four
+        # dependencies, `/health` answers with the same one, and a command
+        # that failed where the endpoint passed would be the two surfaces
+        # disagreeing that `HealthSnapshot` exists to prevent.
+        assert result.exit_code == 0, result.output
+
+    def test_a_deployment_that_writes_no_journals_says_so(
+        self, app, runner, monkeypatch
+    ):
+        """``LOG_TO_FILE=false`` is a configuration, not a fault.
+
+        Nothing failed to open and nothing is being written: reading the
+        failures alone, the two states are one, which is the trap
+        ``cache_configured`` was added to the row above for.
+        """
+        from link_shortener.infrastructure.cli.adapters import flask as adapter
+
+        answering(app, EVERYTHING_UP)
+        monkeypatch.setattr(adapter, "journals_written", tuple)
+
+        result = runner.invoke(app.cli, ["maintenance", "health"])
+
+        assert re.search(r"^Opened: +not configured", result.stdout, re.M), (
+            result.stdout
+        )

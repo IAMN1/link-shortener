@@ -10,6 +10,7 @@ from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
 from link_shortener.application import AdminService
+from link_shortener.application.ports.logging_status import ChainStatus
 from link_shortener.application.use_cases.auth.resend_verification import (
     ResendOutcome,
 )
@@ -26,6 +27,38 @@ from link_shortener.web.paging import window_from_query
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.decorators import require_permission
 from link_shortener.domain.i18n import N_
+
+
+def _chain_body(chain: ChainStatus) -> Dict[str, Any]:
+    """
+    One failover chain, as ``GET /api/v1/admin/health`` publishes it.
+
+    Written once for both chains. Spelled out twice, a value added to one
+    and forgotten in the other reads as a chain that does not have it,
+    and a name typed wrong reads as one chain's number under the other's
+    heading -- which is exactly the confusion the section exists to end.
+
+    Args:
+        chain: What the component answered about itself.
+
+    Returns:
+        The section body, in the shape ``HEALTH_SCHEMA`` describes.
+    """
+    return {
+        "active": chain.active,
+        "dropped_calls": chain.dropped_calls,
+        "failed_checks": chain.failed_checks,
+        "lost_log_lines": chain.lost_log_lines,
+        # The state no counter beside it can report. They count losses,
+        # and a chain reporting itself unwell produces none while nothing
+        # is being written through it: measured with `audit.log` replaced
+        # by a directory on a running application, the background round
+        # said "structlog_audit reports itself unhealthy" eight times in
+        # ninety seconds while this body answered zero, zero, zero and an
+        # unchanged `active` -- both audit implementations write the same
+        # file, so there was nowhere for the work to move to.
+        "last_check": chain.last_check,
+    }
 
 
 class AdminApiController:
@@ -329,8 +362,20 @@ class AdminApiController:
         body: Dict[str, Any] = {
             "database": health.database,
             "cache": health.redis,
+            # Beside the boolean, because the boolean cannot say it: a
+            # cache nobody configured answers every probe well, so
+            # ``cache`` reads True on a deployment running without one
+            # and the health page drew a green Redis over a service that
+            # has no Redis. ``/health`` and ``flask maintenance health``
+            # both told the two apart already, off this same field.
+            "cache_configured": health.cache_configured,
             "task_queue": health.task_queue,
             "rate_limiter": health.rate_limiter,
+            # "Did not answer in time" is not the finding "answered no"
+            # is, and it names the dependency that is hanging. It reached
+            # the other two surfaces and stopped here, at the one an
+            # operator watches.
+            "timed_out": list(health.timed_out),
         }
 
         # Reported here because nothing else reports it. The counters are
@@ -341,18 +386,33 @@ class AdminApiController:
         # one that was fine.
         if health.logging is not None:
             body["logging"] = {
-                "logger": {
-                    "active": health.logging.logger_active,
-                    "dropped_calls": health.logging.logger_dropped_calls,
-                    "failed_checks": health.logging.logger_failed_checks,
-                    "lost_log_lines": health.logging.logger_lost_log_lines,
-                },
-                "audit": {
-                    "active": health.logging.audit_active,
-                    "dropped_calls": health.logging.audit_dropped_calls,
-                    "failed_checks": health.logging.audit_failed_checks,
-                    "lost_log_lines": health.logging.audit_lost_log_lines,
-                },
+                # Whose counters these are. They live in one worker's
+                # memory, a deployment runs several, and the same service
+                # in the same state answered 16, 27, 28 and 6 across
+                # twelve requests -- by which worker took each one.
+                "worker": health.logging.worker,
+                # Both chains published through one function, because
+                # they publish the same five things and the copy that
+                # said so twice is where a chain's counter can be sent
+                # out under the other chain's name.
+                "logger": _chain_body(health.logging.logger),
+                "audit": _chain_body(health.logging.audit),
+                # A journal whose file would not open leaves this worker
+                # writing two of three, or none, and no counter above can
+                # say so: nothing was dropped, because the handler that
+                # would have dropped it was never built. Said with the
+                # reason the operating system gave, which is what tells
+                # an operator whether to fix a path or a mode.
+                #
+                # Both lists, because an empty failure list is also what a
+                # worker writing no journals at all answers -- which
+                # `LOG_TO_FILE=false` makes a supported state rather than
+                # a broken one.
+                "journals_written": list(health.logging.journals_written),
+                "journals_unavailable": [
+                    {"journal": entry.journal, "reason": entry.reason}
+                    for entry in health.logging.journals_unavailable
+                ],
             }
 
         return jsonify(body)

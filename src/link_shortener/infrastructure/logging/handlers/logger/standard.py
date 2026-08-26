@@ -9,6 +9,9 @@ import logging
 from typing import Any, Dict, Optional
 
 from link_shortener.application import Logger
+from link_shortener.infrastructure.logging.utils import (
+    HEALTH_PROBE_FIELDS, HEALTH_PROBE_MESSAGE, probe_level,
+)
 
 
 class StandardLogger(Logger):
@@ -134,18 +137,24 @@ class StandardLogger(Logger):
         where ``propagate`` is false -- which is exactly as far as a record
         would travel.
 
+        Written at the level this logger actually passes records at, which
+        is what makes it a probe: see ``probe_level``. At ``DEBUG`` it was
+        dropped by every handler's own level test before reaching one, so
+        a chain refusing every real record still answered ``True``.
+
         Returns:
             ``True`` if a handler is reachable from this logger and a
             health-check message can be written, ``False`` otherwise.
         """
         if not self._logger.hasHandlers():
             return False
+        level = probe_level(self._logger.name)
         try:
             test_logger = logging.getLogger(self._logger.name + "._health_test")
             test_logger.handlers = self._logger.handlers
             test_logger.propagate = True
-            test_logger.setLevel(logging.DEBUG)
-            test_logger.debug("health_check")
+            test_logger.setLevel(level)
+            test_logger.log(level, HEALTH_PROBE_MESSAGE, extra=dict(HEALTH_PROBE_FIELDS))
             return True
         except Exception:
             return False

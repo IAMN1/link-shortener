@@ -311,10 +311,28 @@ _DEPENDENCY = {
 _LOG_CHANNEL = {
     "type": "object",
     "properties": {
-        "active": {"type": "boolean"},
+        # A string, not a boolean: it names the implementation doing the
+        # work -- "structlog", "standard_audit", "not started".
+        "active": {"type": "string"},
         "dropped_calls": {"type": "integer"},
         "failed_checks": {"type": "integer"},
         "lost_log_lines": {"type": "integer"},
+        # The state the three counters cannot report. They count losses,
+        # and a chain that reports itself unwell produces none of them
+        # while nothing is being written through it -- nor does `active`
+        # move where there is nowhere to move the work to.
+        "last_check": {
+            "type": "string",
+            "enum": ["not run", "healthy", "unhealthy", "probe failed"],
+            "description": (
+                "What the last background round found the active "
+                "implementation to be. `not run` where no round has "
+                "reached a verdict yet, including a chain built without "
+                "failover; `probe failed` where the probe itself threw, "
+                "which answers nothing and is why no work is moved on "
+                "one."
+            ),
+        },
     },
 }
 
@@ -323,17 +341,99 @@ HEALTH_SCHEMA = {
     "properties": {
         "database": _DEPENDENCY,
         "cache": _DEPENDENCY,
+        "cache_configured": {
+            "type": "boolean",
+            "description": (
+                "Whether a cache backend is configured at all. A cache "
+                "nobody configured cannot be down, so it answers `cache` "
+                "true; this tells that apart from a cache that is working."
+            ),
+        },
         "task_queue": _DEPENDENCY,
         "rate_limiter": _DEPENDENCY,
+        "timed_out": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Dependencies that did not answer within the check's "
+                "budget. Reported false above as well, and named here "
+                "because \"did not answer in time\" says which one is "
+                "hanging where \"answered no\" does not."
+            ),
+        },
         "logging": {
             "type": "object",
             "description": (
                 "Present only where a failover logger is configured."
             ),
-            "properties": {"logger": _LOG_CHANNEL, "audit": _LOG_CHANNEL},
+            "properties": {
+                "worker": {
+                    "type": "integer",
+                    "description": (
+                        "Process the counters were taken in. They live in "
+                        "one worker's memory and a deployment runs "
+                        "several, so they are that worker's, not the "
+                        "service's."
+                    ),
+                },
+                "logger": _LOG_CHANNEL,
+                "audit": _LOG_CHANNEL,
+                "journals_written": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["application", "error", "audit"],
+                    },
+                    "description": (
+                        "Journals this worker opened when it started. "
+                        "About the files, not the chains: one that broke "
+                        "afterwards is still named here, and what the "
+                        "chain writing it found last is that chain's "
+                        "`last_check`. Empty where the deployment writes "
+                        "no files at all, which `LOG_TO_FILE=false` "
+                        "makes a configuration rather than a fault -- "
+                        "and which an empty `journals_unavailable` "
+                        "cannot be told apart from otherwise."
+                    ),
+                },
+                "journals_unavailable": {
+                    "type": "array",
+                    "description": (
+                        "Journals this worker could not open when it "
+                        "started, so nothing is being written to them. "
+                        "Empty on a healthy deployment. No counter above "
+                        "reports it: a handler that was never built "
+                        "drops nothing."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "journal": {
+                                "type": "string",
+                                "enum": ["application", "error", "audit"],
+                                "description": (
+                                    "Which journal, by the names the "
+                                    "journal reader uses."
+                                ),
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": (
+                                    "What the operating system said, "
+                                    "naming the path and the cause."
+                                ),
+                            },
+                        },
+                        "required": ["journal", "reason"],
+                    },
+                },
+            },
         },
     },
-    "required": ["database", "cache", "task_queue", "rate_limiter"],
+    "required": [
+        "database", "cache", "cache_configured", "task_queue",
+        "rate_limiter", "timed_out",
+    ],
 }
 """
 The health body, written out because the endpoint assembles it by hand.
@@ -356,7 +456,11 @@ JOURNAL_SEARCH_PARAMETERS = [
         (
             "event_type",
             "Match the event's own type exactly, as the audit journal "
-            "writes it: LOGIN_FAILED, ROLES_CHANGED, URL_ACCESSED.",
+            "writes it: LOGIN_FAILED, ROLES_CHANGED, URL_ACCESSED. "
+            "LOGGING_CHAIN_PROBE is the one type a read without terms "
+            "does not return: the logging chains write a probe record "
+            "into the journal they are probing, and naming this type is "
+            "how to see them.",
             {"type": "string", "maxLength": 64},
         ),
         (

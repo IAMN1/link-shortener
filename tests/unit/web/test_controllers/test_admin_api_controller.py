@@ -1,7 +1,9 @@
 """Tests for the admin API controller."""
 from unittest.mock import MagicMock
 
-from link_shortener.application.ports.logging_status import LoggingStatus
+from link_shortener.application.ports.logging_status import (
+    ChainStatus, LoggingStatus,
+)
 from link_shortener.domain import RoleNotFoundError
 
 
@@ -220,15 +222,14 @@ class TestAdminApiController:
         mock_health.redis = True
         mock_health.task_queue = True
         mock_health.rate_limiter = True
+        mock_health.cache_configured = True
+        mock_health.timed_out = ()
         mock_health.logging = LoggingStatus(
-            logger_active="structlog",
-            logger_dropped_calls=0,
-            logger_failed_checks=0,
-            logger_lost_log_lines=4,
-            audit_active="structlog_audit",
-            audit_dropped_calls=2,
-            audit_failed_checks=1,
-            audit_lost_log_lines=0,
+            worker=4242,
+            logger=ChainStatus("structlog", 0, 0, 4, "healthy"),
+            audit=ChainStatus("structlog_audit", 2, 1, 0, "unhealthy"),
+            journals_written=("application",),
+            journals_unavailable=(),
         )
         ctrl.admin_service.get_service_health.return_value = mock_health
 
@@ -240,7 +241,8 @@ class TestAdminApiController:
         # does, from the same snapshot -- plus the logging chains, which
         # nothing else reports at all.
         assert set(data) == {
-            "database", "cache", "task_queue", "rate_limiter", "logging"
+            "database", "cache", "cache_configured", "task_queue",
+            "rate_limiter", "timed_out", "logging"
         }
         assert data["logging"]["audit"]["dropped_calls"] == 2
         assert data["logging"]["audit"]["failed_checks"] == 1
@@ -263,6 +265,8 @@ class TestAdminApiController:
         mock_health.redis = True
         mock_health.task_queue = True
         mock_health.rate_limiter = True
+        mock_health.cache_configured = True
+        mock_health.timed_out = ()
         mock_health.logging = None
         ctrl.admin_service.get_service_health.return_value = mock_health
 

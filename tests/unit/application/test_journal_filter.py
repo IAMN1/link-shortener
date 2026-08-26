@@ -11,7 +11,9 @@ any parsing or clock arithmetic.
 
 import pytest
 
-from link_shortener.application.ports.journal_reader import JournalFilter
+from link_shortener.application.ports.journal_reader import (
+    HEALTH_PROBE_EVENT_TYPE, JournalFilter,
+)
 
 
 def record(**overrides) -> dict:
@@ -186,3 +188,60 @@ class TestEveryTermGivenMustMatch:
         """It has no fields to match on. Letting it through would answer a
         search for one account with every torn line in the file."""
         assert JournalFilter(account="u-1").matches({}) is False
+
+
+class TestTheChainsOwnProbeIsNotWhatAReaderCameFor:
+    """
+    The health probe writes into the journal it is probing.
+
+    It has to: a probe that does not write cannot find out whether the
+    chain can still write. But at four workers and the seeded thirty-second
+    interval that is eight lines a minute in each of `application.log` and
+    `audit.log` -- measured on the running stack over eight consecutive
+    minutes -- and it filled 25 of the 50 lines on the first screen of the
+    journals page. A reader who came to see what happened was shown the
+    service checking itself.
+
+    So the plain tail drops them and the search brings them back. The lines
+    stay in the file either way, which is the point: a gap in them is how a
+    reader afterwards can tell the chain stopped writing.
+    """
+
+    PROBE = {
+        "event_type": HEALTH_PROBE_EVENT_TYPE,
+        "event": "logging chain health probe",
+        "timestamp": "2026-08-18T10:46:53Z",
+    }
+
+    def test_the_plain_tail_does_not_show_it(self):
+        assert JournalFilter().matches(self.PROBE) is False
+
+    def test_asking_for_it_by_name_shows_it(self):
+        asked = JournalFilter(event_type=HEALTH_PROBE_EVENT_TYPE)
+
+        assert asked.matches(self.PROBE) is True
+
+    def test_another_search_does_not_drag_it_in(self):
+        """A term the probe does not carry must not answer with it."""
+        for asked in (
+            JournalFilter(event_type="URL_ACCESSED"),
+            JournalFilter(account="who-asked"),
+            JournalFilter(since="2026-08-18"),
+        ):
+            assert asked.matches(self.PROBE) is False, asked
+
+    def test_the_records_a_reader_came_for_are_untouched(self):
+        """The premise: this hides one event type and no others.
+
+        Without it the assertions above are satisfied by a filter that
+        matches nothing at all.
+        """
+        assert JournalFilter().matches(record()) is True
+        assert JournalFilter(short_code="-gxXupR").matches(record()) is True
+        assert JournalFilter(
+            event_type=HEALTH_PROBE_EVENT_TYPE
+        ).matches(record()) is False
+
+    def test_a_line_that_did_not_parse_is_still_shown(self):
+        """An empty record carries no event type, so nothing hides it."""
+        assert JournalFilter().matches({}) is True

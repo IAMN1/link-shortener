@@ -2162,6 +2162,345 @@ is a property of the code and not of the moment, and this is the second
 code where the proxy misses: one raiser, one reader, one sentence.
 
 
+### A health probe that cannot fail is not a probe
+
+**Decided** (2026-08-25): the four `is_healthy` implementations write their
+probe at the level their chain actually passes records at.
+
+**Why.** They wrote at `DEBUG`. A record is dropped at the first level test
+it fails, and `bootstrap` gives every handler a level of its own: the
+journal handlers take `LOG_LEVEL`, the audit handlers take `INFO`
+whatever `LOG_LEVEL` says. At the documented `LOG_LEVEL=INFO` the probe
+reached no handler at all — so it could not fail, and a chain refusing
+every real record answered `True` about itself. For the audit chain that
+held under *any* configuration.
+
+Measured on the running stack, with `datas/logs/application.log` replaced
+by a directory, four gunicorn workers, two minutes of traffic: **zero**
+`Demoting` lines and **eight** `Upgrading` lines, four of them onto the
+implementation that was refusing every write — after which the next
+record failed on it and the work came straight back down. Every step down
+came from an exception in `FailoverService.execute`, which is to say at
+the cost of the record that hit it.
+
+Both halves of the failover service rest on that answer. `_attempt_demotion`
+exists so the work leaves an implementation that has stopped writing
+*before* a record is lost on it, and `_attempt_upgrade` decides on the same
+probe whether to give the work back. With the probe unable to fail, the
+first never ran and the second ran on a guess every cooldown.
+
+**Re-measured after the change**, same outage, same stack: four
+`standard reports itself unhealthy and nothing below it answers` lines --
+one per worker, within twenty seconds -- and **zero** `Upgrading`. The
+work no longer climbs back onto a chain that cannot write.
+
+**What it costs.** A probe that writes leaves a line. `logging chain
+health probe`, once per chain per check interval per worker: at the
+seeded `FAILOVER_CHECK_INTERVAL=30` and four workers that is **8 lines a
+minute** in `application.log` and the same in `audit.log`, or 11 520 a day
+each — counted on the running stack over eight consecutive minutes, eight
+in every one of them. Against the journal
+that is small beside the two lines every request already writes; against
+the audit trail it is visible, and it is the price of the trail being
+able to say it has stopped. A probe that does not write cannot tell a
+chain that writes from one that does not, which is the whole finding.
+
+**The plain tail does not show them.** The probe carries
+`event_type: LOGGING_CHAIN_PROBE`, and `JournalFilter` drops that type
+unless a caller names it. Measured before the mark, on the journals page
+as an `auditor`: 25 of the 50 lines on the first screen were probes — a
+reader who came to see what happened, shown the service checking itself.
+The lines stay in the file, and that is the point: a gap in them is how a
+reader afterwards can tell the chain stopped writing. Seeing them is the
+existing search, `event_type=LOGGING_CHAIN_PROBE`, rather than a new
+switch on the page.
+
+The mark travels on whichever chain the journal is formatted for, which
+is the chain doing the work: `LOGGER_TYPE=auto` formats through
+structlog, so the standard implementation's probe arrives unmarked. It is
+not written while the primary is well — `_attempt_demotion` stops at a
+healthy active implementation and `_attempt_upgrade` returns at index
+zero, so the standby is not probed at all — and during an outage the
+lines showing up on the page are worth seeing.
+
+**Capped at `WARNING`, which is a limit and not a detail.** The level is
+the logger's own, and `LOG_LEVEL` accepts `ERROR` and `CRITICAL`;
+logging switched off sets the root to `CRITICAL` outright. Uncapped, the
+probe becomes a record `bootstrap` routes to `error.log` — the journal
+read as a list of things that went wrong, and the one a monitor watches
+— filed there every interval. Measured before the cap: the suite printed
+five `[critical] logging chain health probe` lines.
+
+So a deployment whose journal drops everything below `ERROR` gets the old
+answer: `True` from a chain that may not be writing. Nothing there can be
+probed without writing into the error journal, and that deployment has
+already given up the journal as something to watch. The way down through
+`FailoverService.execute` still works there — at the cost of the record
+that finds it, which at that level is an error report.
+
+### The chain counters are one worker's, and the answer says so
+
+**Decided** (2026-08-25): `logging.worker` names the process the counters
+were taken in, rather than the counters being summed across processes.
+
+**Why.** `dropped_calls`, `failed_checks` and `lost_log_lines` live in the
+memory of one `FailoverService`, and the deployment runs `gunicorn
+--workers 4` without `--preload`, so each worker builds its own container,
+its own chains and its own counts. Measured after one broken journal:
+twelve consecutive requests to `GET /api/v1/admin/health`, against one
+service in one state, answered `dropped_calls` **16** and **27**; a second
+series answered **6, 16, 27, 28** — four workers, four numbers. A worker
+that served no traffic during the outage answers **0**, which is exactly
+the "everything is fine" the block was added to end.
+
+**Why not summed.** Summing needs a store every worker can reach, and the
+only one here is Redis — the cache, which is a thing that fails, and whose
+failure is among what this endpoint reports. A counter that reads zero
+because its store is down, on the panel an operator opens *because*
+something is down, is a worse answer than an honest partial one. The
+service already carries the same shape elsewhere and says so out loud:
+`create_app` warns "Running on generated secrets; each worker process has
+its own".
+
+**What the reader gets instead.** The number is labelled. The page reads
+`Counters from — Worker process 16`, so a figure that moves between two
+refreshes reads as two processes rather than as a service changing its
+mind. Reaching every worker is still possible from outside: poll the
+endpoint until each worker id has appeared.
+
+### Reading a counter waits for nothing
+
+**Decided** (2026-08-25): the three counters and the active name are read
+without taking `FailoverService`'s lock.
+
+**Why.** Their reader is `GET /api/v1/admin/health`, and the background
+round holds that lock for the whole of a health check — which, since the
+probe above became a real write, is a write to disk. Taking the lock to
+read one integer put the endpoint that reports on the logging chain behind
+that chain's own disk. Measured with a probe holding the lock: **2.80 s**
+to read the counters, against a `HEALTH_CHECK_TIMEOUT` of 5 s that bounds
+the infrastructure half of the same answer and does not reach this half at
+all.
+
+**Why it is safe.** Each read is one attribute, which is atomic; the list
+of implementations never changes length, so the active name is one index
+into it. The lock could not have bought agreement between three counters
+that move at different moments, and nothing asks them to agree. Every
+*write* to them stays under the lock, because `+= 1` is not atomic.
+
+### A journal that will not open is left out, not fatal
+
+**Decided** (2026-08-26): a log file the process cannot open is skipped and
+named, rather than allowed to end the start-up that opened it.
+
+**Why.** A file handler opens its file while it is being built, so
+`_setup_file_handler` raised out of `setup_logging`, out of `create_app`
+and out of the process. Measured on the running stack with
+`datas/logs/application.log` replaced by a directory: the container sat in
+`Restarting (1)`, the public `/health` answered **000**, gunicorn said
+`Worker failed to boot` three times and stopped — and `flask maintenance
+health`, the command an operator runs at exactly that moment, ended in an
+`IsADirectoryError` traceback with exit code 1 rather than a table.
+
+That is the failure the entire failover exists to survive, arriving one
+step before failover can see it. `dockers/logrotate.conf` promises the
+opposite in as many words: "a file the application cannot write to: the
+write fails, `FailoverService` counts it in `dropped_calls`."
+
+**Re-measured after the change**, same outage, same stack: the container
+came up `Up (healthy)`, `/health` answered **200**, and the command printed
+its four dependencies followed by `Opened: error, audit` and `Unavailable:
+application ([Errno 21] Is a directory: '/app/datas/logs/application.log')`,
+exit code 0. `GET /api/v1/admin/health` carried the same two lists.
+
+**Why not a loud refusal instead.** A service that will not start because
+of its log is a service whose journal is a hard dependency, which is the
+opposite of what the failover chain, the `MinimalLogger` behind it and the
+rotation config all say. It is also asymmetric: the same file broken an
+hour later does not stop the service, and a start-up stricter than the
+runtime is a rule a reader cannot predict.
+
+**What it costs.** A deployment that mistyped `LOG_DIR` now runs. It runs
+saying so — on stderr while there is nowhere else, in `error.log` once
+there is, in the health answer, and on the health page — but it runs, and
+an operator who watches none of those learns later than a crash would have
+told them.
+
+**Nothing is written into silence.** With `LOG_TO_CONSOLE=false` and the
+file refusing, the logger would have no handlers at all, which the standard
+library answers with `lastResort`: warnings and worse, to stderr,
+unformatted, and everything below a warning nowhere at all. So a chain
+whose journal refused gets the console back — only that chain, and only
+where its journal is what failed. A deployment that asked for neither files
+nor console is left silent, because nothing there failed.
+
+**The verdict does not move.** `/health` and the command still answer for
+the four dependencies, and a missing journal does not make either fail. The
+probe in the orchestrator restarts a container on a failing verdict, and a
+restart does not turn a directory back into a file — it produces the
+restart loop this entry exists to end.
+
+### The last background check is part of the answer
+
+**Decided** (2026-08-26): each chain reports what the last background round
+found it to be, beside its three counters.
+
+**Why.** The counters count *losses*, and a chain can be thoroughly unwell
+without producing any. Measured on the running stack with `audit.log`
+replaced by a directory on a **running** application, no traffic, 95
+seconds: the background rounds wrote **12** lines of `structlog_audit
+reports itself unhealthy and nothing below it answers` — and
+`GET /api/v1/admin/health` answered `dropped_calls: 0, failed_checks: 0,
+lost_log_lines: 0` beside an unchanged `active: structlog_audit`.
+
+Nothing was dropped because nothing was written through the chain in that
+window, and `active` did not move because both audit implementations write
+the same file — there was nowhere to fail over to. The defect the whole
+`logging` block was added to report was the state it reported as health.
+
+**Re-measured after the change**, same outage: `audit.last_check` read
+`unhealthy` with the three counters still at zero, and the health page drew
+`standard_audit · reports itself unwell` with a red dot.
+
+**Four values, not two.** `not run` is not `healthy`: a chain whose first
+round has not come round, or one built without failover to ask, has
+answered nothing, and a page that called that "well" would be guessing.
+`probe failed` is not `unhealthy`: a probe that raises answers nothing,
+which is why `_attempt_demotion` moves no work on one — the same
+distinction `timed_out` draws against `false` in the dependency snapshot.
+
+**It is about whoever holds the work now.** After a demotion or a climb the
+active implementation is one that answered for itself this round, so the
+finding follows the work rather than staying with the name that lost it.
+
+### Four interchangeable implementations, one answer
+
+**Decided** (2026-08-26): all four `is_healthy` implementations ask the
+logger hierarchy before writing their probe.
+
+**Why.** The two `standard` adapters asked `hasHandlers()` first; the two
+structlog ones only wrote. A write that reaches no handler raises nothing,
+so those two answered `True` for a chain going nowhere — the same shape as
+the probe that could not fail, one layer up.
+
+Measured with every handler removed and structlog configured as
+`bootstrap` configures it, one state put to all four: `StandardLogger`
+**False**, `StructLogger` **True**, `StandardAuditLogger` **False**,
+`StructlogAuditLogger` **True**. `FailoverService` hands the work between
+them on exactly this answer, so which defect the service notices depended
+on `LOGGER_TYPE`: an `auto` chain — structlog first — would have called
+itself well and never handed the work down, while a `standard` chain in
+the identical state would have.
+
+**Why it was fixed rather than written down as unreachable.** Every logger
+this application configures now ends up with a handler, so the state is
+out of reach through the application's own doors — which is what kept the
+disagreement from being noticed, not what makes it right. Anything that
+clears the handlers brings it back, a library configuring logging of its
+own included, and the project has been wrong once before about a mine
+being unreachable (`SQLAlchemyRoleRepository.save`, corrected in the
+admin-users slice). Two implementations of one port, looking at one
+hierarchy, cannot both be right.
+
+**Re-measured after the change**, both states: all four answer `False`
+with no handler anywhere and `True` with one, and a test in
+`test_logging_health.py` compares the four as a set rather than one at a
+time.
+
+### One switch per question, and "off" means nowhere
+
+**Decided** (2026-08-26): `setup_logging` takes the settings object and
+nothing else, and a disabled audit logger stops propagating.
+
+**Why one switch.** The function took `logging_enabled` and
+`audit_enabled` as arguments while `LoggingSettings` also carried
+`audit_enabled`, so the audit chain was told twice whether to exist.
+Measured with the two disagreeing in a clean process —
+`settings.audit_enabled` false, the argument true — the audit logger came
+out of `setup_logging` with no handlers and its `propagate` untouched, so
+every audit record travelled up to the root and was written into
+`application.log`: the trail kept, in the wrong file, saying nothing about
+it. Both callers read both names from one configuration key, which is why
+nothing had gone wrong yet — the reason it was not noticed, not the reason
+it was safe.
+
+`LOGGING_ENABLED` moved onto the settings with it, into the same list of
+names `logging_settings_from` reads for both processes that log. Fourteen
+settings in an object and one switch travelling beside it was the shape
+that let the fifteenth disagree with itself.
+
+**Why "off" is not "elsewhere".** The disabled branch installed a
+`NullHandler`, which does not stop a record travelling. Measured with
+`AUDIT_ENABLED=false`: an `audit` record reached `application.log` while
+`audit.log` was never created — unmarked as audit, and rotated as
+something else. Nothing writes through that logger on that setting today,
+because the DI component hands out a null audit logger, so this was a mine
+rather than a live defect. It is one line, and the enabled branch already
+sets the same flag for the same reason.
+
+### A logger with no handlers is not a silent logger
+
+**Decided** (2026-08-26): every logger this application configures ends up
+with a handler — a console where its journal refused to open, a
+`NullHandler` where nothing was asked for.
+
+**Why.** A logger with an empty handler list is not silent: the standard
+library answers those records with `logging.lastResort`, which writes
+`WARNING` and worse to stderr with no formatter at all, and drops
+everything below without a word. `LOG_TO_CONSOLE=false` together with
+`LOG_TO_FILE=false` produced exactly that.
+
+Measured on the running stack in that mode, one failed sign-in: the
+security event reached the container's stdout as a bare Python dict —
+`{'request_id': '4aa72171-b', 'remote_addr': '192.168.65.1', ...,
+'event': 'Login failed'}`. That is the structlog event dictionary
+`ProcessorFormatter.wrap_for_formatter` puts on the record, printed by a
+handler that has no `ProcessorFormatter` on it. So a deployment that
+switched both destinations off still emitted its audit trail, in a shape
+neither `LOGGER_TYPE` chose nor `FileJournalReader` parses.
+
+**Re-measured after the change**, same mode, same request: the container's
+output holds gunicorn's own lines and nothing else, and the journals on
+disk do not grow.
+
+**Why a `NullHandler` and not a console.** The two empty-handler cases are
+opposite. A journal that refused to open is a failure, and the records
+were meant to be kept, so they go to the console. Both destinations
+switched off is a deployment asking for no output — giving it a console
+would be the rule inventing output nobody wanted, and doubling every
+container's journal on the day a file goes missing. `LOGGING_ENABLED=false`
+already installed a `NullHandler` for the same reason; this extends it to
+the mode that reaches the same place by a different road.
+
+**Held by a test over all 64 modes.** `LOGGING_ENABLED`, `AUDIT_ENABLED`,
+`LOG_TO_CONSOLE`, `LOG_TO_FILE` and `LOGGER_TYPE` are documented as free
+to combine, and each is read in a different place, so what holds them
+together is one parameterised test that tries every combination and
+asserts the three promises: the process starts, the console is in the
+shape `LOGGER_TYPE` names or is silent, and the files are JSON whatever
+the console looks like.
+
+### What `journals_written` says, and what it does not
+
+**Decided** (2026-08-26): the health answer carries both the journals that
+opened and the ones that refused, and the first is about start-up only.
+
+**Why both.** An empty list of failures is the answer for a worker writing
+all three journals *and* for one writing none, and `LOG_TO_FILE=false` is a
+documented way to be the second — the same trap `cache_configured` was
+added to this answer for, where "the cache is fine" and "there is no cache"
+read alike. The shell command draws the same distinction: `Opened:
+application, error, audit` against `Opened: not configured`.
+
+**Why not "is writing".** Measured with `audit.log` replaced by a directory
+on a running application: `journals_written` still held all three, because
+the handler had opened at start-up an hour before the file went away. It is
+a fact about what this process opened, and what the chain writing it has
+found since is that chain's `last_check`. The wording says so in the port,
+in the schema and in the command, because a field named for the present
+tense would be read as a live answer once a quarter and be wrong.
+
+
 ## Known limits
 
 Things that are wrong, understood, and deliberately left. Each says what it

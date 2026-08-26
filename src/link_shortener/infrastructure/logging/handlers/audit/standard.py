@@ -10,7 +10,10 @@ import logging
 from typing import Optional, Any, Dict
 
 from link_shortener.application import AuditEvent, AuditLogger
-from link_shortener.infrastructure.logging.utils import mask_email, mask_url
+from link_shortener.infrastructure.logging.utils import (
+    HEALTH_PROBE_FIELDS, HEALTH_PROBE_MESSAGE, mask_email, mask_url,
+    probe_level,
+)
 
 
 class StandardAuditLogger(AuditLogger):
@@ -180,19 +183,26 @@ class StandardAuditLogger(AuditLogger):
         configuration that let audit records travel to the root would have
         this one call itself unwell while they arrived.
 
+        Written at the level this logger actually passes records at, for
+        the reason ``probe_level`` gives. The audit handlers are set to
+        ``INFO`` unconditionally, so the old ``DEBUG`` probe could not
+        reach one under any configuration: this chain answered ``True``
+        about itself whatever state it was in.
+
         Returns:
             ``True`` if a handler is reachable from this logger and a
             health-check message can be written, ``False`` otherwise.
         """
         if not self._logger.hasHandlers():
             return False
+        level = probe_level(self._logger.name)
         try:
             # Create a temporary logger sharing the same handlers
             test_logger = logging.getLogger(self._logger.name + "._health_test")
             test_logger.handlers = self._logger.handlers
             test_logger.propagate = False
-            test_logger.setLevel(logging.DEBUG)
-            test_logger.debug("health_check")
+            test_logger.setLevel(level)
+            test_logger.log(level, HEALTH_PROBE_MESSAGE, extra=dict(HEALTH_PROBE_FIELDS))
             return True
         except Exception:
             return False

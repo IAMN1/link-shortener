@@ -32,6 +32,8 @@ reaches the page -- and the two carried the same four copies.
 
 import pytest
 
+from link_shortener.application.ports.logging_status import JournalUnavailable
+
 
 COMPONENTS = [
     ("database", "database"),
@@ -87,19 +89,50 @@ class TestEachCounterIsPublishedUnderItsOwnName:
         body = client.get("/api/v1/admin/health").get_json()
 
         assert body["logging"] == {
+            "worker": 4242,
             "logger": {
                 "active": "structlog",
                 "dropped_calls": 11,
                 "failed_checks": 12,
                 "lost_log_lines": 13,
+                "last_check": "healthy",
             },
             "audit": {
                 "active": "standard_audit",
                 "dropped_calls": 21,
                 "failed_checks": 22,
                 "lost_log_lines": 23,
+                "last_check": "unhealthy",
             },
+            "journals_written": ["application", "error", "audit"],
+            "journals_unavailable": [],
         }
+
+    def test_a_journal_that_would_not_open_is_named_with_its_reason(
+        self, client, health_of, logging_with_journals_missing
+    ):
+        """
+        The one failure no counter in the section above can report.
+
+        A journal whose file will not open has no handler, so nothing is
+        dropped, nothing is lost and no check fails -- every number here
+        reads zero over a file being written by nobody. The reason is
+        carried whole because it names the path and the cause, which is
+        what says whether to fix a directory, a mode or a disk.
+        """
+        health_of(logging=logging_with_journals_missing(
+            JournalUnavailable(
+                "audit",
+                "[Errno 21] Is a directory: '/app/datas/logs/audit.log'",
+            ),
+        ))
+
+        body = client.get("/api/v1/admin/health").get_json()
+
+        assert body["logging"]["journals_unavailable"] == [{
+            "journal": "audit",
+            "reason": "[Errno 21] Is a directory: '/app/datas/logs/audit.log'",
+        }]
 
     def test_the_components_are_not_swallowed_by_the_logging_section(
         self, client, health_of
@@ -110,5 +143,6 @@ class TestEachCounterIsPublishedUnderItsOwnName:
         body = client.get("/api/v1/admin/health").get_json()
 
         assert set(body) == {
-            "database", "cache", "task_queue", "rate_limiter", "logging"
+            "database", "cache", "cache_configured", "task_queue",
+            "rate_limiter", "timed_out", "logging"
         }

@@ -216,6 +216,20 @@ def _parse(raw: str, source: str) -> JournalLine:
     return JournalLine(raw=raw, fields=fields, parsed=True, source=source)
 
 
+def _is_plain(where: Optional[JournalFilter]) -> bool:
+    """
+    Whether a read asked for nothing in particular.
+
+    Args:
+        where: The filter a caller passed, if any.
+
+    Returns:
+        ``True`` for the plain tail -- no filter, or one with every field
+        unset.
+    """
+    return where is None or where.is_empty
+
+
 class FileJournalReader(JournalReaderPort):
     """Reads the journals off the disk they are written to.
 
@@ -265,8 +279,52 @@ class FileJournalReader(JournalReaderPort):
         Returns:
             The page, oldest line first.
         """
+        page = self._tail(journal, limit, include_archives, where)
+
+        # A plain tail reads exactly the page it was asked for, because
+        # without a filter a line looked at is a line returned. That
+        # stopped being true when the chains' own health probe went into
+        # the journals: ``JournalFilter`` drops it from a read that asked
+        # for nothing, so a window of 50 came back holding 32 on a stack
+        # where 36% of the audit journal was probes. Looking further is
+        # paid for only where they actually took the page -- an unfiltered
+        # tail costs 0.3 ms on this tree and a full scan 17 ms, and on a
+        # gigabyte the same two are 2 ms and 117 ms.
+        short = len(page.lines) < max(0, min(limit, HARD_LIMIT))
+        if short and not page.reached_start and _is_plain(where):
+            return self._tail(journal, limit, include_archives, where, deep=True)
+
+        return page
+
+    def _tail(
+        self,
+        journal: Journal,
+        limit: int,
+        include_archives: bool = False,
+        where: Optional[JournalFilter] = None,
+        deep: bool = False,
+    ) -> JournalPage:
+        """Read the most recent lines, looking as far as ``deep`` says.
+
+        Args:
+            journal: Which journal to read.
+            limit: Most lines to return, capped at ``HARD_LIMIT``.
+            include_archives: Whether to continue into the rotated files.
+            where: What to look for, or ``None`` for the plain tail.
+            deep: Whether to scan to ``SCAN_LIMIT`` even with no terms,
+                which is what a page emptied by dropped records needs.
+
+        Returns:
+            The page, oldest line first.
+        """
         wanted = max(0, min(limit, HARD_LIMIT))
-        looking_for = where if where and not where.is_empty else None
+        # Only the absence is filled in here. Whether the filter asks
+        # for anything is a different question, asked once below by
+        # `_is_plain` and answered there for the budget -- an empty
+        # filter a caller passed and an empty filter made here are the
+        # same frozen value, so normalising the first into the second
+        # buys nothing and reads as a second version of that question.
+        looking_for = where if where is not None else JournalFilter()
         live = self._path_of(journal)
         archives = _archives_of(live) if live.parent.is_dir() else []
         oldest = archives[-1].name if archives else None
@@ -283,10 +341,15 @@ class FileJournalReader(JournalReaderPort):
         scanned = 0
 
         # How far this read may look, as against how much it may return.
-        # They are the same number without a filter -- a line looked at is
-        # a line returned -- and with one the reader keeps going past the
-        # page it is filling, up to the ceiling it owes the deployment.
-        budget = SCAN_LIMIT if looking_for else wanted
+        # They were the same number without a filter, back when a line
+        # looked at was a line returned; the chains' own probe records
+        # are dropped from every read now, so even a plain tail can look
+        # at more lines than it returns. `deep` is what says whether this
+        # read is the second attempt, the one paying for that -- the
+        # first still stops at the page it is filling, and only a page
+        # the dropped records emptied is read again to the ceiling this
+        # deployment is owed.
+        budget = SCAN_LIMIT if (deep or not _is_plain(where)) else wanted
 
         # Newest first, and the collection is built backwards for the same
         # reason: the answer is "the last N lines", so a file is only
@@ -303,9 +366,14 @@ class FileJournalReader(JournalReaderPort):
             files_read.append(path.name)
             scanned += len(lines)
 
-            found = [_parse(raw, path.name) for raw in lines]
-            if looking_for:
-                found = [line for line in found if looking_for.matches(line.fields)]
+            # Always, now that an empty filter is not the same as no
+            # filter: it still drops the chains' own probe records, which
+            # a reader did not come for. Costs nothing extra -- the lines
+            # were parsed either way, on the line above.
+            found = [
+                line for line in (_parse(raw, path.name) for raw in lines)
+                if looking_for.matches(line.fields)
+            ]
             collected = found + collected
             reached_start = hit_start
 

@@ -214,7 +214,7 @@ class TestWhatSetupLoggingInstalls:
             logger_type="standard",
         )
 
-        setup_logging(settings, logging_enabled=True, audit_enabled=True)
+        setup_logging(settings)
 
         writing_to_files = [
             handler

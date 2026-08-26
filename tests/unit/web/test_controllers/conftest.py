@@ -8,9 +8,13 @@ carried the same eight distinct counter values for the same reason, which
 is exactly the kind of agreement that stops being true silently.
 """
 
+from dataclasses import replace
+
 import pytest
 
-from link_shortener.application.ports.logging_status import LoggingStatus
+from link_shortener.application.ports.logging_status import (
+    ChainStatus, LoggingStatus,
+)
 from link_shortener.application.use_cases.stats.get_service_health import (
     ServiceHealthStatus,
 )
@@ -19,20 +23,34 @@ from link_shortener.application.use_cases.stats.get_service_health import (
 HEALTH_PATH = "/api/v1/admin/health"
 
 LOGGING = LoggingStatus(
-    logger_active="structlog",
-    logger_dropped_calls=11,
-    logger_failed_checks=12,
-    logger_lost_log_lines=13,
-    audit_active="standard_audit",
-    audit_dropped_calls=21,
-    audit_failed_checks=22,
-    audit_lost_log_lines=23,
+    worker=4242,
+    logger=ChainStatus(
+        active="structlog",
+        dropped_calls=11,
+        failed_checks=12,
+        lost_log_lines=13,
+        last_check="healthy",
+    ),
+    audit=ChainStatus(
+        active="standard_audit",
+        dropped_calls=21,
+        failed_checks=22,
+        lost_log_lines=23,
+        last_check="unhealthy",
+    ),
+    journals_written=("application", "error", "audit"),
+    journals_unavailable=(),
 )
-"""Eight values, no two alike.
+"""Eight values, no two alike, beside the process that holds them.
 
 A counter published under another's name then shows up as the wrong
 number rather than as the same one -- three of the eight were zero once,
 and a body publishing one chain's count under both names read as correct.
+The worker id is unlike all eight for the same reason.
+
+The two chains are given different findings for the same reason: one
+verdict repeated is a body that can publish either chain's under both
+headings and still read as correct.
 """
 
 
@@ -58,6 +76,25 @@ def admin_controller(app):
 
 
 @pytest.fixture
+def logging_with_journals_missing():
+    """
+    The same chain state, with journals that could not be opened.
+
+    Built by replacing one field of ``LOGGING`` rather than by naming ten
+    of them again: the counters are distinct for a reason written above,
+    and a second copy of them is a second thing to keep true.
+
+    Returns:
+        A callable taking ``JournalUnavailable`` entries and returning the
+        status carrying them.
+    """
+    def carrying(*entries):
+        return replace(LOGGING, journals_unavailable=entries)
+
+    return carrying
+
+
+@pytest.fixture
 def health_of(admin_controller):
     """
     Make the health use case answer with a given state.
@@ -73,8 +110,14 @@ def health_of(admin_controller):
         fields = {
             "database": True,
             "redis": True,
+            # A configured cache that answers, unless a test says
+            # otherwise: the two are separate questions, and a default of
+            # "no cache here" would make every other assertion in these
+            # files about a deployment nobody runs.
+            "cache_configured": True,
             "task_queue": True,
             "rate_limiter": True,
+            "timed_out": (),
             "logging": LOGGING,
         }
         fields.update(overrides)

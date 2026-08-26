@@ -38,6 +38,9 @@ from link_shortener.infrastructure.cli.commands.cache import get_cache_info as c
 from link_shortener.infrastructure.cli.commands.cache import clear_cache as clear_cache_logic
 from link_shortener.infrastructure.cli.commands.admin import create_user as create_user_logic
 from link_shortener.infrastructure.cli.commands.alembic import AlembicCommands
+from link_shortener.infrastructure.logging.bootstrap import (
+    journals_unavailable, journals_written,
+)
 from link_shortener.infrastructure.cli.commands.security import (
     check_secrets as check_secrets_logic,
     generate_secrets as gen_secrets_logic,
@@ -804,6 +807,46 @@ def maintenance_health():
     width = max(len(name) for name, _ in lines) + 1
     for name, verdict in lines:
         click.echo(f"{_within(name + ':', width)} {verdict}")
+
+    # About this process, and that is the point: the command runs in the
+    # container an operator is asking about, opens the same three files
+    # the application does, and answers whether it could. No counter can
+    # report this -- a handler that was never built drops nothing, so the
+    # whole `logging` block reads zeroes over a journal written by
+    # nobody. Not part of the verdict below: the exit code is documented
+    # as the state of the four dependencies, `/health` answers with the
+    # same one, and a command that failed where the endpoint passed
+    # would be the two surfaces disagreeing that `HealthSnapshot` exists
+    # to prevent. See docs/decisions.md.
+    written = journals_written()
+    # "Opened", because that is what it is: the files this process could
+    # open when it started, not a claim that they are being written now
+    # -- a journal broken since is a state of the chain, and the chain
+    # answers that on `/api/v1/admin/health`.
+    #
+    # "Not configured" and not "OK": a process writing no journals is
+    # what `LOG_TO_FILE=false` asks for, and the two answers look alike
+    # from the failures alone -- the same trap the cache row above was
+    # given `cache_configured` for.
+    click.echo(
+        f"{_within('Opened:', width)} "
+        f"{', '.join(written) if written else 'not configured'}"
+    )
+
+    # One line per journal that would not open, said after the ones that
+    # did: a worker writing two of three has both halves of that
+    # sentence, and printing only the failures reads as though the other
+    # two were failures nobody noticed.
+    #
+    # The label is in the column and the journal's name is not: the names
+    # go in the value, where nothing clips them. Put through `_within` as
+    # `Journal application:` it came out `Journal appl… UNAVAILABLE`,
+    # which drops the one word the reader needs -- which of the three.
+    # Later lines carry the indent instead of the label, so a second
+    # failure reads as part of the same answer.
+    for number, entry in enumerate(journals_unavailable()):
+        label = "Unavailable:" if number == 0 else ""
+        click.echo(f"{_within(label, width)} {entry.journal} ({entry.reason})")
 
     # Named separately, because "did not answer in time" is a different
     # finding from "answered no" and the snapshot keeps them apart. Which

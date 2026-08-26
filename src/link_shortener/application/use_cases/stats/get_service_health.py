@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, Tuple
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.health_check import HealthCheck
@@ -15,9 +15,31 @@ class ServiceHealthStatus:
     """Data object holding the health status of infrastructure components."""
     database: bool
     redis: bool
+    cache_configured: bool
+    """Whether a cache backend is configured at all.
+
+    Carried because ``redis`` alone cannot say it. A cache nobody
+    configured answers every probe well -- it has nothing to be down --
+    so the boolean beside this one is ``True`` on a deployment running
+    ``REDIS_ENABLED=false``, and the admin surfaces showed a row reading
+    "Redis: answering" over a service with no Redis. The other two
+    surfaces already told the two apart: ``/health`` says ``disabled``
+    and ``flask maintenance health`` says ``not configured``, both off
+    this same field on the snapshot, which stopped here.
+    """
     task_queue: bool
     rate_limiter: bool = True
     """Whether request limits are currently being enforced."""
+    timed_out: Tuple[str, ...] = field(default=())
+    """Components that did not answer within the snapshot's budget.
+
+    Reported unhealthy either way, and kept apart for the reason
+    ``HealthSnapshot`` states: "did not answer in time" is not the
+    finding "answered no" is, and only one of them says which dependency
+    is hanging. It reached ``/health`` and the shell command and stopped
+    here, so the surface an operator actually watches was the one that
+    could not tell them apart.
+    """
     logging: Optional[LoggingStatus] = None
     """State of the logging and audit chains, when a reader is wired in.
 
@@ -69,8 +91,10 @@ class GetServiceHealthUseCase(BaseUseCase):
         return ServiceHealthStatus(
             database=state.database,
             redis=state.cache,
+            cache_configured=state.cache_configured,
             task_queue=state.task_queue,
             rate_limiter=state.rate_limiter,
+            timed_out=state.timed_out,
             logging=(
                 self.logging_status.read() if self.logging_status else None
             ),
