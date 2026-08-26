@@ -552,3 +552,41 @@ class TestTheHealthBodyMatchesWhatIsWrittenDown:
                 f"described and never sent by {chain}: "
                 f"{sorted(written_down - fields)}"
             )
+
+
+class TestTheDocumentedVocabulariesAreTheApplicationsOwn:
+    """The words in the document against the words in the code.
+
+    Three ``enum`` lists in `HEALTH_SCHEMA` and the journal parameters are
+    typed out by hand, and each has a counterpart the application actually
+    answers with: ``CheckOutcome`` for what a background round found, and
+    ``Journal`` for which of the three files. Two hands again, the
+    arrangement the health body itself is held against a test for -- a
+    value renamed on one side reads to every client as a value the service
+    can send, or hides one it can.
+    """
+
+    def test_the_findings_are_the_ones_the_failover_service_can_report(self):
+        from link_shortener.infrastructure.failover.failover_service import (
+            CheckOutcome,
+        )
+        from link_shortener.web.schemas.openapi import _LOG_CHANNEL
+
+        described = set(_LOG_CHANNEL["properties"]["last_check"]["enum"])
+
+        assert described == {outcome.value for outcome in CheckOutcome}
+
+    def test_the_journal_names_are_the_ones_the_reader_knows(self):
+        from link_shortener.application.ports.journal_reader import Journal
+        from link_shortener.web.schemas.openapi import HEALTH_SCHEMA
+
+        logging_section = HEALTH_SCHEMA["properties"]["logging"]["properties"]
+        written = set(logging_section["journals_written"]["items"]["enum"])
+        unavailable = set(
+            logging_section["journals_unavailable"]["items"]
+            ["properties"]["journal"]["enum"]
+        )
+        names = {journal.value for journal in Journal}
+
+        assert written == names
+        assert unavailable == names

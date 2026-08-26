@@ -5,6 +5,7 @@ This module contains ``StructLogger`` which wraps a structlog ``BoundLogger``
 and implements the domain ``Logger`` interface.
 """
 
+import logging
 from typing import Any, Optional
 
 import structlog
@@ -112,15 +113,31 @@ class StructLogger(Logger):
     def is_healthy(self) -> bool:
         """Check whether the logger is operational.
 
+        Asked of the hierarchy first, as the two ``standard`` adapters
+        ask it: a write that reaches no handler raises nothing, so a
+        probe that only writes answers ``True`` for a chain going
+        nowhere. Measured with every handler removed and structlog
+        configured as ``bootstrap`` configures it, the four
+        implementations answered the same question two ways --
+        ``StandardLogger`` and ``StandardAuditLogger`` ``False``, this
+        one and ``StructlogAuditLogger`` ``True``. They are
+        interchangeable by construction: the failover service hands the
+        work between them on this answer, so one state has to have one
+        answer, or which defect the service notices depends on
+        ``LOGGER_TYPE``.
+
         Written at the level this chain actually passes records at, for
         the reason ``probe_level`` gives: structlog hands the record to
         the standard library, where a ``DEBUG`` probe was dropped by the
         handler's own level test before it could fail on a broken one.
 
         Returns:
-            ``True`` if a probe record reaches the handlers, ``False``
-            otherwise.
+            ``True`` if a handler is reachable from this logger and a
+            probe record can be written, ``False`` otherwise.
         """
+        if not logging.getLogger(self._name).hasHandlers():
+            return False
+
         try:
             self._logger.log(
                 probe_level(self._name), HEALTH_PROBE_MESSAGE,

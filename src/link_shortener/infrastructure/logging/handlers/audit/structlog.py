@@ -6,6 +6,7 @@ interface using the structlog library. It provides structured logging and
 supports field binding.
 """
 
+import logging
 from typing import Optional, Any, Dict
 
 import structlog
@@ -191,10 +192,21 @@ class StructlogAuditLogger(AuditLogger):
         reached none of them under any configuration -- this chain called
         itself healthy whatever state it was in.
 
+        Asked of the hierarchy first, as ``StandardAuditLogger`` asks
+        it: a write that reaches no handler raises nothing, so a probe
+        that only writes answers ``True`` for a chain going nowhere.
+        Measured with the audit logger's handlers removed, this
+        implementation answered ``True`` where its ``standard`` sibling
+        answered ``False`` -- and the failover service moves the work
+        between the two on that answer.
+
         Returns:
-            ``True`` if a probe record reaches the handlers, ``False``
-            otherwise.
+            ``True`` if a handler is reachable from this logger and a
+            probe record can be written, ``False`` otherwise.
         """
+        if not logging.getLogger(self.NAME).hasHandlers():
+            return False
+
         try:
             self._logger.log(
                 probe_level(self.NAME), HEALTH_PROBE_MESSAGE,

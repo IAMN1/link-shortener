@@ -427,3 +427,72 @@ class TestTheProbeIsMarkedSoAReaderCanBeSparedIt:
         quietly fill up again.
         """
         assert HEALTH_PROBE_FIELDS == {"event_type": HEALTH_PROBE_EVENT_TYPE}
+
+
+class TestTheFourProbesAnswerOneQuestion:
+    """Interchangeable implementations have to answer alike.
+
+    The failover service hands the work between them on this answer, so a
+    state that one calls well and another calls unwell makes the defect
+    the service notices depend on ``LOGGER_TYPE`` -- and there is no
+    reading of "healthy" under which two implementations of one port,
+    looking at one logger hierarchy, are both right.
+
+    The two ``standard`` adapters asked ``hasHandlers`` before writing;
+    the two structlog ones only wrote. A write that reaches no handler
+    raises nothing, so those two answered ``True`` for a chain going
+    nowhere -- the same shape of defect as the probe that could not fail.
+    Measured with every handler removed and structlog configured as
+    ``bootstrap`` configures it: ``False``, ``True``, ``False``, ``True``.
+    """
+
+    @staticmethod
+    def every_implementation():
+        """
+        Ask all four whether they are well, right now.
+
+        Returns:
+            The four answers, by implementation name.
+        """
+        return {
+            "StandardLogger": StandardLogger(name="global").is_healthy(),
+            "StructLogger": StructLogger(name="global").is_healthy(),
+            "StandardAuditLogger": StandardAuditLogger(name="audit").is_healthy(),
+            "StructlogAuditLogger": StructlogAuditLogger().is_healthy(),
+        }
+
+    def test_they_agree_on_a_chain_that_reaches_a_handler(
+        self, configured_logging
+    ):
+        """The premise: without it the test below passes on a broken build."""
+        configured_logging()
+
+        assert self.every_implementation() == {
+            "StandardLogger": True,
+            "StructLogger": True,
+            "StandardAuditLogger": True,
+            "StructlogAuditLogger": True,
+        }
+
+    def test_they_agree_on_a_chain_that_reaches_none(self, configured_logging):
+        """
+        The state `bootstrap` no longer produces, and the answer still has
+        to be one answer.
+
+        Every logger this application configures now ends up with a
+        handler, so the disagreement is out of reach through the
+        application's own doors -- which is what kept it from being
+        noticed rather than what makes it right. Anything that clears the
+        handlers, a library configuring logging of its own included,
+        brings the state back.
+        """
+        configured_logging()
+        logging.getLogger().handlers = []
+        logging.getLogger("audit").handlers = []
+
+        assert self.every_implementation() == {
+            "StandardLogger": False,
+            "StructLogger": False,
+            "StandardAuditLogger": False,
+            "StructlogAuditLogger": False,
+        }

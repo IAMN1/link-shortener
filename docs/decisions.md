@@ -2373,6 +2373,40 @@ distinction `timed_out` draws against `false` in the dependency snapshot.
 active implementation is one that answered for itself this round, so the
 finding follows the work rather than staying with the name that lost it.
 
+### Four interchangeable implementations, one answer
+
+**Decided** (2026-08-26): all four `is_healthy` implementations ask the
+logger hierarchy before writing their probe.
+
+**Why.** The two `standard` adapters asked `hasHandlers()` first; the two
+structlog ones only wrote. A write that reaches no handler raises nothing,
+so those two answered `True` for a chain going nowhere — the same shape as
+the probe that could not fail, one layer up.
+
+Measured with every handler removed and structlog configured as
+`bootstrap` configures it, one state put to all four: `StandardLogger`
+**False**, `StructLogger` **True**, `StandardAuditLogger` **False**,
+`StructlogAuditLogger` **True**. `FailoverService` hands the work between
+them on exactly this answer, so which defect the service notices depended
+on `LOGGER_TYPE`: an `auto` chain — structlog first — would have called
+itself well and never handed the work down, while a `standard` chain in
+the identical state would have.
+
+**Why it was fixed rather than written down as unreachable.** Every logger
+this application configures now ends up with a handler, so the state is
+out of reach through the application's own doors — which is what kept the
+disagreement from being noticed, not what makes it right. Anything that
+clears the handlers brings it back, a library configuring logging of its
+own included, and the project has been wrong once before about a mine
+being unreachable (`SQLAlchemyRoleRepository.save`, corrected in the
+admin-users slice). Two implementations of one port, looking at one
+hierarchy, cannot both be right.
+
+**Re-measured after the change**, both states: all four answer `False`
+with no handler anywhere and `True` with one, and a test in
+`test_logging_health.py` compares the four as a set rather than one at a
+time.
+
 ### One switch per question, and "off" means nowhere
 
 **Decided** (2026-08-26): `setup_logging` takes the settings object and
