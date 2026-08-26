@@ -2082,35 +2082,3 @@ msgstr "登录页"
 #, python-format
 msgid "Ask for a new one from the %(link)s."
 msgstr "请到%(link)s重新申请一个。"
-
-#~ msgid "powered by"
-#~ msgstr ""
-
-#~ msgid "with"
-#~ msgstr ""
-
-#~ msgid ""
-#~ "The audit journal records destination "
-#~ "addresses and the accounts that followed"
-#~ " them; the application journal records "
-#~ "the email address of everyone who "
-#~ "registered or signed in. Both are "
-#~ "read here, and reading them is "
-#~ "itself a privilege somebody granted."
-#~ msgstr ""
-
-#~ msgid "Invalid short code: %(code)s"
-#~ msgstr "无效的短代码：%(code)s"
-
-#~ msgid "Links made without an account expire after 7 days."
-#~ msgstr "未注册创建的链接 7 天后过期。"
-
-#~ msgid "Role %(name)s is a system role and cannot be changed"
-#~ msgstr "角色 %(name)s 是系统角色，无法修改"
-
-#~ msgid "The role %(name)s is a system role and cannot be modified"
-#~ msgstr "角色 %(name)s 是系统角色，无法修改"
-
-#~ msgid "Role '%(name)s' not found"
-#~ msgstr "找不到角色「%(name)s」"
-

@@ -920,6 +920,36 @@ itself: `data.message` on a refusal is already translated by the API, which
 answers in the language of the same cookie. The two are not fallbacks for
 each other, and `apiErrorText` says so where it picks between them.
 
+### The render context carries what a template asks for, and nothing else
+
+**Decided** (2026-08-27): the context processor in `web/i18n.py` offers three
+names — `current_language`, `language_options` and `script_strings`. It used
+to offer two more, `supported_languages()` and `language_cookie_name`, and
+both are gone. The name of the language cookie is decided once, in
+`web/i18n.py:LANGUAGE_COOKIE_NAME`, read there on the way in, and written by
+hand as `'lang='` in `static/js/main.js`.
+
+**Why.** Neither name was read. Across the 31 templates, `supported_languages`
+appears nowhere and `language_cookie_name` appears nowhere; the only reader of
+either was an assertion in `tests/unit/web/test_i18n.py` about the context
+processor's own return value, which held the entries alive and nothing else.
+
+`supported_languages` is the worse of the two, because it was the result and
+not the function. A context processor runs for every render, and most renders
+are not a page — an included fragment, a mail body — so the list was built for
+every one of them and handed to a template that never asked. That is the same
+work the `script_strings` entry three paragraphs above refuses to do, and the
+comment explaining the refusal sat two lines below the call doing it.
+
+**What was left open.** The cookie's name is now in two places that must
+agree: `LANGUAGE_COOKIE_NAME` on the server and the literal in `main.js`.
+Handing it through the context would not have fixed that — the script reads
+nothing the context prints, only the JSON block of sentences — and a second
+name in the JSON block would be a second contract to keep. What holds the two
+together is a measurement rather than a type: `browser_test.py` presses
+`.lang-btn[data-lang="ru"]` and asserts the page comes back in Russian and
+stays there. Rename either side alone and the press stops sticking.
+
 ### The charts are drawn by hand, and are polled rather than pushed
 
 **Decided** (2026-08-16): `static/js/charts.js`, plain SVG through

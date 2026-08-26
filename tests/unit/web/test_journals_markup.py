@@ -266,6 +266,13 @@ class TestTheCountersAreOfferedOnTheSameTermsAsTheAuditJournal:
 
         assert "data-security-counts" in markup
         assert "data-counts-chart" in markup
+        # `chart-figure` and not a name of its own: the class is what makes
+        # the host a containing block, and `charts.js` hangs an absolutely
+        # placed tooltip inside it. Under `chart-host`, which no stylesheet
+        # defined, the host stayed `position: static` and the tooltip
+        # resolved its percentages against the viewport -- measured at
+        # y=-161 for a chart sitting at y=289, which is off the screen.
+        assert 'class="chart-figure" data-counts-chart' in markup
 
     def test_logs_view_alone_is_not(self, journals_app):
         markup = render_page(journals_app, {"logs:view"})

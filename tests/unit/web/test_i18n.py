@@ -181,5 +181,3 @@ class TestTheChoiceIsHandedToTheTemplates:
                 context.update(processor())
 
         assert context["current_language"] == "ru"
-        assert context["supported_languages"] == ["en", "ru", "zh"]
-        assert context["language_cookie_name"] == LANGUAGE_COOKIE_NAME
