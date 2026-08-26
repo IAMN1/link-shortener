@@ -177,10 +177,6 @@ def _merge_response(
     description-only object because today every response here happens to
     be one.
 
-    A response written as a ``$ref`` is left exactly as it is. In OpenAPI
-    3.0 a sibling of ``$ref`` is ignored, so folding a reason in beside it
-    would drop that reason silently rather than loudly.
-
     Args:
         existing: The response object already declared, if any.
         reason: The reason to fold into its description.
@@ -193,15 +189,15 @@ def _merge_response(
     if existing is None:
         return _error(sentence)
 
-    if "$ref" in existing:
-        return existing
-
     described = existing.get("description")
     if not described:
         return {**existing, "description": sentence}
 
-    # Idempotent: the document is rebuilt per request, and folding the same
-    # reason in twice reads as a stutter rather than as a bug.
+    # For a description that already says it. The table is written by hand,
+    # so a reason can arrive already spelled out there -- and appending it
+    # again reads as a stutter rather than as a bug. Not about rebuilding:
+    # the merge writes a new table and never into ``PATHS``, so every
+    # rebuild starts from the same untouched entry.
     if reason in described:
         return dict(existing)
 
