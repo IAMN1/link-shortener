@@ -672,6 +672,41 @@ has to be the thing that answers it. Left as an `IntegrityError`, it
 reached the error handler as an unhandled exception and became a 500: the
 service reported itself broken for a request that was merely refused.
 
+**That index and no other** (2026-08-27). `urls.short_code` is translated
+the same way, and until now everything else on that table was translated
+with it: `save` answered every integrity violation with
+`LinkConflictError`, which `CreateShortLinkUseCase` reads as "somebody took
+that code" and retries around. Measured on the running stack — a link saved
+naming an account that was not there:
+
+    ForeignKeyViolation: insert or update on table "urls" violates
+    foreign key constraint "fk_urls_owner_id_users"
+
+came back as a lost race, five retries, five `Lost a race for a short code`
+lines, and a `CodeGenerationError` saying "every attempt lost a race with a
+concurrent creation" — a cause that had nothing to do with it, for a
+failure no further attempt could get past. The catch now asks which
+constraint refused, the way `users.email` and the role associations already
+do, and anything else leaves as it came. Both databases are covered because
+they answer differently: PostgreSQL names the constraint in
+`diag.constraint_name`, SQLite names the column in the message.
+
+### A column written for a chart nobody has drawn yet
+
+**Decided** (2026-08-24, written down 2026-08-27): `link_visits.visitor_network`
+is written on every visit and read by nothing.
+
+**Why.** It looks exactly like dead weight and is kept deliberately, so the
+next reader should not have to rediscover the argument. It is the only
+thing on that row that could tell one source of traffic from another after
+the fact, and a column added later is a column full of nulls for the past —
+which is the one part that cannot be recovered. The row is the largest
+table in the schema, so the cost was weighed rather than waved past: 45
+characters, the same width `urls.guest_identifier` already uses, on rows the
+retention sweep and the daily roll-up already delete. What it holds is the
+network the request came from, never a whole address — the value object
+zeroes the host part before it ever reaches here.
+
 ### The JWT carries no `roles` claim
 
 **Decided** (2026-08-21): the access token names the account and nothing

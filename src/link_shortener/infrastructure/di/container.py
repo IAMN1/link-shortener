@@ -458,7 +458,16 @@ class Container:
                 default_role_name=self.config.DEFAULT_ROLE_NAME,
                 task_queue=self.task_queue_component.get_task_queue(),
                 mailer=self.mail_component.get_mailer(),
-                templates=JinjaMailTemplates(),
+                # The deployment's own default, not the class's: a message
+                # whose context carries no language -- a task queued before
+                # the field existed -- is rendered in the language this
+                # service answers pages in. Left unwired, the fallback was
+                # ``en`` on a service whose ``DEFAULT_LANGUAGE`` said
+                # otherwise, which is not what ``RequestContext.language``
+                # promises.
+                templates=JinjaMailTemplates(
+                    default_language=self.config.DEFAULT_LANGUAGE
+                ),
                 base_url=self.config.BASE_URL,
                 verification_ttl_hours=self.config.EMAIL_VERIFICATION_TTL_HOURS,
                 password_reset_ttl_minutes=self.config.PASSWORD_RESET_TTL_MINUTES,

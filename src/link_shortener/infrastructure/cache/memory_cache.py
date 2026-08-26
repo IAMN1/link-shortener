@@ -65,7 +65,11 @@ class InMemoryLinkCache(ServiceCache):
             key: Cache key.
 
         Returns:
-            True if expired or absent.
+            ``True`` once the recorded expiry is in the past. A key with
+            no expiry recorded has nothing to run out and answers
+            ``False``; the one caller asks only about keys it has just
+            found in ``_expiry``, so that is the answer for a key this
+            cache never held rather than for one whose TTL is over.
         """
         if key not in self._expiry:
             return False
@@ -83,6 +87,7 @@ class InMemoryLinkCache(ServiceCache):
         expired_keys = [
             key for key, expiry in self._expiry.items() if expiry < current_time
         ]
+        stats_key = self.key_gen.for_stats()
 
         for key in expired_keys:
             # Remove from all relevant dictionaries
@@ -90,13 +95,16 @@ class InMemoryLinkCache(ServiceCache):
                 del self._links[key]
             if key in self._redirects:
                 del self._redirects[key]
+            # The statistics live in a field of their own rather than in
+            # one of the dictionaries, so dropping the key alone leaves
+            # them behind. This used to be asked after the loop, of an
+            # entry the loop had just deleted -- so it could not run, and
+            # ``get_cache_info`` answered ``has_stats: True`` beside
+            # ``total_keys: 0`` for as long as nothing called
+            # ``get_stats``, which is the one place that cleared them.
+            if key == stats_key:
+                self._stats = None
             del self._expiry[key]
-
-        # Also check stats separately (stored in self._stats, not in _links)
-        stats_key = self.key_gen.for_stats()
-        if stats_key in self._expiry and self._expiry[stats_key] < current_time:
-            self._stats = None
-            del self._expiry[stats_key]
 
     def clear_all(self) -> None:
         """Clear all cached data (intended for testing)."""

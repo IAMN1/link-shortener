@@ -12,9 +12,10 @@ def clear_cache(cache: ServiceCache, stats_only: bool = False) -> str:
     not a defence: ``delete_stats`` is abstract on ``StatsCache``, so the
     branch that reported it missing could not run, and the two branches
     below it could not run either. What it did instead was hide that
-    ``clear_all`` is declared by no port at all, so the one operation
-    this command exists for rested on whichever implementation happened
-    to be wired in.
+    ``clear_all`` was then declared by no port at all, so the one
+    operation this command exists for rested on whichever implementation
+    happened to be wired in. ``CacheMaintenance`` declares it now, which
+    is what makes asking straight out safe.
 
     Args:
         cache: The cache in all five of its roles.
