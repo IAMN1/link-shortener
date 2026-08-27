@@ -175,3 +175,93 @@ class TestClicksStillLagOnPurpose:
         # Still there. Dropping it here would mean recomputing the totals
         # once per redirect, which is the cost the cache exists to avoid.
         assert cache.get_stats() is not None
+
+
+class TestTheCachedAnswerIsTheSameAnswer:
+    """
+    The cache-hit branch rebuilds the response from serialised data.
+
+    Every field crosses the cache as text and comes back as an object --
+    ``created_at`` through ``fromisoformat``, the popular links through a
+    list rebuilt item by item. Nothing exercised that branch: every test
+    above reads the totals once, or drops the key between two reads, so
+    the code that runs on the second read in production ran nowhere here.
+    """
+
+    def test_the_second_read_is_answered_without_the_database(
+        self, cached_app, cache, context
+    ):
+        """
+        Proven by taking the database away.
+
+        A repository that raises is the only way to tell "served from the
+        cache" from "computed again and happened to agree": the second
+        answer arrives with no unit of work to compute it from.
+        """
+        created = _create(
+            cached_app, "https://example.com/stats-cache-hit-1", context
+        )
+        with cached_app.app_context():
+            cached_app.container.get_update_link_stats_use_case().execute(
+                created.short_code, context
+            )
+        first = _warm_stats(cached_app, context)
+        assert cache.get_stats() is not None
+
+        with cached_app.app_context():
+            use_case = cached_app.container.get_get_service_stats_use_case()
+            original = use_case.uow_factory
+
+            def exploding_uow(*args, **kwargs):
+                raise AssertionError("the cached answer went to the database")
+
+            use_case.uow_factory = exploding_uow
+            try:
+                second = use_case.execute(context)
+            finally:
+                use_case.uow_factory = original
+
+        assert second.total_urls == first.total_urls
+        assert second.total_clicks == first.total_clicks
+        assert second.avg_clicks_per_url == first.avg_clicks_per_url
+
+    def test_a_popular_link_survives_the_round_trip_whole(
+        self, cached_app, cache, context
+    ):
+        """
+        Item by item, because the list is rebuilt that way.
+
+        A link with a click on it, so the list is not empty: an assertion
+        about every item of an empty list is true whatever the branch does
+        with it, and this list is empty until something is clicked.
+        """
+        created = _create(
+            cached_app, "https://example.com/stats-cache-hit-2", context
+        )
+        with cached_app.app_context():
+            cached_app.container.get_update_link_stats_use_case().execute(
+                created.short_code, context
+            )
+        first = _warm_stats(cached_app, context)
+        assert first.popular_links, "nothing was clicked, so nothing is popular"
+
+        second = _warm_stats(cached_app, context)
+
+        assert [item.short_code for item in second.popular_links] == [
+            item.short_code for item in first.popular_links
+        ]
+        assert [item.short_url for item in second.popular_links] == [
+            item.short_url for item in first.popular_links
+        ]
+        assert [item.original_url for item in second.popular_links] == [
+            item.original_url for item in first.popular_links
+        ]
+        assert [item.clicks for item in second.popular_links] == [
+            item.clicks for item in first.popular_links
+        ]
+        # The moment is the field the cache cannot carry as it stands: it
+        # is written as text and read back through `fromisoformat`, and a
+        # branch that dropped the timezone would still answer 200.
+        assert [item.created_at for item in second.popular_links] == [
+            item.created_at for item in first.popular_links
+        ]

@@ -50,9 +50,14 @@ class TestShortCode:
         with pytest.raises(ValidationError):
             ShortCode('abc123\n')
 
-    def test_create_method(self, valid_short_code_str):
-        """Should create a ShortCode using the factory method 'create'."""
-        code = ShortCode(valid_short_code_str)
+    def test_it_reads_back_as_the_code_it_carries(self, valid_short_code_str):
+        """``str()`` is how the code reaches a URL, a key and a log line,
+        and nothing asked for it: a value object whose ``__str__`` fell
+        back to the dataclass repr would put ``ShortCode(value='abc123')``
+        into every one of them.
 
-        assert isinstance(code, ShortCode)
-        assert code.value == valid_short_code_str
+        This replaces a test that named a factory method in its title and
+        its docstring and called the constructor -- so it went on passing
+        after the factory was removed, having never touched it.
+        """
+        assert str(ShortCode(valid_short_code_str)) == valid_short_code_str

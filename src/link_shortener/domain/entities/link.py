@@ -159,15 +159,6 @@ class Link:
         if self.expires_at is None:
             return False
         return datetime.now(timezone.utc) >= self.expires_at
-    
-    def is_active(self) -> bool:
-        """
-        Check if the link is active (not expired).
-
-        Returns:
-            True if not expired, False otherwise.
-        """
-        return not self.is_expired()
 
     def __eq__(self, other: object) -> bool:
         """Equality check based on link ID."""

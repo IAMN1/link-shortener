@@ -190,7 +190,7 @@ class OriginalUrl:
 
         What still runs is parsing, because a string that cannot be split
         into components is not a URL in any sense and nothing downstream --
-        ``normalize()``, ``get_domain()`` -- can work with it.
+        ``normalize()`` -- can work with it.
 
         Args:
             value: URL string as stored.
@@ -653,10 +653,6 @@ class OriginalUrl:
     def __str__(self) -> str:
         """Return the original URL string."""
         return self.value
-
-    def get_domain(self) -> str:
-        """Extract domain (hostname) from the URL."""
-        return self._parse().hostname or ""
 
     def normalize(self) -> str:
         """

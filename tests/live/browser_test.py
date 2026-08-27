@@ -327,6 +327,11 @@ def record_visits(app, email: str) -> int:
             # own. Without it, "a stranger's link reports zero" is a check
             # that would also pass against a link nobody ever opened --
             # and that is the reading it must not have.
+            #
+            # The account gets a second link of its own for the mirror
+            # reason: with one link, "this link" and "this account" are
+            # the same number, and a page that dropped the code entirely
+            # would still report a total that matched.
             stranger_id = str(uuid.uuid4())
             session.execute(text(
                 "INSERT INTO users (id, email, password_hash, is_active, "
@@ -337,6 +342,7 @@ def record_visits(app, email: str) -> int:
 
             links = {}
             for code, owner_id in (("charted01", owner[0]),
+                                   ("charted02", owner[0]),
                                    ("foreign01", stranger_id)):
                 link_id = str(uuid.uuid4())
                 links[code] = link_id
@@ -430,7 +436,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 65
+    expected = 67
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -1364,8 +1370,15 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         clicks = page.inner_text("#link-clicks").strip()
 
         assert asked > 0, "the link has no recorded traffic to chart"
-        assert asked <= whole, (
-            f"one link reports {asked} of the account's {whole}"
+        # Strictly fewer, not "no more than": the account owns a second
+        # link with traffic of its own, so a page that ignored the code
+        # and drew the whole account would report the same number under
+        # one link's name. Equal numbers here mean the narrowing did
+        # nothing -- which is what this check would have missed while the
+        # account had only one link.
+        assert asked < whole, (
+            f"one link reports {asked} of the account's {whole}, so the "
+            f"code did not narrow anything"
         )
         assert "charted" in destination, f"the destination is {destination!r}"
         assert clicks and clicks != "—", "the click counter stayed empty"
@@ -2001,6 +2014,72 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         labels = page.locator("[data-counts-chart] .chart-axis").count()
         numeric = page.locator("[data-counts-chart] .chart-axis--num").count()
         assert labels > numeric, (labels, numeric)
+
+    @check("the security tooltip is placed inside the figure it belongs to")
+    def _():
+        # The gap this closes: the counters chart was checked for the
+        # words in its tooltip and never for where the tooltip landed.
+        # A tooltip is positioned absolutely against the nearest
+        # positioned ancestor, and the panel carried `chart-host`, a
+        # class no stylesheet defines -- so the box was laid out against
+        # the page instead of against the chart, and every hover put it
+        # somewhere else entirely. Read as geometry rather than as a class
+        # name: the name is one way to get this wrong and the position is
+        # what actually has to hold.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/service/journals")
+        page.wait_for_selector("[data-counts-chart] svg", timeout=5000)
+        page.wait_for_timeout(500)
+
+        anchored = page.eval_on_selector(
+            "[data-counts-chart]",
+            "node => getComputedStyle(node).position"
+        )
+        assert anchored != "static", (
+            f"the figure is {anchored!r}, so a tooltip inside it is placed "
+            f"against the page"
+        )
+
+        page.hover("[data-counts-chart] .chart-hit >> nth=0")
+        page.wait_for_selector("[data-counts-chart] .chart-tip.active",
+                               timeout=5000)
+        tip = page.locator("[data-counts-chart] .chart-tip").bounding_box()
+        figure = page.locator("[data-counts-chart]").bounding_box()
+
+        assert tip and figure, (tip, figure)
+        # Horizontally inside the figure, with the column it describes
+        # under it. Vertically a tooltip may sit above its column and
+        # overhang the top, which is the design, so only the horizontal
+        # bound is asserted -- it is the one that broke.
+        assert figure["x"] - 1 <= tip["x"], (tip, figure)
+        assert tip["x"] + tip["width"] <= figure["x"] + figure["width"] + 1, (
+            tip, figure
+        )
+
+    @check("the visit tooltip is placed inside its figure too")
+    def _():
+        # The same measurement on the chart that was right, so the check
+        # above is known to be a property of these panels rather than a
+        # coincidence of one of them.
+        page = open_stats()
+        page.hover("[data-visit-columns] .chart-hit >> nth=20")
+        page.wait_for_selector("[data-visit-columns] .chart-tip.active",
+                               timeout=5000)
+
+        anchored = page.eval_on_selector(
+            "[data-visit-columns]",
+            "node => getComputedStyle(node).position"
+        )
+        tip = page.locator("[data-visit-columns] .chart-tip").bounding_box()
+        figure = page.locator("[data-visit-columns]").bounding_box()
+
+        assert anchored != "static", anchored
+        assert tip and figure, (tip, figure)
+        assert figure["x"] - 1 <= tip["x"], (tip, figure)
+        assert tip["x"] + tip["width"] <= figure["x"] + figure["width"] + 1, (
+            tip, figure
+        )
 
     @check("a refused journal stops the page asking again")
     def _():

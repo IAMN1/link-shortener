@@ -1,6 +1,6 @@
 # Decisions
 
-Fifty-one write-ups of why something is the way it is. Read this when the
+Eighty-seven write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -196,6 +196,53 @@ property of the profile.
 
 ---
 
+### SQLAlchemy without the `asyncio` extra
+
+**Decided** (2026-08-27): the dependency is `sqlalchemy`, not
+`sqlalchemy[asyncio]`.
+
+**Why.** Nothing in this project is asynchronous: no `async def`, no
+`await`, no `AsyncSession`, no `create_async_engine` — in `src`, in
+`tests` or in `migrations` — and neither driver it runs on is an async
+one (`psycopg` for PostgreSQL, the standard library for SQLite). The
+extra's only effect was to pin `greenlet` unconditionally, which
+SQLAlchemy already requires on the platforms that need it; `requirements.txt`
+now carries it with that platform marker instead of without one.
+
+**Why it is worth a line here.** An extra names a capability, and this one
+named a capability the service does not have. A reader deciding how to add
+a background job would have taken it as a statement that the async stack
+was already available and paid for.
+
+### One formatter, and a dependency nothing imported
+
+**Decided** (2026-08-27): `autopep8` is the formatter this project runs;
+`black` and `isort` are no longer declared. `validators` is removed from
+the runtime dependencies.
+
+**Why one and not three.** All three were declared, none was named in CI,
+in `CONTRIBUTING.md`, in `docs/`, or in a settings section of its own, and
+none had ever been run over the tree. Measured on the 643 files of `src`
+and `tests`: `autopep8 --diff` proposes no change at all, `black` would
+rewrite **496** of them and `isort` **421**. So the tree is already in
+`autopep8`'s shape, and running either of the others is not "format the
+change I made" — it is reformatting the project in one commit, through a
+diff nobody can review. `black` and `autopep8` also disagree by
+construction, which is why declaring both reads as a stylistic policy the
+repository does not have. `.flake8` selects only `E9,F`, so layout is not
+a gate either way and the choice is not forced by the linters.
+
+`isort` stays installed regardless — `pylint` depends on it — but it is no
+longer listed as something this project runs. `CONTRIBUTING.md` now names
+the one command and when to run it.
+
+**Why `validators` had to go.** It is a runtime dependency, so it ships in
+the production image, and grep finds no `import validators` anywhere in
+`src`, `tests` or `migrations`. Addresses are validated by `Email` and by
+the Pydantic schemas, URLs by `OriginalUrl` — none of them reaches for it.
+The only occurrences of the word are comments about Pydantic validators,
+which is presumably how it survived a search once.
+
 ## Database and migrations
 
 ### One revision, edited in place
@@ -254,6 +301,37 @@ database it maintains, and a command that says nothing at the end cannot be
 told from one that did nothing.
 
 ---
+
+### Two reads a port carries for the proof, not for the application
+
+**Decided** (2026-08-27): `EmailVerificationRepository.find_by_token_hash`
+and `LinkVisitRepository.rolled_days` stay in their ports, although no use
+case calls either. They exist so the suite can see what an atomic write
+did.
+
+**Why they look dead.** Production spends a confirmation through `claim`,
+which finds and marks the row in one conditional `UPDATE`, and folds the
+visit days through `roll_up_days`, which writes one row per link per day
+from a `GROUP BY`. Both answer a count, not a row. Grep for callers of
+either read outside `tests/` and there are none — which is the shape a
+dead method has.
+
+**Why they are not.** They are the only way to ask what the write left
+behind, and the questions are not decorative: that `claim` set `used_at`
+rather than merely returning a user id, that `delete_expired` removed the
+spent row as well as the expired one, that the fold dated a visit at
+23:59:59.7 to the day it happened. That last one is a defect this project
+had: measured on PostgreSQL, the row came back dated 2026-03-15 for a
+visit made on 2026-03-14, and `test_visit_arithmetic_on_postgresql.py`
+catches it by reading the folded day back through `rolled_days`.
+
+**What the alternative costs.** Raw SQL in nine places, reaching through
+`uow._session` — and written twice, because the service runs on SQLite and
+PostgreSQL and the two return a day column differently. A port method is
+the dialect-independent way to ask, and it is already the thing the
+adapters are tested against. Deleting the two reads would not remove code
+so much as move it into the tests, in a form that has to be maintained per
+backend.
 
 ## Security
 
@@ -706,6 +784,62 @@ characters, the same width `urls.guest_identifier` already uses, on rows the
 retention sweep and the daily roll-up already delete. What it holds is the
 network the request came from, never a whole address — the value object
 zeroes the host part before it ever reaches here.
+
+### A trailing dot is dropped where the address is read
+
+**Decided** (2026-08-27): `_as_ip_address` drops a single trailing dot
+before deciding whether a host is an address, and the line stays although
+no URL can reach it.
+
+**Why it looks dead.** `_validate_netloc` runs first and refuses
+`http://8.8.8.8./x` as an empty label, so the constructor never gets that
+far. Measured: the line has no coverage from the whole suite, and every
+URL with a trailing dot is refused with `Empty label in host`.
+
+**What it does if it is reached.** Asked of the reader directly:
+`_as_ip_address("127.0.0.1.")` answers `127.0.0.1`. Without the dot
+dropped, the last label is empty, `_ends_in_number("")` is false, and the
+reader calls the host a **name** — at which point the internal-address
+check never looks at it. So admitting a trailing dot upstream, which is
+one line in a different method and a reasonable thing to want (it is the
+root form of a name, and browsers accept it), would open the loopback.
+The guard is what stands between those two facts, and nothing but the
+order of two methods keeps it shut today.
+
+**What is held instead of achieved.** Three tests ask the reader directly
+— the loopback, a public address, and a name — and a fourth states what a
+caller actually gets, so the guard is not mistaken for the behaviour.
+
+### Four methods the domain no longer carries
+
+**Decided** (2026-08-27): `Link.is_active`, `RefreshSession.revoke`,
+`ShortCode.create` and `OriginalUrl.get_domain` are removed. Each was
+called by nothing — not by `src`, not by a template, a script or a
+translation, and three of the four not by a test either.
+
+**Why `revoke` is the one worth explaining.** It read as a guard: it left
+an already-set revocation time alone, which is a real invariant. The
+invariant is held, and held where it has to be — the repository retires a
+session with `UPDATE ... WHERE revoked_at IS NULL`, so a second revocation
+cannot overwrite the first even under two concurrent requests. The entity
+method could only have held it inside one process, for a caller that then
+had to remember to `save`. There is no such caller.
+
+**The other three.** `Link.is_active` is `not is_expired()` and every
+caller asks the question the other way round. `ShortCode.create` called
+its own constructor and was the only such factory among nine value
+objects. `get_domain` was three lines over `_parse().hostname`, named in a
+docstring as one of the two things downstream of parsing, and used by two
+tests and nothing else; the docstring now names `normalize()` alone,
+which is what production calls.
+
+**What was checked before removing.** Coverage said the lines never ran,
+which is evidence that no test holds them — not that nothing needs them.
+So each was also grepped for by name across `src`, `tests`, the templates,
+the JavaScript, the translations and `docs/`, and the two tests that
+called `get_domain` were rewritten through `normalize()` rather than
+deleted, because what they were about — that a name full of digits is
+still a name — is worth keeping.
 
 ### The JWT carries no `roles` claim
 

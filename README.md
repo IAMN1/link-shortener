@@ -9,8 +9,8 @@ suite that fails when the documentation starts lying.
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests: 4066](https://img.shields.io/badge/tests-4066-0b5d3b)](docs/testing.md)
-[![coverage: 96%](https://img.shields.io/badge/coverage-96%25-0b5d3b)](docs/testing.md)
+[![tests: 4208](https://img.shields.io/badge/tests-4208-0b5d3b)](docs/testing.md)
+[![coverage: 98%](https://img.shields.io/badge/coverage-98%25-0b5d3b)](docs/testing.md)
 [![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
 [![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
@@ -204,9 +204,9 @@ Thirty-four operations. Full description: `/api/openapi.json`, rendered at
 ## Testing
 
 ```bash
-uv run pytest tests/                      # 4066 tests
+uv run pytest tests/                      # 4208 tests
 uv run python tests/live/smoke_test.py    # 157 checks over HTTP
-uv run python tests/live/browser_test.py  # 65 checks in a real browser
+uv run python tests/live/browser_test.py  # 67 checks in a real browser
 ```
 
 Four levels — unit, integration on SQLite, integration on real PostgreSQL and

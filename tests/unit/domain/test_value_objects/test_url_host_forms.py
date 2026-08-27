@@ -112,6 +112,43 @@ class TestConfiguredLimits:
 
         assert OriginalUrl(long_url, max_length=2048).value == long_url
 
+    def test_a_url_of_exactly_the_limit_is_admitted(self):
+        """The limit is a ceiling, not a bar one short of it.
+
+        Written as ``>``, so the only URL that tells the two spellings
+        apart is the one of exactly this length: a limit compared with
+        ``>=`` refuses a URL the setting says it accepts, and every other
+        test in this class stays green.
+        """
+        exact = "https://example.com/" + "a" * (50 - len("https://example.com/"))
+        assert len(exact) == 50
+
+        assert OriginalUrl(exact, max_length=50).value == exact
+
+    def test_one_character_past_the_limit_is_refused(self):
+        one_more = "https://example.com/" + "a" * (
+            51 - len("https://example.com/")
+        )
+        assert len(one_more) == 51
+
+        with pytest.raises(ValidationError, match="max 50 characters"):
+            OriginalUrl(one_more, max_length=50)
+
+    def test_the_limits_are_settings_and_not_part_of_the_value(self):
+        """Two objects over the same URL are the same URL.
+
+        The limits are carried on the value object as fields, and a field
+        counts towards equality unless it says otherwise. Counting them
+        would make one URL unequal to itself across a settings change --
+        and this object is a dictionary key in the deduplication path,
+        where that means two links for one address.
+        """
+        url = "https://example.com/a-page"
+
+        assert OriginalUrl(url, max_length=2048) == OriginalUrl(url, max_length=64)
+        assert len({OriginalUrl(url, max_length=2048),
+                    OriginalUrl(url, max_length=64)}) == 1
+
     def test_a_row_longer_than_the_current_limit_can_still_be_read(self):
         """
         The limit is a setting an operator can narrow, so it is an admission
@@ -198,3 +235,37 @@ class TestAUrlThatCannotBeSplitAtAll:
     def test_reading_such_a_row_back_is_also_a_validation_error(self):
         with pytest.raises(ValidationError):
             OriginalUrl.from_storage("http://[v1/")
+
+
+class TestTheLimitsDnsImposes:
+    """253 bytes for the whole name, 63 for one label -- RFC 1035.
+
+    Both are written as ``>``, and a name of exactly the limit is the only
+    one that tells that from ``>=``. Without these, a host the resolver
+    accepts could be refused here and nothing in the suite would say so.
+    """
+
+    def test_a_host_of_exactly_the_longest_name_is_admitted(self):
+        # Four labels of 63 and one of 61, plus the four dots: 253.
+        host = ".".join(["a" * 63] * 3 + ["b" * 61])
+        assert len(host) == 253
+
+        assert OriginalUrl(f"https://{host}/x").value == f"https://{host}/x"
+
+    def test_one_byte_past_the_longest_name_is_refused(self):
+        host = ".".join(["a" * 63] * 3 + ["b" * 62])
+        assert len(host) == 254
+
+        with pytest.raises(ValidationError, match="Host too long"):
+            OriginalUrl(f"https://{host}/x")
+
+    def test_a_label_of_exactly_the_longest_label_is_admitted(self):
+        host = f"{'a' * 63}.example.com"
+
+        assert OriginalUrl(f"https://{host}/x").value == f"https://{host}/x"
+
+    def test_one_byte_past_the_longest_label_is_refused(self):
+        host = f"{'a' * 64}.example.com"
+
+        with pytest.raises(ValidationError, match="Label too long"):
+            OriginalUrl(f"https://{host}/x")

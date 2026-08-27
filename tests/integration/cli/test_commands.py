@@ -1020,18 +1020,6 @@ class TestTheReportsWithSomethingInThem:
         assert long_address not in result.output, result.output
         assert "…" in result.output
 
-    def test_a_token_without_an_expiry_says_unknown(self):
-        """``_as_moment`` answers a missing claim rather than crashing.
-
-        A token carrying no ``exp`` is not a token this service issues,
-        but it is one an operator can be handed and paste in -- and the
-        command's job is to say what it is looking at.
-        """
-        from link_shortener.infrastructure.cli.adapters.flask import _as_moment
-
-        assert _as_moment(None) == "unknown"
-
-
 class TestTheGuardsNobodyExpectsToTrip:
     """Three branches that exist so a mistake reads as a sentence.
 

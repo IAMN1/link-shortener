@@ -184,3 +184,52 @@ class TestTheEntityHasNoPathThatKeepsTheOriginal:
 
         assert first.id != second.id
         assert first.occurred_at.tzinfo is not None
+
+
+class TestWhatAVisitIsWhenNothingSaidOtherwise:
+    """
+    The defaults a visit records with, which are what a request that
+    carried no header gets.
+
+    ``is_bot`` is the one that decides arithmetic: every chart and every
+    total splits on it, and a visit defaulting to ``True`` would count
+    ordinary traffic as robots on the panel an operator reads. Flipping
+    the default left the whole suite green -- measured -- because the
+    tests above always pass a header that decides the value.
+    """
+
+    def test_a_visit_with_no_header_is_not_a_robot(self):
+        assert LinkVisit.record(link_id="link-1").is_bot is False
+
+    def test_a_visit_built_field_by_field_is_not_a_robot_either(self):
+        """Not through ``record``, which decides the flag from the header:
+        the field's own default. It is what a row rebuilt without that
+        column gets, and a default of ``True`` there counts ordinary
+        traffic as robots on every chart."""
+        from datetime import datetime, timezone
+
+        visit = LinkVisit(
+            id="visit-1", link_id="link-1",
+            occurred_at=datetime.now(timezone.utc),
+        )
+
+        assert visit.is_bot is False
+
+    def test_a_visit_with_no_header_has_no_device_or_browser_named(self):
+        visit = LinkVisit.record(link_id="link-1")
+
+        assert visit.device == "unknown"
+        assert visit.browser == "unknown"
+
+    def test_a_visit_with_no_address_keeps_no_network(self):
+        assert LinkVisit.record(link_id="link-1").visitor_network is None
+
+    def test_a_robot_that_announced_itself_is_marked(self):
+        """The other side of the same field, so the default is a default
+        rather than the only answer the entity can give."""
+        visit = LinkVisit.record(
+            link_id="link-1",
+            user_agent="Mozilla/5.0 (compatible; Googlebot/2.1)",
+        )
+
+        assert visit.is_bot is True

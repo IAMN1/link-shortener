@@ -93,3 +93,12 @@ class TestEveryProducerAgrees:
         )
 
         assert link.owner == OwnerID("user-a")
+
+
+class TestAnOwnerIdReadsBackAsItsIdentifier:
+    """``str()`` is what a query, a cache key and a journal line get."""
+
+    def test_it_reads_back_as_the_identifier_it_carries(self):
+        assert str(OwnerID("11111111-1111-1111-1111-111111111111")) == (
+            "11111111-1111-1111-1111-111111111111"
+        )

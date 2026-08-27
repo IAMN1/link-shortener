@@ -69,16 +69,3 @@ class ShortCode:
 
     def __str__(self) -> str:
         return self.value
-
-    @classmethod
-    def create(cls, value: str) -> "ShortCode":
-        """
-        Factory method with explicit validation (alternative to constructor).
-
-        Args:
-            value: Short code string.
-
-        Returns:
-            ShortCode instance.
-        """
-        return cls(value)
