@@ -1,6 +1,6 @@
 # Decisions
 
-Eighty-four write-ups of why something is the way it is. Read this when the
+Eighty-five write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -254,6 +254,37 @@ database it maintains, and a command that says nothing at the end cannot be
 told from one that did nothing.
 
 ---
+
+### Two reads a port carries for the proof, not for the application
+
+**Decided** (2026-08-27): `EmailVerificationRepository.find_by_token_hash`
+and `LinkVisitRepository.rolled_days` stay in their ports, although no use
+case calls either. They exist so the suite can see what an atomic write
+did.
+
+**Why they look dead.** Production spends a confirmation through `claim`,
+which finds and marks the row in one conditional `UPDATE`, and folds the
+visit days through `roll_up_days`, which writes one row per link per day
+from a `GROUP BY`. Both answer a count, not a row. Grep for callers of
+either read outside `tests/` and there are none — which is the shape a
+dead method has.
+
+**Why they are not.** They are the only way to ask what the write left
+behind, and the questions are not decorative: that `claim` set `used_at`
+rather than merely returning a user id, that `delete_expired` removed the
+spent row as well as the expired one, that the fold dated a visit at
+23:59:59.7 to the day it happened. That last one is a defect this project
+had: measured on PostgreSQL, the row came back dated 2026-03-15 for a
+visit made on 2026-03-14, and `test_visit_arithmetic_on_postgresql.py`
+catches it by reading the folded day back through `rolled_days`.
+
+**What the alternative costs.** Raw SQL in nine places, reaching through
+`uow._session` — and written twice, because the service runs on SQLite and
+PostgreSQL and the two return a day column differently. A port method is
+the dialect-independent way to ask, and it is already the thing the
+adapters are tested against. Deleting the two reads would not remove code
+so much as move it into the tests, in a form that has to be maintained per
+backend.
 
 ## Security
 

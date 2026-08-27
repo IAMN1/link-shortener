@@ -223,3 +223,93 @@ class TestTheAccountExistsNoticeWithABroker:
 
         assert queue.enqueue_account_exists_email("u@e.com", context()) is True
         assert task.delay.called
+
+
+class TestThePasswordResetGoesOutTheSameWay:
+    """
+    The third message on this queue, and the one nothing published.
+
+    ``enqueue_password_reset_email`` was reached by no test: the method
+    was written by copying its neighbour, and a copy that kept the
+    neighbour's task name would have mailed a confirmation to somebody
+    who asked to reset their password -- with the route answering 202
+    either way, because it answers the same thing for every address.
+    """
+
+    @pytest.fixture
+    def task(self):
+        """Replace the Celery task so no broker is involved."""
+        with patch(
+            "link_shortener.infrastructure.task_queue.tasks."
+            "send_password_reset_email"
+        ) as task:
+            yield task
+
+    def test_it_publishes_the_reset_task_and_not_a_neighbour(self, task):
+        with patch(
+            "link_shortener.infrastructure.task_queue.tasks."
+            "send_verification_email"
+        ) as confirmation:
+            queue = CeleryTaskQueue(logger=Mock())
+
+            assert queue.enqueue_password_reset_email(
+                "u@e.com", "TOK", context()
+            ) is True
+
+        assert task.delay.called
+        assert not confirmation.delay.called
+
+    def test_it_carries_the_address_the_token_and_the_context(self, task):
+        CeleryTaskQueue(logger=Mock()).enqueue_password_reset_email(
+            "u@e.com", "TOK", context()
+        )
+
+        email, token, ctx = task.delay.call_args.args
+        assert (email, token) == ("u@e.com", "TOK")
+        assert ctx["request_id"] == "test"
+
+    def test_a_broker_that_refuses_is_reported(self, task):
+        task.delay.side_effect = RuntimeError("broker down")
+        queue = CeleryTaskQueue(logger=Mock())
+
+        assert queue.enqueue_password_reset_email(
+            "u@e.com", "TOK", context()
+        ) is False
+
+    def test_the_token_is_not_logged(self, task):
+        """A reset token is a way into the account, and a log outlives a
+        mailbox."""
+        task.delay.side_effect = RuntimeError("broker down")
+        logger = Mock()
+
+        CeleryTaskQueue(logger=logger).enqueue_password_reset_email(
+            "u@e.com", "SECRET-TOKEN", context()
+        )
+
+        assert logger.error.called
+        assert "SECRET-TOKEN" not in str(logger.mock_calls)
+
+    def test_a_queue_with_no_logger_still_answers(self, task):
+        """The logger is optional, and a refusal must be reported as a
+        return value rather than as an AttributeError inside the handler."""
+        task.delay.side_effect = RuntimeError("broker down")
+
+        assert CeleryTaskQueue().enqueue_password_reset_email(
+            "u@e.com", "TOK", context()
+        ) is False
+
+    def test_a_recent_click_failure_does_not_hold_up_a_reset(self, task):
+        """Same rule as the other two, and the sharpest reason of the
+        three: somebody locked out of their account is turned away
+        because a redirect failed a moment ago."""
+        queue = CeleryTaskQueue(logger=Mock(), retry_interval=3600)
+        with patch(
+            "link_shortener.infrastructure.task_queue.tasks.process_link_accessed"
+        ) as clicks:
+            clicks.delay.side_effect = RuntimeError("broker down")
+            queue.enqueue_link_accessed("abc123", context())
+
+        assert queue.enqueue_password_reset_email(
+            "u@e.com", "TOK", context()
+        ) is True
+        assert task.delay.called
