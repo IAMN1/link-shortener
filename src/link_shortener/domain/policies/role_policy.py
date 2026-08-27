@@ -20,8 +20,8 @@ validation involves defining exactly what IS authorized, and by
 definition, everything else is not authorized" (OWASP Input Validation
 Cheat Sheet, which calls allowlisting "the more robust and secure
 approach" and leaves a denylist the smaller role of "an additional layer
-of defense"). The four names this application ships -- ``guest``,
-``user``, ``analyst``, ``admin`` -- are inside it.
+of defense"). Every role name this application ships, in ``roles.yaml``,
+is inside it.
 """
 
 import re

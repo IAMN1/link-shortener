@@ -28,8 +28,9 @@ are not quietly undone later:
   why it is swept on a retention window and why ``link_visit_days`` exists
   beside it -- one row per link per day, written before the sweep deletes
   what it was computed from, so the long-range charts keep their past. Its
-  primary key is the pair, so folding a day twice replaces the row instead
-  of doubling it.
+  primary key is the pair, so a day cannot end up as two rows: the fold is
+  a plain insert, and a second run over a day already written is refused by
+  the key rather than added to it.
 
   What is *not* in ``link_visits`` is deliberate: no IP address and no
   User-Agent string. The application reduces both before they arrive -- an

@@ -81,11 +81,11 @@ def require_may_confer(actor: Optional[User], permissions: Iterable[str]) -> Non
         permissions: Permission names the operation would confer.
 
     Raises:
-        DomainError: With code ``FORBIDDEN`` if any permission is one the
-            actor does not hold. The message names the offending
-            permissions: the caller is an administrator being told which
-            grant exceeded their own authority, and withholding that turns
-            a clear refusal into a puzzle.
+        PermissionDeniedError: If any permission is one the actor does not
+            hold. It carries them in ``exceeded``, and the message names
+            them as well: the caller is an administrator being told which
+            grant went past their own authority, and withholding that
+            turns a clear refusal into a puzzle.
     """
     if is_superuser(actor):
         return

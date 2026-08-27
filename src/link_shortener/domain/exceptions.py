@@ -57,8 +57,9 @@ class PermissionDeniedError(DomainError):
 
     Carrying the required permissions on the exception is what lets one
     place write that record. The alternative is every raiser writing its
-    own, which is seventeen call sites and the eighteenth forgetting --
-    the argument ``CountingAuditLogger`` is built on.
+    own -- a record per raise site, and a missing one the first time
+    somebody adds a raise and does not think of the journal. That is the
+    argument ``CountingAuditLogger`` is built on.
 
     ``FORBIDDEN`` unchanged, so nothing about the answer moves: the status
     table keeps deciding, and a caller sees what it saw before.
