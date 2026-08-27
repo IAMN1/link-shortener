@@ -1,6 +1,6 @@
 # Decisions
 
-Eighty-five write-ups of why something is the way it is. Read this when the
+Eighty-seven write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -195,6 +195,53 @@ written where the run is described rather than here, because it is a
 property of the profile.
 
 ---
+
+### SQLAlchemy without the `asyncio` extra
+
+**Decided** (2026-08-27): the dependency is `sqlalchemy`, not
+`sqlalchemy[asyncio]`.
+
+**Why.** Nothing in this project is asynchronous: no `async def`, no
+`await`, no `AsyncSession`, no `create_async_engine` — in `src`, in
+`tests` or in `migrations` — and neither driver it runs on is an async
+one (`psycopg` for PostgreSQL, the standard library for SQLite). The
+extra's only effect was to pin `greenlet` unconditionally, which
+SQLAlchemy already requires on the platforms that need it; `requirements.txt`
+now carries it with that platform marker instead of without one.
+
+**Why it is worth a line here.** An extra names a capability, and this one
+named a capability the service does not have. A reader deciding how to add
+a background job would have taken it as a statement that the async stack
+was already available and paid for.
+
+### One formatter, and a dependency nothing imported
+
+**Decided** (2026-08-27): `autopep8` is the formatter this project runs;
+`black` and `isort` are no longer declared. `validators` is removed from
+the runtime dependencies.
+
+**Why one and not three.** All three were declared, none was named in CI,
+in `CONTRIBUTING.md`, in `docs/`, or in a settings section of its own, and
+none had ever been run over the tree. Measured on the 643 files of `src`
+and `tests`: `autopep8 --diff` proposes no change at all, `black` would
+rewrite **496** of them and `isort` **421**. So the tree is already in
+`autopep8`'s shape, and running either of the others is not "format the
+change I made" — it is reformatting the project in one commit, through a
+diff nobody can review. `black` and `autopep8` also disagree by
+construction, which is why declaring both reads as a stylistic policy the
+repository does not have. `.flake8` selects only `E9,F`, so layout is not
+a gate either way and the choice is not forced by the linters.
+
+`isort` stays installed regardless — `pylint` depends on it — but it is no
+longer listed as something this project runs. `CONTRIBUTING.md` now names
+the one command and when to run it.
+
+**Why `validators` had to go.** It is a runtime dependency, so it ships in
+the production image, and grep finds no `import validators` anywhere in
+`src`, `tests` or `migrations`. Addresses are validated by `Email` and by
+the Pydantic schemas, URLs by `OriginalUrl` — none of them reaches for it.
+The only occurrences of the word are comments about Pydantic validators,
+which is presumably how it survived a search once.
 
 ## Database and migrations
 

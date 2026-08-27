@@ -39,9 +39,13 @@ dependencies = [
     "pyjwt>=2.12.1",
     "python-dotenv>=1.2.1",
     "redis>=7.1.0",
-    "sqlalchemy[asyncio]>=2.0.45",
+    # Without the `asyncio` extra: nothing in this project is async --
+    # no coroutine, no `AsyncSession`, and both drivers it runs on
+    # (psycopg for PostgreSQL, the standard library for SQLite) are
+    # synchronous. The extra only pinned `greenlet` on every platform,
+    # which SQLAlchemy already asks for on the ones that need it.
+    "sqlalchemy>=2.0.45",
     "structlog>=25.5.0",
-    "validators>=0.35.0",
 ]
 
 [dependency-groups]
@@ -53,11 +57,17 @@ browser = [
     "playwright>=1.49",
 ]
 dev = [
+    # The one formatter, and the only one that agrees with the tree.
+    # Measured on 643 files: `autopep8 --diff` proposes nothing, `black`
+    # would rewrite 496 of them and `isort` 421 -- so running either of
+    # those is not "format before committing", it is reformatting the
+    # project. Both were declared and neither was ever run; they are gone.
+    # `.flake8` selects only `E9,F`, so layout is not a gate either way.
+    # `isort` is still installed -- `pylint` depends on it -- but it is no
+    # longer declared here as something this project runs.
     "autopep8>=2.3.2",
     "bandit>=1.9.2",
-    "black>=26.1.0",
     "flake8>=7.3.0",
-    "isort>=7.0.0",
     "mypy>=1.19.1",
     "openapi-spec-validator>=0.7.1",
     "pylint>=4.0.4",
