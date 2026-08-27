@@ -2754,6 +2754,37 @@ left alone. Both are about a table written by hand, which is what this one
 is; neither is about rebuilding the document, which cannot accumulate
 anything — the merge writes a new table and never into `PATHS`.
 
+### A comment does not count what it cannot keep counting
+
+**Decided** (2026-08-28): a comment states the property of a set, not its
+size, whenever the set grows with ordinary work -- "every suppression here
+is held by this setting" rather than "twelve suppressions are".
+
+**Why.** Measured over the tooling files -- `pyproject.toml`, the workflow,
+`tests/conftest.py`, the compose files and the baseline migration -- every
+count of that kind was found to be wrong:
+
+| what the text said | what the tree held |
+|---|---|
+| `Twelve type: ignore in src` | 13 |
+| `Восемь разобранных находок помечены # nosec` | 10 |
+| `ни один тест из 2444` | 4208 |
+| `Two things in here are decisions` | six bulleted items directly below it |
+| порог `на два пункта ниже достигнутого` | 88 against 98.60, a gap of 10.6 |
+
+Nothing catches these. They are comments, so no linter reads them; the
+numbers are about the tree rather than about behaviour, so no test can hold
+them; and the text stays plausible after it stops being true, which is what
+makes it worse than no text at all. The reader who checks one and finds it
+wrong has no way to know which of the others still hold.
+
+**What still carries a number.** A measurement does: `473 bytes per
+redirect`, `10.5 to 15.8 per cent of the journal destroyed`, `796 bytes per
+request`. These describe a run that happened, not a set that the next commit
+changes, and the entry beside them says when they were taken. The rule is
+about counts that ordinary work moves -- suppressions, markers, list items,
+tests -- not about arithmetic that stays true.
+
 ## Known limits
 
 Things that are wrong, understood, and deliberately left. Each says what it

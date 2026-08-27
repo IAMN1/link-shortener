@@ -5,8 +5,8 @@ history: this project keeps no upgrade path from anything older, because
 there is nothing older deployed. A clone runs ``alembic upgrade head`` once
 and has the schema the models describe.
 
-Two things in here are decisions rather than mechanics, and are stated so
-they are not quietly undone later:
+What follows are decisions rather than mechanics, and are stated so they
+are not quietly undone later:
 
 * ``urls.owner_id`` is ``ON DELETE CASCADE``. Links do not outlive the
   account that made them, and there is no recovery. Deleting a user is
