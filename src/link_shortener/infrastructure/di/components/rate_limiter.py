@@ -71,5 +71,19 @@ class RateLimiterComponent:
                     retry_interval=self.retry_interval,
                 )
             else:
+                # Said out loud, as the cache, the queue and the mailer say
+                # their own fallbacks. This one was the silent exception,
+                # and it is the one whose silence costs most: the window
+                # lives in the process, so the service enforces the
+                # configured limit once per worker rather than once per
+                # deployment -- four gunicorn workers, four times the
+                # limit, with nothing in the log to say so. Measured with
+                # two limiters over one key: the first refused at the
+                # limit while the second still allowed.
+                if self.logger:
+                    self.logger.warning(
+                        "Redis is off, using the in-memory rate limiter; "
+                        "each worker enforces the limit on its own"
+                    )
                 self._limiter = MemoryRateLimiter()
         return self._limiter
