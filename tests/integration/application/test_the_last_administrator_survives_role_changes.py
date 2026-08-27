@@ -30,7 +30,6 @@ from link_shortener.infrastructure.database.seed import seed_base_roles
 from link_shortener.web.app_factory import create_app
 
 
-ADMIN_EMAIL = "sole-administrator@example.test"
 PASSWORD = "S0le-Admin-Pass!"
 
 

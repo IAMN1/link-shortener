@@ -39,18 +39,3 @@ def db_manager(test_config):
     yield manager
     manager.close()
 
-@pytest.fixture
-def mock_redis_client(mocker):
-    """Provides a mock for the redis.Redis client"""
-    
-    mock = mocker.MagicMock()
-
-    return mock
-
-@pytest.fixture
-def mock_structlog(mocker):
-    """Provides a mock for the structlog.get_logger"""
-
-    mock_logger = mocker.MagicMock()
-    mocker.patch('structlog.get_logger', return_value=mock_logger)
-    return mock_logger

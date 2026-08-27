@@ -93,13 +93,6 @@ def db(app):
         yield app.container.get_db_manager()
 
 
-@pytest.fixture()
-def app_context(app):
-    """Flask app context for tests that need it."""
-    with app.app_context():
-        yield app
-
-
 def confirm_email(app, email):
     """
     Mark a registered address as confirmed, as following the link would.

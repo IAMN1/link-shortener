@@ -85,22 +85,6 @@ def _store(app, *addresses):
             session.commit()
 
 
-def _store_more(app, user_id, address):
-    """Write one more account, without disturbing the ids already used."""
-    with app.app_context():
-        with app.container.get_db_manager().session() as session:
-            session.execute(
-                text(
-                    "INSERT INTO users "
-                    "(id, email, password_hash, is_active, "
-                    " email_verified, created_at) "
-                    "VALUES (:id, :email, :hash, 1, 1, CURRENT_TIMESTAMP)"
-                ),
-                {"id": user_id, "email": address, "hash": HASH},
-            )
-            session.commit()
-
-
 def _stored(app):
     """Every address in the table, as stored."""
     with app.app_context():

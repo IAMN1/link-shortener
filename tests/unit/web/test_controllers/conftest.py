@@ -20,8 +20,6 @@ from link_shortener.application.use_cases.stats.get_service_health import (
 )
 
 
-HEALTH_PATH = "/api/v1/admin/health"
-
 LOGGING = LoggingStatus(
     worker=4242,
     logger=ChainStatus(
