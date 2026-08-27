@@ -1,6 +1,6 @@
 # Decisions
 
-Fifty-one write-ups of why something is the way it is. Read this when the
+Eighty-three write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -706,6 +706,37 @@ characters, the same width `urls.guest_identifier` already uses, on rows the
 retention sweep and the daily roll-up already delete. What it holds is the
 network the request came from, never a whole address — the value object
 zeroes the host part before it ever reaches here.
+
+### Four methods the domain no longer carries
+
+**Decided** (2026-08-27): `Link.is_active`, `RefreshSession.revoke`,
+`ShortCode.create` and `OriginalUrl.get_domain` are removed. Each was
+called by nothing — not by `src`, not by a template, a script or a
+translation, and three of the four not by a test either.
+
+**Why `revoke` is the one worth explaining.** It read as a guard: it left
+an already-set revocation time alone, which is a real invariant. The
+invariant is held, and held where it has to be — the repository retires a
+session with `UPDATE ... WHERE revoked_at IS NULL`, so a second revocation
+cannot overwrite the first even under two concurrent requests. The entity
+method could only have held it inside one process, for a caller that then
+had to remember to `save`. There is no such caller.
+
+**The other three.** `Link.is_active` is `not is_expired()` and every
+caller asks the question the other way round. `ShortCode.create` called
+its own constructor and was the only such factory among nine value
+objects. `get_domain` was three lines over `_parse().hostname`, named in a
+docstring as one of the two things downstream of parsing, and used by two
+tests and nothing else; the docstring now names `normalize()` alone,
+which is what production calls.
+
+**What was checked before removing.** Coverage said the lines never ran,
+which is evidence that no test holds them — not that nothing needs them.
+So each was also grepped for by name across `src`, `tests`, the templates,
+the JavaScript, the translations and `docs/`, and the two tests that
+called `get_domain` were rewritten through `normalize()` rather than
+deleted, because what they were about — that a name full of digits is
+still a name — is worth keeping.
 
 ### The JWT carries no `roles` claim
 

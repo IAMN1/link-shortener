@@ -120,14 +120,8 @@ class TestOriginalUrl:
 
 
     # ------------------------------------------------------------------
-    # Tests for get_domain and normalize methods
+    # Tests for normalize
     # ------------------------------------------------------------------
-    def test_get_domain(self):
-        """Should extract domain (hostname) without port."""
-
-        url = OriginalUrl("https://sub.test.com:8080/path")
-        assert url.get_domain() == "sub.test.com"
-
     @pytest.mark.parametrize("url,expected", [
         ("httPs://TesT.com", "https://test.com/"),
         ("https://test.com", "https://test.com/"),

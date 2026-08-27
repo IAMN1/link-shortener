@@ -123,8 +123,8 @@ class TestObfuscatedSpellingsOfTheLoopback:
             OriginalUrl("http://999.1.1.1/x")
 
     def test_a_name_that_merely_contains_digits_is_still_a_name(self):
-        assert OriginalUrl("http://127.0.0.1.nip.io/x").get_domain() == (
-            "127.0.0.1.nip.io"
+        assert OriginalUrl("http://127.0.0.1.nip.io/x").normalize() == (
+            "http://127.0.0.1.nip.io/x"
         )
 
 
