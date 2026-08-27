@@ -59,6 +59,25 @@ class TestControlCharactersAreRefusedAnywhere:
     def test_an_ordinary_url_still_passes(self):
         assert OriginalUrl(CLEAN).value == CLEAN
 
+    @pytest.mark.parametrize(
+        "char, name",
+        [(" ", "space, the first character above the C0 block"),
+         ("~", "tilde, the last one below DEL"),
+         ("\x80", "the first character above DEL")],
+    )
+    def test_the_characters_just_outside_the_ban_are_admitted(self, char, name):
+        """The ban is C0 and DEL, and the three characters that touch its
+        edges are not in it.
+
+        Only these tell ``< 32`` from ``<= 32`` and ``== 127`` from
+        ``!= 127``: a comparison off by one refuses a URL a browser opens
+        and every refusal test in this class stays green, because refusing
+        more is what they ask for.
+        """
+        url = f"{CLEAN}/page{char}"
+
+        assert OriginalUrl(url).value == url
+
     def test_percent_encoded_control_characters_are_fine(self):
         """Encoded, they are just characters in a string and never a header."""
         assert OriginalUrl(f"{CLEAN}?a=%0A").value.endswith("%0A")
@@ -100,3 +119,37 @@ class TestStoredRowsStayReadable:
     def test_reading_still_refuses_something_that_is_not_a_url(self):
         with pytest.raises(ValidationError):
             OriginalUrl.from_storage("nonsense")
+
+
+class TestThePathIsCheckedAgainAfterParsing:
+    """
+    A second guard over the same characters, in the parsed path.
+
+    Nothing reaches it through the constructor: the whole-string check
+    runs first and refuses every C0 character wherever it sits. It is not
+    dead -- it is what stands if the first check is ever narrowed, and the
+    two are in different methods with nothing but their order between
+    them. Asked of the validator directly, which is the only caller that
+    can get to it.
+    """
+
+    def test_a_control_character_in_the_parsed_path_is_refused(self):
+        from urllib.parse import urlparse
+
+        parsed = urlparse("https://target.example.com/pa\x01ge")
+
+        with pytest.raises(ValidationError, match="Path contains control"):
+            OriginalUrl.from_storage(CLEAN)._validate_path(parsed)
+
+    def test_an_ordinary_path_passes_it(self):
+        from urllib.parse import urlparse
+
+        parsed = urlparse(CLEAN)
+
+        OriginalUrl.from_storage(CLEAN)._validate_path(parsed)
+
+    def test_the_constructor_refuses_such_a_url_earlier(self):
+        """Stated so the guard above is not read as the answer a caller
+        gets: the message names the whole URL, not the path."""
+        with pytest.raises(ValidationError, match="URL contains control"):
+            OriginalUrl("https://target.example.com/pa\x01ge")

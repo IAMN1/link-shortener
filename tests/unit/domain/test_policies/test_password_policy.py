@@ -15,7 +15,8 @@ import pytest
 
 from link_shortener.domain.exceptions import ValidationError
 from link_shortener.domain.policies.password_policy import (
-    MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, validate_password
+    MAX_PASSWORD_BYTES, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH,
+    validate_password
 )
 
 
@@ -124,6 +125,35 @@ class TestTooLong:
         """64 characters, 128 bytes -- past what bcrypt will hash."""
         with pytest.raises(ValidationError, match="not exceed"):
             validate_password("пароль" * 10 + "абвг")
+
+    def test_the_longest_allowed_length_passes(self):
+        """The ceiling itself is inside, and only one character past it is
+        outside. Checked because ``>`` and ``>=`` differ on exactly this
+        password and nowhere else: with the comparison written the wrong
+        way the policy refuses a password it advertises as acceptable, and
+        every other test in this class stays green."""
+        validate_password("a" * MAX_PASSWORD_LENGTH)
+
+    def test_the_byte_ceiling_is_inside_too(self):
+        """36 Cyrillic characters are 72 bytes -- the whole of what bcrypt
+        hashes, and not one byte more. The character count stays well
+        inside its own limit, so this password is refused only if the byte
+        comparison is off by one."""
+        password = "абвгдеёжзийклмнопрстуфхцчшщъыьэюяабв"[:36]
+        assert len(password) == 36
+        assert len(password.encode("utf-8")) == MAX_PASSWORD_BYTES
+
+        validate_password(password)
+
+    def test_one_byte_past_the_byte_ceiling_is_refused(self):
+        """The same password with one more character: 37 characters, well
+        under the character limit, and 74 bytes, which is over."""
+        password = "абвгдеёжзийклмнопрстуфхцчшщъыьэюяабвг"[:37]
+        assert len(password) < MAX_PASSWORD_LENGTH
+        assert len(password.encode("utf-8")) > MAX_PASSWORD_BYTES
+
+        with pytest.raises(ValidationError, match="not exceed"):
+            validate_password(password)
 
 
 class TestPasswordsAttackersAlreadyHave:

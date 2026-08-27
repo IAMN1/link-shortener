@@ -1,6 +1,6 @@
 # Decisions
 
-Eighty-three write-ups of why something is the way it is. Read this when the
+Eighty-four write-ups of why something is the way it is. Read this when the
 code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
@@ -706,6 +706,31 @@ characters, the same width `urls.guest_identifier` already uses, on rows the
 retention sweep and the daily roll-up already delete. What it holds is the
 network the request came from, never a whole address — the value object
 zeroes the host part before it ever reaches here.
+
+### A trailing dot is dropped where the address is read
+
+**Decided** (2026-08-27): `_as_ip_address` drops a single trailing dot
+before deciding whether a host is an address, and the line stays although
+no URL can reach it.
+
+**Why it looks dead.** `_validate_netloc` runs first and refuses
+`http://8.8.8.8./x` as an empty label, so the constructor never gets that
+far. Measured: the line has no coverage from the whole suite, and every
+URL with a trailing dot is refused with `Empty label in host`.
+
+**What it does if it is reached.** Asked of the reader directly:
+`_as_ip_address("127.0.0.1.")` answers `127.0.0.1`. Without the dot
+dropped, the last label is empty, `_ends_in_number("")` is false, and the
+reader calls the host a **name** — at which point the internal-address
+check never looks at it. So admitting a trailing dot upstream, which is
+one line in a different method and a reasonable thing to want (it is the
+root form of a name, and browsers accept it), would open the loopback.
+The guard is what stands between those two facts, and nothing but the
+order of two methods keeps it shut today.
+
+**What is held instead of achieved.** Three tests ask the reader directly
+— the loopback, a public address, and a name — and a fourth states what a
+caller actually gets, so the guard is not mistaken for the behaviour.
 
 ### Four methods the domain no longer carries
 

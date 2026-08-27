@@ -174,3 +174,72 @@ class TestLink:
             original_url=valid_original_url
         )
         assert link1 != link2
+
+
+class TestTheMomentOfExpiryItself:
+    """Expiry is inclusive: at the stroke, the link is already gone.
+
+    The comparison is ``>=``, and the only clock reading that tells that
+    from ``>`` is the expiry itself. Measured before this test: flipping
+    it left the whole suite green, so a link would have gone on
+    redirecting for as long as the two stamps were equal.
+    """
+
+    def _at(self, monkeypatch, moment):
+        """Make ``datetime.now`` inside the entity answer ``moment``."""
+        import link_shortener.domain.entities.link as module
+
+        class FixedClock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return moment
+
+        monkeypatch.setattr(module, "datetime", FixedClock)
+
+    def test_a_link_whose_expiry_is_now_has_expired(
+        self, monkeypatch, sample_link: Link
+    ):
+        expiry = datetime(2026, 8, 27, 12, 0, tzinfo=timezone.utc)
+        sample_link.expires_at = expiry
+        self._at(monkeypatch, expiry)
+
+        assert sample_link.is_expired() is True
+
+    def test_one_microsecond_earlier_it_has_not(
+        self, monkeypatch, sample_link: Link
+    ):
+        expiry = datetime(2026, 8, 27, 12, 0, tzinfo=timezone.utc)
+        sample_link.expires_at = expiry
+        self._at(monkeypatch, expiry - timedelta(microseconds=1))
+
+        assert sample_link.is_expired() is False
+
+    def test_a_link_with_no_expiry_never_expires(
+        self, monkeypatch, sample_link: Link
+    ):
+        sample_link.expires_at = None
+        self._at(monkeypatch, datetime(2099, 1, 1, tzinfo=timezone.utc))
+
+        assert sample_link.is_expired() is False
+
+
+class TestComparedWithSomethingThatIsNotALink:
+    """``__eq__`` answers False rather than raising or deferring.
+
+    The branch was unreached: every equality test above compares two
+    links. Written to return ``NotImplemented``, or to read ``.id`` off
+    whatever it was handed, this raises instead -- and the caller is
+    ``in`` on a list, where an exception is not the answer anybody wants.
+    """
+
+    @pytest.mark.parametrize(
+        "other", ["not-a-link", 42, None, object()],
+        ids=["a string", "a number", "nothing", "a bare object"],
+    )
+    def test_it_is_not_equal_and_does_not_raise(self, sample_link: Link, other):
+        assert sample_link != other
+        assert (sample_link == other) is False
+
+    def test_a_link_is_still_findable_among_them(self, sample_link: Link):
+        """The caller this protects: a membership test over a mixed list."""
+        assert sample_link in ["not-a-link", 42, sample_link]

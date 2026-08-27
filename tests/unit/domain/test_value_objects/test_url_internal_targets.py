@@ -128,6 +128,58 @@ class TestObfuscatedSpellingsOfTheLoopback:
         )
 
 
+class TestAHostWrittenAsAnAddressThatDoesNotAddUp:
+    """
+    Refusals the parser reaches on its way to deciding what an address is.
+
+    Each of these lines was reachable and unreached: the ``999.1.1.1``
+    check above stops at the first of them, and the rest -- too many
+    parts, a part that is not a number, a last part with more in it than
+    the octets it has to fill -- were held by nothing. Measured: flipping
+    the comparison that bounds the last part left the whole suite green.
+    """
+
+    def test_more_parts_than_an_address_has(self):
+        with pytest.raises(ValidationError, match="Invalid IP address"):
+            OriginalUrl("http://1.2.3.4.5/x")
+
+    def test_a_part_that_is_not_a_number_at_all(self):
+        """The last part is a number, so this host is read as an address;
+        a part before it that is not one makes it a broken one rather than
+        a name."""
+        with pytest.raises(ValidationError, match="Invalid IP address"):
+            OriginalUrl("http://8.8.zz.8/x")
+
+    def test_the_last_octet_at_its_ceiling_is_an_address(self):
+        """255 is the largest an octet holds, and it is inside."""
+        assert OriginalUrl("http://8.8.8.255/x").normalize() == (
+            "http://8.8.8.255/x"
+        )
+
+    def test_one_past_the_last_octet_is_not(self):
+        with pytest.raises(ValidationError, match="Invalid IP address"):
+            OriginalUrl("http://8.8.8.256/x")
+
+    def test_a_short_form_fills_the_octets_it_left_out(self):
+        """Three parts, so the last one fills two octets and may hold up
+        to 65535. The number here is far past one octet and well inside
+        two, which is the whole of what this arithmetic is for."""
+        assert OriginalUrl("http://8.8.2048/x").normalize() == (
+            "http://8.8.2048/x"
+        )
+
+    def test_one_past_what_the_short_form_can_hold_is_refused(self):
+        with pytest.raises(ValidationError, match="Invalid IP address"):
+            OriginalUrl("http://8.8.65536/x")
+
+    def test_a_bare_radix_prefix_counts_as_zero(self):
+        """``0x`` with no digits is 0 to ``inet_aton``, so this host is
+        ``0.8.8.8`` -- inside ``0.0.0.0/8``, which is not a public
+        destination. Read as a name instead, it would be admitted."""
+        with pytest.raises(ValidationError, match="public address"):
+            OriginalUrl("http://0x.8.8.8/x")
+
+
 class TestNamesReservedForLocalUse:
     """RFC 6761/6762/8375 names, plus the ICANN reservation of ``.internal``."""
 
@@ -252,3 +304,69 @@ class TestTheOperatorCanOptOut:
     def test_the_default_blocks(self):
         with pytest.raises(ValidationError, match="public address"):
             OriginalUrl("http://10.0.0.1/x")
+
+
+class TestAHostWithATrailingDot:
+    """
+    The root form of a name, and what the address reader makes of it.
+
+    No URL reaches this through the constructor: ``_validate_netloc`` runs
+    first and refuses ``8.8.8.8.`` as an empty label, so the line that
+    drops the dot is unreachable from outside and reads as dead code. It
+    is not dead, it is a guard standing behind another one -- and what it
+    guards is worth stating, because the two checks are in different
+    methods and nothing but their order keeps this shut.
+
+    Asked of the reader directly, which is the only caller that can reach
+    it. Without the dot dropped, ``127.0.0.1.`` ends in an empty label,
+    the reader calls the host a name, and the internal-address check never
+    looks at it -- so admitting the trailing dot upstream would open the
+    loopback, in one line, in a different file.
+    """
+
+    def test_the_dot_is_dropped_and_the_host_is_still_an_address(self):
+        assert str(OriginalUrl._as_ip_address("127.0.0.1.")) == "127.0.0.1"
+
+    def test_a_public_address_reads_the_same_way(self):
+        assert str(OriginalUrl._as_ip_address("8.8.8.8.")) == "8.8.8.8"
+
+    def test_a_name_with_a_trailing_dot_is_still_a_name(self):
+        """Only the dot is dropped; what is in front of it still decides."""
+        assert OriginalUrl._as_ip_address("example.com.") is None
+
+    def test_the_constructor_never_gets_that_far(self):
+        """Stated so the guard above is not mistaken for the behaviour a
+        caller sees: the URL is refused, and refused earlier."""
+        with pytest.raises(ValidationError, match="Empty label"):
+            OriginalUrl("http://8.8.8.8./x")
+
+
+class TestWhatTheAddressReaderRefusesOnItsOwn:
+    """
+    Two more guards behind the parser, asked of the reader directly.
+
+    A bracketed authority is checked before this runs and a bare one with
+    colons in it is refused as a bad port, so no URL arrives here with an
+    IPv6 host in it. What the reader does when one does is still worth
+    pinning: it is the difference between a refusal and a host silently
+    read as a name.
+    """
+
+    def test_something_bracket_free_with_colons_that_is_not_an_address(self):
+        with pytest.raises(ValidationError, match="Invalid IP address"):
+            OriginalUrl._as_ip_address("::zz")
+
+    def test_an_ipv6_address_without_brackets_is_read_as_one(self):
+        assert str(OriginalUrl._as_ip_address("::1")) == "::1"
+
+    def test_an_empty_part_is_not_a_number(self):
+        """Which is what makes an empty last label read as a name rather
+        than as the zero it would otherwise parse to."""
+        assert OriginalUrl._parse_ipv4_part("") is None
+
+
+class TestAUrlWithAPortAndNoHost:
+
+    def test_it_says_the_hostname_is_missing(self):
+        with pytest.raises(ValidationError, match="must have a hostname"):
+            OriginalUrl("https://:80/x")
