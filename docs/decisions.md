@@ -1,7 +1,7 @@
 # Decisions
 
-Eighty-seven write-ups of why something is the way it is. Read this when the
-code does something that looks wrong until you know the reason.
+A write-up for every decision a reader would otherwise question. Read this
+when the code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
 [Development](development.md)
@@ -2784,6 +2784,45 @@ request`. These describe a run that happened, not a set that the next commit
 changes, and the entry beside them says when they were taken. The rule is
 about counts that ordinary work moves -- suppressions, markers, list items,
 tests -- not about arithmetic that stays true.
+
+### A package docstring says what goes in, not who takes out
+
+**Decided** (2026-08-28): every package carries a docstring, and it answers
+one question -- by what rule something is put in this directory. It does not
+name the package's callers and it does not count its members.
+
+**Why.** Both of the things it refuses go stale without anything failing.
+Measured over the package docstrings this tree already had, on the day the
+rule was written:
+
+| what the docstring said | what the tree held |
+|---|---|
+| `facades`: instead of **thirty** use cases | 50 modules, 55 classes |
+| `facades`: `ApiController` names **one** argument | it names three |
+| `cli/adapters`: "for various frameworks" | one adapter, `flask.py` |
+| `role_policy`: "the **four** names this ships" | five, since `auditor` |
+
+A count of callers is the worst kind to write down, because callers are the
+part of the tree most likely to move and a docstring in another directory is
+the last place anyone looks after moving one. A docstring that restates the
+directory name is the other failure: it survives every refactor by saying
+nothing, and its one substantive word -- "various" -- was already wrong.
+
+Not every number in one is wrong, and the rule is not "delete the numbers".
+`application/services` says `UserManagementService` is reached from nine use
+cases and `RoleManagementService` from three; both were remeasured here and
+both hold. What separates them is that they are the argument for the
+directory existing, not decoration on it -- and they were checked.
+
+**What the docstring is held to instead.** The rule for admission, which
+survives a refactor because it is what a refactor is judged by:
+`application/services` says "a service here is called *by* a use case and
+takes that use case's unit of work", and a file that does not fit that
+sentence does not belong in the directory whatever the call graph does. PEP
+257 asks a package docstring to "list the modules and subpackages exported";
+the Google Python Style Guide (3.8.2) asks it to "describe the contents and
+usage of the module". Both are about what is inside. Neither asks who is
+outside.
 
 ## Known limits
 

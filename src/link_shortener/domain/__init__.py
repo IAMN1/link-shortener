@@ -1,3 +1,21 @@
+"""
+The rules that would still hold if the service were run on paper.
+
+What may go in this layer is decided by what it may import: the standard
+library, and ``idna``, which is a specification rather than a decision --
+an international name has one correct ASCII form and the standard
+library's own codec still implements IDNA 2003. No framework, no
+session, no configuration object. A rule that needs one of those is a
+rule about this deployment, and belongs to a layer that is allowed to
+know there is one.
+
+The names gathered below are the layer's vocabulary, so that a caller
+writes ``from link_shortener.domain import Link, LinkRepository`` rather
+than naming the module each one happens to sit in -- which is also what
+keeps moving a file inside the layer from being a change to everything
+that reads it.
+"""
+
 from .entities.link import Link
 from .entities.user import User
 from .entities.role import Role
