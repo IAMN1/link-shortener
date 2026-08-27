@@ -92,7 +92,15 @@ class CacheComponent:
                     self.logger.error("Failed to init Redis cache. Falling back to NullCache.", error=str(e), exc_info=True)
                     self._cache = NullCache()
             else:
-                self.logger.info("Using in-memory cache (development).")
+                # The profile is not named here, and used to be: the line
+                # read "(development)" whichever profile was running, so a
+                # production deployment that had switched Redis off found
+                # the word "development" in its own log. What it holds is
+                # said instead -- one process, one copy.
+                self.logger.info(
+                    "Redis is off, using the in-memory cache; entries are "
+                    "not shared between workers"
+                )
                 self._cache = InMemoryLinkCache(
                     prefix=self.link_prefix,
                     link_ttl=self.link_ttl,
