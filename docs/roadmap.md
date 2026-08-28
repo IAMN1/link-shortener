@@ -6,6 +6,9 @@ nothing here is promised — each entry says what exists now, what the idea
 would change, and what it would cost, so that a later decision is made
 against facts rather than against a memory of them.
 
+[All docs](README.md) · [Decisions](decisions.md) ·
+[Architecture](architecture.md)
+
 Two neighbours to keep apart. [Decisions](decisions.md) records choices
 already made and the measurements behind them; its *Known limits* section
 records faults that are understood and deliberately left. This file records
