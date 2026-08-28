@@ -21,6 +21,9 @@ class ShortLinkResponse:
         expires_at: When the link expires; ``None`` for a permanent one.
         is_new: True if the link was just created.
         from_cache: True if data came from cache.
+        owner_id: Account the link belongs to, or ``None`` for a guest's.
+            Internal: it is what the web layer reads to decide whether a
+            deletion token is issued, and never goes into a response.
         link_id: Identifier of the stored row. Internal: the web layer signs
             it into the deletion token handed to a guest, and never puts it
             in a response.
@@ -109,6 +112,9 @@ class ExtendedLinkInfoResponse:
         age_days: Age of the link in days.
         clicks_per_day: Average clicks per day.
         last_access_days_ago: Days since last access (None if never accessed).
+        owner_id: Account the link belongs to, or ``None`` for a guest's.
+            Internal, as on ``ShortLinkResponse``: it never goes into a
+            response.
     """
     short_code: str
     short_url: str

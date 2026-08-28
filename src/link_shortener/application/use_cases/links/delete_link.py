@@ -185,8 +185,12 @@ class DeleteLinkUseCase(BaseUseCase):
             log: Bound logger.
 
         Raises:
-            DomainError: If the requester may not delete this link
-                (code=``FORBIDDEN``).
+            DomainError: With code ``UNAUTHENTICATED`` when nobody is
+                signed in at all.
+            PermissionDeniedError: When somebody is and may not delete this
+                link. Answered ``FORBIDDEN``, and it carries the permission
+                they would have needed, which is what the error handler
+                writes to the audit journal.
         """
         requester = self._load_requester(context, uow)
         if requester is None:

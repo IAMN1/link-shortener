@@ -678,8 +678,9 @@ class AuditLogger(ABC):
 
         Written from one place -- the error handler, which is where a
         ``PermissionDeniedError`` raised on any route ends up -- rather
-        than from each raiser. Seventeen raisers would be seventeen
-        chances for the eighteenth to forget, which is the argument
+        than from each raiser. Writing it at each raise site is a record
+        per raise site, and a missing one the first time somebody adds a
+        raise and does not think of the journal -- the argument
         ``CountingAuditLogger`` is built on.
 
         Any *route*, and that is the limit of it: the CLI reaches

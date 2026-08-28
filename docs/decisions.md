@@ -2808,11 +2808,17 @@ the last place anyone looks after moving one. A docstring that restates the
 directory name is the other failure: it survives every refactor by saying
 nothing, and its one substantive word -- "various" -- was already wrong.
 
-Not every number in one is wrong, and the rule is not "delete the numbers".
-`application/services` says `UserManagementService` is reached from nine use
-cases and `RoleManagementService` from three; both were remeasured here and
-both hold. What separates them is that they are the argument for the
-directory existing, not decoration on it -- and they were checked.
+**The exception this rule was granted, and how long it lasted.** On the day
+it was written, `application/services` said `UserManagementService` is
+reached from nine use cases and `RoleManagementService` from three, and both
+were let stand on being remeasured: they were the argument for the directory
+existing rather than decoration on it. Nine held. Three did not -- three use
+cases hold the service as an attribute, and two more call `resolve_roles` on
+the class itself, which is five that reach it. The count was right when it
+was written and wrong within the week, which is the failure this rule
+predicts, in the one place the rule made room for. That docstring now states
+the admission rule and no count: what earns a place there is being reached
+from more than one use case.
 
 **What the docstring is held to instead.** The rule for admission, which
 survives a refactor because it is what a refactor is judged by:

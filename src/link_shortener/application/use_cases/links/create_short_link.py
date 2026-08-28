@@ -111,9 +111,9 @@ class CreateShortLinkUseCase(BaseUseCase):
         start_time = time.perf_counter()
         # The URL itself is not written here. This line runs before any
         # validation, so what it would write is whatever the caller sent --
-        # and nine lines later that can be an address rejected for holding
-        # credentials in front of the host, by which point the password is
-        # already in application.log. OWASP's Logging Cheat Sheet lists
+        # and a few lines below it that can be an address rejected for
+        # holding credentials in front of the host, by which point the
+        # password is already in application.log. OWASP's Logging Cheat Sheet lists
         # authentication passwords among the data that "should usually not
         # be recorded directly in the logs". The address does get logged,
         # once it has been checked: ``audit.log_url_created`` masks it.
@@ -293,12 +293,17 @@ class CreateShortLinkUseCase(BaseUseCase):
             ttl_seconds: Time-to-live for a new link.
             log: Bound logger.
             audit: Bound audit logger.
+            chosen_code: The code the caller asked for, or ``None`` to let
+                the generator pick one.
 
         Returns:
             ShortLinkResponse DTO.
 
         Raises:
             LinkConflictError: If storing lost a race.
+            LinkCodeTakenError: If ``chosen_code`` is one another link
+                already carries. Not retried around: whoever asked for that
+                code asked for that one.
             GuestLinkLimitExceededError: If the guest link limit is exceeded.
             CodeGenerationError: If no unique code could be generated.
         """
@@ -466,8 +471,8 @@ class CreateShortLinkUseCase(BaseUseCase):
 
             log.debug("Code collision, retrying", attempt=attempt + 1, code=code.value)
 
-        # The deterministic ladder is finite -- the same five codes for a
-        # given URL, forever. One link per URL made that limit unreachable;
+        # The deterministic ladder is finite -- a URL has exactly as many
+        # codes as there are attempts, and the same ones forever. One link per URL made that limit unreachable;
         # per-owner deduplication and expiry do not, so running out of rungs
         # is now an ordinary event and must not be a dead end.
         for attempt in range(self.max_collision_attempts):

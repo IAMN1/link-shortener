@@ -52,7 +52,8 @@ class CreateUserUseCase(BaseUseCase):
             email: Email address.
             password: Plain-text password.
             context: Request context with admin info.
-            roles: Specific roles to assign; if None, the default role is used.
+            role_names: Names of the roles to assign; if ``None``, the
+                account is given the default role.
             is_active: Whether the account is active at creation.
 
         Returns:

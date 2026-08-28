@@ -54,7 +54,11 @@ class RedirectLinkUseCase(BaseUseCase):
                 which is where a single unmatched segment lands, a
                 malformed code is a page that is not there rather than a
                 bad request.
-            RuntimeError: On unexpected failures.
+            LinkExpiredError: If a link carries the code but its lifetime
+                is over, which the status table answers 410.
+
+        Anything else raised below is logged and re-raised as it came:
+        nothing here translates a failure into an exception of its own.
         """
 
         log = self._get_logger(self.logger, context)

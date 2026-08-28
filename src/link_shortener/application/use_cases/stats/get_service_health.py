@@ -68,6 +68,9 @@ class GetServiceHealthUseCase(BaseUseCase):
         Args:
             health_check_port: Implementation of HealthCheck.
             logger: Application logger.
+            logging_status: Reader for the state of the logging and audit
+                chains. Optional because the health answer predates it, and
+                a caller that builds this without one still gets the rest.
         """
         self.health_check = health_check_port
         self.logging_status = logging_status
