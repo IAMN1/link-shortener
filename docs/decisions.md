@@ -1052,6 +1052,37 @@ are written for a developer rather than for a reader, and translating a
 status nobody here raises would mean marking sentences no one can see in
 place to check.
 
+### The template's line numbers are checked, because nothing else would
+
+**Decided** (2026-08-28): CI re-runs `pybabel extract` and compares the result
+with the committed `messages.pot`, ignoring `POT-Creation-Date`. A stale
+template fails the lint job.
+
+**Why a generated file is worth a gate.** The `#:` lines are the only part of
+the translation machinery that points back at the code, and they are the part
+nothing else can notice. `gettext` reads the compiled `.mo`, which carries no
+addresses at all, so the service answers identically whether every `#:` is
+right or every one of them is wrong; `tests/unit/web/test_translations.py`
+checks that the strings are marked, extracted, translated and compiled, none of
+which involves an address. Measured on 2026-08-28, before the regeneration: of
+573 addresses, 35 no longer found their own text within three lines of where
+they pointed — `read_journal.py:299` had come to rest on a comment while the
+`N_("Authentication required")` it named had moved to 303. The remaining 16
+after it are an artefact of the check, not of the template: a `{% trans %}`
+block writes `{{ link }}` in the page and `%(link)s` in the catalogue.
+
+**What it costs.** A commit that shifts a line in a file holding a marked
+string now has to regenerate the catalogues, and a contributor who forgets is
+told so by name. That is the trade: the alternative is a template that is
+correct on the day it is written and drifts thereafter, and whose drift is
+visible only to the person who opens it to translate — the one person in this
+project who is not here to be asked. Regeneration is safe to do
+mechanically: `update` merges by `msgid`, so unchanged text keeps its
+translation. This one rewrote 33 address lines in the template and the same 33
+in each catalogue, marked nothing `fuzzy`, and left all 454 Russian and 444
+Chinese translations untouched — in the compiled `.mo` the only entry that
+differs is the metadata header, which carries the creation date.
+
 ### A refusal page decides by code, never by its own wording
 
 **Decided** (2026-08-16): `error.html` is reached through one function,

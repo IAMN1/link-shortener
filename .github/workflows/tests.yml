@@ -218,3 +218,21 @@ jobs:
         # свежего клона нет; локально то же даёт
         # `rm -rf .mypy_cache && uv run mypy --no-incremental src`.
         run: uv run mypy src
+
+      - name: Guard messages.pot against the tree
+        # Каждая строка `#:` в шаблоне ведёт переводчика к месту, где текст
+        # написан. Она устаревает от любой правки, сдвинувшей строки, и
+        # устаревает молча: gettext читает `.mo`, где ссылок нет, поэтому
+        # служба отвечает одинаково с верными и с уехавшими ссылками, а
+        # цену платит тот, кто открывает каталог переводить.
+        #
+        # `grep -v` убирает единственную строку, которая меняется при
+        # каждом запуске `extract` независимо от дерева.
+        run: |
+          uv run pybabel extract -F babel.cfg -o "$RUNNER_TEMP/messages.expected" \
+            --project=link-shortener --version=0.1.0 .
+          if ! diff -u <(grep -v '^"POT-Creation-Date' src/link_shortener/web/translations/messages.pot) \
+                       <(grep -v '^"POT-Creation-Date' "$RUNNER_TEMP/messages.expected"); then
+            echo "::error::messages.pot is stale -- re-run the pybabel extract, update and compile"
+            exit 1
+          fi

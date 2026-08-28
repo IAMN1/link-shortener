@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-26 03:37+0300\n"
+"POT-Creation-Date: 2026-08-29 00:42+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -20,14 +20,14 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: src/link_shortener/application/services/user_management_service.py:199
+#: src/link_shortener/application/services/user_management_service.py:208
 msgid "Password must not be empty"
 msgstr "Пароль не может быть пустым"
 
 #: src/link_shortener/application/use_cases/auth/change_password.py:91
-#: src/link_shortener/application/use_cases/journals/read_journal.py:299
-#: src/link_shortener/application/use_cases/links/delete_link.py:193
-#: src/link_shortener/application/use_cases/security/get_security_counts.py:173
+#: src/link_shortener/application/use_cases/journals/read_journal.py:303
+#: src/link_shortener/application/use_cases/links/delete_link.py:197
+#: src/link_shortener/application/use_cases/security/get_security_counts.py:177
 #: src/link_shortener/web/security/authorization.py:71
 #: src/link_shortener/web/security/decorators.py:51
 #: src/link_shortener/web/security/decorators.py:106
@@ -59,13 +59,13 @@ msgstr "Регистрация сейчас недоступна"
 
 #: src/link_shortener/application/use_cases/auth/reset_password.py:76
 #: src/link_shortener/application/use_cases/auth/reset_password.py:87
-#: src/link_shortener/web/controllers/auth_controller.py:502
+#: src/link_shortener/web/controllers/auth_controller.py:506
 msgid "This reset link is not valid"
 msgstr "Эта ссылка сброса недействительна"
 
 #: src/link_shortener/application/use_cases/auth/verify_email.py:63
 #: src/link_shortener/application/use_cases/auth/verify_email.py:82
-#: src/link_shortener/web/controllers/auth_controller.py:343
+#: src/link_shortener/web/controllers/auth_controller.py:347
 msgid "This confirmation link is not valid"
 msgstr "Эта ссылка подтверждения недействительна"
 
@@ -78,8 +78,8 @@ msgstr "Превышен предел пакета. Максимум: %(max)s, �
 msgid "The link could not be stored"
 msgstr "Ссылку не удалось сохранить"
 
-#: src/link_shortener/application/use_cases/journals/read_journal.py:306
-#: src/link_shortener/application/use_cases/security/get_security_counts.py:179
+#: src/link_shortener/application/use_cases/journals/read_journal.py:310
+#: src/link_shortener/application/use_cases/security/get_security_counts.py:183
 #: src/link_shortener/web/controllers/api_controller.py:235
 #: src/link_shortener/web/security/decorators.py:54
 #: src/link_shortener/web/security/decorators.py:109
@@ -96,79 +96,79 @@ msgstr "Код «%(code)s» занят службой и не может быт�
 msgid "ttl_seconds must not exceed %(max)s"
 msgstr "ttl_seconds не может превышать %(max)s"
 
-#: src/link_shortener/application/use_cases/links/delete_link.py:211
+#: src/link_shortener/application/use_cases/links/delete_link.py:215
 msgid "You are not allowed to delete this link"
 msgstr "Вам не разрешено удалять эту ссылку"
 
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:119
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:100
+#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:97
 #, python-format
 msgid "Unknown period '%(period)s'. Choose one of: %(choices)s"
 msgstr "Неизвестный период «%(period)s». Выберите один из: %(choices)s"
 
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:185
+#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:159
 #, python-format
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr "days должно быть от 1 до 730, получено %(days)s"
 
-#: src/link_shortener/domain/exceptions.py:148
+#: src/link_shortener/domain/exceptions.py:149
 #, python-format
 msgid "Link with code (%(code)s) not found"
 msgstr "Ссылка с кодом (%(code)s) не найдена"
 
-#: src/link_shortener/domain/exceptions.py:152
+#: src/link_shortener/domain/exceptions.py:153
 #: src/link_shortener/web/middleware/error_handler.py:434
 msgid "Link not found"
 msgstr "Ссылка не найдена"
 
-#: src/link_shortener/domain/exceptions.py:209
+#: src/link_shortener/domain/exceptions.py:210
 #, python-format
 msgid "Short code '%(code)s' is already taken"
 msgstr "Короткий код «%(code)s» уже занят"
 
-#: src/link_shortener/domain/exceptions.py:222
+#: src/link_shortener/domain/exceptions.py:223
 #, python-format
 msgid "Link with code (%(code)s) has expired"
 msgstr "Срок ссылки с кодом (%(code)s) истёк"
 
-#: src/link_shortener/domain/exceptions.py:226
+#: src/link_shortener/domain/exceptions.py:227
 msgid "Link has expired"
 msgstr "Срок ссылки истёк"
 
-#: src/link_shortener/domain/exceptions.py:240
+#: src/link_shortener/domain/exceptions.py:241
 msgid "Guest link limit exceeded"
 msgstr "Превышен гостевой предел ссылок"
 
-#: src/link_shortener/domain/exceptions.py:276
+#: src/link_shortener/domain/exceptions.py:277
 #, python-format
 msgid "User with id %(id)s not found"
 msgstr "Учётная запись с id %(id)s не найдена"
 
-#: src/link_shortener/domain/exceptions.py:304
+#: src/link_shortener/domain/exceptions.py:305
 msgid "Email already registered"
 msgstr "Этот адрес уже зарегистрирован"
 
-#: src/link_shortener/domain/exceptions.py:323
+#: src/link_shortener/domain/exceptions.py:324
 #, python-format
 msgid "Role %(name)s not found"
 msgstr "Роль %(name)s не найдена"
 
-#: src/link_shortener/domain/exceptions.py:342
+#: src/link_shortener/domain/exceptions.py:343
 #, python-format
 msgid "Role %(name)s already exists"
 msgstr "Роль %(name)s уже существует"
 
-#: src/link_shortener/domain/exceptions.py:362
+#: src/link_shortener/domain/exceptions.py:363
 #, python-format
 msgid "Role %(name)s belongs to the service and cannot be modified or deleted"
 msgstr "Роль %(name)s принадлежит службе: её нельзя ни изменить, ни удалить"
 
-#: src/link_shortener/domain/exceptions.py:388
+#: src/link_shortener/domain/exceptions.py:389
 #, python-format
 msgid "Role %(name)s cannot be assigned to an account"
 msgstr "Роль %(name)s нельзя назначить учётной записи"
 
-#: src/link_shortener/domain/exceptions.py:408
+#: src/link_shortener/domain/exceptions.py:409
 #, python-format
 msgid "Permissions not found: %(names)s"
 msgstr "Права не найдены: %(names)s"
@@ -769,30 +769,30 @@ msgstr "Войдите, чтобы видеть свою статистику"
 msgid "days must be a whole number"
 msgstr "days должно быть целым числом"
 
-#: src/link_shortener/web/controllers/auth_controller.py:210
-#: src/link_shortener/web/controllers/auth_controller.py:292
+#: src/link_shortener/web/controllers/auth_controller.py:214
+#: src/link_shortener/web/controllers/auth_controller.py:296
 msgid "Email and password are required"
 msgstr "Нужны адрес и пароль"
 
-#: src/link_shortener/web/controllers/auth_controller.py:372
-#: src/link_shortener/web/controllers/auth_controller.py:462
+#: src/link_shortener/web/controllers/auth_controller.py:376
+#: src/link_shortener/web/controllers/auth_controller.py:466
 msgid "Email is required"
 msgstr "Нужен адрес почты"
 
-#: src/link_shortener/web/controllers/auth_controller.py:413
+#: src/link_shortener/web/controllers/auth_controller.py:417
 msgid "Current password is required"
 msgstr "Нужен текущий пароль"
 
-#: src/link_shortener/web/controllers/auth_controller.py:417
-#: src/link_shortener/web/controllers/auth_controller.py:506
+#: src/link_shortener/web/controllers/auth_controller.py:421
+#: src/link_shortener/web/controllers/auth_controller.py:510
 msgid "New password is required"
 msgstr "Нужен новый пароль"
 
-#: src/link_shortener/web/controllers/auth_controller.py:563
+#: src/link_shortener/web/controllers/auth_controller.py:567
 msgid "No refresh token"
 msgstr "Нет токена обновления"
 
-#: src/link_shortener/web/controllers/auth_controller.py:569
+#: src/link_shortener/web/controllers/auth_controller.py:573
 msgid "Invalid or expired refresh token"
 msgstr "Токен обновления неверен или истёк"
 
@@ -2128,3 +2128,4 @@ msgstr "страницы входа"
 #, python-format
 msgid "Ask for a new one from the %(link)s."
 msgstr "Запросите новую со %(link)s."
+

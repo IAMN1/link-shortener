@@ -433,5 +433,10 @@ The browser run is on the clean half only: it reads nothing from the
 environment, and Chromium is a hundred megabytes to download.
 
 Linters are a separate job, one pass, with a step each so the summary says
-which tool objected: `flake8`, `pylint` (floor 9.0, currently 9.26),
-`bandit`, `mypy` (floor: zero errors).
+which tool objected: `flake8`, `pylint` (floor 9.0, and the run prints what
+it scored), `bandit`, `mypy` (floor: zero errors). A fifth step in that job
+checks nothing about the code: it re-runs `pybabel extract` and compares the
+result with `messages.pot`, ignoring the creation date. A `#:` line in that
+template is the address a translator opens, and it goes out of date on any
+edit that shifts a line — silently, because `gettext` reads the compiled
+`.mo`, where those addresses are not present at all.

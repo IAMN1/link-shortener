@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-26 03:37+0300\n"
+"POT-Creation-Date: 2026-08-29 00:42+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -19,14 +19,14 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: src/link_shortener/application/services/user_management_service.py:199
+#: src/link_shortener/application/services/user_management_service.py:208
 msgid "Password must not be empty"
 msgstr "密码不能为空"
 
 #: src/link_shortener/application/use_cases/auth/change_password.py:91
-#: src/link_shortener/application/use_cases/journals/read_journal.py:299
-#: src/link_shortener/application/use_cases/links/delete_link.py:193
-#: src/link_shortener/application/use_cases/security/get_security_counts.py:173
+#: src/link_shortener/application/use_cases/journals/read_journal.py:303
+#: src/link_shortener/application/use_cases/links/delete_link.py:197
+#: src/link_shortener/application/use_cases/security/get_security_counts.py:177
 #: src/link_shortener/web/security/authorization.py:71
 #: src/link_shortener/web/security/decorators.py:51
 #: src/link_shortener/web/security/decorators.py:106
@@ -58,13 +58,13 @@ msgstr "目前无法注册"
 
 #: src/link_shortener/application/use_cases/auth/reset_password.py:76
 #: src/link_shortener/application/use_cases/auth/reset_password.py:87
-#: src/link_shortener/web/controllers/auth_controller.py:502
+#: src/link_shortener/web/controllers/auth_controller.py:506
 msgid "This reset link is not valid"
 msgstr "此重置链接无效"
 
 #: src/link_shortener/application/use_cases/auth/verify_email.py:63
 #: src/link_shortener/application/use_cases/auth/verify_email.py:82
-#: src/link_shortener/web/controllers/auth_controller.py:343
+#: src/link_shortener/web/controllers/auth_controller.py:347
 msgid "This confirmation link is not valid"
 msgstr "此确认链接无效"
 
@@ -77,8 +77,8 @@ msgstr "超出批量上限。最多 %(max)s 条，请求了 %(requested)s 条"
 msgid "The link could not be stored"
 msgstr "无法保存该链接"
 
-#: src/link_shortener/application/use_cases/journals/read_journal.py:306
-#: src/link_shortener/application/use_cases/security/get_security_counts.py:179
+#: src/link_shortener/application/use_cases/journals/read_journal.py:310
+#: src/link_shortener/application/use_cases/security/get_security_counts.py:183
 #: src/link_shortener/web/controllers/api_controller.py:235
 #: src/link_shortener/web/security/decorators.py:54
 #: src/link_shortener/web/security/decorators.py:109
@@ -95,79 +95,79 @@ msgstr "「%(code)s」由服务保留，不能用作短代码"
 msgid "ttl_seconds must not exceed %(max)s"
 msgstr "ttl_seconds 不得超过 %(max)s"
 
-#: src/link_shortener/application/use_cases/links/delete_link.py:211
+#: src/link_shortener/application/use_cases/links/delete_link.py:215
 msgid "You are not allowed to delete this link"
 msgstr "您无权删除此链接"
 
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:119
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:100
+#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:97
 #, python-format
 msgid "Unknown period '%(period)s'. Choose one of: %(choices)s"
 msgstr "未知的时间段「%(period)s」。请从以下选择：%(choices)s"
 
-#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:185
+#: src/link_shortener/application/use_cases/stats/get_visit_stats.py:159
 #, python-format
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr "days 必须在 1 到 730 之间，收到的是 %(days)s"
 
-#: src/link_shortener/domain/exceptions.py:148
+#: src/link_shortener/domain/exceptions.py:149
 #, python-format
 msgid "Link with code (%(code)s) not found"
 msgstr "找不到代码为 (%(code)s) 的链接"
 
-#: src/link_shortener/domain/exceptions.py:152
+#: src/link_shortener/domain/exceptions.py:153
 #: src/link_shortener/web/middleware/error_handler.py:434
 msgid "Link not found"
 msgstr "找不到该链接"
 
-#: src/link_shortener/domain/exceptions.py:209
+#: src/link_shortener/domain/exceptions.py:210
 #, python-format
 msgid "Short code '%(code)s' is already taken"
 msgstr "短代码「%(code)s」已被占用"
 
-#: src/link_shortener/domain/exceptions.py:222
+#: src/link_shortener/domain/exceptions.py:223
 #, python-format
 msgid "Link with code (%(code)s) has expired"
 msgstr "代码为 (%(code)s) 的链接已过期"
 
-#: src/link_shortener/domain/exceptions.py:226
+#: src/link_shortener/domain/exceptions.py:227
 msgid "Link has expired"
 msgstr "链接已过期"
 
-#: src/link_shortener/domain/exceptions.py:240
+#: src/link_shortener/domain/exceptions.py:241
 msgid "Guest link limit exceeded"
 msgstr "已超出访客链接上限"
 
-#: src/link_shortener/domain/exceptions.py:276
+#: src/link_shortener/domain/exceptions.py:277
 #, python-format
 msgid "User with id %(id)s not found"
 msgstr "找不到 id 为 %(id)s 的账户"
 
-#: src/link_shortener/domain/exceptions.py:304
+#: src/link_shortener/domain/exceptions.py:305
 msgid "Email already registered"
 msgstr "该邮箱地址已被注册"
 
-#: src/link_shortener/domain/exceptions.py:323
+#: src/link_shortener/domain/exceptions.py:324
 #, python-format
 msgid "Role %(name)s not found"
 msgstr "找不到角色 %(name)s"
 
-#: src/link_shortener/domain/exceptions.py:342
+#: src/link_shortener/domain/exceptions.py:343
 #, python-format
 msgid "Role %(name)s already exists"
 msgstr "角色 %(name)s 已存在"
 
-#: src/link_shortener/domain/exceptions.py:362
+#: src/link_shortener/domain/exceptions.py:363
 #, python-format
 msgid "Role %(name)s belongs to the service and cannot be modified or deleted"
 msgstr "角色 %(name)s 属于服务，无法修改或删除"
 
-#: src/link_shortener/domain/exceptions.py:388
+#: src/link_shortener/domain/exceptions.py:389
 #, python-format
 msgid "Role %(name)s cannot be assigned to an account"
 msgstr "角色 %(name)s 无法分配给账户"
 
-#: src/link_shortener/domain/exceptions.py:408
+#: src/link_shortener/domain/exceptions.py:409
 #, python-format
 msgid "Permissions not found: %(names)s"
 msgstr "未找到权限：%(names)s"
@@ -758,30 +758,30 @@ msgstr "登录后可查看自己的统计"
 msgid "days must be a whole number"
 msgstr "days 必须是整数"
 
-#: src/link_shortener/web/controllers/auth_controller.py:210
-#: src/link_shortener/web/controllers/auth_controller.py:292
+#: src/link_shortener/web/controllers/auth_controller.py:214
+#: src/link_shortener/web/controllers/auth_controller.py:296
 msgid "Email and password are required"
 msgstr "需要邮箱地址和密码"
 
-#: src/link_shortener/web/controllers/auth_controller.py:372
-#: src/link_shortener/web/controllers/auth_controller.py:462
+#: src/link_shortener/web/controllers/auth_controller.py:376
+#: src/link_shortener/web/controllers/auth_controller.py:466
 msgid "Email is required"
 msgstr "需要邮箱地址"
 
-#: src/link_shortener/web/controllers/auth_controller.py:413
+#: src/link_shortener/web/controllers/auth_controller.py:417
 msgid "Current password is required"
 msgstr "需要当前密码"
 
-#: src/link_shortener/web/controllers/auth_controller.py:417
-#: src/link_shortener/web/controllers/auth_controller.py:506
+#: src/link_shortener/web/controllers/auth_controller.py:421
+#: src/link_shortener/web/controllers/auth_controller.py:510
 msgid "New password is required"
 msgstr "需要新密码"
 
-#: src/link_shortener/web/controllers/auth_controller.py:563
+#: src/link_shortener/web/controllers/auth_controller.py:567
 msgid "No refresh token"
 msgstr "没有刷新令牌"
 
-#: src/link_shortener/web/controllers/auth_controller.py:569
+#: src/link_shortener/web/controllers/auth_controller.py:573
 msgid "Invalid or expired refresh token"
 msgstr "刷新令牌无效或已过期"
 
@@ -2082,3 +2082,4 @@ msgstr "登录页"
 #, python-format
 msgid "Ask for a new one from the %(link)s."
 msgstr "请到%(link)s重新申请一个。"
+
