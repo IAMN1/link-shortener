@@ -50,7 +50,9 @@ class UpdateUserRolesUseCase(BaseUseCase):
 
         Args:
             user_id: UUID of the target user.
-            roles: New list of domain Role entities to assign.
+            role_names: Names of the roles the account is to wear, in the
+                order they were asked for. Resolved to entities here, not
+                by the caller.
             context: Request context with admin info.
 
         Returns:

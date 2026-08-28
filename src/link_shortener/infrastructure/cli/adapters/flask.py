@@ -557,7 +557,7 @@ def roll_up_security_events():
     A command of its own rather than a step inside `roll-up-visits`. The
     two tables fill at different rates -- one with every redirect, the
     other with every sign-in -- and they keep their history for different
-    lengths of time, a year against ninety days. An operator whose cron
+    lengths of time, ninety days against a year. An operator whose cron
     line says "roll up visits" should not find it deleting the security
     history as well, under a name that does not mention it.
 

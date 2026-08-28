@@ -46,7 +46,13 @@ class UserManagementService:
             The created User entity.
 
         Raises:
-            ValidationError: If email is invalid or already registered.
+            ValidationError: If the address is not an address.
+            EmailAlreadyRegisteredError: If an account already carries it.
+                A ``ValidationError``, so a caller catching that catches
+                this too, and answered 409 rather than 400.
+            DomainError: With code ``CONFIGURATION_ERROR`` when no roles
+                were asked for and the deployment's default role is not
+                there to fall back on.
         """
 
         # Validated by the value object, and left to raise. The wrap that
@@ -108,7 +114,10 @@ class UserManagementService:
             Updated User.
 
         Raises:
-            DomainError: If user not found.
+            UserNotFoundError: If no account carries that id.
+            RoleNotAssignableError: At the first role no account may wear.
+                This is one of the two doors a role reaches an account
+                through, and the policy is asked at both.
         """
 
         user = uow.users.find_by_id(user_id)

@@ -5,7 +5,7 @@ cannot be dropped: ``read`` is handed whatever holds the configuration, and
 a name it cannot find has to resolve to something. What can be done is hold
 the two copies together, the way ``PERMISSION_FOR`` is held to ``Journal``.
 
-One of the thirteen had already drifted when this was written.
+One of the names had already drifted when this was written.
 ``LOG_FILENAME`` read ``link_shortener`` here and ``application`` there --
 the pair that decides which file the application writes and which file the
 journal viewer reads, so a configuration object without the attribute would

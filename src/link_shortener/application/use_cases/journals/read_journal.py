@@ -281,7 +281,11 @@ class ReadJournalUseCase(BaseUseCase):
             log: Bound logger.
 
         Raises:
-            DomainError: If the caller may not read it.
+            DomainError: With code ``UNAUTHENTICATED`` when nobody is
+                signed in at all.
+            PermissionDeniedError: When somebody is and may not read this
+                journal. It carries the permission they would have needed,
+                which is what the error handler writes to the audit journal.
         """
         required = PERMISSION_FOR[journal]
 

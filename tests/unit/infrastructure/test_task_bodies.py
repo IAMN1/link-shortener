@@ -163,8 +163,8 @@ class TestThePasswordResetTask:
         assert retry.called
 
     def test_a_failing_send_does_not_log_the_token(self, container):
-        """This token is a way into the account, so of the three it is the
-        one that matters most."""
+        """This token is a way into the account, so of the tokens the
+        tasks carry it is the one that matters most."""
         use_case = container.get_send_password_reset_email_use_case.return_value
         use_case.execute.side_effect = RuntimeError("smtp down")
 

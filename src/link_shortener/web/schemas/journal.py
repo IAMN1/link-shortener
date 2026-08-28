@@ -58,7 +58,7 @@ class JournalQuery(BaseModel):
     """
     What a caller may ask for beyond the journal's name.
 
-    Both parameters arrive in the query string, so both are validated
+    Every field arrives in the query string, so every one is validated
     rather than read: ``limit`` decides how much work a request costs, and
     the deployment serves requests on ``gunicorn --worker-class sync``,
     where one request occupies a worker for its whole life.
@@ -81,6 +81,10 @@ class JournalQuery(BaseModel):
             five seconds does not write twelve lines a minute into the
             journal it is showing. Off by default, which is the safe way
             round: a caller that says nothing is recorded.
+
+    The narrowing terms are not listed here. They are the search, they are
+    described once in ``openapi.JOURNAL_SEARCH_PARAMETERS``, and each one
+    given is a further condition a line must meet.
     """
 
     limit: int = Field(default=DEFAULT_LINES, ge=1, le=HARD_LIMIT)

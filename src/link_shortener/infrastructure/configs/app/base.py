@@ -834,7 +834,7 @@ class BaseConfig:
     Directory a SQLite file is put in. Ignored by PostgreSQL.
 
     Relative to the project root, so the default puts the file in
-    ``data/databases`` however the process was started. An absolute value
+    ``datas/databases`` however the process was started. An absolute value
     is taken as it stands and works outside a source tree as well -- which
     is the case a container is: the package is installed into
     site-packages, there is no project directory above it, and a
@@ -936,9 +936,10 @@ class BaseConfig:
         server-side connections.
 
         Five rather than twenty because the ceiling is multiplied by the
-        worker count: twenty plus ten of overflow across eight workers is
-        240 connections against a PostgreSQL whose own default limit is
-        100.
+        worker count: twenty plus five of overflow across four workers is
+        100 connections, which is a PostgreSQL's own default limit
+        exactly, leaving none for the migration, the worker or a psql
+        session.
         """
         return self._pool_setting("DATABASE_POOL_SIZE", 5)
 
@@ -965,7 +966,7 @@ class BaseConfig:
         ``src/db_shortener.db`` and reported no error at all, because an
         absent SQLite file is created rather than refused.
 
-        The anchor is ``DATABASE_DIR`` -- ``data/databases`` unless a
+        The anchor is ``DATABASE_DIR`` -- ``datas/databases`` unless a
         deployment says otherwise -- rather than the root itself, so that
         there is one place to look for a database file and it is not the
         same place as the source, the compose files and the docs. A name
@@ -1778,7 +1779,7 @@ class BaseConfig:
 
         ``DATABASE_TYPE`` defaults to ``sqlite`` and ``DATABASE_NAME`` to
         ``db_shortener``, so a deployment that configured neither comes up
-        on a brand-new empty file in the project root and answers as if
+        on a brand-new empty file under ``DATABASE_DIR`` and answers as if
         the data had never existed.
 
         What is checked is the backend the profile would connect to, not

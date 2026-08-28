@@ -357,7 +357,7 @@ class TestADatabaseNobodyNamed:
         allowed a default database -- so on a host that sets ``FLASK_ENV``
         nowhere and has no ``.env`` (the settings arrive from systemd or
         from the orchestrator), the guard resolved itself out of existence
-        and the migration creates ``db_shortener`` in the project root:
+        and the migration creates ``db_shortener`` under ``DATABASE_DIR``:
         147456 bytes and exit 0.
         """
         with pytest.raises(ValueError, match="nothing names a profile"):

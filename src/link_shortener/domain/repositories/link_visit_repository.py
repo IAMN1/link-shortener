@@ -148,8 +148,12 @@ class LinkVisitRepository(ABC):
         """
         Read back the rolled-up days for one link.
 
-        Exists for the tests and for the maintenance commands: the pages
-        go through ``daily_totals``, which already merges both sources.
+        Nothing in the service reads this. The pages go through
+        ``daily_totals``, which already merges both sources, and the
+        maintenance command writes day rows without reading them back. It
+        exists for the tests, which have to see the fold itself rather
+        than the merged answer that would hide a fold that never
+        happened.
 
         Args:
             link_id: The link.

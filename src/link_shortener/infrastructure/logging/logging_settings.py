@@ -49,10 +49,10 @@ class LoggingSettings:
             logging_enabled: Whether the application's own journal is
                 written at all. Here rather than passed to
                 ``setup_logging`` beside the settings: it is a logging
-                setting, read from ``LOGGING_ENABLED`` like the other
-                fourteen, and a switch that travels by a second road is a
-                switch that can disagree with itself -- which is what
-                ``audit_enabled`` did.
+                setting, read from ``LOGGING_ENABLED`` like every other
+                name in this list, and a switch that travels by a second
+                road is a switch that can disagree with itself -- which
+                is what ``audit_enabled`` did.
             audit_enabled: Whether audit logging is enabled.
             raise_on_write_failure: Whether a failed write reaches the
                 caller. True is for the web application, where
@@ -139,16 +139,16 @@ def logging_settings_from(
 
     One list of names, read by both processes that log. It was written
     twice for a while -- once in ``create_app`` and once for the Celery
-    worker -- and two lists of the same fourteen names are two lists that
-    drift: a setting added to one is silently absent in the other, and the
-    worker goes on logging by a default nobody chose.
+    worker -- and two lists of the same names are two lists that drift: a
+    setting added to one is silently absent in the other, and the worker
+    goes on logging by a default nobody chose.
 
     The defaults here are the second copy of a truth ``BaseConfig`` already
     holds, and they cannot simply be dropped: ``read`` is handed whatever
     holds the configuration, and a name it cannot find has to resolve to
     something. So they are held to the profile's by a test that compares
     the two sets, the way ``PERMISSION_FOR`` is held to ``Journal``. One of
-    the thirteen had already drifted -- ``LOG_FILENAME`` said
+    them had already drifted -- ``LOG_FILENAME`` said
     ``link_shortener`` here and ``application`` there, which is the pair
     that decides which file the application writes and which file the
     journal viewer reads.

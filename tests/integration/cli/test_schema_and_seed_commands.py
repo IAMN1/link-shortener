@@ -455,7 +455,7 @@ class TestLoadingRolesLeavesARecord:
         """The command next door writes nothing, deliberately.
 
         Seeding is excluded by the same rule that admits the command
-        above: the installation putting its own four roles in place is
+        above: the installation putting its own system roles in place is
         not somebody being granted anything, and a journal that records
         it buries the entries that matter under every deployment.
         """

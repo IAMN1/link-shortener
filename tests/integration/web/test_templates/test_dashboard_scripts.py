@@ -6,8 +6,7 @@ and loads it from the head.
 It was once included from ``dashboard/base.html`` inside
 ``{% block scripts %}`` -- the same block each page overrides to add its own
 script, and an override replaces what it overrides. Included that way the
-file reached two pages out of twelve; on the other ten both controls were
-dead. Nothing failed and nothing was logged: the page rendered, the button
+file reached two pages only; on every other one both controls were dead. Nothing failed and nothing was logged: the page rendered, the button
 was drawn, and it did nothing when pressed.
 
 It now loads from ``{% block extra_head %}``, which is why *where* is

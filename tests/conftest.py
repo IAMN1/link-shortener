@@ -120,7 +120,10 @@ def _restore_environ() -> Iterator[None]:
     anything published before the first snapshot is taken, which means
     during collection or session setup; ``os.putenv`` and ``os.unsetenv``,
     which write past ``os.environ``; and the working directory. Nothing in
-    the suite does any of those today.
+    the suite writes past ``os.environ``. The working directory two tests
+    in ``test_sqlite_path.py`` do change, and both put it back themselves
+    in a ``finally`` -- which is what this fixture would not have done for
+    them.
 
     Yields:
         Nothing. The environment is repaired after the test.

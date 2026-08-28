@@ -239,7 +239,7 @@ class RateLimitMiddleware:
                 remaining = decision.remaining
                 # The same envelope every other refusal answers in, and the
                 # one the OpenAPI document declares for the 429 it merges
-                # into thirteen operations. Built by hand, this answer
+                # into every operation. Built by hand, this answer
                 # carried neither `details` nor `timestamp` while the
                 # document promised both -- and the guest-quota 429 beside
                 # it, which goes through the error handler, did carry them:

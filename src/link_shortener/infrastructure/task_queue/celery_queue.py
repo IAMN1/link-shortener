@@ -11,7 +11,7 @@ def _task_context(context: RequestContext) -> dict:
     """
     The request fields a task is published with.
 
-    One place rather than four. The field that decides anything is
+    One place rather than one per task. The field that decides anything is
     ``language``: a mail task is rendered by the worker, and by then the
     request that chose the language is over -- dropped from one copy, the
     message for a visitor reading Russian arrives in English, and only
@@ -42,9 +42,9 @@ class CeleryTaskQueue(TaskQueue):
     Sends tasks to a Celery worker.
 
     The ``RequestContext`` is serialised into a dictionary and passed as a
-    task argument. Three tasks are dispatched from here:
-    ``process_link_accessed``, ``send_verification_email`` and
-    ``send_account_exists_email``.
+    task argument. What is dispatched from here is the work a request asks
+    for but must not wait on: the click counter, and the messages an address
+    is sent.
 
     Dispatching happens on the request path, so an unreachable broker is a
     latency problem before it is a correctness one. Two things bound it: the
@@ -108,8 +108,8 @@ class CeleryTaskQueue(TaskQueue):
         Enqueue a Celery task to update link click statistics.
 
         A broker that cannot be reached must not take the request down with
-        it. This queue only carries click statistics, so failing to dispatch
-        costs a lost counter increment -- letting the error escape instead
+        it. What a failed dispatch costs here is one counter increment,
+        which nothing is told about -- letting the error escape instead
         turned every redirect into a 500 for as long as the broker was
         unreachable, and waiting on it turned every redirect into a timeout.
 
@@ -210,8 +210,9 @@ class CeleryTaskQueue(TaskQueue):
             return True
         except Exception as e:
             if self.logger:
-                # The token is not logged, and of the three this is the
-                # one where it matters most: it is a way into the account.
+                # The token is not logged, and of the tokens dispatched
+                # from here this is the one that matters most: it is a way
+                # into the account.
                 self.logger.error(
                     "Failed to enqueue password reset email",
                     error=str(e),

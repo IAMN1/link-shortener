@@ -88,7 +88,7 @@ PROFILES_ALLOWED_A_DEFAULT_DATABASE = ("development",)
 Everywhere else that database is a mistake with no symptom.
 ``DATABASE_TYPE`` defaults to ``sqlite`` and ``DATABASE_NAME`` to
 ``db_shortener``, so a deployment that configured neither gets a migration
-that succeeds against a brand-new empty file in the project root, and a
+that succeeds against a brand-new empty file under ``DATABASE_DIR``, and a
 service that then starts on it and answers as if the data had never
 existed. Refusing costs an operator who genuinely wants SQLite one
 explicit ``DATABASE_URL``; not refusing costs the other one their data.

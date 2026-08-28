@@ -108,7 +108,7 @@ def uow_factory():
 
     The use case re-reads the requester from the database rather than
     trusting the request context, so every test here has to say what the
-    database holds -- which is the point: ``stored_user`` and the context
+    database holds -- which is the point: ``find_by_id`` and the context
     are set independently, and one test sets them to disagree.
     """
     uow = Mock()

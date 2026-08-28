@@ -158,7 +158,11 @@ class GetSecurityCountsUseCase(BaseUseCase):
             log: Bound logger.
 
         Raises:
-            DomainError: If the caller may not.
+            DomainError: With code ``UNAUTHENTICATED`` when nobody is
+                signed in at all.
+            PermissionDeniedError: When somebody is and still may not. It
+                carries the permission they would have needed, which is
+                what the error handler writes to the audit journal.
         """
         with self.uow_factory(read_only=True) as uow:
             requester = load_actor(context, uow)

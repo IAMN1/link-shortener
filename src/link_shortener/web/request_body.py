@@ -7,8 +7,8 @@ decision is made once rather than per controller.
 
 It was made twice. ``ApiController`` and ``AuthController`` each grew a
 private reader, and the two disagreed about the same body -- which is a
-disagreement a caller sees. Twenty kilobytes of ``[`` exhausts the JSON
-decoder's stack, and ``RecursionError`` is not a ``ValueError``, so
+disagreement a caller sees. Ten thousand nested brackets exhaust the
+JSON decoder's stack, and ``RecursionError`` is not a ``ValueError``, so
 Werkzeug does not turn it into 400 and it reaches the catch-all as a 500.
 Both readers close that. Only one of them then says what happened: the
 API's answers "Request body is nested too deeply", while the auth routes
@@ -49,8 +49,8 @@ def decoded_body():
     try:
         return request.get_json(silent=False)
     except RecursionError:
-        # ``"[" * 10000`` is twenty kilobytes and decodes recursively, so
-        # the decoder runs out of stack. Werkzeug turns a ``ValueError``
+        # ``"[" * 10000`` nests ten thousand deep and decodes
+        # recursively, so the decoder runs out of stack. Werkzeug turns a ``ValueError``
         # from the decoder into 400 and a ``RecursionError`` is not one, so
         # it went past every handler into the catch-all: 500, from an
         # unauthenticated request, on every endpoint that reads a body.

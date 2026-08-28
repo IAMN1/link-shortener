@@ -42,12 +42,11 @@ class AuthService:
     facade: it owns nothing and decides nothing, and every method below is
     one line handing the call to whatever does it.
 
-    Why it exists, in the words the directory already uses: "The
-    alternative is a controller that lists the use cases it needs, and it
-    was worse in the one place it shows: ``ApiController`` would name
-    eight constructor arguments where it now names one." ``AuthController``
-    was the second such place and named eight -- the rule was written down
-    and applied to one of the two areas it was written for.
+    Why it exists is the rule stated in the directory's own docstring: a
+    controller that lists the use cases it needs names an argument apiece
+    and grows another with every use case added to its area. Holding this
+    instead, ``AuthController`` names one argument whatever the area
+    gains.
 
     Attributes:
         authentication_service: The port. Reached directly for signing out

@@ -127,7 +127,7 @@ class StandardLogger(Logger):
 
         Asked of the hierarchy rather than of this logger alone. This
         application configures the root logger and lets records propagate to
-        it (``bootstrap.configure_logging``), so ``logger.handlers`` is empty
+        it (``bootstrap.setup_logging``), so ``logger.handlers`` is empty
         for every named logger it builds and always was -- the check read
         that as "no handlers, unhealthy" while the records were arriving on
         the root's handlers all along. ``hasHandlers`` is the question that

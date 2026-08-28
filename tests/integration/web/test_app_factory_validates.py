@@ -2,8 +2,8 @@
 An application built from a configuration object is checked too.
 
 ``ConfigFactory.create_config`` calls ``validate()``, so the environment
-path was covered -- and that is the path nothing in this suite uses. Every
-one of the fourteen places that build an app passes ``config=``, which went
+path was covered -- and that is the path nothing in this suite uses.
+Every other place that builds an app passes ``config=``, which went
 straight past the checks: an app handed
 ``DEFAULT_RATE_LIMIT_PERIOD=-60`` came up and throttled nothing at all,
 measured at 150 requests out of 150 let through.
@@ -52,9 +52,9 @@ class TestAConfigurationObjectIsValidated:
 class TestTheWayProductionBuildsIt:
     """``create_app()`` with no argument -- what gunicorn calls.
 
-    Fourteen callers in the suite pass ``config=``; none took this path,
-    so the branch that resolves the profile and validates it was reached
-    by nothing under test.
+    Every other caller in the suite passes ``config=``; none took this
+    path, so the branch that resolves the profile and validates it was
+    reached by nothing under test.
     """
 
     def test_it_builds_with_no_argument(self, monkeypatch, tmp_path):

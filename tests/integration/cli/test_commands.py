@@ -1259,9 +1259,9 @@ class TestBothStatsCommandsPrintOneReport:
 class TestRefusalsAreWrittenTheSameWay:
     """One shape for a refusal, across the whole of the CLI.
 
-    Six of the twenty-four wrote a prefix -- ``ERROR:`` four times,
-    ``Error:`` once, ``Error creating link:`` once -- and the other
-    eighteen wrote a sentence. On stderr the prefix says nothing the
+    Six of them wrote a prefix -- ``ERROR:`` four times, ``Error:``
+    once, ``Error creating link:`` once -- and the rest wrote a
+    sentence. On stderr the prefix says nothing the
     stream has not said already, and three spellings of it are worse than
     none: a script grepping for ``ERROR`` finds a quarter of the
     refusals and reads the rest as success.

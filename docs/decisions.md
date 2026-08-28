@@ -1,7 +1,7 @@
 # Decisions
 
-Eighty-seven write-ups of why something is the way it is. Read this when the
-code does something that looks wrong until you know the reason.
+A write-up for every decision a reader would otherwise question. Read this
+when the code does something that looks wrong until you know the reason.
 
 [All docs](README.md) · [Architecture](architecture.md) ·
 [Development](development.md)
@@ -1812,11 +1812,12 @@ reason would make the same event exist twice in two shapes that can
 disagree, and the one that gets read is the one nobody checks. The journal
 stays the record; this is the count.
 
-**Counted by a wrapper, not by a call at each site.** Fifteen events are
-written from seven use cases, and a counter invoked beside each
-`audit.log_*` is a counter the fifteenth event forgets. `CountingAuditLogger`
-implements `AuditLogger`, counts, and delegates — wrapped once in the
-container, so no use case knows its events are counted.
+**Counted by a wrapper, not by a call at each site.** The events are
+written from the use cases, the error handler and the CLI, and a counter
+invoked beside each `audit.log_*` is a counter the next event forgets.
+`CountingAuditLogger` implements `AuditLogger`, counts, and delegates —
+wrapped once in the container, so no use case knows its events are
+counted.
 
 **Redirects are not counted here.** They already write to `link_visits`,
 through a background task so the redirect itself is not made slower.
@@ -2119,9 +2120,9 @@ change nobody made.
 
 **What is not recorded, and why.** `db load-base-roles` writes nothing.
 Seeding is excluded by the rule the vocabulary is built on — the
-installation putting its own four roles in place is not somebody being
-granted anything, and a journal that records it buries the entries that
-matter under every deployment.
+installation putting the roles it ships with in place is not somebody
+being granted anything, and a journal that records it buries the entries
+that matter under every deployment.
 
 **No actor is bound.** A shell has no signed-in user, so the record carries
 the `request_id` the command builds — `cli-create-admin`,
@@ -2753,6 +2754,82 @@ reason as its description, and one that already spells the reason out is
 left alone. Both are about a table written by hand, which is what this one
 is; neither is about rebuilding the document, which cannot accumulate
 anything — the merge writes a new table and never into `PATHS`.
+
+### A comment does not count what it cannot keep counting
+
+**Decided** (2026-08-28): a comment states the property of a set, not its
+size, whenever the set grows with ordinary work -- "every suppression here
+is held by this setting" rather than "twelve suppressions are".
+
+**Why.** Measured over the tooling files -- `pyproject.toml`, the workflow,
+`tests/conftest.py`, the compose files and the baseline migration -- every
+count of that kind was found to be wrong:
+
+| what the text said | what the tree held |
+|---|---|
+| `Twelve type: ignore in src` | 13 |
+| `Восемь разобранных находок помечены # nosec` | 10 |
+| `ни один тест из 2444` | 4208 |
+| `Two things in here are decisions` | six bulleted items directly below it |
+| порог `на два пункта ниже достигнутого` | 88 against 98.60, a gap of 10.6 |
+
+Nothing catches these. They are comments, so no linter reads them; the
+numbers are about the tree rather than about behaviour, so no test can hold
+them; and the text stays plausible after it stops being true, which is what
+makes it worse than no text at all. The reader who checks one and finds it
+wrong has no way to know which of the others still hold.
+
+**What still carries a number.** A measurement does: `473 bytes per
+redirect`, `10.5 to 15.8 per cent of the journal destroyed`, `796 bytes per
+request`. These describe a run that happened, not a set that the next commit
+changes, and the entry beside them says when they were taken. The rule is
+about counts that ordinary work moves -- suppressions, markers, list items,
+tests -- not about arithmetic that stays true.
+
+### A package docstring says what goes in, not who takes out
+
+**Decided** (2026-08-28): every package carries a docstring, and it answers
+one question -- by what rule something is put in this directory. It does not
+name the package's callers and it does not count its members.
+
+**Why.** Both of the things it refuses go stale without anything failing.
+Measured over the package docstrings this tree already had, on the day the
+rule was written:
+
+| what the docstring said | what the tree held |
+|---|---|
+| `facades`: instead of **thirty** use cases | 50 modules, 55 classes |
+| `facades`: `ApiController` names **one** argument | it names three |
+| `cli/adapters`: "for various frameworks" | one adapter, `flask.py` |
+| `role_policy`: "the **four** names this ships" | five, since `auditor` |
+
+A count of callers is the worst kind to write down, because callers are the
+part of the tree most likely to move and a docstring in another directory is
+the last place anyone looks after moving one. A docstring that restates the
+directory name is the other failure: it survives every refactor by saying
+nothing, and its one substantive word -- "various" -- was already wrong.
+
+**The exception this rule was granted, and how long it lasted.** On the day
+it was written, `application/services` said `UserManagementService` is
+reached from nine use cases and `RoleManagementService` from three, and both
+were let stand on being remeasured: they were the argument for the directory
+existing rather than decoration on it. Nine held. Three did not -- three use
+cases hold the service as an attribute, and two more call `resolve_roles` on
+the class itself, which is five that reach it. The count was right when it
+was written and wrong within the week, which is the failure this rule
+predicts, in the one place the rule made room for. That docstring now states
+the admission rule and no count: what earns a place there is being reached
+from more than one use case.
+
+**What the docstring is held to instead.** The rule for admission, which
+survives a refactor because it is what a refactor is judged by:
+`application/services` says "a service here is called *by* a use case and
+takes that use case's unit of work", and a file that does not fit that
+sentence does not belong in the directory whatever the call graph does. PEP
+257 asks a package docstring to "list the modules and subpackages exported";
+the Google Python Style Guide (3.8.2) asks it to "describe the contents and
+usage of the module". Both are about what is inside. Neither asks who is
+outside.
 
 ## Known limits
 

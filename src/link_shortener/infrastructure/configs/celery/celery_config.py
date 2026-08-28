@@ -107,17 +107,20 @@ class CeleryConfig:
     """
     Do not retry publishing a task.
 
-    Producer-side only. This queue carries click statistics, so a broker
-    that is down costs a lost counter increment; retrying instead spends the
-    caller's request on a broker that is already known to be unreachable.
+    Producer-side only, and every publish here happens inside a request, so
+    retrying spends that request on a broker already known to be
+    unreachable. What a lost publish costs depends on the task: a click
+    counter that is not incremented, which nothing is told about, or a
+    message that is not sent, which the enqueue method reports back as
+    ``False`` to the caller that asked for it.
     """
 
     task_ignore_result = True
     """
     Do not store task results.
 
-    Nothing in the application reads one back -- the only task increments a
-    click counter. Storing them was not merely wasteful: ``send_task``
+    Nothing in the application reads one back -- no caller waits on what a
+    task returned. Storing them was not merely wasteful: ``send_task``
     announces every task to the result store before publishing it, and with
     the store unreachable that announcement is what cost the redirect 19.5
     seconds. The broker connection itself failed in 0.14s.

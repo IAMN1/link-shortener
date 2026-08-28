@@ -5,8 +5,8 @@ history: this project keeps no upgrade path from anything older, because
 there is nothing older deployed. A clone runs ``alembic upgrade head`` once
 and has the schema the models describe.
 
-Two things in here are decisions rather than mechanics, and are stated so
-they are not quietly undone later:
+What follows are decisions rather than mechanics, and are stated so they
+are not quietly undone later:
 
 * ``urls.owner_id`` is ``ON DELETE CASCADE``. Links do not outlive the
   account that made them, and there is no recovery. Deleting a user is
@@ -28,8 +28,9 @@ they are not quietly undone later:
   why it is swept on a retention window and why ``link_visit_days`` exists
   beside it -- one row per link per day, written before the sweep deletes
   what it was computed from, so the long-range charts keep their past. Its
-  primary key is the pair, so folding a day twice replaces the row instead
-  of doubling it.
+  primary key is the pair, so a day cannot end up as two rows: the fold is
+  a plain insert, and a second run over a day already written is refused by
+  the key rather than added to it.
 
   What is *not* in ``link_visits`` is deliberate: no IP address and no
   User-Agent string. The application reduces both before they arrive -- an

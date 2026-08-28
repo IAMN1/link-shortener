@@ -1,8 +1,10 @@
 """
 Redis-backed cache with automatic reconnection and graceful degradation.
 
-Implements the five roles of ``ServiceCache``. Falls back silently
-when Redis is unavailable.
+Implements every role ``ServiceCache`` names. A Redis that cannot be
+reached turns every read into a miss rather than failing the request, and
+both the failure and the recovery are logged -- degrading quietly for the
+caller is not the same as degrading without a word.
 """
 
 from datetime import datetime, timezone
@@ -23,7 +25,7 @@ import redis
 
 class RedisLinkCache(ServiceCache):
     """
-    Redis implementation of the four cache roles named by ``ServiceCache``.
+    Redis implementation of every cache role ``ServiceCache`` names.
 
     Stores link data as JSON and uses pipelines for batch operations.
     Implements a reconnection strategy to tolerate transient Redis failures.

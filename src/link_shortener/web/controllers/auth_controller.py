@@ -1,7 +1,11 @@
 """
 Authentication controller -- /api/v1/auth/* endpoints.
 
-Handles login, registration, token refresh, and logout.
+Every act an account takes on its own credentials or its own session:
+proving who it is, being created, confirming its address, replacing a
+password it knows or one it has forgotten, and giving the session up. What
+one account does to another is the admin controller's, and the line is who
+the act is about rather than who is signed in.
 """
 
 from typing import Optional

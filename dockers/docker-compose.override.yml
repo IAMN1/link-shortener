@@ -10,7 +10,7 @@
 #
 # Продакшн-стек — это база без надстройки, то есть явное перечисление файла:
 #
-#   docker compose -f docker-compose.yml --env-file .env.docker up -d
+#   docker compose -f dockers/docker-compose.yml --env-file .env.docker up -d
 #
 # Тогда приложение запускается CMD образа: gunicorn с потолком на запрос.
 #

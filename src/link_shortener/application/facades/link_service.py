@@ -36,6 +36,7 @@ class LinkService:
         get_visit_stats_use_case: Use case for the recorded visits behind
             the charts -- when a link was opened, not only how often.
         get_user_links_use_case: Use case for retrieving a user's links.
+        delete_link_use_case: Use case for deleting one link.
     """
 
     create_short_link_use_case: CreateShortLinkUseCase
@@ -123,8 +124,11 @@ class LinkService:
             The original URL string.
 
         Raises:
-            LinkNotFoundError: If the short code does not exist.
-            ValueError: If the short code format is invalid.
+            LinkNotFoundError: If the short code does not exist, a string
+                the format rules refuse included -- the use case answers
+                for both alike, so no ``ValueError`` reaches a caller for
+                a malformed code.
+            LinkExpiredError: If the link exists but its lifetime is over.
         """
         return self.redirect_link_use_case.execute(short_code, context)
 

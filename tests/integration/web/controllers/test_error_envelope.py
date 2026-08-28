@@ -448,7 +448,7 @@ class TestTheThrottlesOwnRefusal:
     sweep sends one request per route, so the throttle never refuses anything
     in the tests above. It answered ``{error, message, retry_after}`` -- no
     ``details``, no ``timestamp`` -- while the OpenAPI document merges a 429
-    declared as ``ErrorResponse`` into thirteen operations, and while the
+    declared as ``ErrorResponse`` into every operation, and while the
     guest-quota 429 beside it, raised as a ``DomainError``, carried the full
     envelope. Its own application, because the shared one has the throttle
     turned off for auth and a session-wide counter for everything else.

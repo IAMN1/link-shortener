@@ -35,7 +35,8 @@ class TestTheCodeSupplyIsNotFive:
     Codes are derived from the URL, so the deterministic ladder is finite.
 
     ``generate_unique`` is a pure function of the URL and the attempt
-    number, and there are five attempts -- five codes per URL for the
+    number, so a URL has exactly as many codes as there are attempts --
+    ``MAX_COLLISION_ATTEMPTS``, five by default, and the same five for the
     lifetime of the service. With one link per owner, a sixth caller would
     get a 500 that no retry clears, and the URL would become unshortenable
     for everybody.

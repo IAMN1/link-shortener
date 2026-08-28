@@ -16,8 +16,8 @@ class CacheMaintenance(ABC):
     What that cost was paid twice. The CLI probed for them with
     ``hasattr`` and carried three branches for what it might find, none of
     which could run; and the end-to-end test that has to empty Redis
-    between journeys says in its own comment that it "reaches past
-    ``ServiceCache``" to call a method the port does not declare. A
+    between journeys said in its own comment that it "reaches past
+    ``ServiceCache``" to call a method the port did not declare. A
     capability two callers depend on is a capability the port owes them.
     """
 

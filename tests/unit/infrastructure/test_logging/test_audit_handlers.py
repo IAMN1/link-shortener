@@ -138,7 +138,7 @@ class TestStandardAuditLogger:
 
         Cut off from the root as well, because the question is whether a
         record reaches a handler rather than whether this logger owns one:
-        `configure_logging` gives the audit logger handlers of its own and
+        `setup_logging` gives the audit logger handlers of its own and
         stops propagation, but a configuration that let audit records travel
         to the root would still be one that writes them.
         """

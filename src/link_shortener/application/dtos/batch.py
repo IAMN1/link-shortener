@@ -142,6 +142,7 @@ class BatchCreateResponse:
         from_db_count: Items a repository lookup found.
         new_count: Newly created links.
         processing_time_seconds: How long the batch took, in seconds.
+        created_at: Timestamp of the batch completion.
 
     The three source counts do not have to add up to ``successful``.
     A batch may name one address more than once, and the repeats come
@@ -151,7 +152,6 @@ class BatchCreateResponse:
     reported lookups nobody made: three copies of one new URL answered
     ``new_count=1, from_db_count=2`` against a batch that read the
     repository for one hash and found nothing.
-        created_at: Timestamp of the batch completion.
     """
     items: List[BatchItemResponse]
     total: int = 0

@@ -68,7 +68,7 @@ class CacheComponent:
         and a ``NullCache`` is returned as a safe fallback.
 
         Returns:
-            The cache in all five of its roles; every implementation here
+            The cache in every role it plays; every implementation here
             is a ``ServiceCache``.
         """
         if self._cache is None:

@@ -217,7 +217,7 @@ class TestAStatusThatMatchesWhatHappened:
 
     def test_a_deeply_nested_body_is_refused_rather_than_survived(self, client):
         """
-        Twenty kilobytes of ``[`` exhausts the decoder's stack, and
+        Ten thousand nested brackets exhaust the decoder's stack, and
         ``RecursionError`` is not a ``ValueError`` -- so Werkzeug did not
         turn it into 400 and it reached the catch-all as a 500, on every
         endpoint that reads a body, without authentication.
@@ -257,7 +257,7 @@ class TestOneReaderMeansOneAnswer:
     """The same broken body gets the same sentence on every route.
 
     Two controllers each carried a private body reader, and the two
-    disagreed. Twenty kilobytes of ``[`` was named on the API routes --
+    disagreed. Ten thousand nested brackets were named on the API routes --
     "Request body is nested too deeply" -- and reported on the auth routes
     as credentials nobody sent, which sends a person to re-type fields
     they had already typed.

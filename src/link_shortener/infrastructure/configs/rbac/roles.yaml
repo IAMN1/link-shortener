@@ -2,8 +2,9 @@
 # RBAC Configuration File: Roles and Permissions
 # ==============================================================================
 # This file defines the permissions and roles for the Role-Based Access Control
-# (RBAC) system. It is used to seed the database with initial data or to update
-# existing records via the `flask db load-base-roles` CLI command.
+# (RBAC) system. It seeds the database through the `flask db load-base-roles`
+# CLI command, which creates what is missing and leaves existing records
+# alone: a role edited here does not reach a database that already holds it.
 #
 # File location: src/link_shortener/infrastructure/configs/rbac/roles.yaml
 #

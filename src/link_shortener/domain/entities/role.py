@@ -10,8 +10,9 @@ class Role:
     """
     Domain entity representing a named collection of permissions.
 
-    System roles (``is_system=True``) are protected and cannot be deleted through
-    the application interface.
+    System roles (``is_system=True``) are protected: neither what they
+    grant nor their existence can be changed through the application
+    interface.
 
     Attributes:
         id: Unique identifier (UUID string).
@@ -19,7 +20,7 @@ class Role:
         description: Human-readable description of the role's purpose.
         is_system: If True, the role is considered a system role and cannot be
             deleted or modified via the API.
-        permissions: List of Permission objects assigned to this role.
+        permissions: The Permission objects assigned to this role.
     """
     id: str
     name: str                                           # admin, analyst, user
