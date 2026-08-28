@@ -13,11 +13,11 @@ undocumented one.
 
 Two answers are not written out per operation but folded in over all of
 them: the throttle's 429, which any route can give, and the CSRF layer's
-403, which any state-changing one can. Five of the fifteen operations
-declare the first and none declares the second, so a generated client had
-no case for a refusal that arrives before any endpoint is reached. OpenAPI
-3.x cannot state a response once for a document, so the alternative was
-typing them into all fifteen by hand and watching the sixteenth be
+403, which any state-changing one can. Some operations declare the first
+and none declares the second, so a generated client had no case for a
+refusal that arrives before any endpoint is reached. OpenAPI 3.x cannot
+state a response once for a document, so the alternative was typing them
+into every operation by hand and watching the next one added be
 forgotten.
 
 No Swagger UI is bundled. It is a megabyte and a half of vendored assets or
@@ -144,8 +144,8 @@ def _throttle_headers() -> Dict[str, Any]:
     """
     Build the headers a refusal from the throttle carries.
 
-    Built per call, not shared. One dict handed to fifteen operations is
-    one dict: editing the wording in a single operation would edit it
+    Built per call, not shared. One dict handed to every operation is one
+    dict: editing the wording in a single operation would edit it
     everywhere, and this document is rebuilt on every request to
     ``/api/openapi.json``.
 
@@ -209,8 +209,8 @@ def _add_cross_cutting_responses(paths: Dict[str, Any]) -> Dict[str, Any]:
     Fold in the answers every operation can give and few of them declared.
 
     Two layers sit in front of the whole application and were barely
-    mentioned here: the throttle can answer 429 to any request, and five
-    of the fifteen operations say so; the CSRF layer answers 403 to any
+    mentioned here: the throttle can answer 429 to any request, and only
+    some operations say so; the CSRF layer answers 403 to any
     cookie-authenticated write, and none did. A client generated from the
     document had no case for the second at all.
 

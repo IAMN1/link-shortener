@@ -24,7 +24,7 @@ def can_view_link_details(
     Private details are the owner's identifier and the analytics derived
     from the link's traffic. Both were public for any code until now: the
     basic endpoint handed out the owner's UUID, and the extended one handed
-    out their traffic, to anyone who could guess a six-character code.
+    out their traffic, to anyone who could guess a seven-character code.
 
     Args:
         owner_id: Identifier of the link's owner, or ``None`` for a link

@@ -417,8 +417,8 @@ def script_strings() -> Dict[str, str]:
             "Archives reach back to %(name)s."
         ),
         # The security counters under the journal viewer. Three series and
-        # everything else summed, because seventeen event types would be
-        # seventeen colours nobody can tell apart.
+        # everything else summed, because a colour per event type is more
+        # colours than a reader can tell apart, and the set of types grows.
         "counts_signed_in": gettext("Signed in"),
         "counts_refused": gettext("Refused"),
         "counts_roles": gettext("Roles changed"),
@@ -505,9 +505,10 @@ def init_babel(app: Flask) -> Babel:
             "language_options": language_options,
             # The function, not its result. A context processor runs for
             # every render, and most of them are not a page -- an included
-            # fragment, a mail body. Translating forty-odd sentences to
-            # hand them to a template that never asks is work done for
-            # nothing; called from the layout, it happens where it is used.
+            # fragment, a mail body. Translating the whole script
+            # catalogue to hand it to a template that never asks is work
+            # done for nothing; called from the layout, it happens where it
+            # is used.
             "script_strings": script_strings,
         }
 

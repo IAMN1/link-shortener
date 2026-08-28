@@ -24,9 +24,10 @@ function countsStopPolling() {
 document.addEventListener('turbo:before-cache', countsStopPolling);
 
 // Which series are drawn, in this order, and everything else is summed
-// into one. Fifteen event types would be fifteen colours nobody can tell
-// apart; these three are the ones an operator watches -- did people get
-// in, were they refused, and did anything change about who may do what.
+// into one. A colour per event type would be more colours than a reader
+// can tell apart, and the set of types grows; these three are the ones an
+// operator watches -- did people get in, were they refused, and did
+// anything change about who may do what.
 // The label is a function rather than a key, and that is not style: the
 // catalogue and the scripts are checked against each other by reading the
 // `t('...')` calls, so a key held in a variable is a key that check cannot

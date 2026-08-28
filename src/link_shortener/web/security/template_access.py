@@ -27,9 +27,9 @@ def can(permission: str) -> bool:
     which is how the landing page knows whether to offer its forms.
 
     Results are memoised per request. The anonymous branch of the service
-    opens a Unit of Work to read the guest role, and a sidebar asks about
-    seven permissions -- without this, drawing the menu for a signed-out
-    visitor would be seven round trips to the database.
+    opens a Unit of Work to read the guest role, and the sidebar asks
+    about a permission per entry -- without this, drawing the menu for a
+    signed-out visitor would be a round trip to the database for each.
 
     Args:
         permission: Permission string, e.g. ``"link:create"``.
