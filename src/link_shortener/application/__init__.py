@@ -1,3 +1,28 @@
+"""
+The order the domain's rules are applied in, and the ports that costs.
+
+What may go in this layer is decided by what it may import: the domain, and
+the standard library. No framework, no session, no ORM, no configuration
+object -- a use case that needed one of those would be deciding how this
+deployment is built rather than what the service does. Whatever it needs
+from outside is named as an interface in ``application/ports`` and
+implemented by ``infrastructure``, so the dependency points inwards even
+where the call goes out.
+
+Inside, the kinds of thing are told apart by what they open. A *use case*
+is one act a caller can ask for and opens its own unit of work. A *service*
+is work several use cases share and takes the unit of work its caller
+opened. A *facade* is what the web layer holds and opens nothing. A *DTO*
+holds values and decides nothing, and a *port* is a name for something
+outside. Each directory's own docstring says which of those it takes, and
+what its exceptions are.
+
+The names gathered below are the layer's vocabulary, so that a caller
+writes ``from link_shortener.application import LinkService`` rather than
+naming the module it happens to sit in -- which is also what keeps moving a
+file inside the layer from being a change to everything that reads it.
+"""
+
 # ------------------------------------------------------------------
 # DTOs (Data Transfer Objects)
 # ------------------------------------------------------------------
