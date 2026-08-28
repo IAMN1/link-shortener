@@ -148,7 +148,7 @@ class TestStandardLogger:
     def test_healthy_when_only_the_root_carries_the_handlers(self):
         """How this application is actually wired.
 
-        ``bootstrap.configure_logging`` puts the handlers on the root logger
+        ``bootstrap.setup_logging`` puts the handlers on the root logger
         and lets every named logger propagate to it, so `handlers` on a
         logger built by ``LoggerManager`` is empty and always was. Read that
         way the standard logger called itself unwell for its entire life

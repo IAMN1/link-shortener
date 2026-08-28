@@ -224,10 +224,10 @@ class TestEveryApiRouteIsDescribed:
         """
         Every route is bounded, by its own limit or by the default.
 
-        Nine of the thirteen operations declared no 429 at all. Not the
-        tightest limits -- shorten, batch, register and login declared
-        theirs -- but the tightest of the nine is ten requests a minute,
-        which a client meets by reading statistics twice a second.
+        Nine of the operations declared no 429 at all. Not the tightest
+        limits -- shorten, batch, register and login declared theirs --
+        but the tightest of the nine is ten requests a minute, which a
+        client meets by reading statistics twice a second.
 
         Declared everywhere, including where a deployment can switch it
         off: RATE_LIMIT_AUTH_DISABLED silences the four auth limits, and a
@@ -318,7 +318,7 @@ class TestEveryApiRouteIsDescribed:
 
     def test_the_document_does_not_share_one_header_object_with_itself(self):
         """
-        Thirteen operations must not be handed the same dict.
+        No two operations may be handed the same dict.
 
         The document is rebuilt on every request; a shared object edited
         through one operation is edited for all of them and for every

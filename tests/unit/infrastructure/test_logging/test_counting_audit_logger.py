@@ -61,8 +61,9 @@ def counting(inner, uow_factory):
 class TestEverySecurityEventIsCounted:
     """By construction rather than by a call at each site.
 
-    Fourteen events are written from seven use cases; a counter invoked
-    beside each `audit.log_*` is a counter the fifteenth event forgets.
+    The events are written from use cases all over the application; a
+    counter invoked beside each `audit.log_*` is a counter the next event
+    added forgets.
     """
 
     def test_the_event_reaches_the_repository(self, counting, uow):

@@ -235,9 +235,10 @@ class TestMalformedBody:
 
     def test_a_body_nested_beyond_the_decoder_is_refused(self, client):
         """
-        ``"[" * 10000`` is twenty kilobytes and exhausts the decoder's
-        stack. ``RecursionError`` is not a ``ValueError``, so the silent
-        parse did not swallow it and it reached the catch-all as a 500.
+        ``"[" * 10000`` nests ten thousand deep and exhausts the
+        decoder's stack. ``RecursionError`` is not a ``ValueError``, so
+        the silent parse did not swallow it and it reached the catch-all
+        as a 500.
         """
         for path in ("/api/v1/auth/login", "/api/v1/auth/register"):
             r = client.post(

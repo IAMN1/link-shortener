@@ -3,13 +3,13 @@ Which backend each profile may run on.
 
 ``DATABASE_TYPE`` defaults to ``sqlite`` and ``DATABASE_NAME`` to
 ``db_shortener``, so without this rule a deployment that configured
-neither starts without a word on a new empty file in the project root --
+neither starts without a word on a new empty file under ``DATABASE_DIR`` --
 under ``production`` with everything else it demands settled: ``SECRET_KEY``,
 ``SHORT_CODE_PEPPER``, ``DOMAIN``, and ``REDIS_ENABLED`` off -- the
 configuration validated clean and opened
-``sqlite:////<root>/db_shortener``. The service then answers as if the
-data had never existed, and nothing in the startup line reads as a
-failure.
+``sqlite:////<root>/datas/databases/db_shortener``. The service then
+answers as if the data had never existed, and nothing in the startup line
+reads as a failure.
 
 The rule is the backend rather than the omission, because SQLite is
 reached by several roads and each ends the same way: an unnamed file is

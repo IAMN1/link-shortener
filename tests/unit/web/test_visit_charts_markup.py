@@ -251,7 +251,7 @@ class TestThePagesMountTheChartsTheSameWay:
         The page about one link, and what each of its two branches sends.
 
         Its address carries a short code, and short codes are guessable by
-        construction — six characters. The endpoint refuses a stranger's
+        construction — seven characters. The endpoint refuses a stranger's
         code on its own, and the reader who is not entitled to another
         account's traffic keeps `scope=mine` beside it as a second lock.
         What neither branch does is drop the code: every figure on this
