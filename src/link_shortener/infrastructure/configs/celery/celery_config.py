@@ -142,7 +142,7 @@ class CeleryConfig:
     """
     Format for serializing task messages.
     JSON is recommended for cross-language compatibility and security.
-    """    
+    """
 
     accept_content = ["json"]
     """
@@ -152,7 +152,7 @@ class CeleryConfig:
     result_serializer = "json"
     """
     Format for serializing task results.
-    """    
+    """
 
 
     # --------------------------------------------------------------------------
@@ -161,12 +161,12 @@ class CeleryConfig:
     timezone = "UTC"
     """
     Timezone used by Celery workers for scheduling and logging.
-    """    
+    """
 
     enable_utc = True
     """
     Use UTC internally for all datetime operations.
-    """    
+    """
 
 
     # --------------------------------------------------------------------------

@@ -20,12 +20,12 @@ class LoggingSettings:
                  log_to_console: bool,
                  log_to_file: bool,
                  log_level_str: str,
-                 
+
                  debug: bool,
-                 
+
                  sqlalchemy_log_level: str,
                  werkzeug_log_level: str,
-                 
+
                  logger_type: str = "auto",
                  logging_enabled: bool = True,
                  audit_enabled: bool = True,
@@ -70,7 +70,7 @@ class LoggingSettings:
         self.log_to_console = log_to_console
         self.log_to_file = log_to_file
         self.log_level_str = log_level_str.upper()
-        
+
         self.debug = debug
 
         self.sqlalchemy_log_level = sqlalchemy_log_level

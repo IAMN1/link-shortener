@@ -75,7 +75,7 @@ class BaseUseCase(ABC):
         ctx["module"] = type(self).__module__
         ctx.update(extra)
         return logger.bind(**ctx)
-    
+
     def _get_audit_logger(self, audit_logger: AuditLogger, context: RequestContext, **extra) -> AuditLogger:
         """
         Create an audit logger with bound request context.

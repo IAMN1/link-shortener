@@ -42,7 +42,7 @@ class CacheComponent:
             logger: Application logger.
             secret_key: Key the Redis cache signs its values with.
         """
-        
+
         self.secret_key = secret_key
         self.cache_enabled = cache_enabled
         self.redis_enabled = redis_enabled

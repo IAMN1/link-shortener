@@ -57,7 +57,7 @@ class JwtAuthenticationService(AuthenticationService):
         if self._decoy_hash is None:
             self._decoy_hash = self.hash_password(secrets.token_urlsafe(16))
         return self._decoy_hash
-    
+
     def hash_password(self, plain: str) -> str:
         """
         Hash a plain-text password using bcrypt.
@@ -103,7 +103,7 @@ class JwtAuthenticationService(AuthenticationService):
             )
         except ValueError:
             return False
-    
+
     def authenticate(self, email: str, password: str) -> Optional[User]:
         """
         Verify a password against an account.
@@ -134,7 +134,7 @@ class JwtAuthenticationService(AuthenticationService):
                 return None
             # Return a detached entity (session will be closed).
             return user
-    
+
     def _create_token(
         self,
         user: User,
@@ -286,7 +286,7 @@ class JwtAuthenticationService(AuthenticationService):
             uow.commit()
             return revoked
 
-    
+
     REQUIRED_CLAIMS = ("exp", "sub", "type")
     """Claims a token must carry before anything else is asked of it.
 
@@ -325,7 +325,7 @@ class JwtAuthenticationService(AuthenticationService):
             return payload
         except jwt.PyJWTError:
             return None
-    
+
     def refresh_access_token(self, refresh_token: str) -> Optional[RefreshedTokens]:
         """
         Exchange a refresh token for a fresh pair, rotating the refresh token.

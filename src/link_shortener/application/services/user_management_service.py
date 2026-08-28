@@ -61,11 +61,11 @@ class UserManagementService:
         # marked sentence with a finished one, costing the address error its
         # translation on the way out.
         email_vo = Email(email)
-        
+
         # Check uniqueness
         if uow.users.find_by_email(email_vo):
             raise EmailAlreadyRegisteredError()
-        
+
         # Hash password using authentication service
         hashed_password = self.authentication_service.hash_password(password)
         password_hash_vo = PasswordHash(hashed_password)
@@ -80,7 +80,7 @@ class UserManagementService:
                     code="CONFIGURATION_ERROR"
                 )
             assigned_roles = [default_role]
-        
+
         # Create domain entity (business rules encapsulated inside)
         user = User.create(
             email=email_vo,
@@ -100,7 +100,7 @@ class UserManagementService:
         # Persist
         saved_user = uow.users.save(user)
         return saved_user
-    
+
     def update_roles(self, uow: UnitOfWork, user_id: str, roles: List[Role]) -> User:
         """
         Replace roles of an existing user.
@@ -123,14 +123,14 @@ class UserManagementService:
         user = uow.users.find_by_id(user_id)
         if not user:
             raise UserNotFoundError(user_id)
-        
+
         # ``User.create`` asks this on the way in; this is the other way
         # a role reaches an account, and it goes around the factory.
         require_roles_are_assignable(roles)
 
         user.roles = roles
         return uow.users.save(user)
-    
+
     def deactivate_user(self, uow: UnitOfWork, user_id: str) -> User:
         """
         Deactivate a user (soft delete).
@@ -148,7 +148,7 @@ class UserManagementService:
         user.deactivate()
 
         return uow.users.save(user)
-    
+
     def activate_user(self, uow: UnitOfWork, user_id: str) -> User:
         """
         Activate a previously deactivated user.
@@ -165,7 +165,7 @@ class UserManagementService:
             raise UserNotFoundError(user_id)
         user.activate()
         return uow.users.save(user)
-    
+
     def update_password(
         self, uow: UnitOfWork, user: User, new_password: str
     ) -> int:
@@ -234,7 +234,7 @@ class UserManagementService:
             List of User entities.
         """
         return uow.users.list_all(limit=limit, offset=offset)
-    
+
     def get_user_by_id(self, uow: UnitOfWork, user_id: str) -> Optional[User]:
         """
         Find a user by ID.
@@ -247,7 +247,7 @@ class UserManagementService:
             User if found, else None.
         """
         return uow.users.find_by_id(user_id)
-    
+
     def delete_user(self, uow: UnitOfWork, user_id: str) -> bool:
         """
         Permanently delete a user.

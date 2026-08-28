@@ -61,7 +61,7 @@ class StandardLogger(Logger):
         module = extra.pop("module", None)
         if module:
             extra["module_name"] = module
-        
+
         # For the 'exception' level, logging.Logger.exception requires
         # exc_info=True or an exception instance.  We call the appropriate
         # method and pass exc_info separately.

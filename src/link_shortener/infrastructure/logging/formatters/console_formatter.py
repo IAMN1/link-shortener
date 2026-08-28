@@ -15,7 +15,7 @@ class ConsoleFormatter(logging.Formatter):
     The formatter excludes standard LogRecord attributes and prints all extra fields
     as key=value pairs.
     """
-    
+
     def __init__(self, fmt: str = "%(asctime)s - [%(name)s] - %(message)s", datefmt: str = "%Y-%m-%d %H:%M:%S"):
         """
         Initialize the console formatter.
@@ -31,7 +31,7 @@ class ConsoleFormatter(logging.Formatter):
         # ``taskName`` attribute through, so every console line ended in
         # ``- [taskName=None]``.
         self.standard_attrs = STANDARD_RECORD_ATTRS
-    
+
     def format(self, record: logging.LogRecord) -> str:
         """
         Format the log record into a human_readable string.
@@ -48,7 +48,7 @@ class ConsoleFormatter(logging.Formatter):
         timestamp = self.formatTime(record, self.datefmt)
         msg = record.getMessage()
         base = f"{timestamp} - [{display_name}] - {msg}"
-        
+
         # Collect extra fields that are not standard attributes
         extra_items = []
         for key, value in record.__dict__.items():
@@ -60,7 +60,7 @@ class ConsoleFormatter(logging.Formatter):
             else:
                 # Use repr for non‑primitive types
                 extra_items.append(f"{key}={repr(value)}")
-        
+
         if extra_items:
             base += f" - [{' - '.join(extra_items)}]"
         return base

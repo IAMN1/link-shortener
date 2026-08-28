@@ -199,7 +199,8 @@ jobs:
 
       - name: flake8
         # Настраивается файлом .flake8: pyproject.toml flake8 не читает.
-        # `select = E9,F` оставляет дефекты и отбрасывает раскладку.
+        # `select` оставляет дефекты (E9, F) и хвостовой мусор
+        # (W291, W292, W293, W391), отбрасывая раскладку.
         run: uv run flake8 src tests
 
       - name: pylint

@@ -437,7 +437,7 @@ class ErrorHandlerMiddleware:
                 error=error.code,
                 message=translate_error(error)
             )
-            
+
             self.logger.info(
                 "Link not found", short_code=error.short_code
             )
@@ -518,7 +518,7 @@ class ErrorHandlerMiddleware:
                 message=gettext("Malformed request body")
             )
             return jsonify(response.model_dump()), 400
-        
+
         @self.app.errorhandler(Exception)
         def handle_generic_error(error: Exception):
             """

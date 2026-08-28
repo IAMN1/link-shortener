@@ -32,7 +32,7 @@ class CodeGenerator(ABC):
             ShortCode: A value object containing the generated short code.
         """
         raise NotImplementedError
-    
+
     def generate_for_url(self, original_url: OriginalUrl) -> ShortCode:
         """
         Convenience method: generate a short code directly from an ``OriginalUrl``.
@@ -46,7 +46,7 @@ class CodeGenerator(ABC):
             ShortCode: The generated short code.
         """
         return self.generate(original_url.normalize())
-    
+
     def generate_unique(self, original_url: OriginalUrl, attempt: int) -> ShortCode:
         """
         Generate a code with an optional salt to resolve collisions.

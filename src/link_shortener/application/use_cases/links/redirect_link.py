@@ -124,7 +124,7 @@ class RedirectLinkUseCase(BaseUseCase):
                 if not link:
                     log.warning("Link not found:", code=short_code.value)
                     raise LinkNotFoundError(short_code_str)
-                
+
                 if link.is_expired():
                     log.info("Link expired", short_code=short_code.value)
                     raise LinkExpiredError(short_code.value)

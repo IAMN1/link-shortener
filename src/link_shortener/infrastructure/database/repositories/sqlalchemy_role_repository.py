@@ -77,14 +77,14 @@ class SQLAlchemyRoleRepository(RoleRepository):
 
     Manages the many-to-many association with PermissionModel when saving.
     """
-    
+
     def __init__(self, session: Session):
         """
         Args:
             session: Active SQLAlchemy session.
         """
         self.session = session
-    
+
     def get_by_name(self, name: str) -> Optional[Role]:
         """
         Look up a role by its unique name.
@@ -97,7 +97,7 @@ class SQLAlchemyRoleRepository(RoleRepository):
         """
         model= self.session.query(RoleModel).filter_by(name=name).first()
         return self._to_domain(model) if model else None
-    
+
     def save(self, role: Role) -> Role:
         """
         Insert or update a role.

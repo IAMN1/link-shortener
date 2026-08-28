@@ -445,7 +445,7 @@ class FailoverService(Generic[T]):
                 f"Switched to {self._services[next_index][1]}"
             )
             return True
-    
+
     def execute(self, method_name: str, *args, **kwargs) -> Any:
         """
         Call a method on the current active service.

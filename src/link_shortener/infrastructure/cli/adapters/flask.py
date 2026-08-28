@@ -1273,7 +1273,7 @@ def security_validate_token(token):
     """Validate a JWT token and show its claims."""
     container = _container()
     auth_service = container.get_authentication_service()
-    
+
     result = validate_token_logic(auth_service, token)
 
     if result["valid"]:

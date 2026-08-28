@@ -29,12 +29,12 @@ class TestInMemoryLinkCache:
         fake_time = 1_000.0
         monkeypatch.setattr(time, 'time', lambda: fake_time)
         memory_cache.save(sample_link)
-        
+
         # Act & Assert
 
         # Data is available
         assert memory_cache.get_by_hash(sample_link.url_hash, sample_link.dedup_scope()) == sample_link
-        
+
         # advance time past TTL + 1
         fake_time += memory_cache.link_ttl + 1
         # Data is no longer available
@@ -44,10 +44,10 @@ class TestInMemoryLinkCache:
 
     def test_delete(self, memory_cache, sample_link):
         """Should delete all data associated with a short code."""
-        
+
         # Arrange
         memory_cache.save(sample_link)
-        
+
         # Act
         memory_cache.delete(sample_link)
 
@@ -60,7 +60,7 @@ class TestInMemoryLinkCache:
         self, memory_cache, sample_link
     ):
         """Should save multiple links at once."""
-        
+
         # Arrange
         link2 = Link.create(
             url_hash=UrlHash("b"*64),
@@ -77,7 +77,7 @@ class TestInMemoryLinkCache:
 
     def test_get_cache_info(self, memory_cache, sample_link):
         """Should return correct cache info."""
-        
+
         # Arrange
         memory_cache.save(sample_link)
 
@@ -135,29 +135,29 @@ class TestInMemoryLinkCache:
 
     def test_save_duplicate(self, memory_cache, sample_link):
         """Should overwrite existing entry when saving same link again."""
-        
+
         # Arrange
         memory_cache.save(sample_link)
         sample_link.clicks = 5
         memory_cache.save(sample_link)
-        
+
         # Act
         retrieved = memory_cache.get_by_code(sample_link.short_code)
-        
+
         # Assert
         assert retrieved.clicks == 5
 
     def test_clean_expired_manual(self, memory_cache, sample_link):
         """Should manually clean expired entries."""
-        
+
         # Arrange
         memory_cache.save(sample_link)
         key = memory_cache.key_gen.for_short_code(sample_link.short_code.value)
         memory_cache._expiry[key] = time.time() - 10  # expired
-        
+
         # Act
         memory_cache._clean_expired()
-        
+
         # Assert
         assert memory_cache.get_by_code(sample_link.short_code) is None
 
@@ -167,22 +167,22 @@ class TestInMemoryLinkCache:
 
         # Arrange
         memory_cache.save(sample_link)
-        
+
         # Act
         retrieved = memory_cache.get_by_code(sample_link.short_code)
 
         # Assert
         assert retrieved == sample_link
-    
+
     def test_get_by_hash(self, memory_cache, sample_link):
         """Should retrieve a link by its URL hash."""
 
         # Arrange
         memory_cache.save(sample_link)
-        
+
         # Act
         retrieved = memory_cache.get_by_hash(sample_link.url_hash, sample_link.dedup_scope())
-        
+
         # Assert
         assert retrieved == sample_link
 
@@ -193,10 +193,10 @@ class TestInMemoryLinkCache:
 
         # Arragne
         memory_cache.save(sample_link)
-        
+
         # Act
         result = memory_cache.get_by_hashes([sample_link.url_hash], sample_link.dedup_scope())
-        
+
         # Assert
         assert result[sample_link.url_hash] == sample_link
 
@@ -246,7 +246,7 @@ class TestInMemoryLinkCache:
         )
 
         assert memory_cache.get_redirect(sample_link.short_code) is None
-    
+
 
     # =============== StatsCache methods =============================
     def test_stats_cache(self, memory_cache):
@@ -254,7 +254,7 @@ class TestInMemoryLinkCache:
 
         # Arrange
         stats = {"total": 10}
-        
+
         # Act
         memory_cache.save_stats(stats)
 
@@ -262,4 +262,3 @@ class TestInMemoryLinkCache:
         assert memory_cache.get_stats() == stats
         memory_cache.delete_stats()
         assert memory_cache.get_stats() is None
-

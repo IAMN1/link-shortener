@@ -14,7 +14,7 @@ class RequestLoggingMiddleware:
     Sets ``g.start_time`` and ``g.request_id`` early in the request
     lifecycle, then logs request and response metadata.
     """
-    
+
     def __init__(self, app: Flask, logger: Logger):
         """
         Args:
@@ -47,9 +47,9 @@ class RequestLoggingMiddleware:
             user_agent = request.headers.get('User-Agent')
 
             self.logger.info(
-                "Request started", 
+                "Request started",
                 method=request.method,
-                path=request.path, 
+                path=request.path,
                 remote_addr=request.remote_addr,
                 request_id=g.request_id,
                 user_agent=user_agent
@@ -67,9 +67,9 @@ class RequestLoggingMiddleware:
                 return response
 
             if hasattr(g, 'start_time'):
-                
+
                 duration = time.time() - g.start_time
-                
+
                 self.logger.info(
                     "Request completed",
                     status=response.status_code,

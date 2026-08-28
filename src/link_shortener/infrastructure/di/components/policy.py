@@ -40,7 +40,7 @@ class PolicyComponent:
         if self._hash_caclculator is None:
             self._hash_caclculator = SHA256HashCalculator()
         return self._hash_caclculator
-    
+
     def get_code_generator(self) -> CodeGenerator:
         """
         Return a Base64URL code generator with the configured length and

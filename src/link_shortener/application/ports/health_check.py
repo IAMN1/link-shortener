@@ -103,7 +103,7 @@ class HealthCheck(ABC):
             ``True`` if the cache is available, ``False`` otherwise.
         """
         ...
-    
+
     @abstractmethod
     def check_task_queue(self) -> bool:
         """

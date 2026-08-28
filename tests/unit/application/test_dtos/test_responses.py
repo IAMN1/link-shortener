@@ -17,7 +17,7 @@ class TestShortLinkResponse:
 
     def test_from_link_creates_correct_fields(self):
         """Should create ShortLinkResponse with correct fields from Link entity."""
-        
+
         url_hash = UrlHash('a'*64)
         short_code = ShortCode('abc123')
         original_url = OriginalUrl('https://example.com')
@@ -46,7 +46,7 @@ class TestShortLinkResponse:
         assert response.last_accessed == link.last_accessed
         assert response.is_new is True
         assert response.from_cache is False
-    
+
     def test_to_dict(self):
         """Should convert ShortLinkResponse to dictionary with ISO formatted dates."""
 
@@ -110,7 +110,7 @@ class TestBatchItemResponse:
 
     def test_error_factory(self):
         """Should create error BatchItemResponse with error message."""
-        
+
         url = 'https://example.com'
         error = 'Invalid URL'
 
@@ -231,7 +231,7 @@ class TestServiceStatsResponse:
 
     def test_to_dict(self):
         """Should convert ServiceStatsResponse to dictionary with rounded avg clicks."""
-        
+
         now = datetime.now()
         popular = [
             StatsItemResponse(
@@ -249,7 +249,7 @@ class TestServiceStatsResponse:
             popular_links=popular
         )
         data = response.to_dict()
-        
+
         assert data['total_urls'] == 10
         assert data['total_clicks'] == 500
         assert data['avg_clicks_per_url'] == 50.0
@@ -281,7 +281,7 @@ class TestExtendLinkInfoResponse:
         link.clicks = 20
         link.last_accessed = datetime.now(timezone.utc) - timedelta(days=1)
         return link
-    
+
     def test_from_link_computes_correct_fields(self, sample_link):
         """Should compute age_days, clicks_per_day, last_access_days_ago correctly."""
 

@@ -56,7 +56,7 @@ class StagingConfig(BaseConfig):
     # Redis: enabled by default for realistic testing
     # --------------------------------------------------------------------------
     REDIS_ENABLED: bool = env_bool("REDIS_ENABLED", True)
-    
+
     # A deployed profile turns an optional base setting into a mandatory one,
     # so a writeable attribute becomes a read-only property here. That
     # narrowing is the point of the profile, not an oversight.

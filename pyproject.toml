@@ -62,7 +62,9 @@ dev = [
     # would rewrite 496 of them and `isort` 421 -- so running either of
     # those is not "format before committing", it is reformatting the
     # project. Both were declared and neither was ever run; they are gone.
-    # `.flake8` selects only `E9,F`, so layout is not a gate either way.
+    # `.flake8` selects no code that rewrites a line, so layout is not a
+    # gate either way -- and `autopep8` takes its `select` from that same
+    # file, so what the gate watches is what the formatter fixes.
     # `isort` is still installed -- `pylint` depends on it -- but it is no
     # longer declared here as something this project runs.
     "autopep8>=2.3.2",

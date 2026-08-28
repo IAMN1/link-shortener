@@ -56,7 +56,7 @@ class AuthenticationMiddleware:
         self.uow_factory = uow_factory
         self.logger = logger
         self._register_handler()
-    
+
     def _register_handler(self):
         """Register the ``before_request`` hook that extracts the user."""
 

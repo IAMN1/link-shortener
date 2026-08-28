@@ -67,4 +67,3 @@ class TestNamesTheRuleRefuses:
         """A YAML file can put anything at all under ``name``."""
         with pytest.raises(ValidationError):
             require_valid_role_name(None)
-

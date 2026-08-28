@@ -271,7 +271,7 @@ class LinkRepository(ABC):
             The links that were deleted.
         """
         ...
-    
+
     @abstractmethod
     def lock_guest_quota(self, identifier: str) -> None:
         """
@@ -311,7 +311,7 @@ class LinkRepository(ABC):
             Number of links created by the guest in the last `since_days` days.
         """
         ...
-    
+
     @abstractmethod
     def get_user_stats(self, user_id: str) -> UserLinkStats:
         """

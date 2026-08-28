@@ -192,7 +192,7 @@ class RateLimitMiddleware:
         self.auth_disabled = app.config.get("RATE_LIMIT_AUTH_DISABLED", False)
 
         self._register_handlers()
-    
+
     def _register_handlers(self):
         """Install ``before_request`` and ``after_request`` hooks."""
         @self.app.before_request
@@ -201,7 +201,7 @@ class RateLimitMiddleware:
             Before each request: build a key, determine the appropriate limit,
             and check with the rate limiter. If limit is exceeded, abort with 429.
             """
-            
+
             # Static assets and the health probe are never throttled. The
             # probe is how the orchestrator learns whether this instance is
             # alive, and a 429 is indistinguishable from a real failure to
@@ -228,7 +228,7 @@ class RateLimitMiddleware:
             limit, period = self.rate_limits.get(
                 request.endpoint, (self.default_limit, self.default_period)
             )
-            
+
             # One call, not two. Asking for the verdict and then for the
             # remaining quota meant a second round trip on every allowed
             # request just to fill in a header -- and against a Redis that
@@ -298,12 +298,12 @@ class RateLimitMiddleware:
                 response.headers['X-RateLimit-Remaining'] = str(remaining)
                 response.headers['Retry-After'] = str(period)
                 return response
-            
+
             # Store the limit values in the Flask global object so they can be
             # added to the response headers later.
             g.rate_limit_limit = limit
             g.rate_limit_remaining = decision.remaining
-        
+
         @self.app.after_request
         @response_hook(self.logger)
         def add_rate_limit_headers(response):

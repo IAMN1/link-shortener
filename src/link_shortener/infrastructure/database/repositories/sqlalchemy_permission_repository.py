@@ -33,11 +33,11 @@ class SQLAlchemyPermissionRepository(PermissionRepository):
         """
         if not names:
             return []
-        
+
         models = self.session.query(PermissionModel).filter(
             PermissionModel.name.in_(names)
         ).all()
-        
+
         return [self._to_domain(m) for m in models]
 
     # ------------------------------------------------------------------

@@ -79,4 +79,3 @@ class PasswordReset:
             expires_at=now + timedelta(minutes=ttl_minutes),
             created_at=now,
         )
-

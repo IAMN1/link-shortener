@@ -27,7 +27,7 @@ class TestLink:
 
     def test_create_with_custom_id(self, valid_url_hash, valid_short_code, valid_original_url):
         """Should create link with custom ID when provided."""
-        
+
         custom_id = 'custom-123'
         link = Link.create(
             url_hash=valid_url_hash,
@@ -40,8 +40,8 @@ class TestLink:
     def test_create_link_sets_defaults(
         self,
         sample_link: Link,
-        valid_url_hash: UrlHash, 
-        valid_short_code: ShortCode, 
+        valid_url_hash: UrlHash,
+        valid_short_code: ShortCode,
         valid_original_url: OriginalUrl
     ):
         """
@@ -106,8 +106,8 @@ class TestLink:
         assert sample_link.last_accessed is not None
         assert sample_link.last_accessed != old_last_accessed
         assert datetime.now(timezone.utc) - sample_link.last_accessed < timedelta(seconds=1)
-    
-    
+
+
     @pytest.mark.parametrize('clicks, threshold, expected', [
         (150, 100, True),
         (99, 100, False),
@@ -115,13 +115,13 @@ class TestLink:
     ])
     def test_is_popular(self, clicks, threshold, expected, sample_link: Link):
         """
-        Should correctly determine if a link is popular based on click threshold. 
+        Should correctly determine if a link is popular based on click threshold.
         """
         sample_link.clicks = clicks
 
         assert sample_link.is_popular(threshold) == expected
-    
-    
+
+
     @pytest.mark.parametrize('days_ago, days, expected', [
         (3, 7, True),
         (10, 7, False),
@@ -134,13 +134,13 @@ class TestLink:
         sample_link.created_at = datetime.now(timezone.utc) - timedelta(days=days_ago)
 
         assert sample_link.is_recent(days) == expected
-    
-    
+
+
     def test_equality_based_on_id(
         self, valid_url_hash, valid_short_code, valid_original_url
     ):
         """Should consider links equal if they have the same ID."""
-        
+
         link1 = Link.create(
             url_hash=valid_url_hash,
             short_code=valid_short_code,
@@ -151,18 +151,18 @@ class TestLink:
             short_code=valid_short_code,
             original_url=valid_original_url
         )
-        
+
         link2.id = link1.id  # force ids to match
-        
+
         assert link1 == link2
         assert hash(link1) == hash(link2)
 
-    
+
     def test_inequality_different_ids(
         self, valid_url_hash, valid_short_code, valid_original_url
     ):
         """Should consider links different if they have different IDs."""
-        
+
         link1 = Link.create(
             url_hash=valid_url_hash,
             short_code=valid_short_code,

@@ -63,7 +63,7 @@ class TestErrorHandlerMiddleware:
 
         # Act
         response = client.post("/api/v1/shorten", json={"url": 123})
-        
+
         # Assert
         assert response.status_code == 400
         data = response.get_json()

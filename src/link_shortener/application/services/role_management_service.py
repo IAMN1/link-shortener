@@ -17,7 +17,7 @@ class RoleManagementService:
     Encapsulates creation, permission updates, and deletion of roles,
     ensuring system roles are protected.
     """
-    
+
     @staticmethod
     def _refuse_unknown_permissions(requested: List[str], found) -> None:
         """
@@ -164,7 +164,7 @@ class RoleManagementService:
             permissions=tuple(permissions)
         )
         return uow.roles.save(role)
-    
+
     def update_role_permissions(self, uow: UnitOfWork, role_name: str, permission_names: List[str]) -> Role:
         """
         Replace the permissions of an existing role.
@@ -198,7 +198,7 @@ class RoleManagementService:
             permissions=tuple(permissions)
         )
         return uow.roles.save(updated_role)
-    
+
     def delete_role(self, uow: UnitOfWork, role_name: str) -> None:
         """
         Delete a non-system role.
