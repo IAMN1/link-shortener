@@ -30,7 +30,7 @@ class TestConfig(TestingConfig):
     BASE_URL = "http://testserver/"
     HOST = "testserver"
     PORT = 80
-        
+
 
 
 @pytest.fixture

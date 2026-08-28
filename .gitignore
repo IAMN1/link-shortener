@@ -35,3 +35,6 @@ db_shortener
 htmlcov/
 test-results/
 coverage.xml
+
+# Mypy-generated files
+.mypy_cache/

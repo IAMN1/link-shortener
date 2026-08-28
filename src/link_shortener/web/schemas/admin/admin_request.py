@@ -42,11 +42,11 @@ class CreateUserRequest(BaseModel):
     the shape a hole arrives in later.
     """
     is_active: bool = Field(
-        True, 
+        True,
         description="Whether the account is active"
     )
     roles: Optional[List[str]] = Field(
-        None, 
+        None,
         description="Optional list of role names; if missing the default role is used"
     )
 
@@ -65,8 +65,8 @@ class CreateUserRequest(BaseModel):
 class UpdateUserRolesRequest(BaseModel):
     """Request schema for replacing a user's roles."""
     roles: List[str] = Field(
-        ..., 
-        min_length=1, 
+        ...,
+        min_length=1,
         description="New list of role names"
     )
 
@@ -101,8 +101,8 @@ class CreateRoleRequest(BaseModel):
         description="Human-readable description"
     )
     permissions: List[str] = Field(
-        ..., 
-        min_length=1, 
+        ...,
+        min_length=1,
         description="List of permission names"
     )
 
@@ -120,8 +120,8 @@ class CreateRoleRequest(BaseModel):
 class UpdateRolePermissionsRequest(BaseModel):
     """Request schema for updating role permissions (full replacement)."""
     permissions: List[str] = Field(
-        ..., 
-        min_length=1, 
+        ...,
+        min_length=1,
         description="New list of permission names"
     )
 

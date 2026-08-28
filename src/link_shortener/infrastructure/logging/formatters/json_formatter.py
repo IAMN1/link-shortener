@@ -26,7 +26,7 @@ class JSONFormatter(logging.Formatter):
 
         super().__init__()
         self.ensure_ascii = ensure_ascii
-    
+
     def format(self, record: logging.LogRecord) -> str:
         """
         Format the log record as a JSON string.
@@ -37,7 +37,7 @@ class JSONFormatter(logging.Formatter):
         Returns:
             A JSON string.
         """
-        
+
         log_entry = {
             "timestamp": datetime.fromtimestamp(
                 record.created, tz=timezone.utc

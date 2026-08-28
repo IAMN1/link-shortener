@@ -37,7 +37,7 @@ class Permission:
         if not isinstance(value, Permission):
             return False
         return self.id == value.id
-    
+
     def __hash__(self) -> int:
         """Hash based on permission ID."""
         return hash(self.id)

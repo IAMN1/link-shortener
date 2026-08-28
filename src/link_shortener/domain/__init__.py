@@ -85,7 +85,7 @@ __all__ = [
     # Policies
     "HashCalculator",
     "CodeGenerator",
-    
+
     # Repositories
     "LinkRepository",
     "ServiceLinkStats",
@@ -98,7 +98,7 @@ __all__ = [
     "UserRepository",
     "RoleRepository",
     "PermissionRepository",
-    
+
     # Value Objects
     "OriginalUrl",
     "ShortCode",

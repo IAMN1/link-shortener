@@ -125,7 +125,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
             return BatchCreateResponse.from_results(
                 [], processing_time_seconds=time.perf_counter() - start_time
             )
-        
+
         if len(urls) > self.batch_limit:
             log.warning(
                 "Batch limit exceeded", requested=len(urls), limit=self.batch_limit
@@ -139,7 +139,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
                       ),
                       params={"max": self.batch_limit, "requested": len(urls)},
                   )
-        
+
         log.info("Starting batch link creation", count=len(urls))
 
         # 1. Group URLs by hash, and take the refused ones aside
@@ -156,7 +156,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
                 invalid_results,
                 processing_time_seconds=time.perf_counter() - start_time,
             )
-        
+
         # Extract owner from context
         owner_id = OwnerID(context.current_user.id) if context.current_user else None
 

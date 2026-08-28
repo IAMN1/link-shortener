@@ -49,7 +49,7 @@ class BatchResponseBuilder:
                         )
                     )
                 continue
-            
+
             # First URL in group -> new link
             results.append(
                 BatchItemResponse.success_(

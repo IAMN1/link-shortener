@@ -704,4 +704,3 @@ class TestRateLimitTargets:
         needs a URL map, which this test has no business building.
         """
         assert not set(BaseConfig.RATE_LIMITS) & EXEMPT_ENDPOINTS
-

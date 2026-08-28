@@ -22,7 +22,7 @@ class BatchLinkFetcher:
             cache: Link cache (L2) implementation.
         """
         self.cache = cache
-    
+
     def fetch(
         self,
         repository: LinkRepository,
@@ -90,10 +90,10 @@ class BatchLinkFetcher:
                     )
             else:
                 groups_not_in_cache.append(group)
-        
+
         if not groups_not_in_cache:
             return cache_results, [], []
-        
+
         # ---- 2. Database lookup for missing ----
         missing_hashes = [g.hash for g in groups_not_in_cache]
         db_map = repository.find_live_by_hashes(missing_hashes, scope)

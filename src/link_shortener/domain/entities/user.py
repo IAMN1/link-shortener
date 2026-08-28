@@ -87,7 +87,7 @@ class User:
             roles=roles or [],
             email_verified=email_verified,
         )
-    
+
     def has_permission(self, permission_name: str) -> bool:
         """
         Check whether the user possesses a specific permission.
@@ -101,7 +101,7 @@ class User:
             True if any of the user's roles contain the given permission.
         """
         return any(role.has_permission(permission_name) for role in self.roles)
-    
+
     def __eq__(self, other: object) -> bool:
         """Equality based on user ID."""
         if not isinstance(other, User):
@@ -115,7 +115,7 @@ class User:
     def activate(self) -> None:
         """Activate a previously deactivated user account."""
         self.is_active = True
-    
+
     def deactivate(self) -> None:
         """Deactivate the user account (soft delete)."""
         self.is_active = False

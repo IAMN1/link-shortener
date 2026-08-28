@@ -69,7 +69,7 @@ __all__ = [
     "NullCache",
     "InMemoryLinkCache",
     "RedisLinkCache",
-    
+
     # Configs
     "BaseConfig",
     "DevelopmentConfig",
@@ -91,7 +91,7 @@ __all__ = [
     "PermissionModel",
     "user_role_table",
     "role_permission_table",
-    
+
     ## Repositories
     "SQLAlchemyLinkRepository",
     "SQLAlchemyUserRepository",

@@ -73,7 +73,7 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
             log.info("Found in repository", short_code=short_code.value)
 
             return ExtendedLinkInfoResponse.from_link(
-                link, 
+                link,
                 base_url=self.base_url,
                 popular_threshold=self.popular_threshold,
                 recent_days=self.recent_days

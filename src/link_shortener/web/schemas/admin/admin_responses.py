@@ -81,7 +81,7 @@ class RoleResponseSchema(BaseModel):
                     {
                         "id": "perm-123",
                         "name": "link:create",
-                        "resource": "link", 
+                        "resource": "link",
                         "action": "create"
                     }
                 ]
@@ -107,7 +107,7 @@ class RoleResponseSchema(BaseModel):
             description=role.description,
             is_system=role.is_system,
             permissions=[
-                PermissionResponseSchema.from_dto(p) 
+                PermissionResponseSchema.from_dto(p)
                 for p in role.permissions
             ],
         )

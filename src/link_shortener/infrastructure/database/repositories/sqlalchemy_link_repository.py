@@ -633,7 +633,7 @@ class SQLAlchemyLinkRepository(LinkRepository):
         last_accessed = model.last_accessed
         if last_accessed is not None and last_accessed.tzinfo is None:
             last_accessed = last_accessed.replace(tzinfo=timezone.utc)
-        
+
         expires_at = model.expires_at
         if expires_at is not None and expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)

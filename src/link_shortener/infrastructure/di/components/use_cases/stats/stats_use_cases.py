@@ -33,7 +33,7 @@ class StatsUseCasesComponent:
             cache=self.cache,
             logger=self.logger,
         )
-    
+
     def get_visit_stats_use_case(self) -> GetVisitStatsUseCase:
         """
         Return a configured ``GetVisitStatsUseCase``.

@@ -171,4 +171,3 @@ def a_context() -> RequestContext:
         request_method="GET",
         current_user=None,
     )
-

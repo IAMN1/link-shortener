@@ -33,11 +33,11 @@ class Role:
         if not isinstance(value, Role):
             return False
         return self.id == value.id
-    
+
     def __hash__(self):
         """Hash based on role ID."""
         return hash(self.id)
-    
+
     def ensure_may_be_changed(self) -> None:
         """
         Refuse a change to a role the service owns.

@@ -1,5 +1,5 @@
 """
-Base64URL-encoded SHA-256 code generator 
+Base64URL-encoded SHA-256 code generator
 with configurable length and pepper.
 """
 
@@ -18,7 +18,7 @@ class Base64UrlCodeGenerator(CodeGenerator):
     The length of the generated code is configurable within min/max bounds.
     """
 
-    def __init__(self, 
+    def __init__(self,
         code_length: int,
         min_length: int,
         max_length: int,
@@ -71,4 +71,3 @@ class Base64UrlCodeGenerator(CodeGenerator):
         short_code = b64_encoded.decode("ascii").rstrip("=")[:self.code_length]
 
         return ShortCode(short_code)
-

@@ -21,7 +21,7 @@ class TestShortCode:
         code = ShortCode(valid_code)
 
         assert code.value == valid_code
-    
+
     @pytest.mark.parametrize('invalid_code',[
         'abc', # < 6
         'superverylongcode', # > 10
@@ -37,7 +37,7 @@ class TestShortCode:
         """
         with pytest.raises(ValidationError, match='Invalid short code format'):
             ShortCode(invalid_code)
-    
+
     def test_a_trailing_newline_is_not_the_same_code(self):
         """
         ``re.match(r"^...$")`` accepted ``"abc123\\n"``, because "$" in

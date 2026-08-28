@@ -77,13 +77,13 @@ class RedisLinkCache(ServiceCache):
         """Establish initial connection to Redis."""
         try:
             self._client = redis.from_url(
-                self.redis_url, 
-                socket_connect_timeout=self.connect_timeout, 
+                self.redis_url,
+                socket_connect_timeout=self.connect_timeout,
                 socket_timeout=self.socket_timeout
             )
             self._client.ping()
             self._available = True
-            
+
             self.logger.info("Redis connected successfully.")
         except redis.RedisError as e:
             self.logger.error(
@@ -93,7 +93,7 @@ class RedisLinkCache(ServiceCache):
             )
             self._available = False
             self._client = None
-    
+
     def _ensure_connection(self) -> bool:
         """
         Report whether a connection is available, reconnecting if it is not.
@@ -199,7 +199,7 @@ class RedisLinkCache(ServiceCache):
             )
             self._mark_unavailable()
             return None
-    
+
     def _execute_write(self, operation) -> bool:
         """
         Execute a Redis write operation, reporting whether it happened.
@@ -405,7 +405,7 @@ class RedisLinkCache(ServiceCache):
 
                 if last_accessed.tzinfo is None:
                     last_accessed = last_accessed.replace(tzinfo=timezone.utc)
-            
+
             expires_at = None
             if data_dict.get("expires_at"):
                 expires_at = datetime.fromisoformat(data_dict["expires_at"])
@@ -466,7 +466,7 @@ class RedisLinkCache(ServiceCache):
             if keys:
                 client.delete(*keys)
         self._execute_write(_clear)
-    
+
     # ------------------------------------------------------------------
     # LinkCache methods
     # ------------------------------------------------------------------

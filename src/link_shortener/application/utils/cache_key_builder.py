@@ -6,7 +6,7 @@ class CacheKeyBuilder:
     """
     def __init__(self, prefix: str):
         self.prefix = prefix
-    
+
     def _build_key(self, *parts: str) -> str:
         """
         Join prefix and parts with colon as separator.
@@ -18,7 +18,7 @@ class CacheKeyBuilder:
             Full cache key string.
         """
         return ":".join([self.prefix] + list(parts))
-    
+
     def for_redirect(self, short_code: str) -> str:
         """
         Build key for L1 redirect cache.
@@ -30,7 +30,7 @@ class CacheKeyBuilder:
             Key string.
         """
         return self._build_key("redirect", short_code)
-    
+
     def for_short_code(self, short_code: str) -> str:
         """
         Build key for Link by short code.
@@ -42,7 +42,7 @@ class CacheKeyBuilder:
             Key string.
         """
         return self._build_key("code", short_code)
-    
+
     def for_url_hash(self, url_hash: str, scope: str) -> str:
         """
         Build key for Link by URL hash within one deduplication scope.
@@ -59,7 +59,7 @@ class CacheKeyBuilder:
             Key string.
         """
         return self._build_key("hash", scope, url_hash)
-    
+
     def for_stats(self) -> str:
         """
         Build key for global service statistics.

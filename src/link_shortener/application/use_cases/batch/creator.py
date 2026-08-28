@@ -27,7 +27,7 @@ class BatchLinkCreator:
         self.code_generator = code_generator
         self.logger = logger
         self.max_attempts = max_attempts
-    
+
     def create_new_links(
         self,
         repository: LinkRepository,
@@ -98,7 +98,7 @@ class BatchLinkCreator:
                 )
             )
         return new_links
-    
+
     def _resolve_collisions(
         self,
         hash_to_code: Dict[UrlHash, ShortCode],

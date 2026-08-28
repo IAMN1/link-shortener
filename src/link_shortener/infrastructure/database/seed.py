@@ -51,7 +51,7 @@ def seed_base_roles(session: Session) -> LoadSummary:
             f"RBAC configuration file not found at {DEFAULT_RBAC_CONFIG_PATH}. "
             "Please ensure the file exists before running this command."
         )
-    
+
     loader = RoleLoader(session)
     # We do not update existing records to avoid overwriting manual changes.
     return loader.load_from_yaml(

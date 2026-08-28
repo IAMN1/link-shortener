@@ -42,7 +42,7 @@ class ShortLinkResponse:
 
     @classmethod
     def from_link(
-       cls, link: Link, base_url: str, is_new: bool = False, from_cache: bool = False 
+       cls, link: Link, base_url: str, is_new: bool = False, from_cache: bool = False
     ) -> "ShortLinkResponse":
         """
         Construct DTO from a domain Link entity.

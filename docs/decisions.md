@@ -229,7 +229,8 @@ rewrite **496** of them and `isort` **421**. So the tree is already in
 change I made" — it is reformatting the project in one commit, through a
 diff nobody can review. `black` and `autopep8` also disagree by
 construction, which is why declaring both reads as a stylistic policy the
-repository does not have. `.flake8` selects only `E9,F`, so layout is not
+repository does not have. `.flake8` selects no code that rewrites a line
+(see *The formatter and the linter read one list* below), so layout is not
 a gate either way and the choice is not forced by the linters.
 
 `isort` stays installed regardless — `pylint` depends on it — but it is no
@@ -242,6 +243,38 @@ the production image, and grep finds no `import validators` anywhere in
 the Pydantic schemas, URLs by `OriginalUrl` — none of them reaches for it.
 The only occurrences of the word are comments about Pydantic validators,
 which is presumably how it survived a search once.
+
+### The formatter and the linter read one list
+
+**Decided** (2026-08-28): `.flake8` selects `E9,F,W291,W292,W293,W391`. The
+four added codes are a trailing space, a missing final newline, a blank line
+carrying whitespace, and a blank line at the end of a file.
+
+**Why the list grew.** `autopep8` reads `.flake8` too — it takes its `select`
+from the same file the linter does. While that list was `E9,F`, the formatter
+had nothing to fix outside those two families, so the entry above measured
+`autopep8 --diff` proposing "no change at all" and was right for the wrong
+reason: it was not that the tree was clean, it was that the formatter had been
+told to look at two families and neither of them is whitespace. Measured on
+2026-08-28: **194** such violations in **65** files, 50 under `src` and 15 under
+`tests` — 152 blank lines carrying whitespace, 28 trailing spaces, 8 files
+ending on a blank line, 6 ending without a newline — and no run had ever named
+one of them.
+
+**Why these four and not the rest of `W` and `E`.** Because of the same shared
+list, read the other way: a code added here is a code `autopep8` will start
+applying. These four delete characters nobody typed on purpose; the fix
+rewrites **186** lines and deletes **8**, and **0** of the 65 files differ
+once whitespace is normalised away. The layout codes do not behave like that —
+run with `--ignore-local-config`, `autopep8` proposes wrapping lines and moving
+arguments, which is reformatting the project rather than tidying it, the thing
+the entry above declined to do.
+
+**The one place the pair disagrees.** `autopep8` will not touch the inside of a
+string literal, so a trailing space at the end of a docstring line is caught by
+`flake8` and not fixed by the formatter. There were five; they were edited by
+hand, and the next one will have to be as well. A W291 the formatter leaves
+alone is that seam, not a broken gate.
 
 ## Database and migrations
 
@@ -1018,6 +1051,37 @@ their neighbours, which arrive from Werkzeug or a proxy. Their descriptions
 are written for a developer rather than for a reader, and translating a
 status nobody here raises would mean marking sentences no one can see in
 place to check.
+
+### The template's line numbers are checked, because nothing else would
+
+**Decided** (2026-08-28): CI re-runs `pybabel extract` and compares the result
+with the committed `messages.pot`, ignoring `POT-Creation-Date`. A stale
+template fails the lint job.
+
+**Why a generated file is worth a gate.** The `#:` lines are the only part of
+the translation machinery that points back at the code, and they are the part
+nothing else can notice. `gettext` reads the compiled `.mo`, which carries no
+addresses at all, so the service answers identically whether every `#:` is
+right or every one of them is wrong; `tests/unit/web/test_translations.py`
+checks that the strings are marked, extracted, translated and compiled, none of
+which involves an address. Measured on 2026-08-28, before the regeneration: of
+573 addresses, 35 no longer found their own text within three lines of where
+they pointed — `read_journal.py:299` had come to rest on a comment while the
+`N_("Authentication required")` it named had moved to 303. The remaining 16
+after it are an artefact of the check, not of the template: a `{% trans %}`
+block writes `{{ link }}` in the page and `%(link)s` in the catalogue.
+
+**What it costs.** A commit that shifts a line in a file holding a marked
+string now has to regenerate the catalogues, and a contributor who forgets is
+told so by name. That is the trade: the alternative is a template that is
+correct on the day it is written and drifts thereafter, and whose drift is
+visible only to the person who opens it to translate — the one person in this
+project who is not here to be asked. Regeneration is safe to do
+mechanically: `update` merges by `msgid`, so unchanged text keeps its
+translation. This one rewrote 33 address lines in the template and the same 33
+in each catalogue, marked nothing `fuzzy`, and left all 454 Russian and 444
+Chinese translations untouched — in the compiled `.mo` the only entry that
+differs is the metadata header, which carries the creation date.
 
 ### A refusal page decides by code, never by its own wording
 

@@ -148,7 +148,7 @@ class Link:
         """
         age = datetime.now(timezone.utc) - self.created_at
         return age.days <= days
-    
+
     def is_expired(self) -> bool:
         """
         Check whether the link has expired.

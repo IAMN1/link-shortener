@@ -19,7 +19,7 @@ class MemoryRateLimiter(RateLimiter):
         """Initialize the rate limiter with empty storage."""
         self._storage = defaultdict(list) # key -> list of timestamps
         self._lock = RLock()
-    
+
     def is_allowed(self, key, limit, period) -> bool:
         """
         Check if a request is allowed and atomically record it.
@@ -43,7 +43,7 @@ class MemoryRateLimiter(RateLimiter):
                 self._storage[key].append(now)
                 return True
             return False
-    
+
     def get_remaining(self, key, limit, period) -> int:
         """
         Return the number of remaining requests allowed for the given key.

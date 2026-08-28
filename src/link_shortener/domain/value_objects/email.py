@@ -128,7 +128,7 @@ class Email:
             The normalised form of it.
         """
         return value.lower()
-    
+
     @classmethod
     def from_storage(cls, value: str) -> "Email":
         """

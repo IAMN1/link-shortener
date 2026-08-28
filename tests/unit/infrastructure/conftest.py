@@ -23,7 +23,7 @@ def in_memory_db_engine():
 @pytest.fixture
 def db_session(in_memory_db_engine):
     """Provide a SQLAlchemy session for testing."""
-    
+
     SessionLocal = sessionmaker(bind=in_memory_db_engine)
     session = SessionLocal()
     yield session
@@ -32,10 +32,9 @@ def db_session(in_memory_db_engine):
 @pytest.fixture
 def db_manager(test_config):
     """Provide a DatabaseManager for testing (in-memory)."""
-    
+
     manager = DatabaseManager(test_config.DATABASE_URL, echo=False, database_type="sqlite")
     manager.connect()
     manager.create_tables()
     yield manager
     manager.close()
-

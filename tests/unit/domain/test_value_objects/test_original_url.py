@@ -42,7 +42,7 @@ class TestOriginalUrl:
 
         with pytest.raises(ValidationError, match=expected_error):
             OriginalUrl(invalid_url)
-    
+
 
     # ------------------------------------------------------------------
     # Port validation
@@ -97,7 +97,7 @@ class TestOriginalUrl:
 
         url = OriginalUrl(valid_ip_url)
         assert url.value == valid_ip_url
-    
+
 
     # ------------------------------------------------------------------
     # Path containing control characters
@@ -131,7 +131,7 @@ class TestOriginalUrl:
     ])
     def test_normalize(self, url, expected):
         """
-        Should normalize URL to lowercase scheme/host, 
+        Should normalize URL to lowercase scheme/host,
         add trailing slash if needed, and strip fragment.
         """
 

@@ -76,6 +76,10 @@ uv run pybabel compile -d $D                            # .mo is what gettext re
 `update`, never `init` — `init` starts an empty catalogue and throws away
 every translation already made. `init` is only for a language that has none.
 
+Run the three even when no string changed but code moved: the `#:` lines in
+`messages.pot` point at the line a string sits on, and CI compares a fresh
+`extract` against the committed template.
+
 Six things go wrong here and **none of them raises anything**: the page
 just comes out in the wrong language. A string written straight into a
 template, an empty `msgstr`, an entry marked `fuzzy` (gettext skips those

@@ -242,7 +242,7 @@ class RedisRateLimiter(RateLimiter):
     def _get_key(self, key: str) -> str:
         """Return the full Redis key by prefixing the given identifier."""
         return f"{self.prefix}:{key}"
-    
+
     def _evaluate(self, key, limit, period):
         """
         Run the sliding-window script, atomically.
@@ -304,7 +304,7 @@ class RedisRateLimiter(RateLimiter):
                 "Rate limiter unavailable, allowing request unthrottled",
                 error=str(error),
             )
-    
+
     def get_remaining(self, key, limit, period) -> int:
         """
         Return the number of remaining requests allowed in the current window.

@@ -101,7 +101,7 @@ class AuthenticationService(ABC):
             Decoded payload dict, or None if invalid/expired.
         """
         ...
-    
+
     @abstractmethod
     def refresh_access_token(self, refresh_token: str) -> Optional["RefreshedTokens"]:
         """
