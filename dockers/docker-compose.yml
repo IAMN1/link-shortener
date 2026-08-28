@@ -208,7 +208,7 @@ services:
         FLASK_APP: link_shortener.web.app_factory:create_app
         FLASK_ENV: ${FLASK_ENV}
         FLASK_DEBUG: ${FLASK_DEBUG}
-        
+
         SECRET_KEY: ${SECRET_KEY}
         SHORT_CODE_PEPPER: ${SHORT_CODE_PEPPER}
 
@@ -248,7 +248,7 @@ services:
         LOG_TO_FILE: ${LOG_TO_FILE:-}
         LOG_DIR: ${LOG_DIR}
         LOG_FILENAME: ${LOG_FILENAME}
-        
+
         # ----- Celery settings -----
         CELERY_ENABLED: ${CELERY_ENABLED}
         # Та же подстановка, что у REDIS_URL: брокер может быть внешним.
@@ -261,13 +261,13 @@ services:
         # Потолок на запрос — единственное, что прерывает обращение к
         # зависшей (а не упавшей) БД: замороженный сервер не выполняет свой
         # statement_timeout, а его ядро подтверждает TCP-keepalive.
-        # GUNICORN_WORKER_CLASS обязан остаться sync: у gthread --timeout
+        # GUNICORN_WORKER_CLASS обязан остаться sync: у gthread --timeou
         # запрос не прерывает.
         GUNICORN_WORKERS: ${GUNICORN_WORKERS}
         GUNICORN_WORKER_CLASS: ${GUNICORN_WORKER_CLASS:-sync}
         GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-30}
         GUNICORN_GRACEFUL_TIMEOUT: ${GUNICORN_GRACEFUL_TIMEOUT:-20}
-      
+
       env_file:
         # Загружает все переменные, но environment имеет приоритет.
         # ENV_FILE позволяет держать отдельные наборы: .env — локальный запуск
@@ -330,7 +330,7 @@ services:
         FLASK_DEBUG: ${FLASK_DEBUG}
         SECRET_KEY: ${SECRET_KEY}
         SHORT_CODE_PEPPER: ${SHORT_CODE_PEPPER}
-        
+
         # База данных – внутри сети используем имя сервиса db
         DATABASE_TYPE: ${DATABASE_TYPE}
         DATABASE_HOST: db
@@ -345,7 +345,7 @@ services:
         DATABASE_POOL_PRE_PING: ${DATABASE_POOL_PRE_PING}
         DATABASE_CONNECT_TIMEOUT: ${DATABASE_CONNECT_TIMEOUT}
         DATABASE_STATEMENT_TIMEOUT: ${DATABASE_STATEMENT_TIMEOUT}
-        
+
         # Redis – внутри сети
         CACHE_ENABLED: ${CACHE_ENABLED}
 
@@ -357,7 +357,7 @@ services:
         REDIS_CONNECT_TIMEOUT: ${REDIS_CONNECT_TIMEOUT}
         REDIS_SOCKET_TIMEOUT: ${REDIS_SOCKET_TIMEOUT}
         REDIS_RETRY_INTERVAL: ${REDIS_RETRY_INTERVAL}
-        
+
         # Логирование
         LOGGING_ENABLED: ${LOGGING_ENABLED}
         AUDIT_ENABLED: ${AUDIT_ENABLED}
@@ -366,7 +366,7 @@ services:
         LOG_TO_FILE: ${LOG_TO_FILE:-}
         LOG_DIR: ${LOG_DIR}
         LOG_FILENAME: ${LOG_FILENAME}
-        
+
         # Celery
         CELERY_ENABLED: ${CELERY_ENABLED}
         # Та же подстановка, что у REDIS_URL: брокер может быть внешним.
@@ -374,7 +374,7 @@ services:
         CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis_broker:${REDIS_BROKER_PORT:-6379}/0}
         CELERY_BROKER_TIMEOUT: ${CELERY_BROKER_TIMEOUT}
         HEALTH_CHECK_TIMEOUT: ${HEALTH_CHECK_TIMEOUT}
-      
+
       env_file:
         # Тот же файл, что у app: воркер пишет в тот же кэш и ту же базу, и
         # без env_file брал бы умолчания из кода на всё, что не перечислено
