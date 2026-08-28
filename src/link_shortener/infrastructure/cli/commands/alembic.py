@@ -135,7 +135,7 @@ class AlembicCommands:
             both_streams: Join stderr onto stdout for the success text.
                 Alembic narrates an upgrade on stderr ("Running upgrade
                 X -> Y"), so without it the report is the same whether
-                eight tables were created or nothing was.
+                the whole schema was created or nothing was.
 
         Returns:
             Tuple of (success, output).

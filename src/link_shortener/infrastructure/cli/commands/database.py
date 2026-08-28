@@ -118,7 +118,7 @@ def load_custom_roles_from_cfg(
 
     ``db load-base-roles`` beside it deliberately writes nothing: seeding
     the database is excluded by that same rule, being the installation
-    putting its own four roles in place rather than somebody granting
+    putting the roles it ships with in place rather than somebody granting
     anything. This command is the other thing -- an operator bringing a
     file of their own.
 
