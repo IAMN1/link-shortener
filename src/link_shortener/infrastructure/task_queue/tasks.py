@@ -16,7 +16,10 @@ def get_container():
         Container: The DI container instance.
 
     Raises:
-        RuntimeError: If container creation fails.
+        ValueError: If ``FLASK_ENV`` names a profile ``get_config`` does
+            not know. The container itself refuses nothing: it wires
+            components lazily, so a dependency that cannot be built fails
+            at the call that asks for it rather than here.
     """
     config = get_config()
     return Container(config)

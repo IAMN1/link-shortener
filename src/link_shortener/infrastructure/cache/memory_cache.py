@@ -1,7 +1,7 @@
 """
 Thread-safe in-memory cache with TTL support.
 
-Implements the five roles of ``ServiceCache`` using Python dictionaries.
+Implements every role ``ServiceCache`` names, using Python dictionaries.
 Suitable for development and testing when Redis is unavailable.
 """
 

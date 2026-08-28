@@ -18,7 +18,7 @@ def clear_cache(cache: ServiceCache, stats_only: bool = False) -> str:
     is what makes asking straight out safe.
 
     Args:
-        cache: The cache in all five of its roles.
+        cache: The cache in every role it plays.
         stats_only: Clear only the statistics entry.
 
     Returns:
@@ -40,7 +40,7 @@ def get_cache_info(cache: ServiceCache) -> dict[str, Any]:
     Retrieve cache information for monitoring.
 
     Args:
-        cache: The cache in all five of its roles.
+        cache: The cache in every role it plays.
 
     Returns:
         Whatever the cache reports about itself. A cache with nothing to
@@ -76,7 +76,7 @@ def cache_health(cache: ServiceCache) -> tuple[bool, bool]:
     from the one ``health`` uses.
 
     Args:
-        cache: The cache in all five of its roles.
+        cache: The cache in every role it plays.
 
     Returns:
         ``(configured, alive)`` -- whether the cache talks to a server at

@@ -1,8 +1,11 @@
 """
 Concrete implementation of the ``HealthCheck`` port.
 
-This module provides ``InfrastructureHealthCheck``, which verifies the
-availability of the database, cache (Redis), and task queue (Celery).
+This module provides ``InfrastructureHealthCheck``, which asks the
+database, the cache, the queue and the throttle whether they are answering.
+Not the log: the chains that write it report themselves, through
+``LoggingStatusPort``, because a probe cannot tell a journal nobody is
+writing from one nobody has anything to write to.
 """
 
 import threading
