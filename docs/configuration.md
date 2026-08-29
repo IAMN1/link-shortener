@@ -151,17 +151,19 @@ the same endpoint sends its own cookie and gets the language on screen.
 | `SESSION_COOKIE_SECURE` | `false`, `true` in production | The same for Flask's session cookie |
 | `SESSION_COOKIE_SAMESITE` | `Lax` | |
 | `SESSION_COOKIE_HTTPONLY` | `true` | |
-| `CORS_ORIGINS` | `http://localhost:5000,http://127.0.0.1:5000` | Origins allowed to send credentials |
+| `CORS_ORIGINS` | `http://localhost:5000`; the template adds `http://127.0.0.1:5000` | Origins allowed to send credentials |
 | `TRUSTED_PROXIES` | empty | Only from these is `X-Forwarded-For` believed |
 | `VISIT_TRACKING_ENABLED` | `true` | Record each redirect as an event, not only count it. Off, `urls.clicks` still counts and every chart with time on an axis stays empty |
 | `VISIT_RETENTION_DAYS` | `90` | How long a raw visit row is kept. Finished days are folded into one row per link per day first, so the long-range charts keep their shape after the rows behind them go. `0` disables the sweep and the table grows without limit |
 | `SECURITY_EVENT_RETENTION_DAYS` | `365` | How long a raw security event row is kept. Folded into one row per kind per day first, like the visits. A year rather than ninety days: a visit is traffic and last quarter's answers a question this quarter's answers better, while a sign-in is evidence and is usually asked about long after the fact. `0` disables the sweep |
-| `AUTO_SEED_ROLES` | `true`; `false` in `staging` and `production` | Ensure the four system roles on every startup. Where it is off, `flask db load-base-roles` has to be run once — an anonymous caller acts as `guest`, and that role is what carries `link:create` |
+| `AUTO_SEED_ROLES` | `true`; `false` in `staging` and `production` | Ensure the five system roles on every startup. Where it is off, `flask db load-base-roles` has to be run once — an anonymous caller acts as `guest`, and that role is what carries `link:create` |
 
 > [!WARNING]
-> `CORS_ORIGINS` holds both spellings of the loopback on purpose. The CSRF
-> layer compares the browser's `Origin` against this list before letting an
-> unsafe cookie-authenticated request through. With `localhost` alone,
+> The template lists both spellings of the loopback on purpose, and the
+> built-in default is `localhost` alone — so a run with no `.env` meets
+> this. The CSRF layer compares the browser's `Origin` against this list
+> before letting an unsafe cookie-authenticated request through. With
+> `localhost` alone,
 > opening `http://127.0.0.1:5000` gives a working landing page — an
 > anonymous caller does not go through CSRF — and "CSRF token missing or
 > invalid" on every form the moment you sign in. Measured on the Docker
@@ -243,7 +245,7 @@ guessing is gone while the configuration says it is there.
 |---|---|---|
 | `CACHE_ENABLED` | `true` | `false` turns every cache call into a no-op |
 | `REDIS_ENABLED` | `false` in development, `true` in deployed profiles | Redis or the in-memory implementation |
-| `REDIS_URL` | — | Mandatory when Redis is on |
+| `REDIS_URL` | `redis://localhost:6379/0` | The deployed profiles refuse to start without it when Redis is on |
 | `CACHE_LINK_TTL` | 3600 | Seconds a link object is kept |
 | `CACHE_STATS_TTL` | 300 | Seconds service statistics are kept — and how far the click counter can lag |
 
@@ -251,7 +253,7 @@ guessing is gone while the configuration says it is there.
 
 | Variable | Default | |
 |---|---|---|
-| `MAIL_ENABLED` | `true` | With it off, registration still answers `202` and no message leaves |
+| `MAIL_ENABLED` | `false`; `true` in the template | With it off, registration still answers `202` and no message leaves |
 | `MAIL_HOST`, `MAIL_PORT` | `localhost`, 1025 in development | Aimed at the Mailpit catcher |
 | `MAIL_USE_TLS` / `MAIL_USE_SSL` | `false` in development | `production` requires one of them |
 | `MAIL_FROM` | — | Mandatory when mail is on |

@@ -62,7 +62,7 @@ describes every endpoint.
 | `cp .env.example .env` | The template already suits a local run: `DATABASE_TYPE=sqlite`, `CELERY_ENABLED=false`, Redis off | — |
 | `security generate-secrets --write .env` | Fills `SECRET_KEY` and `SHORT_CODE_PEPPER` in place. Without them `development` invents a key per process, so tokens die on restart | `SECRET_KEY and SHORT_CODE_PEPPER written to .env.` |
 | `flask alembic upgrade head` | Creates the schema | `Running upgrade -> 0001, initial schema` |
-| `flask create-admin` | The first administrator, which no endpoint can make: registration hands out `user`, and granting `admin` needs an account that already holds it | `Admin user admin@example.com created successfully.` |
+| `flask create-admin` | The first administrator, which no endpoint can make: registration hands out `user`, and granting `admin` needs an account that already holds it | `Admin user admin@example.com created successfully (active: True).` |
 | `flask run` | Serves on `http://127.0.0.1:5000/` | The Werkzeug banner |
 
 <details>
