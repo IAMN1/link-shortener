@@ -1626,20 +1626,29 @@ for the search.*
 
 **Decided** (2026-08-18): the audit journal carried three events — a link
 created, followed, deleted — and nothing about accounts at all. It now
-carries seventeen more, through one method on `AuditLogger`
+carries eighteen more, through one method on `AuditLogger`
 (`log_security_event`) and a named wrapper per event above it.
 
 **Which events, by one rule.** An act that changes who may do what leaves a
-record. That admits both sign-in outcomes, the five things that happen to
+record. That admits both sign-in outcomes (`LOGIN_SUCCEEDED`,
+`LOGIN_FAILED`), the five things that happen to
 an account (`USER_CREATED`, `USER_DELETED`, `USER_ACTIVATED`,
 `USER_DEACTIVATED`, `USER_EMAIL_CONFIRMED`), an address proving itself
 (`EMAIL_CONFIRMED`), the roles on an account (`ROLES_CHANGED`), the three
 things that happen to a role itself (`ROLE_CREATED`, `ROLE_DELETED`,
 `ROLE_PERMISSIONS_CHANGED`), the three ways a password is replaced
-(`PASSWORD_CHANGED`, `PASSWORD_RESET`, `USER_PASSWORD_RESET`) and the
-reading of a journal (`AUDIT_VIEWED`). It excludes listing accounts,
+(`PASSWORD_CHANGED`, `PASSWORD_RESET`, `USER_PASSWORD_RESET`), the sweep
+that removes accounts nobody confirmed (`UNVERIFIED_ACCOUNTS_SWEPT`) and
+the reading of a journal (`AUDIT_VIEWED`). It excludes listing accounts,
 reading one, and seeding the database: they change nothing, and a journal
 that records reads as loudly as writes buries the writes.
+
+`PERMISSION_DENIED` is the eighteenth and the one the rule as stated does
+not reach: a refusal changes nothing, which is exactly why it was missing
+for as long as it was. It is admitted by the reading below — what was
+attempted and refused is what an investigation is opened over — and it is
+written from the error handler rather than from a wrapper a caller
+chooses.
 
 `USER_PASSWORD_RESET` is the third one this rule caught late, and the
 first caught from the shell rather than from a route. `flask security
@@ -1961,8 +1970,8 @@ asking; filed as attempted escalation they would bury the ones that are.
 The type is what lets one place tell them apart.
 
 **Why from the error handler.** It is where every `PermissionDeniedError`
-raised on a route ends up, and one writer cannot forget what seventeen
-raisers can — the argument `CountingAuditLogger` is built on. The limit of
+raised on a route ends up, and one writer cannot forget what eight raisers
+can — the argument `CountingAuditLogger` is built on. The limit of
 it is the CLI, which reaches `DeleteLinkUseCase` with no request and no
 error handler; a refusal there is logged by the use case and not recorded.
 That is a narrow gap: the CLI runs as whoever has a shell on the host, and
@@ -3074,8 +3083,8 @@ a time window, which needs the same store.
 there is written to `application.log` by the use case and not to the audit
 journal.
 
-Closing it means either writing the event from each raiser — seventeen call
-sites and the eighteenth forgetting, the argument `CountingAuditLogger`
+Closing it means either writing the event from each raiser — eight call
+sites and the ninth forgetting, the argument `CountingAuditLogger`
 exists to avoid — or giving the CLI an equivalent of the handler, which is
 a second place deciding what a refusal is. Left because the gap is narrow
 in the way that matters: the CLI runs as whoever has a shell on the host,
