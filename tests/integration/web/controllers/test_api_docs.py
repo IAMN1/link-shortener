@@ -421,6 +421,80 @@ class TestEveryApiRouteIsDescribed:
 
         assert {verb.upper() for verb in SAFE_VERBS} == set(SAFE_METHODS)
 
+    def test_no_route_verb_is_undocumented(self, app, document):
+        """
+        The other direction, which nothing checked.
+
+        ``test_no_api_route_is_missing`` compares paths and
+        ``test_every_documented_verb_actually_exists`` walks from the
+        document to the code, so a second verb added to a path already in
+        the document was invisible to both. ``POST /api/v1/auth/verify``
+        lived that way: the route took ``["GET", "POST"]``, the document
+        described the GET, and a client generated from it could not send
+        what the confirmation page sends.
+
+        Args:
+            app: The application, for its URL map.
+            document: The generated OpenAPI document.
+        """
+        undocumented = {}
+        for rule in app.url_map.iter_rules():
+            path = str(rule)
+            if not path.startswith(API_PREFIX):
+                continue
+            openapi_path = path.replace("<", "{").replace(">", "}")
+            described = {
+                verb.lower()
+                for verb, _ in operations_of(document["paths"].get(openapi_path, {}))
+            }
+            # HEAD and OPTIONS are Werkzeug's own, on every rule, and are
+            # not part of what an endpoint offers.
+            offered = {
+                method.lower() for method in rule.methods
+            } - {"head", "options"}
+            missing = offered - described
+            if missing:
+                undocumented[openapi_path] = sorted(missing)
+
+        assert not undocumented, f"verbs nobody wrote down: {undocumented}"
+
+    def test_a_listing_declares_the_window_it_reads(self, app, document):
+        """
+        A listing that reads ``limit`` and ``offset`` says so.
+
+        ``window_from_query`` is the one place either is read, so the
+        handlers that call it are exactly the operations whose callers may
+        pass them. ``GET /api/v1/links/mine`` read both and declared
+        neither, while the account listing beside it declared both -- so
+        the document said one of the two pages could not be walked.
+
+        Args:
+            app: The application, for its URL map and view functions.
+            document: The generated OpenAPI document.
+        """
+        import inspect
+
+        silent = {}
+        for rule in app.url_map.iter_rules():
+            view = app.view_functions.get(rule.endpoint)
+            try:
+                source = inspect.getsource(view)
+            except (OSError, TypeError):  # pragma: no cover - builtin views
+                continue
+            if "window_from_query" not in source:
+                continue
+            openapi_path = str(rule).replace("<", "{").replace(">", "}")
+            operation = document["paths"].get(openapi_path, {}).get("get", {})
+            declared = {
+                parameter["name"]
+                for parameter in operation.get("parameters", [])
+            }
+            missing = {"limit", "offset"} - declared
+            if missing:
+                silent[openapi_path] = sorted(missing)
+
+        assert not silent, f"listings that read a window and hide it: {silent}"
+
     def test_every_documented_verb_actually_exists(self, app, document):
         real = {}
         for rule in app.url_map.iter_rules():

@@ -625,6 +625,33 @@ PATHS: Dict[str, Any] = {
             "summary": "List the caller's links",
             "tags": ["links"],
             "security": [{"bearerAuth": []}],
+            "parameters": [
+                {
+                    "name": "limit",
+                    "in": "query",
+                    "required": False,
+                    "description": (
+                        "How many links to return. Brought inside the "
+                        "bounds rather than refused, the way the account "
+                        "listing does it and the journals do not."
+                    ),
+                    "schema": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": MAX_PAGE_SIZE,
+                        "default": 50,
+                    },
+                },
+                {
+                    "name": "offset",
+                    "in": "query",
+                    "required": False,
+                    "description": (
+                        "How many to skip. Below zero is read as zero."
+                    ),
+                    "schema": {"type": "integer", "minimum": 0, "default": 0},
+                },
+            ],
             "responses": {
                 "200": {
                     "description": "The caller's links",
@@ -837,7 +864,38 @@ PATHS: Dict[str, Any] = {
                 },
                 "400": _error("The link is not usable"),
             },
-        }
+        },
+        "post": {
+            "summary": "Confirm an email address",
+            "description": (
+                "What the confirmation page sends, and the same act as "
+                "the GET above. The token is read from the query string "
+                "first and from the JSON body only when the query "
+                "carries none, so a page that posts `{\"token\": ...}` "
+                "and a link mailed before that page existed both work. "
+                "Answers alike for every way a token can fail, for the "
+                "reason given on the GET."
+            ),
+            "tags": ["auth"],
+            "parameters": [
+                {
+                    "name": "token",
+                    "in": "query",
+                    "required": False,
+                    "schema": {"type": "string"},
+                    "description": (
+                        "The token, when it is not in the body."
+                    ),
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "The address is confirmed",
+                    **_json("MessageResponse"),
+                },
+                "400": _error("The link is not usable"),
+            },
+        },
     },
     "/api/v1/auth/resend-verification": {
         "post": {
