@@ -24,6 +24,10 @@ from link_shortener.web.schemas.auth import (
     MessageResponse, RefreshResponse, RegisterResponse, TokenPairResponse,
     UserResponse,
 )
+from link_shortener.web.schemas.auth_requests import (
+    ChangePasswordRequest, CredentialsRequest, EmailRequest,
+    RefreshTokenRequest, ResetPasswordRequest, VerifyEmailRequest,
+)
 from link_shortener.web.responses import error_response
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.decorators import login_required
@@ -40,18 +44,23 @@ def _read_credentials():
     two disagreed about one and the same request: a body too deeply nested
     to decode was reported here as credentials nobody sent.
 
+    Read through ``CredentialsRequest`` rather than off the dictionary, so
+    that the field names this route accepts and the field names the
+    document publishes are one thing. Read off the dictionary they were
+    two, and the document had neither: nine auth operations described no
+    body at all.
+
+    The model refuses a field of the wrong type and nothing else. Whether
+    the fields are *there* is decided below, in this route's own sentence
+    -- see the module docstring of ``schemas/auth_requests``.
+
     Returns:
         Tuple of (email, password), or (None, None) if the body does not
         carry usable credentials.
     """
-    data = json_object()
+    body = CredentialsRequest(**json_object())
 
-    email = data.get("email")
-    password = data.get("password")
-    if not isinstance(email, str) or not isinstance(password, str):
-        return None, None
-
-    return email or None, password or None
+    return body.email or None, body.password or None
 
 
 def _read_refresh_token() -> Optional[str]:
@@ -70,8 +79,10 @@ def _read_refresh_token() -> Optional[str]:
 
     # The lenient reader: this route is reached without a body at all
     # by every browser, which keeps its token in the cookie read above.
-    token = optional_json_object().get("refresh_token")
-    if isinstance(token, str) and token:
+    # ``RefreshTokenRequest`` is lenient to match -- it is the only body
+    # in the document that asks for nothing.
+    token = RefreshTokenRequest(**optional_json_object()).refresh_token
+    if token:
         return token
 
     return None
@@ -341,8 +352,8 @@ class AuthController:
         """
         token = request.args.get("token")
         if not token and request.method == "POST":
-            token = json_object().get("token")
-        if not isinstance(token, str) or not token:
+            token = VerifyEmailRequest(**json_object()).token
+        if not token:
             raise ValidationError(
                 N_("This confirmation link is not valid"), field="token"
             )
@@ -371,8 +382,8 @@ class AuthController:
         Returns:
             202, always, unless the address is not an address.
         """
-        email = json_object().get("email")
-        if not isinstance(email, str) or not email:
+        email = EmailRequest(**json_object()).email
+        if not email:
             raise ValidationError(N_("Email is required"), field="email")
 
         context = create_request_context()
@@ -409,14 +420,14 @@ class AuthController:
             wrong or the new one is refused, 401 if the caller is not
             signed in.
         """
-        data = json_object()
-        current_password = data.get("current_password")
-        new_password = data.get("new_password")
-        if not isinstance(current_password, str) or not current_password:
+        body = ChangePasswordRequest(**json_object())
+        current_password = body.current_password
+        new_password = body.new_password
+        if not current_password:
             raise ValidationError(
                 N_("Current password is required"), field="current_password"
             )
-        if not isinstance(new_password, str) or not new_password:
+        if not new_password:
             raise ValidationError(
                 N_("New password is required"), field="new_password"
             )
@@ -461,8 +472,8 @@ class AuthController:
         Returns:
             202, always, unless the address is not an address.
         """
-        email = json_object().get("email")
-        if not isinstance(email, str) or not email:
+        email = EmailRequest(**json_object()).email
+        if not email:
             raise ValidationError(N_("Email is required"), field="email")
 
         context = create_request_context()
@@ -498,14 +509,14 @@ class AuthController:
             200 on success, 400 for a token that cannot be spent or a
             password the policy refuses.
         """
-        data = json_object()
-        token = data.get("token")
-        new_password = data.get("new_password")
-        if not isinstance(token, str) or not token:
+        body = ResetPasswordRequest(**json_object())
+        token = body.token
+        new_password = body.new_password
+        if not token:
             raise ValidationError(
                 N_("This reset link is not valid"), field="token"
             )
-        if not isinstance(new_password, str) or not new_password:
+        if not new_password:
             raise ValidationError(
                 N_("New password is required"), field="new_password"
             )

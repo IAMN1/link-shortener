@@ -1,6 +1,6 @@
 # Быстрый старт
 
-Семь команд от пустого каталога до сервиса, отвечающего на запросы.
+Восемь команд от пустого каталога до сервиса, отвечающего на запросы.
 Вставьте блок целиком, а потом прочитайте, что он сделал, — или не
 читайте и идите смотреть на работающий сервис.
 
@@ -62,16 +62,16 @@ API — на `http://localhost:5000/api/docs`.
 | `cp .env.example .env` | Шаблон уже подходит для локального запуска: `DATABASE_TYPE=sqlite`, `CELERY_ENABLED=false`, Redis выключен | — |
 | `security generate-secrets --write .env` | Вписывает `SECRET_KEY` и `SHORT_CODE_PEPPER` на место. Без них `development` придумывает ключ на каждый процесс, и токены умирают при перезапуске | `SECRET_KEY and SHORT_CODE_PEPPER written to .env.` |
 | `flask alembic upgrade head` | Создаёт схему | `Running upgrade -> 0001, initial schema` |
-| `flask create-admin` | Первый администратор, которого не сделать ни одним запросом: регистрация выдаёт роль `user`, а раздавать `admin` может только тот, у кого она уже есть | `Admin user admin@example.com created successfully.` |
+| `flask create-admin` | Первый администратор, которого не сделать ни одним запросом: регистрация выдаёт роль `user`, а раздавать `admin` может только тот, у кого она уже есть | `Admin user admin@example.com created successfully (active: True).` |
 | `flask run` | Поднимает сервис на `http://127.0.0.1:5000/` | Баннер Werkzeug |
 
 <details>
 <summary>А где засеваются роли?</summary>
 
 Нигде — в этом запуске они засеваются сами: в профилях `development` и
-`testing` включён `AUTO_SEED_ROLES`, и роли `admin`, `analyst`, `guest` и
-`user` проверяются при каждом старте приложения, в том числе когда
-приложение поднимает CLI-команда.
+`testing` включён `AUTO_SEED_ROLES`, и роли `admin`, `analyst`,
+`auditor`, `guest` и `user` проверяются при каждом старте приложения, в
+том числе когда приложение поднимает CLI-команда.
 
 Это важно, потому что анонимный запрос выполняется от роли `guest`, а
 именно она несёт `link:create`. Без неё публичное сокращение отвечает
@@ -306,5 +306,5 @@ uv run flask alembic migrate "что изменилось"   # новая рев
 
 - Как всё устроено — [Architecture](architecture.md)
 - Почему устроено так — [Decisions](decisions.md)
-- Все настройки, какие есть — [Configuration](configuration.md)
+- Правила вокруг настроек — [Configuration](configuration.md)
 - Эксплуатация развёртывания — [Operations](operations.md)

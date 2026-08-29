@@ -1,6 +1,6 @@
 # Getting started
 
-Seven commands from an empty directory to a service answering requests.
+Eight commands from an empty directory to a service answering requests.
 Paste the block, then read what it did — or don't, and go look at the
 running service instead.
 
@@ -62,16 +62,16 @@ describes every endpoint.
 | `cp .env.example .env` | The template already suits a local run: `DATABASE_TYPE=sqlite`, `CELERY_ENABLED=false`, Redis off | — |
 | `security generate-secrets --write .env` | Fills `SECRET_KEY` and `SHORT_CODE_PEPPER` in place. Without them `development` invents a key per process, so tokens die on restart | `SECRET_KEY and SHORT_CODE_PEPPER written to .env.` |
 | `flask alembic upgrade head` | Creates the schema | `Running upgrade -> 0001, initial schema` |
-| `flask create-admin` | The first administrator, which no endpoint can make: registration hands out `user`, and granting `admin` needs an account that already holds it | `Admin user admin@example.com created successfully.` |
+| `flask create-admin` | The first administrator, which no endpoint can make: registration hands out `user`, and granting `admin` needs an account that already holds it | `Admin user admin@example.com created successfully (active: True).` |
 | `flask run` | Serves on `http://127.0.0.1:5000/` | The Werkzeug banner |
 
 <details>
 <summary>Where are the roles seeded?</summary>
 
 Nowhere, in this run: `development` and `testing` carry
-`AUTO_SEED_ROLES=true`, so `admin`, `analyst`, `guest` and `user` are
-ensured every time the application starts — including when a CLI command
-starts it.
+`AUTO_SEED_ROLES=true`, so `admin`, `analyst`, `auditor`, `guest` and
+`user` are ensured every time the application starts — including when a
+CLI command starts it.
 
 It matters because an anonymous request runs as the `guest` role, and that
 role is what carries `link:create`. Without it public shortening answers
@@ -306,5 +306,5 @@ uv run flask alembic migrate "what changed"   # a new revision after editing mod
 
 - How it is put together — [Architecture](architecture.md)
 - Why it is put together that way — [Decisions](decisions.md)
-- Every setting there is — [Configuration](configuration.md)
+- The rules around the settings — [Configuration](configuration.md)
 - Running a deployment — [Operations](operations.md)

@@ -77,8 +77,10 @@ says which of those it is.
 
 ## The CLI
 
-Seven groups. `flask --help` lists them; `flask <group> --help` lists a
-group.
+Seven groups, and two commands outside them. `flask --help` lists all of
+it; `flask <group> --help` lists a group. The `alembic` group is under
+[Migrations](#migrations) above, where the thing it operates on is
+explained.
 
 ### Accounts
 
@@ -118,6 +120,23 @@ group.
 | `db seed --count N` | Fill the database with test links. These are **guest** links, so they hit `GUEST_LINK_LIMIT` — raise it for large N |
 | `db init` · `db drop --yes` | Only meaningful with `USE_ALEMBIC=false` |
 
+### Links
+
+| Command | |
+|---|---|
+| `link create --url <u> [--code <c>]` | Shorten a URL from the shell. A URL this command already shortened comes back as its existing link rather than a second one, and `--code` is then not issued — the report says both. Links made by a signed-in account or by a web visitor are never returned here |
+| `link info <code>` | What the service holds about one link |
+| `link list --limit N` | The most recent links; `--limit` is 1 or more, because an empty report for `--limit 0` is not an answer |
+| `link delete <code>` | Remove one link. A refusal here is written to `application.log` and not to the audit journal: there is no request and no error handler behind it |
+
+### Cache
+
+| Command | |
+|---|---|
+| `cache stats` | Hits, memory and the rest, asked of the backend. A cache switched off says so and exits 0; one that does not answer exits 1 |
+| `cache clear [--stats-only]` | Empty the cache, or only its statistics half |
+| `maintenance check-redis` | The two questions `/health` puts to the cache: is a backend configured, and did it answer just now |
+
 ### Maintenance and statistics
 
 | Command | |
@@ -128,6 +147,7 @@ group.
 | `maintenance clean-reset-tokens` | Remove `password_resets` rows that are spent or expired |
 | `maintenance normalize-emails --apply` | One-off, on an existing database |
 | `maintenance health` | A dependency report on the terminal, plus which journals this process could open |
+| `stats show` | Print the statistics as they stand, without recomputing them |
 | `stats refresh` | Rebuild the statistics cache |
 
 ---

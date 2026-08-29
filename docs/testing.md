@@ -1,6 +1,6 @@
 # Testing
 
-**4208 tests**, 98.60% coverage against a floor of 88%, plus two live runs
+**4213 tests**, 98.60% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -86,7 +86,7 @@ on its own, and demanding a check for each would ask this run to prove
 Werkzeug works.
 
 <details>
-<summary>Why the run needs nine separate clients</summary>
+<summary>Why the run needs ten separate clients</summary>
 
 A Flask test client keeps a cookie jar, so after any request logs in, *every*
 later request on that client is cookie-authenticated — and the CSRF layer
@@ -115,6 +115,10 @@ signed-in caller: 32 of 56.
   section, which replaces a password too — and reads the link out of a
   delivered message, so its account also has to be the only one that was
   mailed anything recently.
+- `auditor` is the one whose whole point is what it may *not* do. `admin:all`
+  does not carry `audit:view`, so the administrator above cannot stand in for
+  it, and the section on the journals needs both sides of that refusal in one
+  run.
 
 Each client answers from its own address: registration is limited to three
 per hour per address, so a fourth scenario from one address would measure
@@ -137,9 +141,14 @@ could be broken entirely and stay green.
 What it holds:
 
 - **Pages speak sentences, not codes.** Measured: reversing
-  `data.message || data.error` in all eight page scripts turns three checks
-  red (`VALIDATION_ERROR`, `VALIDATION_ERROR`, `INVALID_CREDENTIALS`) while
-  the suite and the HTTP run stay green.
+  `data.message || data.error` in the twelve page scripts that carry it
+  turns four checks red on the property itself — the page shows
+  `VALIDATION_ERROR`, `VALIDATION_ERROR`, `EMAIL_NOT_VERIFIED` and
+  `INVALID_CREDENTIALS` where it should show a sentence — and the run ends
+  20/67, because a scenario that cannot read its own refusal never reaches
+  its next step. The suite and the HTTP run stay green throughout. (The
+  same reversal in `main.js`, which is not a page script, adds nothing to
+  either number.)
 - **A refusal is shown rather than swallowed.** The page scripts used to
   answer `403` with `if (!resp.ok) return;`, leaving a table on "Loading…"
   for good. One check answers `/links/mine` with a 403 through `page.route`
@@ -229,8 +238,11 @@ What it holds:
   this link and one about everything, side by side and unlabelled.
 
 Playwright is declared in its own `browser` dependency group rather than in
-`dev`: `requirements.txt` is exported from the lock file without filtering
-groups, and the Dockerfile installs exactly that. Measured — with playwright
+`dev`: `uv export` writes the default group and `dev` is that group, so
+everything in `dev` lands in `requirements.txt` and the Dockerfile installs
+exactly that, while a group of its own is written only when it is asked for.
+The export names `--no-group browser` as well, which says the same thing
+where a reader of the command can see it. Measured — with playwright
 in `dev` the runtime image grew from 540 MB to 731 MB, for a browser the
 service never launches.
 

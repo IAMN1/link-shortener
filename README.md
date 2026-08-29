@@ -9,7 +9,7 @@ suite that fails when the documentation starts lying.
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests: 4208](https://img.shields.io/badge/tests-4208-0b5d3b)](docs/testing.md)
+[![tests: 4213](https://img.shields.io/badge/tests-4213-0b5d3b)](docs/testing.md)
 [![coverage: 98%](https://img.shields.io/badge/coverage-98%25-0b5d3b)](docs/testing.md)
 [![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
 [![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -130,16 +130,16 @@ flowchart LR
 | **Accounts** | Permanent links, personal statistics, a dashboard |
 | **Batch** | Several URLs per request; what fails comes back per item |
 | **Deduplication** | Within one owner: shortening your own URL again returns your own live link |
-| **RBAC** | `guest`, `user`, `analyst`, `admin` — roles seeded from YAML, editable through the panel |
+| **RBAC** | `guest`, `user`, `analyst`, `auditor`, `admin` — roles seeded from YAML, editable through the panel |
 | **Email confirmation** | Registration never says whether an address is taken |
 | **Two-level cache** | Redirects and link objects, invalidated on delete |
 | **Asynchronous counters** | Clicks counted by Celery, off the request path |
-| **Rate limiting** | On auth endpoints and on link creation |
+| **Rate limiting** | Every route, tighter on auth and link creation; `/health` and `/static/` exempt |
 | **CLI** | Seven command groups for operating the service |
 
 ## API
 
-Thirty-four operations. Full description: `/api/openapi.json`, rendered at
+Thirty-nine operations. Full description: `/api/openapi.json`, rendered at
 `/api/docs`.
 
 | Method | Endpoint | Permission | |
@@ -204,7 +204,7 @@ Thirty-four operations. Full description: `/api/openapi.json`, rendered at
 ## Testing
 
 ```bash
-uv run pytest tests/                      # 4208 tests
+uv run pytest tests/                      # 4213 tests
 uv run python tests/live/smoke_test.py    # 157 checks over HTTP
 uv run python tests/live/browser_test.py  # 67 checks in a real browser
 ```
@@ -222,11 +222,11 @@ Full breakdown: [Testing](docs/testing.md).
 |---|---|
 | [Getting started](docs/getting-started.md) | From an empty directory to a working service, with the expected output of each step |
 | [Architecture](docs/architecture.md) | Layers, data flows, caching, authorization |
-| [Configuration](docs/configuration.md) | Every setting, what reads it, and what happens when it is wrong |
+| [Configuration](docs/configuration.md) | Profiles, precedence, and the settings that bite; the exhaustive list is `.env.example` |
 | [Operations](docs/operations.md) | Migrations, CLI, backups, upgrades, health |
 | [Testing](docs/testing.md) | The four levels, the live runs, and what CI enforces |
 | [Development](docs/development.md) | Patterns, the frontend, the load profile |
-| [Decisions](docs/decisions.md) | Forty-three write-ups of why something is the way it is |
+| [Decisions](docs/decisions.md) | Ninety-one write-ups of why something is the way it is |
 | [Roadmap](docs/roadmap.md) | What was considered and never built, and what each idea would cost |
 
 ## Requirements
