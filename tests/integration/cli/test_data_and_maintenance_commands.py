@@ -26,6 +26,7 @@ import pytest
 from flask.testing import FlaskCliRunner
 from sqlalchemy import text
 
+from link_shortener.domain import LinkExpiredError
 from link_shortener.domain.entities.link_visit import LinkVisit
 from link_shortener.domain.entities.password_reset import PasswordReset
 from link_shortener.domain.entities.refresh_session import RefreshSession
@@ -118,6 +119,20 @@ def _set_clicks(app, code, clicks):
                 {"clicks": clicks, "code": code},
             )
             session.commit()
+
+
+def _expire(app, code):
+    """Put a stored link's expiry in the past.
+
+    Waiting one out is not available: the shortest lifetime the service
+    issues is measured in days.
+    """
+    with app.app_context():
+        with app.container.get_uow_factory()() as uow:
+            link = uow.links.find_by_code(ShortCode(code))
+            link.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+            uow.links.save(link)
+            uow.commit()
 
 
 def _make_user(app, address, password_hash="hashed-password"):
@@ -230,6 +245,32 @@ class TestLinkCommands:
         assert result.exit_code == 1
         assert "not found" in result.output
 
+    def test_info_names_an_expired_link_as_expired(self, runner, app):
+        """A link past its expiry is refused as expired, not as missing.
+
+        Both refusals exit 1, so the wording is the only thing that tells
+        them apart -- and this one used to be a traceback: the use case
+        raises ``LinkExpiredError`` where the redirect and the API answer
+        410, and nothing between it and the terminal caught it. It is not
+        an edge: every guest link is in this state a week after it is
+        made, and ``link list`` goes on printing them.
+        """
+        _create_link(runner, app, "https://example.com/gone", "cli-gone")
+        _expire(app, "cli-gone")
+
+        result = runner.invoke(app.cli, ["link", "info", "cli-gone"])
+
+        # Checked before the exit code, which cannot see this defect: the
+        # runner reports an exception that escaped the command as exit 1
+        # too.
+        assert not isinstance(result.exception, LinkExpiredError), result.exception
+        assert result.exit_code == 1, result.output
+        assert "has expired" in result.output
+        # Not folded into the answer for a code nobody holds: the row is
+        # there, `link delete` removes it, and saying it is absent would
+        # send an operator looking for why.
+        assert "not found" not in result.output
+
     # Deleting a link that exists is checked by
     # ``test_link_access.py::test_the_cli_deletes_without_asking``, which
     # also pins that the CLI passes ``enforce_ownership=False``. Only the
@@ -337,14 +378,7 @@ class TestMaintenanceSweeps:
         """The sweep is keyed on the expiry, not on age or on count."""
         _create_link(runner, app, "https://example.com/keeps", "cli-live")
         _create_link(runner, app, "https://example.com/expires", "cli-dead")
-        with app.app_context():
-            with app.container.get_uow_factory()() as uow:
-                from link_shortener.domain.value_objects.short_code import ShortCode
-
-                doomed = uow.links.find_by_code(ShortCode("cli-dead"))
-                doomed.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
-                uow.links.save(doomed)
-                uow.commit()
+        _expire(app, "cli-dead")
 
         result = runner.invoke(app.cli, ["maintenance", "clean-expired"])
 

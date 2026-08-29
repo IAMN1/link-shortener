@@ -125,7 +125,7 @@ explained.
 | Command | |
 |---|---|
 | `link create --url <u> [--code <c>]` | Shorten a URL from the shell. A URL this command already shortened comes back as its existing link rather than a second one, and `--code` is then not issued — the report says both. Links made by a signed-in account or by a web visitor are never returned here |
-| `link info <code>` | What the service holds about one link |
+| `link info <code>` | What the service holds about one link. An expired link is refused as expired rather than reported as missing — the row is still there, and `link delete` still removes it |
 | `link list --limit N` | The most recent links; `--limit` is 1 or more, because an empty report for `--limit 0` is not an answer |
 | `link delete <code>` | Remove one link. A refusal here is written to `application.log` and not to the audit journal: there is no request and no error handler behind it |
 

@@ -68,8 +68,17 @@ def get_link_info(
         rather than flattened into a dictionary: the fields are already
         named and typed, and copying them into strings only moves the
         names somewhere a checker cannot see them.
+
+    Raises:
+        LinkExpiredError: If a link carries the code but its lifetime is
+            over. Deliberately not flattened into ``None``: that value
+            already says "no link carries this code", and an expired link
+            is one the caller can still list and still delete. The caller
+            answers for it -- ``link info`` says so and exits 1, the way
+            the redirect and the API answer 410 rather than 404.
     """
-    # One refusal, because the use case gives one: ``_code_to_look_up``
+    # One refusal turned into a value, because only one of the two the use
+    # case raises means "there is nothing here": ``_code_to_look_up``
     # answers ``LinkNotFoundError`` for a malformed code as well as for an
     # unused one, and says so in its own docstring -- "a malformed code
     # raises no ValueError here".

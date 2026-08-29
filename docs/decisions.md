@@ -2144,6 +2144,20 @@ with nothing between them.
 health` now writes `Unhealthy: Cache, Rate limiter` to stderr and exits 1,
 while the four-line report stays on stdout.
 
+**A traceback is not a sentence.** `link info` had one case left that obeyed
+none of this. `GetLinkInfoUseCase` refuses an expired link the way the
+redirect does, the command caught only the answer for a code nobody holds,
+and what an operator got was a stack trace on stderr. Measured on a stand a
+week old, where all ten links `link list` prints have outlived a guest
+lifetime: the command failed that way for every code it had just named. It
+now says the link has expired and names the sweep that removes it, kept
+apart from "not found" because the row is there and `link delete` still
+takes it — which is the same distinction the redirect draws between 410 and
+404. The neighbours were measured rather than reasoned about: `link delete`
+removes an expired link without complaint, since the CLI passes
+`enforce_ownership=False` and the only domain error that path raises comes
+from the ownership check it therefore never reaches.
+
 ### A port declares what its callers need
 
 **Decided** (2026-08-24): `clear_all` and `get_cache_info` are declared by
