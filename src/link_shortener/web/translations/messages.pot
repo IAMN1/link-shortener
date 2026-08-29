@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-29 00:42+0300\n"
+"POT-Creation-Date: 2026-08-29 22:12+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -57,13 +57,13 @@ msgstr ""
 
 #: src/link_shortener/application/use_cases/auth/reset_password.py:76
 #: src/link_shortener/application/use_cases/auth/reset_password.py:87
-#: src/link_shortener/web/controllers/auth_controller.py:506
+#: src/link_shortener/web/controllers/auth_controller.py:517
 msgid "This reset link is not valid"
 msgstr ""
 
 #: src/link_shortener/application/use_cases/auth/verify_email.py:63
 #: src/link_shortener/application/use_cases/auth/verify_email.py:82
-#: src/link_shortener/web/controllers/auth_controller.py:347
+#: src/link_shortener/web/controllers/auth_controller.py:358
 msgid "This confirmation link is not valid"
 msgstr ""
 
@@ -757,30 +757,30 @@ msgstr ""
 msgid "days must be a whole number"
 msgstr ""
 
-#: src/link_shortener/web/controllers/auth_controller.py:214
-#: src/link_shortener/web/controllers/auth_controller.py:296
+#: src/link_shortener/web/controllers/auth_controller.py:225
+#: src/link_shortener/web/controllers/auth_controller.py:307
 msgid "Email and password are required"
 msgstr ""
 
-#: src/link_shortener/web/controllers/auth_controller.py:376
-#: src/link_shortener/web/controllers/auth_controller.py:466
+#: src/link_shortener/web/controllers/auth_controller.py:387
+#: src/link_shortener/web/controllers/auth_controller.py:477
 msgid "Email is required"
 msgstr ""
 
-#: src/link_shortener/web/controllers/auth_controller.py:417
+#: src/link_shortener/web/controllers/auth_controller.py:428
 msgid "Current password is required"
 msgstr ""
 
-#: src/link_shortener/web/controllers/auth_controller.py:421
-#: src/link_shortener/web/controllers/auth_controller.py:510
+#: src/link_shortener/web/controllers/auth_controller.py:432
+#: src/link_shortener/web/controllers/auth_controller.py:521
 msgid "New password is required"
 msgstr ""
 
-#: src/link_shortener/web/controllers/auth_controller.py:567
+#: src/link_shortener/web/controllers/auth_controller.py:578
 msgid "No refresh token"
 msgstr ""
 
-#: src/link_shortener/web/controllers/auth_controller.py:573
+#: src/link_shortener/web/controllers/auth_controller.py:584
 msgid "Invalid or expired refresh token"
 msgstr ""
 

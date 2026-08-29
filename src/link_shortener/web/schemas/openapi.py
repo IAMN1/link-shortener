@@ -47,6 +47,10 @@ from link_shortener.web.schemas.requests import (
 from link_shortener.web.schemas.auth import (
     MessageResponse, RefreshResponse, RegisterResponse, TokenPairResponse
 )
+from link_shortener.web.schemas.auth_requests import (
+    ChangePasswordRequest, CredentialsRequest, EmailRequest,
+    RefreshTokenRequest, ResetPasswordRequest, VerifyEmailRequest,
+)
 from link_shortener.web.schemas.stats import (
     MyStatsResponse, ServiceStatsResponse
 )
@@ -81,6 +85,17 @@ MODELS: Dict[str, Type[BaseModel]] = {
     "RefreshResponse": RefreshResponse,
     "MessageResponse": MessageResponse,
     "ErrorResponse": ErrorResponse,
+    # The bodies the auth routes read. Nine operations described none, so
+    # a client generated from this document could reach every one of them
+    # and fill in not one. The models are lenient by design and say so in
+    # their own module: they hold the field names and the types, and the
+    # sentences a route answers an absence with stay the route's.
+    "CredentialsRequest": CredentialsRequest,
+    "EmailRequest": EmailRequest,
+    "VerifyEmailRequest": VerifyEmailRequest,
+    "ResetPasswordRequest": ResetPasswordRequest,
+    "ChangePasswordRequest": ChangePasswordRequest,
+    "RefreshTokenRequest": RefreshTokenRequest,
     # Administration. The dashboard is written against these bodies, so
     # they were already a contract -- just an unwritten one.
     "CreateUserRequest": CreateUserRequest,
@@ -811,6 +826,7 @@ PATHS: Dict[str, Any] = {
                 "was free, a notice that an account exists if it was not."
             ),
             "tags": ["auth"],
+            "requestBody": {"required": True, **_json("CredentialsRequest")},
             "responses": {
                 "202": {"description": "Accepted", **_json("RegisterResponse")},
                 "400": _error("Malformed body, or a password the policy refuses"),
@@ -827,6 +843,7 @@ PATHS: Dict[str, Any] = {
                 "with no cookie jar."
             ),
             "tags": ["auth"],
+            "requestBody": {"required": True, **_json("CredentialsRequest")},
             "responses": {
                 "200": {"description": "Tokens", **_json("TokenPairResponse")},
                 "400": _error("Malformed body or malformed email"),
@@ -888,6 +905,10 @@ PATHS: Dict[str, Any] = {
                     ),
                 }
             ],
+            # Not required, alone among the bodies that carry a token:
+            # the query parameter above is the other way in, and a
+            # request that uses it sends no body at all.
+            "requestBody": {"required": False, **_json("VerifyEmailRequest")},
             "responses": {
                 "200": {
                     "description": "The address is confirmed",
@@ -906,6 +927,7 @@ PATHS: Dict[str, Any] = {
                 "token retires the ones outstanding."
             ),
             "tags": ["auth"],
+            "requestBody": {"required": True, **_json("EmailRequest")},
             "responses": {
                 "202": {
                     "description": "Accepted, whatever was found",
@@ -928,6 +950,7 @@ PATHS: Dict[str, Any] = {
                 "evidence about."
             ),
             "tags": ["auth"],
+            "requestBody": {"required": True, **_json("EmailRequest")},
             "responses": {
                 "202": {
                     "description": "Accepted, whatever was found",
@@ -950,6 +973,7 @@ PATHS: Dict[str, Any] = {
                 "account held is revoked."
             ),
             "tags": ["auth"],
+            "requestBody": {"required": True, **_json("ResetPasswordRequest")},
             "responses": {
                 "200": {"description": "Changed", **_json("MessageResponse")},
                 "400": _error(
@@ -972,6 +996,7 @@ PATHS: Dict[str, Any] = {
                 "stays signed in and no other device does."
             ),
             "tags": ["auth"],
+            "requestBody": {"required": True, **_json("ChangePasswordRequest")},
             "responses": {
                 "200": {
                     "description": "Changed; a new pair for this client",
@@ -990,6 +1015,9 @@ PATHS: Dict[str, Any] = {
         "post": {
             "summary": "Rotate the refresh token",
             "tags": ["auth"],
+            # A browser sends none: its token is in the HttpOnly cookie,
+            # which is where this route looks first.
+            "requestBody": {"required": False, **_json("RefreshTokenRequest")},
             "responses": {
                 "200": {"description": "A new pair", **_json("RefreshResponse")},
                 "401": _error("No usable refresh token"),
@@ -1000,6 +1028,9 @@ PATHS: Dict[str, Any] = {
         "post": {
             "summary": "End the session",
             "tags": ["auth"],
+            # Optional for the same reason as /refresh, and this route
+            # also ends a session named by the access token alone.
+            "requestBody": {"required": False, **_json("RefreshTokenRequest")},
             "responses": {
                 "200": {"description": "Ended", **_json("MessageResponse")}
             },

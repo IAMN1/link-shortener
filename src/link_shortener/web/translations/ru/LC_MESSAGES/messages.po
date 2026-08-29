@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.1.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-29 00:42+0300\n"
+"POT-Creation-Date: 2026-08-29 22:12+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -59,13 +59,13 @@ msgstr "Регистрация сейчас недоступна"
 
 #: src/link_shortener/application/use_cases/auth/reset_password.py:76
 #: src/link_shortener/application/use_cases/auth/reset_password.py:87
-#: src/link_shortener/web/controllers/auth_controller.py:506
+#: src/link_shortener/web/controllers/auth_controller.py:517
 msgid "This reset link is not valid"
 msgstr "Эта ссылка сброса недействительна"
 
 #: src/link_shortener/application/use_cases/auth/verify_email.py:63
 #: src/link_shortener/application/use_cases/auth/verify_email.py:82
-#: src/link_shortener/web/controllers/auth_controller.py:347
+#: src/link_shortener/web/controllers/auth_controller.py:358
 msgid "This confirmation link is not valid"
 msgstr "Эта ссылка подтверждения недействительна"
 
@@ -769,30 +769,30 @@ msgstr "Войдите, чтобы видеть свою статистику"
 msgid "days must be a whole number"
 msgstr "days должно быть целым числом"
 
-#: src/link_shortener/web/controllers/auth_controller.py:214
-#: src/link_shortener/web/controllers/auth_controller.py:296
+#: src/link_shortener/web/controllers/auth_controller.py:225
+#: src/link_shortener/web/controllers/auth_controller.py:307
 msgid "Email and password are required"
 msgstr "Нужны адрес и пароль"
 
-#: src/link_shortener/web/controllers/auth_controller.py:376
-#: src/link_shortener/web/controllers/auth_controller.py:466
+#: src/link_shortener/web/controllers/auth_controller.py:387
+#: src/link_shortener/web/controllers/auth_controller.py:477
 msgid "Email is required"
 msgstr "Нужен адрес почты"
 
-#: src/link_shortener/web/controllers/auth_controller.py:417
+#: src/link_shortener/web/controllers/auth_controller.py:428
 msgid "Current password is required"
 msgstr "Нужен текущий пароль"
 
-#: src/link_shortener/web/controllers/auth_controller.py:421
-#: src/link_shortener/web/controllers/auth_controller.py:510
+#: src/link_shortener/web/controllers/auth_controller.py:432
+#: src/link_shortener/web/controllers/auth_controller.py:521
 msgid "New password is required"
 msgstr "Нужен новый пароль"
 
-#: src/link_shortener/web/controllers/auth_controller.py:567
+#: src/link_shortener/web/controllers/auth_controller.py:578
 msgid "No refresh token"
 msgstr "Нет токена обновления"
 
-#: src/link_shortener/web/controllers/auth_controller.py:573
+#: src/link_shortener/web/controllers/auth_controller.py:584
 msgid "Invalid or expired refresh token"
 msgstr "Токен обновления неверен или истёк"
 
