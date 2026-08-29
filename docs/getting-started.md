@@ -1,6 +1,6 @@
 # Getting started
 
-Seven commands from an empty directory to a service answering requests.
+Eight commands from an empty directory to a service answering requests.
 Paste the block, then read what it did — or don't, and go look at the
 running service instead.
 

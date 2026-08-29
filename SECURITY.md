@@ -81,6 +81,13 @@ but it is not news:
   without `://`, a nested address in percent-encoding, and a token in a
   query string. The third is not maskable in principle — a query parameter
   is not distinguishable from a secret by shape.
+- **The two mail-on-request routes answer at different speeds.**
+  `auth/resend-verification` and `auth/forgot-password` return the same
+  sentence for every address and take measurably different times to do it —
+  0.12 ms for a malformed address, 0.26 ms for an unknown one and 0.82 ms
+  for a registered one, in ranges that do not overlap. Left standing
+  because the throttle a timing attack would have to run through is three
+  requests an hour per caller.
 - **Unauthenticated deletion reveals whether a code is taken.** A `DELETE`
   on a code that does not exist and on one owned by somebody else answer
   differently. The redirect and the basic info endpoint answer that same

@@ -23,7 +23,7 @@ where to look, the table below is sorted by what you are trying to do.
 
 ## The short version of each
 
-**[Getting started](getting-started.md)** — seven commands to a service
+**[Getting started](getting-started.md)** — eight commands to a service
 that answers, then what each of them did; the full stack in Docker below
 that, with the output every command should print and the errors you are
 most likely to hit.
@@ -32,10 +32,10 @@ most likely to hit.
 dependencies point; how a link is created, resolved and deleted; the two
 cache levels and what invalidates them; how authorization decides.
 
-**[Configuration](configuration.md)** — every environment variable: what
-reads it, which profiles it applies to, what the default is, and what the
-service does when the value is wrong. Profiles, precedence, and the
-settings the deployed profiles refuse to start without.
+**[Configuration](configuration.md)** — profiles and precedence, the
+settings the deployed profiles refuse to start without, and the ones that
+bite. The exhaustive list of variables is `.env.example`; this page is the
+rules around it.
 
 **[Operations](operations.md)** — migrations with Alembic, the seven CLI
 groups, the maintenance schedule, backups, health checks and upgrades.
