@@ -69,9 +69,9 @@ API — на `http://localhost:5000/api/docs`.
 <summary>А где засеваются роли?</summary>
 
 Нигде — в этом запуске они засеваются сами: в профилях `development` и
-`testing` включён `AUTO_SEED_ROLES`, и роли `admin`, `analyst`, `guest` и
-`user` проверяются при каждом старте приложения, в том числе когда
-приложение поднимает CLI-команда.
+`testing` включён `AUTO_SEED_ROLES`, и роли `admin`, `analyst`,
+`auditor`, `guest` и `user` проверяются при каждом старте приложения, в
+том числе когда приложение поднимает CLI-команда.
 
 Это важно, потому что анонимный запрос выполняется от роли `guest`, а
 именно она несёт `link:create`. Без неё публичное сокращение отвечает
@@ -306,5 +306,5 @@ uv run flask alembic migrate "что изменилось"   # новая рев
 
 - Как всё устроено — [Architecture](architecture.md)
 - Почему устроено так — [Decisions](decisions.md)
-- Все настройки, какие есть — [Configuration](configuration.md)
+- Правила вокруг настроек — [Configuration](configuration.md)
 - Эксплуатация развёртывания — [Operations](operations.md)

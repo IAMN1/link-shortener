@@ -69,9 +69,9 @@ describes every endpoint.
 <summary>Where are the roles seeded?</summary>
 
 Nowhere, in this run: `development` and `testing` carry
-`AUTO_SEED_ROLES=true`, so `admin`, `analyst`, `guest` and `user` are
-ensured every time the application starts — including when a CLI command
-starts it.
+`AUTO_SEED_ROLES=true`, so `admin`, `analyst`, `auditor`, `guest` and
+`user` are ensured every time the application starts — including when a
+CLI command starts it.
 
 It matters because an anonymous request runs as the `guest` role, and that
 role is what carries `link:create`. Without it public shortening answers
@@ -306,5 +306,5 @@ uv run flask alembic migrate "what changed"   # a new revision after editing mod
 
 - How it is put together — [Architecture](architecture.md)
 - Why it is put together that way — [Decisions](decisions.md)
-- Every setting there is — [Configuration](configuration.md)
+- The rules around the settings — [Configuration](configuration.md)
 - Running a deployment — [Operations](operations.md)
