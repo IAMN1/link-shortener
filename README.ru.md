@@ -9,7 +9,7 @@
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![тестов: 4214](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-4214-0b5d3b)](docs/testing.md)
+[![тестов: 4219](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-4219-0b5d3b)](docs/testing.md)
 [![покрытие: 98%](https://img.shields.io/badge/%D0%BF%D0%BE%D0%BA%D1%80%D1%8B%D1%82%D0%B8%D0%B5-98%25-0b5d3b)](docs/testing.md)
 [![mypy: 0](https://img.shields.io/badge/mypy-0%20%D0%BE%D1%88%D0%B8%D0%B1%D0%BE%D0%BA-0b5d3b)](docs/testing.md)
 [![лицензия: Apache 2.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-Apache%202.0-blue)](LICENSE)
@@ -202,7 +202,7 @@ flowchart LR
 ## Тестирование
 
 ```bash
-uv run pytest tests/                      # 4214 тестов
+uv run pytest tests/                      # 4219 тестов
 uv run python tests/live/smoke_test.py    # 157 проверок по HTTP
 uv run python tests/live/browser_test.py  # 67 проверок настоящим браузером
 ```
@@ -223,7 +223,7 @@ CI гоняет набор дважды, в чистом окружении и �
 |---|---|
 | [Быстрый старт](docs/getting-started.ru.md) | Из пустого каталога до работающего сервиса, с ожидаемым выводом каждого шага |
 | [Архитектура](docs/architecture.md) | Слои, потоки данных, кэш, авторизация |
-| [Конфигурация](docs/configuration.md) | Профили, приоритет и настройки, которые кусаются; исчерпывающий список — `.env.example` |
+| [Конфигурация](docs/configuration.md) | Профили, приоритет и настройки, которые кусаются; исчерпывающий список задаваемого оператором — `.env.example` |
 | [Эксплуатация](docs/operations.md) | Миграции, CLI, резервные копии, обновление, здоровье |
 | [Тестирование](docs/testing.md) | Четыре уровня, живые прогоны и что требует CI |
 | [Разработка](docs/development.md) | Паттерны, фронтенд, нагрузочный профиль |

@@ -34,8 +34,8 @@ cache levels and what invalidates them; how authorization decides.
 
 **[Configuration](configuration.md)** — profiles and precedence, the
 settings the deployed profiles refuse to start without, and the ones that
-bite. The exhaustive list of variables is `.env.example`; this page is the
-rules around it.
+bite. The exhaustive list of the variables an operator sets is
+`.env.example`; this page is the rules around it.
 
 **[Operations](operations.md)** — migrations with Alembic, the seven CLI
 groups, the maintenance schedule, backups, health checks and upgrades.
