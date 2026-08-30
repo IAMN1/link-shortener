@@ -292,7 +292,7 @@ NOT_PROSE = {
     '\'{"url": "https://example.com/…"}\'',
     # Names: the product, the author, the services it talks to.
     "MaizLink",
-    "linkr",
+    "maizlink",
     "— MaizLink",
     "2026 MaizLink",
     "GitHub",

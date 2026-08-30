@@ -66,8 +66,8 @@ var JOURNAL_LINE_COUNTS = [50, 200, 1000];
 // that has it switched off.
 function journalRemember(name, value) {
     try {
-        if (value === undefined) return localStorage.getItem('linkr.journal.' + name);
-        localStorage.setItem('linkr.journal.' + name, value);
+        if (value === undefined) return localStorage.getItem('maizlink.journal.' + name);
+        localStorage.setItem('maizlink.journal.' + name, value);
     } catch (e) {
         return null;
     }
