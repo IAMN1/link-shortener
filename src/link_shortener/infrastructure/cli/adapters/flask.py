@@ -8,7 +8,7 @@ from flask.cli import with_appcontext
 
 from link_shortener.application import RequestContext
 from link_shortener.application.ports.logger.audit import AuditLogger
-from link_shortener.domain import Email
+from link_shortener.domain import Email, LinkExpiredError
 from link_shortener.infrastructure.cli.commands.database import init_db as init_db_logic
 from link_shortener.infrastructure.cli.commands.database import drop_db as drop_db_logic
 from link_shortener.infrastructure.cli.commands.database import seed_db as seed_db_logic
@@ -963,7 +963,26 @@ def link_info(short_code):
     container = _container()
     context = RequestContext(request_id="cli-info")
     use_case = container.get_get_link_info_use_case()
-    info = link_info_logic(use_case, short_code, context)
+
+    # Caught here rather than in the logic module, where the refusal for a
+    # code nobody holds is turned into ``None``: an expired link is a link
+    # that exists, and answering "not found" for it would have the command
+    # deny a row `link list` prints and `link delete` removes. Named
+    # separately for the same reason 410 is not 404 -- which is what the
+    # redirect and the API answer for this very code.
+    #
+    # Narrow on purpose. A wider clause would report a database that did
+    # not answer as an expiry, and this command is one of the ways that is
+    # diagnosed.
+    try:
+        info = link_info_logic(use_case, short_code, context)
+    except LinkExpiredError:
+        click.echo(
+            f"Link '{short_code}' has expired and is no longer served. "
+            f"`flask maintenance clean-expired` removes it.",
+            err=True,
+        )
+        raise SystemExit(1)
 
     # See `link delete`: the frame is part of a report, and a refusal is
     # not a report. This printed the rules around a sentence that went to

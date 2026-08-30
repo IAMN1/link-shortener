@@ -1,15 +1,15 @@
 <div align="center">
 
-# Linkr
+<img src="docs/media/banner.png" alt="MaizLink — a URL shortener built the way a service that has to stay up is built" width="820">
 
-**A URL shortener built the way a service that has to stay up is built.**
+# MaizLink
 
 Clean architecture, role-based access control, a two-level cache, and a test
 suite that fails when the documentation starts lying.
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests: 4213](https://img.shields.io/badge/tests-4213-0b5d3b)](docs/testing.md)
+[![tests: 4227](https://img.shields.io/badge/tests-4227-0b5d3b)](docs/testing.md)
 [![coverage: 98%](https://img.shields.io/badge/coverage-98%25-0b5d3b)](docs/testing.md)
 [![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
 [![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -21,23 +21,7 @@ suite that fails when the documentation starts lying.
 
 **English** · [Русский](README.ru.md)
 
-<!-- ─────────────────────────────────────────────────────────────────────
-     DEMO GOES HERE
-
-     Drop the file in docs/media/ and uncomment one of the lines below.
-     Recommended: a GIF, 1280×720 or wider, under 10 MB — GitHub does not
-     autoplay video in a README, so a GIF is the only thing that moves
-     without a click.
-
-     <img src="docs/media/demo.gif" alt="Shortening a link and opening the dashboard" width="820">
-
-     For a still:
-     <img src="docs/media/dashboard.png" alt="The dashboard" width="820">
-
-     For a video, GitHub renders an uploaded .mp4 as a player — paste the
-     URL GitHub gives you after dragging the file into an issue comment:
-     https://github.com/user-attachments/assets/<id>
-     ───────────────────────────────────────────────────────────────────── -->
+<img src="docs/media/demo.gif" alt="A long address is shortened, the theme is switched to dark, and the dashboard opens on its links, a month of visit statistics by device and browser, the audit journal and the role editor" width="820">
 
 </div>
 
@@ -204,7 +188,7 @@ Thirty-nine operations. Full description: `/api/openapi.json`, rendered at
 ## Testing
 
 ```bash
-uv run pytest tests/                      # 4213 tests
+uv run pytest tests/                      # 4227 tests
 uv run python tests/live/smoke_test.py    # 157 checks over HTTP
 uv run python tests/live/browser_test.py  # 67 checks in a real browser
 ```
@@ -222,7 +206,7 @@ Full breakdown: [Testing](docs/testing.md).
 |---|---|
 | [Getting started](docs/getting-started.md) | From an empty directory to a working service, with the expected output of each step |
 | [Architecture](docs/architecture.md) | Layers, data flows, caching, authorization |
-| [Configuration](docs/configuration.md) | Profiles, precedence, and the settings that bite; the exhaustive list is `.env.example` |
+| [Configuration](docs/configuration.md) | Profiles, precedence, and the settings that bite; the exhaustive list of what an operator sets is `.env.example` |
 | [Operations](docs/operations.md) | Migrations, CLI, backups, upgrades, health |
 | [Testing](docs/testing.md) | The four levels, the live runs, and what CI enforces |
 | [Development](docs/development.md) | Patterns, the frontend, the load profile |
@@ -239,7 +223,9 @@ locally.
 
 Issues and pull requests are welcome — [CONTRIBUTING.md](CONTRIBUTING.md)
 covers the setup, what a change has to pass, and the one-flag sign-off
-(`git commit -s`) the project uses instead of a CLA.
+(`git commit -s`) the project uses instead of a CLA. Taking part means
+keeping to the [Code of Conduct](CODE_OF_CONDUCT.md), and the address in
+it reaches the maintainer and nobody else.
 
 ## Security
 
@@ -254,3 +240,6 @@ expect, what is already known, and what I will not pursue you for.
 too. Keep the copyright notice, say what you changed, and note that the
 licence carries an explicit patent grant: a contributor cannot later sue
 users over patents in what they contributed.
+
+The licence covers the code and not the name: section 6 grants no
+trademark rights, so a fork travels under a name of its own.

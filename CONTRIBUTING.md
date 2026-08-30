@@ -1,6 +1,9 @@
 # Contributing
 
 Thanks for looking. Bug reports, questions and patches are all welcome.
+Taking part means keeping to the [Code of Conduct](CODE_OF_CONDUCT.md) —
+and a security problem goes through GitHub's private reporting rather
+than through an issue — [SECURITY.md](SECURITY.md) says how.
 
 ## Before you write code
 
@@ -40,7 +43,7 @@ and `isort` 421. Neither of those is declared any more; running one is not
 formatting a change, it is reformatting the project.
 
 ```bash
-uv run pytest tests/                      # 4213 tests, 88% coverage floor
+uv run pytest tests/                      # 4227 tests, 88% coverage floor
 uv run flake8 src tests
 uv run pylint src                         # floor 9.0
 uv run bandit -r src -q
@@ -66,12 +69,20 @@ edited string means the catalogues have to be brought along with it:
 
 ```bash
 D=src/link_shortener/web/translations
+V=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
 uv run pybabel extract -F babel.cfg -o $D/messages.pot \
-    --project=link-shortener --version=0.1.0 .
+    --project=link-shortener --version="$V" .
 uv run pybabel update -i $D/messages.pot -d $D          # merge, keeping what exists
 # …fill in the new msgstr in $D/ru/LC_MESSAGES/messages.po and zh/…
+sed -i '' "s/^\"Project-Id-Version: link-shortener .*/\"Project-Id-Version: link-shortener $V\\\\n\"/" \
+    $D/*/LC_MESSAGES/messages.po                        # update writes the .pot header, not these
 uv run pybabel compile -d $D                            # .mo is what gettext reads
 ```
+
+The `sed` is not decoration. `pybabel update` rewrites the entries of a
+catalogue and leaves its header alone, so after a release the `.pot` says
+the new version and both `.po` files still say the old one — and nothing
+reports it, because `gettext` reads the `.mo` and never looks at that line.
 
 `update`, never `init` — `init` starts an empty catalogue and throws away
 every translation already made. `init` is only for a language that has none.
@@ -177,6 +188,13 @@ under the project's licence.
 > flag on `git commit`, and it keeps the project's licensing coherent. The
 > project is under [Apache 2.0](LICENSE), and contributions come in under
 > the same terms.
+>
+> Those terms are not this project's promise but the licence's own:
+> section 5 places any contribution deliberately submitted for inclusion
+> under the same licence, unless you state otherwise in writing. What the
+> sign-off adds is the other half — that you had the right to submit it.
+> You keep the copyright in what you wrote; the project gets a licence to
+> use it, not ownership of it.
 
 ## Commit messages
 

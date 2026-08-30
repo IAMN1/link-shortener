@@ -20,8 +20,8 @@ import link_shortener.web
 from link_shortener.web.middleware.compression import CompressionMiddleware
 
 
-LONG = "linkr " * 400        # comfortably over the threshold, and compressible
-SHORT = "linkr"              # under it
+LONG = "maizlink " * 400        # comfortably over the threshold, and compressible
+SHORT = "maizlink"              # under it
 
 # The real asset directory, taken from the package rather than by counting
 # parent directories up from this file: the assets are what the middleware

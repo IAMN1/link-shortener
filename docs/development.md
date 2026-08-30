@@ -46,7 +46,7 @@ The frontend is at the same level. What a page shows is decided by a
 |---|---|
 | `web/app_factory.py` | The application factory; wires everything together |
 | `infrastructure/di/container.py` | The container and every component's construction |
-| `infrastructure/configs/app/base.py` | Every setting the service reads, bar two: `CELERY_BROKER_TIMEOUT` is the worker's own and lives in `configs/celery/`, and `FLASK_ENV` picks the profile rather than sitting in one |
+| `infrastructure/configs/app/base.py` | Every setting the service reads, bar four, and none of the four is one a profile could hold: `CELERY_BROKER_TIMEOUT` is the worker's own and lives in `configs/celery/`, `FLASK_ENV` picks the profile rather than sitting in one, `ALEMBIC_DATABASE_URL` is the handover one migration reads in `configs/app/migration_url.py`, and `FLASK_RUN_FROM_CLI` is set by the `flask` command and read in `configs/app/factory.py` to see whether `.env` is already loaded |
 | `infrastructure/database/role_loader.py` | RBAC from YAML into the database |
 | `web/security/template_access.py` | `can(...)` for the markup |
 | `web/middleware/csrf.py` | The double-submit implementation |
@@ -67,6 +67,10 @@ the route asks.
 `g.authorization_service`, which is what `@require_permission` stands on.
 Answers are memoised per request: the anonymous branch opens a Unit of Work
 to read the `guest` role, and a sidebar asks about eight permissions.
+
+The same template, rendered for two roles, is the whole argument:
+
+<img src="media/sidebar-by-role.png" alt="Two sidebars side by side: the analyst is offered My Links, My Stats and Service Stats; the administrator is offered those plus Create Link, Journals, Users, Roles and Health Check" width="520">
 
 **Why not role names.** That is how it was: `{% if 'analyst' in
 g.current_user.roles %}`. The server checks permissions, so the two asked

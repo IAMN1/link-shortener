@@ -506,8 +506,8 @@ document.addEventListener('turbo:before-cache', chartStopPolling);
 // trade.
 function chartRemember(name, value) {
     try {
-        if (value === undefined) return localStorage.getItem('linkr.chart.' + name);
-        localStorage.setItem('linkr.chart.' + name, value);
+        if (value === undefined) return localStorage.getItem('maizlink.chart.' + name);
+        localStorage.setItem('maizlink.chart.' + name, value);
     } catch (e) {
         return null;
     }

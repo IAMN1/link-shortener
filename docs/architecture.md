@@ -376,7 +376,9 @@ stateDiagram-v2
 
 - **X-Forwarded-For** is read only from an address in `TRUSTED_PROXIES`, and
   the rightmost entry is taken — the one the proxy itself appended.
-- **The rate limiter** counts by that same `get_client_ip()`.
+- **The rate limiter** counts by that same `get_client_ip()`, and so do the
+  journals: the line opening a request and the audit line beside it name
+  one address rather than the proxy and the client.
 - **CORS** is confined to the `CORS_ORIGINS` list.
 
 ---
@@ -389,6 +391,13 @@ stateDiagram-v2
 | `user` | A registered account | `link:create`, `link:view_own`, `link:delete_own` |
 | `analyst` | An analyst | `stats:view_full`, `stats:view_any`, `link:view_own` |
 | `admin` | An administrator | `admin:all` |
+
+Roles are seeded from [`configs/rbac/roles.yaml`](../src/link_shortener/infrastructure/configs/rbac/roles.yaml)
+and edited afterwards in the panel — the five above are system roles the
+service refuses to change, and a role of your own is made from the same
+fifteen permissions:
+
+<img src="media/role-permissions.png" alt="The Create Role form: name, description, and the fifteen permissions grouped by what they act on — admin, audit, link, logs and stats" width="820">
 
 ### You cannot grant more than you hold
 

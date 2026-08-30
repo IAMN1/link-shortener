@@ -6,9 +6,9 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: link-shortener 0.1.0\n"
+"Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-29 22:12+0300\n"
+"POT-Creation-Date: 2026-08-30 05:19+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -1104,8 +1104,8 @@ msgid "You are not logged in. %(link)s"
 msgstr "您尚未登录。%(link)s"
 
 #: src/link_shortener/web/templates/dashboard/create_link.html:2
-msgid "Create Link — Linkr"
-msgstr "创建链接 — Linkr"
+msgid "Create Link — MaizLink"
+msgstr "创建链接 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/create_link.html:9
 #: src/link_shortener/web/templates/dashboard/journals.html:101
@@ -1133,8 +1133,8 @@ msgid "Create"
 msgstr "创建"
 
 #: src/link_shortener/web/templates/dashboard/create_role.html:3
-msgid "Create Role — Linkr"
-msgstr "创建角色 — Linkr"
+msgid "Create Role — MaizLink"
+msgstr "创建角色 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/create_role.html:6
 msgid "Create Role"
@@ -1180,8 +1180,8 @@ msgid "Create role"
 msgstr "创建角色"
 
 #: src/link_shortener/web/templates/dashboard/create_user.html:2
-msgid "Create User — Linkr"
-msgstr "创建用户 — Linkr"
+msgid "Create User — MaizLink"
+msgstr "创建用户 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/create_user.html:5
 msgid "Create User"
@@ -1207,8 +1207,8 @@ msgstr "创建用户"
 
 #: src/link_shortener/web/templates/dashboard/edit_role.html:3
 #, python-format
-msgid "Edit role %(name)s — Linkr"
-msgstr "编辑角色 %(name)s — Linkr"
+msgid "Edit role %(name)s — MaizLink"
+msgstr "编辑角色 %(name)s — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/edit_role.html:6
 msgid "Edit Role"
@@ -1230,8 +1230,8 @@ msgstr "保存"
 
 #: src/link_shortener/web/templates/dashboard/edit_user.html:2
 #, python-format
-msgid "Edit %(email)s — Linkr"
-msgstr "编辑 %(email)s — Linkr"
+msgid "Edit %(email)s — MaizLink"
+msgstr "编辑 %(email)s — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/edit_user.html:5
 msgid "Edit User"
@@ -1247,8 +1247,8 @@ msgid "Saving removes it."
 msgstr "保存后将被移除。"
 
 #: src/link_shortener/web/templates/dashboard/health.html:2
-msgid "Health — Linkr"
-msgstr "健康状态 — Linkr"
+msgid "Health — MaizLink"
+msgstr "健康状态 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/health.html:4
 msgid "Service Health"
@@ -1312,8 +1312,8 @@ msgid "Reported by %(name)s, read once when this page opens."
 msgstr "由 %(name)s 提供，打开本页时读取一次。"
 
 #: src/link_shortener/web/templates/dashboard/home.html:2
-msgid "Dashboard — Linkr"
-msgstr "控制台 — Linkr"
+msgid "Dashboard — MaizLink"
+msgstr "控制台 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/home.html:16
 #: src/link_shortener/web/templates/dashboard/link_stats.html:28
@@ -1389,8 +1389,8 @@ msgid "The %(link)s are open to it."
 msgstr "%(link)s 对它是开放的。"
 
 #: src/link_shortener/web/templates/dashboard/journals.html:2
-msgid "Journals — Linkr"
-msgstr "日志 — Linkr"
+msgid "Journals — MaizLink"
+msgstr "日志 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/journals.html:27
 msgid "What to read"
@@ -1484,16 +1484,16 @@ msgstr "应用日志会写出每个注册或登录者的邮箱地址。"
 
 #: src/link_shortener/web/templates/dashboard/link_stats.html:3
 #, python-format
-msgid "Link %(code)s — Linkr"
-msgstr "链接 %(code)s — Linkr"
+msgid "Link %(code)s — MaizLink"
+msgstr "链接 %(code)s — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/link_stats.html:10
 msgid "All links"
 msgstr "全部链接"
 
 #: src/link_shortener/web/templates/dashboard/my_links.html:2
-msgid "My Links — Linkr"
-msgstr "我的链接 — Linkr"
+msgid "My Links — MaizLink"
+msgstr "我的链接 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/my_links.html:29
 msgid "Expires"
@@ -1513,8 +1513,8 @@ msgid "This account may read links but not create them."
 msgstr "该账号可以查看链接，但不能创建链接。"
 
 #: src/link_shortener/web/templates/dashboard/my_stats.html:3
-msgid "My Stats — Linkr"
-msgstr "我的统计 — Linkr"
+msgid "My Stats — MaizLink"
+msgstr "我的统计 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/my_stats.html:11
 msgid "Total Links"
@@ -1525,8 +1525,8 @@ msgid "Avg per Link"
 msgstr "每条链接平均"
 
 #: src/link_shortener/web/templates/dashboard/roles_list.html:3
-msgid "Roles — Linkr"
-msgstr "角色 — Linkr"
+msgid "Roles — MaizLink"
+msgstr "角色 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/roles_list.html:8
 msgid "New role"
@@ -1565,8 +1565,8 @@ msgid "Nothing to show."
 msgstr "没有可显示的内容。"
 
 #: src/link_shortener/web/templates/dashboard/security.html:2
-msgid "Security — Linkr"
-msgstr "安全 — Linkr"
+msgid "Security — MaizLink"
+msgstr "安全 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/security.html:7
 #: src/link_shortener/web/templates/dashboard/security.html:32
@@ -1592,8 +1592,8 @@ msgid "Repeat the new password"
 msgstr "再次输入新密码"
 
 #: src/link_shortener/web/templates/dashboard/service_stats.html:3
-msgid "Service Stats — Linkr"
-msgstr "服务统计 — Linkr"
+msgid "Service Stats — MaizLink"
+msgstr "服务统计 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/service_stats.html:5
 msgid "Service Statistics"
@@ -1618,16 +1618,16 @@ msgstr "查看访问量最高的链接列表需要 %(name)s 权限。"
 
 #: src/link_shortener/web/templates/dashboard/user_stats.html:2
 #, python-format
-msgid "Stats for %(email)s — Linkr"
-msgstr "%(email)s 的统计 — Linkr"
+msgid "Stats for %(email)s — MaizLink"
+msgstr "%(email)s 的统计 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/user_stats.html:6
 msgid "All users"
 msgstr "全部用户"
 
 #: src/link_shortener/web/templates/dashboard/users_list.html:2
-msgid "Users — Linkr"
-msgstr "用户 — Linkr"
+msgid "Users — MaizLink"
+msgstr "用户 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/users_list.html:7
 msgid "New user"
@@ -1858,8 +1858,8 @@ msgid "Answers"
 msgstr "响应"
 
 #: src/link_shortener/web/templates/public/forgot_password.html:2
-msgid "Reset your password — Linkr"
-msgstr "重置密码 — Linkr"
+msgid "Reset your password — MaizLink"
+msgstr "重置密码 — MaizLink"
 
 #: src/link_shortener/web/templates/public/forgot_password.html:7
 msgid "Type the address the account uses. If it has one, a link goes to it."
@@ -1874,8 +1874,8 @@ msgid "Back to signing in"
 msgstr "返回登录"
 
 #: src/link_shortener/web/templates/public/index.html:2
-msgid "Linkr — shorten a link"
-msgstr "Linkr — 缩短链接"
+msgid "MaizLink — shorten a link"
+msgstr "MaizLink — 缩短链接"
 
 #: src/link_shortener/web/templates/public/index.html:20
 msgid "Shorten a link"
@@ -1980,8 +1980,8 @@ msgid "No SDK and no key ceremony. The full description lives at %(link)s."
 msgstr "无需 SDK，也无需密钥流程。完整说明见 %(link)s。"
 
 #: src/link_shortener/web/templates/public/login.html:2
-msgid "Log in — Linkr"
-msgstr "登录 — Linkr"
+msgid "Log in — MaizLink"
+msgstr "登录 — MaizLink"
 
 #: src/link_shortener/web/templates/public/login.html:9
 msgid "To the account that keeps your links."
@@ -2001,8 +2001,8 @@ msgid "No account yet? %(link)s"
 msgstr "还没有账号？%(link)s"
 
 #: src/link_shortener/web/templates/public/register.html:2
-msgid "Sign up — Linkr"
-msgstr "注册 — Linkr"
+msgid "Sign up — MaizLink"
+msgstr "注册 — MaizLink"
 
 #: src/link_shortener/web/templates/public/register.html:6
 msgid "Create an account"
@@ -2022,8 +2022,8 @@ msgid "Already have one? %(link)s"
 msgstr "已经有账号了？%(link)s"
 
 #: src/link_shortener/web/templates/public/reset_password.html:2
-msgid "Choose a new password — Linkr"
-msgstr "设置新密码 — Linkr"
+msgid "Choose a new password — MaizLink"
+msgstr "设置新密码 — MaizLink"
 
 #: src/link_shortener/web/templates/public/reset_password.html:6
 msgid "Choose a new password"
@@ -2053,8 +2053,8 @@ msgid "You can %(link)s."
 msgstr "您可以%(link)s。"
 
 #: src/link_shortener/web/templates/public/verify.html:2
-msgid "Confirm your address — Linkr"
-msgstr "确认邮箱 — Linkr"
+msgid "Confirm your address — MaizLink"
+msgstr "确认邮箱 — MaizLink"
 
 #: src/link_shortener/web/templates/public/verify.html:6
 msgid "Confirm your address"

@@ -125,7 +125,7 @@ explained.
 | Command | |
 |---|---|
 | `link create --url <u> [--code <c>]` | Shorten a URL from the shell. A URL this command already shortened comes back as its existing link rather than a second one, and `--code` is then not issued — the report says both. Links made by a signed-in account or by a web visitor are never returned here |
-| `link info <code>` | What the service holds about one link |
+| `link info <code>` | What the service holds about one link. An expired link is refused as expired rather than reported as missing — the row is still there, and `link delete` still removes it |
 | `link list --limit N` | The most recent links; `--limit` is 1 or more, because an empty report for `--limit 0` is not an answer |
 | `link delete <code>` | Remove one link. A refusal here is written to `application.log` and not to the audit journal: there is no request and no error handler behind it |
 
@@ -263,6 +263,13 @@ default): `application.log`, `error.log`, `audit.log`.
 The audit journal is separate on purpose: it records what was done to
 links, accounts and roles — through the API, the admin panel and the
 commands alike — and it is the one an incident is reconstructed from.
+
+They are also read without a shell. `/dashboard/service/journals` serves
+all three, filtered by event, account, address, code or a span of time,
+and `audit:view` is what opens the audit one — an administrator holding
+`admin:all` is refused it.
+
+<img src="media/journals.png" alt="The Journals page showing the audit journal: filters for event, account, address, code and dates, and rows naming who created a link and when" width="820">
 
 ### How fast they grow
 

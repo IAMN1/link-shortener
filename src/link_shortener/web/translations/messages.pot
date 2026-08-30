@@ -7,9 +7,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: link-shortener 0.1.0\n"
+"Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-29 22:12+0300\n"
+"POT-Creation-Date: 2026-08-30 05:19+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1104,7 +1104,7 @@ msgid "You are not logged in. %(link)s"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/create_link.html:2
-msgid "Create Link — Linkr"
+msgid "Create Link — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/create_link.html:9
@@ -1133,7 +1133,7 @@ msgid "Create"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/create_role.html:3
-msgid "Create Role — Linkr"
+msgid "Create Role — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/create_role.html:6
@@ -1180,7 +1180,7 @@ msgid "Create role"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/create_user.html:2
-msgid "Create User — Linkr"
+msgid "Create User — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/create_user.html:5
@@ -1207,7 +1207,7 @@ msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/edit_role.html:3
 #, python-format
-msgid "Edit role %(name)s — Linkr"
+msgid "Edit role %(name)s — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/edit_role.html:6
@@ -1230,7 +1230,7 @@ msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/edit_user.html:2
 #, python-format
-msgid "Edit %(email)s — Linkr"
+msgid "Edit %(email)s — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/edit_user.html:5
@@ -1247,7 +1247,7 @@ msgid "Saving removes it."
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/health.html:2
-msgid "Health — Linkr"
+msgid "Health — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/health.html:4
@@ -1312,7 +1312,7 @@ msgid "Reported by %(name)s, read once when this page opens."
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:2
-msgid "Dashboard — Linkr"
+msgid "Dashboard — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:16
@@ -1389,7 +1389,7 @@ msgid "The %(link)s are open to it."
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/journals.html:2
-msgid "Journals — Linkr"
+msgid "Journals — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/journals.html:27
@@ -1484,7 +1484,7 @@ msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/link_stats.html:3
 #, python-format
-msgid "Link %(code)s — Linkr"
+msgid "Link %(code)s — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/link_stats.html:10
@@ -1492,7 +1492,7 @@ msgid "All links"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/my_links.html:2
-msgid "My Links — Linkr"
+msgid "My Links — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/my_links.html:29
@@ -1513,7 +1513,7 @@ msgid "This account may read links but not create them."
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/my_stats.html:3
-msgid "My Stats — Linkr"
+msgid "My Stats — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/my_stats.html:11
@@ -1525,7 +1525,7 @@ msgid "Avg per Link"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/roles_list.html:3
-msgid "Roles — Linkr"
+msgid "Roles — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/roles_list.html:8
@@ -1565,7 +1565,7 @@ msgid "Nothing to show."
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/security.html:2
-msgid "Security — Linkr"
+msgid "Security — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/security.html:7
@@ -1592,7 +1592,7 @@ msgid "Repeat the new password"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/service_stats.html:3
-msgid "Service Stats — Linkr"
+msgid "Service Stats — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/service_stats.html:5
@@ -1618,7 +1618,7 @@ msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/user_stats.html:2
 #, python-format
-msgid "Stats for %(email)s — Linkr"
+msgid "Stats for %(email)s — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/user_stats.html:6
@@ -1626,7 +1626,7 @@ msgid "All users"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/users_list.html:2
-msgid "Users — Linkr"
+msgid "Users — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/users_list.html:7
@@ -1844,7 +1844,7 @@ msgid "Answers"
 msgstr ""
 
 #: src/link_shortener/web/templates/public/forgot_password.html:2
-msgid "Reset your password — Linkr"
+msgid "Reset your password — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/public/forgot_password.html:7
@@ -1860,7 +1860,7 @@ msgid "Back to signing in"
 msgstr ""
 
 #: src/link_shortener/web/templates/public/index.html:2
-msgid "Linkr — shorten a link"
+msgid "MaizLink — shorten a link"
 msgstr ""
 
 #: src/link_shortener/web/templates/public/index.html:20
@@ -1968,7 +1968,7 @@ msgid "No SDK and no key ceremony. The full description lives at %(link)s."
 msgstr ""
 
 #: src/link_shortener/web/templates/public/login.html:2
-msgid "Log in — Linkr"
+msgid "Log in — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/public/login.html:9
@@ -1989,7 +1989,7 @@ msgid "No account yet? %(link)s"
 msgstr ""
 
 #: src/link_shortener/web/templates/public/register.html:2
-msgid "Sign up — Linkr"
+msgid "Sign up — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/public/register.html:6
@@ -2010,7 +2010,7 @@ msgid "Already have one? %(link)s"
 msgstr ""
 
 #: src/link_shortener/web/templates/public/reset_password.html:2
-msgid "Choose a new password — Linkr"
+msgid "Choose a new password — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/public/reset_password.html:6
@@ -2041,7 +2041,7 @@ msgid "You can %(link)s."
 msgstr ""
 
 #: src/link_shortener/web/templates/public/verify.html:2
-msgid "Confirm your address — Linkr"
+msgid "Confirm your address — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/public/verify.html:6

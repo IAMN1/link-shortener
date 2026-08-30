@@ -24,6 +24,10 @@ datas/logs/*
 *.db
 :memory
 
+# macOS writes one of these into every folder its Finder opens. They carry
+# the window's own view settings and nothing about the project.
+.DS_Store
+
 # accidental files
 # Умолчание DATABASE_NAME идёт без расширения, поэтому под *.db не попадает.
 # Оставлено на случай файла, созданного до переезда в datas/databases/.

@@ -52,6 +52,13 @@ Then open `http://localhost:5000/` and sign in as `admin@example.com` —
 the dashboard is at `/dashboard/`, and `http://localhost:5000/api/docs`
 describes every endpoint.
 
+<img src="media/dashboard.png" alt="The dashboard: recent links, click totals and the account's own statistics" width="820">
+
+That is a real screenshot of the stack these commands start, not a mock-up.
+The theme is the dark one — the control for it sits in the header, and the
+choice is kept in a cookie and applied by the server before the page is
+painted, so nothing flashes on the way in.
+
 ---
 
 ## What those commands did

@@ -1,8 +1,8 @@
 # Configuration
 
-Looked up rather than read. The exhaustive list — every variable, one line
-of description each — is [`.env.example`](../.env.example); this page covers
-the rules around it and the settings that bite.
+Looked up rather than read. The exhaustive list — every variable an operator
+sets, one line of description each — is [`.env.example`](../.env.example);
+this page covers the rules around it and the settings that bite.
 
 [All docs](README.md) · [Getting started](getting-started.md) ·
 [Operations](operations.md)
@@ -272,6 +272,29 @@ Read by `docker compose`, not by the application.
 | `COMPOSE_PROFILES` | Which of `db`, `cache`, `broker`, `mail` to run yourself |
 | `APP_HOST_PORT`, `DATABASE_HOST_PORT`, `REDIS_HOST_PORT`, `MAILPIT_UI_PORT` | Where each service is published on the host |
 | `APP_SRC_PATH`, `LOG_HOST_PATH` | What the dev overlay mounts. Relative to `dockers/`, hence the `../` |
+
+## What the template is a list of
+
+`.env.example` lists what an operator sets. That is not the same as what the
+code reads, and it misses it in both directions on purpose.
+
+It is wider: the Compose variables above are read by `docker compose` and by
+nothing in `src`, and so are gunicorn's tuning knobs and the four `FLASK_*`
+settings the `flask` command reads for itself before this application is
+imported.
+
+It is narrower by exactly one key. `FLASK_RUN_FROM_CLI` is read in
+`configs/app/factory.py`, and it is the only variable `src` reads that the
+template does not list. The `flask` command sets it in its own entry point
+to mark that it has already merged `.env` into the environment, and
+`ConfigFactory` reads it to decide whether the files still need loading.
+Nobody sets it by hand, and a line in the template would read as an
+invitation to try. Setting it under gunicorn or celery would tell
+`ConfigFactory` that the Flask CLI had injected `.env` when nothing had:
+a variable the operator exported, holding what `.env` holds, would then be
+treated as injected and overwritten by `.env.<profile>` — the precedence at
+the top of this page, inverted by a variable that is not about
+configuration at all.
 
 ## Where the numbers come from
 
