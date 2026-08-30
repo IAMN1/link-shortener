@@ -1,43 +1,44 @@
 # syntax=docker/dockerfile:1
 
-# Тот же bookworm, на котором собран образ приложения: одна система
-# пакетов и один набор системных утилит на стек вместо двух.
+# The same bookworm the application image is built on: one package
+# system and one set of system tools per stack rather than two.
 FROM debian:bookworm-slim
 
-# gettext-base ради одного envsubst: имена журналов подставляются в шаблон
-# при старте, чтобы ротатор следил за теми же файлами, что пишет
-# приложение. Подстановка руками, через sed, обошлась бы без пакета и
-# читалась бы хуже — envsubst называет ровно те переменные, которые ему
-# разрешено трогать.
+# gettext-base for the sake of one envsubst: the journal names are
+# substituted into the template at startup, so the rotator watches the same
+# files the application writes. Doing it by hand with sed would save the
+# package and read worse -- envsubst names exactly the variables it is
+# allowed to touch.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     logrotate \
     gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
-# Путь от корня проекта: контекст сборки — корень, как и у образа
-# приложения. Кладётся шаблоном: готовый конфиг из него делает entrypoint,
-# подставляя имена журналов.
+# Path from the project root: the build context is the root, as it is for
+# the application image. It lands as a template -- the entrypoint makes the
+# finished configuration out of it by substituting the journal names.
 COPY dockers/logrotate.conf /etc/logrotate.d/link_shortener.template
 COPY dockers/logrotate-entrypoint.sh /logrotate-entrypoint.sh
 RUN chmod +x /logrotate-entrypoint.sh
 
-# Расписание циклом, а не cron.
+# A loop for the schedule, not cron.
 #
-# Демону расписаний в контейнере пришлось бы отдать свой вывод (cron пишет
-# его почтой, которой здесь нет), синхронизировать время и остановиться
-# по сигналу от docker. Цикл — один процесс: его видно в `docker ps`, его
-# вывод идёт в `docker logs`, и он заканчивается вместе с контейнером.
+# A scheduling daemon in a container would have to be given somewhere to
+# put its output (cron mails it, and there is no mail here), have its clock
+# synchronised, and be made to stop on docker's signal. The loop is one
+# process: it shows up in `docker ps`, its output goes to `docker logs`,
+# and it ends when the container does.
 #
-# Час — это частота опроса, а не частота ротации. Как часто файл
-# подменяется, решают daily и weekly в конфиге; ежечасный вызов нужен
-# затем, чтобы сработал ещё и maxsize, который проверяется только в
-# момент вызова.
+# The hour is how often it looks, not how often it rotates. How often a
+# file is moved aside is decided by daily and weekly in the configuration;
+# the hourly call is what makes maxsize work at all, since that one is only
+# examined at the moment of the call.
 #
-# Файл состояния лежит рядом с журналами, на смонтированном томе: в самом
-# контейнере он не пережил бы перезапуск, и первый же вызов после него
-# ротировал бы файлы заново, не дождавшись суток.
+# The state file lives beside the journals on the mounted volume: inside
+# the container it would not survive a restart, and the first call after
+# one would rotate everything again without waiting out the day.
 #
-# Сам цикл и подстановка имён — в /logrotate-entrypoint.sh.
+# The loop itself and the substitution are in /logrotate-entrypoint.sh.
 ENV LOG_ROTATE_INTERVAL=3600
 
 CMD ["/logrotate-entrypoint.sh"]

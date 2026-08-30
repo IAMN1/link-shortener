@@ -11,9 +11,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Пакет ставится отдельно от зависимостей: requirements.txt их только
-# перечисляет (`uv export --no-emit-project`), и без этого шага
-# `link_shortener` в образе не импортируется.
+# The package is installed apart from its dependencies: requirements.txt
+# only lists those (`uv export --no-emit-project`), and without this step
+# `link_shortener` does not import in the image.
 COPY pyproject.toml README.md ./
 COPY ./src ./src/
 RUN pip install --no-cache-dir --no-deps .
@@ -31,8 +31,8 @@ COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 COPY ./src ./src/
 
-# Конфиг и ревизии Alembic нужны в образе: иначе `alembic upgrade head`
-# работает только там, где они примонтированы томом.
+# Alembic's configuration and revisions are needed in the image: otherwise
+# `alembic upgrade head` only works where they are mounted as a volume.
 COPY alembic.ini ./
 COPY ./migrations ./migrations/
 
@@ -41,8 +41,9 @@ RUN groupadd --gid 1000 appuser && \
     mkdir -p /app/logs && \
     chown -R appuser:appuser /app
 
-# Путь от корня проекта: контекст сборки — корень, а не каталог этого
-# файла, потому что образ забирает src/, migrations/ и alembic.ini.
+# Path from the project root: the build context is the root rather than
+# this file's directory, because the image takes src/, migrations/ and
+# alembic.ini.
 COPY dockers/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
@@ -50,18 +51,18 @@ EXPOSE 5000
 
 ENTRYPOINT ["/entrypoint.sh"]
 
-# Продакшн-команда: gunicorn.
+# The production command: gunicorn.
 #
-# --worker-class sync задан явно: --timeout прерывает зависший запрос только
-# на sync-воркерах, у gthread запрос может идти бесконечно.
+# --worker-class sync is set explicitly: --timeout interrupts a stuck
+# request only on sync workers; on gthread a request can run forever.
 #
-# --timeout — единственное, что прерывает обращение к зависшей, а не упавшей
-# БД: её ядро подтверждает пакеты, поэтому не срабатывают ни серверный
-# statement_timeout, ни TCP-keepalive.
+# --timeout is the only thing that interrupts a call to a database that has
+# hung rather than fallen over: its kernel keeps acknowledging packets, so
+# neither the server's statement_timeout nor TCP keepalive fires.
 #
-# --graceful-timeout строго меньше --timeout, иначе воркер, доигрывающий
-# запрос при перезапуске, будет убит раньше, чем закончит.
+# --graceful-timeout is strictly smaller than --timeout, or a worker
+# finishing a request during a restart is killed before it is done.
 #
-# Спецификация приложения в одинарных кавычках: без них `sh` разбирает
-# `create_app()` как объявление функции.
+# The application specification is in single quotes: without them `sh`
+# parses `create_app()` as a function declaration.
 CMD ["sh", "-c", "exec gunicorn --bind ${HOST:-0.0.0.0}:${PORT:-5000} --workers ${GUNICORN_WORKERS:-4} --worker-class ${GUNICORN_WORKER_CLASS:-sync} --timeout ${GUNICORN_TIMEOUT:-30} --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-20} --access-logfile - --error-logfile - 'link_shortener.web.app_factory:create_app()'"]

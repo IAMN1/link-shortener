@@ -1,22 +1,23 @@
 # ==============================================================================
-# Что не попадает в контекст сборки образа
+# What does not reach the build context
 # ==============================================================================
-# Docker забирает каталог целиком: `COPY ./src ./src/` берёт и то, чего в
-# git нет. Так в образ уезжал `src/link_shortener.egg-info`, который
-# оставляет после себя установка пакета в рабочее дерево. Он объявлял
-# версию 0.1.0 и перекрывал метаданные установленного пакета, потому что
-# `/app/src` идёт в `sys.path` раньше site-packages: в контейнере
-# `importlib.metadata.version("link-shortener")` отвечал 0.1.0, тогда как
-# рядом лежал правильный `link_shortener-0.9.0.dist-info`.
+# Docker takes a directory whole: `COPY ./src ./src/` brings along what git
+# does not track. That is how `src/link_shortener.egg-info`, left behind by
+# installing the package into the working tree, rode into the image. It
+# declared version 0.1.0 and shadowed the installed package's metadata,
+# because `/app/src` precedes site-packages on `sys.path`: in the container
+# `importlib.metadata.version("link-shortener")` answered 0.1.0 while the
+# correct `link_shortener-0.9.0.dist-info` sat right beside it.
 #
-# Пути сопоставляются от корня контекста, и `*` не переходит через `/`:
-# `*.egg-info` не покрыло бы `src/link_shortener.egg-info` — отсюда `**/`.
+# Patterns are matched from the context root, and `*` does not cross a `/`:
+# `*.egg-info` would not have covered `src/link_shortener.egg-info` -- hence
+# the `**/`.
 #
-# Второе следствие — размер: без этого файла демону отправлялось всё
-# дерево, включая `.venv` и `.git`.
+# The second consequence is size: without this file the whole tree was sent
+# to the daemon, `.venv` and `.git` included.
 # ==============================================================================
 
-# Артефакты установки и сборки
+# Artefacts of installing and building
 **/*.egg-info
 **/__pycache__
 **/*.py[oc]
@@ -24,36 +25,36 @@ build/
 dist/
 wheels/
 
-# Окружения и кэши инструментов
+# Environments and tool caches
 .venv/
 .mypy_cache/
 .pytest_cache/
 
-# Репозиторий и его настройки
+# The repository and its settings
 .git/
 .gitignore
 .github/
 
-# Отчёты прогонов
+# Reports left by runs
 htmlcov/
 coverage.xml
 .coverage
 test-results/
 
-# Настройки с секретами: в образ они не копируются, и в контексте им
-# делать нечего
+# Settings carrying secrets: they are not copied into the image, and have
+# no business in the context either
 .env
 .env.*
 
-# Всё, что оставляет после себя запуск: базы и журналы
+# Everything a run leaves behind: databases and journals
 datas/
 
-# Не копируется Dockerfile'ом. Каталог `dockers/` остаётся: из него
-# берётся `entrypoint.sh`
+# Not copied by the Dockerfile. The `dockers/` directory stays: that is
+# where `entrypoint.sh` comes from
 tests/
 docs/
 
-# Мусор ОС и редакторов
+# Rubbish from the OS and from editors
 **/.DS_Store
 .idea/
 .vscode/

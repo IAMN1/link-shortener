@@ -1,37 +1,37 @@
 
-# Явное имя проекта. Без него compose берёт имя каталога, и этот стек
-# оказывается в одном пространстве имён с docker-compose.test.yml: команды
-# начинают ругаться на "orphan containers", `ps` показывает чужие сервисы,
-# а `down -v` рискует снести тома соседнего стека.
+# An explicit project name. Without one compose takes the directory's name
+# and this stack ends up in the same namespace as docker-compose.test.yml:
+# commands start complaining about "orphan containers", `ps` shows another
+# stack's services, and `down -v` risks removing the neighbour's volumes.
 name: link-shortener
 
 # ==============================================================================
-# Профили инфраструктуры
+# Infrastructure profiles
 # ==============================================================================
-# db, redis, redis_broker и logrotate поднимаются только тогда, когда их
-# профиль назван. Набор задаётся переменной COMPOSE_PROFILES в том же
-# env-файле:
+# db, redis, redis_broker and logrotate come up only when their profile is
+# named. The set is given by COMPOSE_PROFILES in the same env file:
 #
-#   COMPOSE_PROFILES=db,cache,broker,logs   весь стек свой
-#   COMPOSE_PROFILES=                       всё внешнее: только migrations,
-#                                           app и celery_worker
+#   COMPOSE_PROFILES=db,cache,broker,logs   the whole stack is our own
+#   COMPOSE_PROFILES=                       everything external: only
+#                                           migrations, app and celery_worker
 #
-# Профиль `mail` называет ловца писем, а объявлен тот в надстройке
-# docker-compose.override.yml. Оба env-файла задают `db,cache,broker,mail,
-# logs` — набор для формы с надстройкой; в продакшн-форме, где надстройки
-# нет, имя `mail` не называет ничего и молча пропускается.
+# The `mail` profile names the mail catcher, which is declared in the
+# overlay docker-compose.override.yml. Both env files set
+# `db,cache,broker,mail,logs` -- the set for the form with the overlay; in
+# the production form, where there is no overlay, the name `mail` names
+# nothing and is quietly skipped.
 #
-# Разовый выбор — флаг `docker compose --profile db up -d`.
+# For a one-off choice there is the flag `docker compose --profile db up -d`.
 #
-# Внешние адреса задаются одной строкой каждый: DATABASE_URL, REDIS_URL,
-# CELERY_BROKER_URL. Именно строкой, а не частями, — DATABASE_HOST ниже прибит
-# к имени сервиса `db` и env-файлом не перекрывается: environment сильнее
-# env_file.
+# External addresses are each given as a single string: DATABASE_URL,
+# REDIS_URL, CELERY_BROKER_URL. As a string rather than in parts, because
+# DATABASE_HOST below is nailed to the service name `db` and is not
+# overridden by the env file: environment beats env_file.
 #
-# `required: false` у depends_on обязателен: без него выключенный профиль
-# означает не «сервиса нет», а отказ разбора —
-# `service "app" depends on undefined service "db"`. Порядок запуска при
-# включённом профиле пометка сохраняет.
+# `required: false` on depends_on is compulsory: without it a profile that
+# is off means not "there is no such service" but a parse failure --
+# `service "app" depends on undefined service "db"`. With the profile on,
+# the marker still preserves the start-up order.
 # ==============================================================================
 
 services:
@@ -49,36 +49,38 @@ services:
           required: false
       environment:
         PYTHONPATH: /app/src
-        # Без умолчания: неназванный профиль миграция не считает выбором.
-        # С `:-development` она приняла бы за выбор молчание и мигрировала
-        # sqlite по умолчанию — пустой файл внутри одноразового контейнера.
+        # No default: an unnamed profile is not a choice as far as the
+        # migration is concerned. With `:-development` it would take silence
+        # for a choice and migrate the default sqlite -- an empty file
+        # inside a throwaway container.
         FLASK_ENV: ${FLASK_ENV}
-        # `:?` отказывает на этапе рендера, до запуска чего бы то ни было.
-        DATABASE_TYPE: ${DATABASE_TYPE:?задайте DATABASE_TYPE в env-файле}
+        # `:?` fails at render time, before anything is started.
+        DATABASE_TYPE: ${DATABASE_TYPE:?set DATABASE_TYPE in the env file}
         DATABASE_HOST: db
-        # Внутри сети — порт образа, а не настройка хоста.
+        # Inside the network it is the image's port, not the host setting.
         DATABASE_PORT: ${DATABASE_PORT:-5432}
         DATABASE_NAME: ${DATABASE_NAME}
         DATABASE_USER: ${DATABASE_USER}
         DATABASE_PASSWORD: ${DATABASE_PASSWORD}
         DATABASE_POOL_PRE_PING: ${DATABASE_POOL_PRE_PING:-true}
 
-        # Миграции не читают кэш и не ставят задач: лишние подключения ни к
-        # чему.
+        # Migrations read no cache and queue no tasks: there is nothing for
+        # the extra connections to do.
         CACHE_ENABLED: "false"
         REDIS_ENABLED: "false"
         CELERY_ENABLED: "false"
         LOGGING_ENABLED: "false"
       env_file:
-        # Тот же файл, что у app и celery_worker: DATABASE_URL живёт только
-        # в нём, а get_database_url() отдаёт его в обход DATABASE_*. Без
-        # env_file миграции пошли бы в другую базу, чем приложение.
+        # The same file app and celery_worker use: DATABASE_URL lives only
+        # there, and get_database_url() returns it ahead of DATABASE_*.
+        # Without env_file the migrations would go to a different database
+        # than the application.
         - ../${ENV_FILE:-.env}
       command: alembic upgrade head
-      restart: "no"               # запускается один раз и завершается
-      # Конфиг и ревизии Alembic лежат в образе. Монтирование каталогов —
-      # разработческое удобство (новая ревизия сразу попадает на хост), и
-      # живёт в docker-compose.override.yml.
+      restart: "no"               # runs once and exits
+      # Alembic's configuration and revisions are in the image. Mounting the
+      # directories is a development convenience -- a new revision lands on
+      # the host at once -- and lives in docker-compose.override.yml.
 
     # ==========================================================================
     # PostgreSQL Database Service
@@ -86,31 +88,34 @@ services:
     db:
       image: postgres:15-alpine
       container_name: shortener_db
-      # Своя база. Внешнюю подключают одной строкой DATABASE_URL и этот
-      # профиль не включают.
+      # Our own database. An external one is connected with the single
+      # string DATABASE_URL, with this profile left off.
       profiles: ["db"]
       restart: unless-stopped
       environment:
         POSTGRES_USER: ${DATABASE_USER}
         POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
         POSTGRES_DB: ${DATABASE_NAME}
-      # Порт внутри сети — тот же DATABASE_PORT, которым к базе обращается
-      # приложение: одна величина вместо двух, способных разойтись.
+      # The port inside the network is the same DATABASE_PORT the
+      # application reaches the database by: one value instead of two that
+      # can drift apart.
       command: -p ${DATABASE_PORT:-5432}
       ports:
-        # Три разные величины: адрес привязки, порт на хосте, порт внутри
-        # сети. DATABASE_HOST_PORT двигают, когда порт на хосте занят, — на
-        # адрес, по которому ходит приложение, это не влияет.
+        # Three distinct values: the bind address, the port on the host, the
+        # port inside the network. DATABASE_HOST_PORT is moved when the host
+        # port is taken -- which does not affect the address the application
+        # reaches the database by.
         #
-        # Привязка по умолчанию петлевая. Публикация без адреса означает все
-        # интерфейсы: «If you do not specify a host IP (such as 127.0.0.1),
-        # Docker binds to all interfaces (0.0.0.0), bypassing host firewall
-        # rules» (Compose file reference). DATABASE_BIND_ADDRESS расширяет
-        # её, когда в базу нужно ходить с другой машины.
+        # The binding is loopback by default. Publishing without an address
+        # means every interface: "If you do not specify a host IP (such as
+        # 127.0.0.1), Docker binds to all interfaces (0.0.0.0), bypassing
+        # host firewall rules" (Compose file reference).
+        # DATABASE_BIND_ADDRESS widens it when the database has to be
+        # reached from another machine.
         - "${DATABASE_BIND_ADDRESS:-127.0.0.1}:${DATABASE_HOST_PORT:-5432}:${DATABASE_PORT:-5432}"
       volumes:
-        # Каталог на хосте или именованный том: значение с '/' или './'
-        # compose монтирует как каталог, всё остальное — как том.
+        # A directory on the host or a named volume: a value with '/' or
+        # './' compose mounts as a directory, anything else as a volume.
         - ${DATABASE_DATA_PATH:-postgres_data}:/var/lib/postgresql/data
       healthcheck:
         test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME} -p ${DATABASE_PORT:-5432}"]
@@ -122,19 +127,19 @@ services:
     # ==========================================================================
     # Redis Cache Service
     # ==========================================================================
-    # Только кэш и rate limiter. Всё, что здесь лежит, имеет TTL и переживать
-    # вытеснение не обязано, поэтому allkeys-lru здесь уместен.
+    # The cache and the rate limiter, nothing else. Everything kept here
+    # has a TTL and need not survive eviction, so allkeys-lru is right.
     redis:
       image: redis:7-alpine
       container_name: link_shortener_redis
-      # Свой кэш. Внешний — REDIS_URL, и профиль не включают.
+      # Our own cache. An external one is REDIS_URL, with the profile off.
       profiles: ["cache"]
       command: redis-server --port ${REDIS_PORT:-6379} --requirepass ${REDIS_PASSWORD} --maxmemory 512mb --maxmemory-policy allkeys-lru
       restart: unless-stopped
       ports:
-        # Только петля: тот, кто может писать в кэш, получает открытый
-        # редирект на произвольный адрес. Хостовый порт отделён от
-        # внутрисетевого.
+        # Loopback only: whoever can write to the cache gets an open
+        # redirect to an address of their choosing. The host port is kept
+        # separate from the one inside the network.
         - "127.0.0.1:${REDIS_HOST_PORT:-6379}:${REDIS_PORT:-6379}"
       volumes:
         - ${REDIS_DATA_PATH:-redis_data}:/data
@@ -143,25 +148,28 @@ services:
         interval: 10s
         timeout: 5s
         retries: 5
-    # Аналогично: порт открыт для хоста, внутри сети доступен по имени "redis".
+    # As above: the port is open to the host, and inside the network it is
+    # reached by the name "redis".
 
 
     # ==========================================================================
     # Redis Message Broker (Celery)
     # ==========================================================================
-    # Отдельный инстанс, а не отдельная база: maxmemory-policy действует на
-    # сервер целиком. С noeviction очередь либо принимается, либо отказывает
-    # явно; в одной базе с кэшем она вытеснялась бы вместе с ним.
+    # A separate instance rather than a separate database: maxmemory-policy
+    # applies to the whole server. With noeviction the queue is either
+    # accepted or refused outright; sharing a database with the cache it
+    # would be evicted along with it.
     redis_broker:
       image: redis:7-alpine
       container_name: link_shortener_redis_broker
-      # Свой брокер. Внешний — CELERY_BROKER_URL, и профиль не включают.
+      # Our own broker. An external one is CELERY_BROKER_URL, with the
+      # profile off.
       profiles: ["broker"]
       command: redis-server --port ${REDIS_BROKER_PORT:-6379} --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy noeviction
       restart: unless-stopped
       ports:
-        # Слева порт на хосте, справа — внутри сети; обе величины задаются
-        # своей переменной.
+        # The host port on the left, the one inside the network on the
+        # right; each has a variable of its own.
         - "127.0.0.1:${REDIS_BROKER_HOST_PORT:-6381}:${REDIS_BROKER_PORT:-6379}"
       volumes:
         - ${REDIS_BROKER_DATA_PATH:-redis_broker_data}:/data
@@ -190,18 +198,18 @@ services:
         redis_broker:
           condition: service_healthy
           required: false
-        # Без required: профиля у миграций нет, а запускать приложение на
-        # непринятой схеме нельзя.
+        # No required: migrations have no profile, and the application must
+        # not run against a schema that has not been applied.
         migrations:
           condition: service_completed_successfully
       restart: unless-stopped
       ports:
-        # Слева хостовый порт, справа — тот, который слушает контейнер.
-        # Величины разные: правая следует за приложением (см. CMD образа),
-        # левая двигается независимо.
+        # The host port on the left, the one the container listens on the
+        # right. They are different values: the right follows the
+        # application (see the image's CMD), the left moves on its own.
         - "${APP_HOST_PORT:-5000}:${PORT:-5000}"
       environment:
-        # Адреса переопределены на внутрисетевые.
+        # The addresses are overridden with the ones inside the network.
 
         # ----- Flask / Application settings -----
         PYTHONPATH: /app/src
@@ -215,7 +223,7 @@ services:
         # ----- Database settings -----
         DATABASE_TYPE: ${DATABASE_TYPE}
         DATABASE_HOST: db
-        # Внутри сети — порт образа, а не настройка хоста.
+        # Inside the network it is the image's port, not the host setting.
         DATABASE_PORT: ${DATABASE_PORT:-5432}
         DATABASE_NAME: ${DATABASE_NAME}
         DATABASE_USER: ${DATABASE_USER}
@@ -232,9 +240,10 @@ services:
         CACHE_ENABLED: ${CACHE_ENABLED}
 
         REDIS_ENABLED: ${REDIS_ENABLED:-}
-        # Пусто — Redis из этого стека, задано — любой внешний. Подстановка
-        # обязательна: environment сильнее env_file, и без неё значение из
-        # env-файла до контейнера не долетает.
+        # Empty means the Redis from this stack, set means any external one.
+        # The substitution is required: environment beats env_file, and
+        # without it the value from the env file never reaches the
+        # container.
         REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT:-6379}/0}
         REDIS_CONNECT_TIMEOUT: ${REDIS_CONNECT_TIMEOUT}
         REDIS_SOCKET_TIMEOUT: ${REDIS_SOCKET_TIMEOUT}
@@ -251,52 +260,54 @@ services:
 
         # ----- Celery settings -----
         CELERY_ENABLED: ${CELERY_ENABLED}
-        # Та же подстановка, что у REDIS_URL: брокер может быть внешним.
+        # The same substitution as REDIS_URL uses: the broker may be
+        # external.
         CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD}@redis_broker:${REDIS_BROKER_PORT:-6379}/0}
         CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis_broker:${REDIS_BROKER_PORT:-6379}/0}
         CELERY_BROKER_TIMEOUT: ${CELERY_BROKER_TIMEOUT}
         HEALTH_CHECK_TIMEOUT: ${HEALTH_CHECK_TIMEOUT}
 
         # ----- Performance / Workers -----
-        # Потолок на запрос — единственное, что прерывает обращение к
-        # зависшей (а не упавшей) БД: замороженный сервер не выполняет свой
-        # statement_timeout, а его ядро подтверждает TCP-keepalive.
-        # GUNICORN_WORKER_CLASS обязан остаться sync: у gthread --timeou
-        # запрос не прерывает.
+        # The per-request ceiling is the only thing that interrupts a call
+        # to a database that has hung rather than fallen over: a frozen
+        # server does not run its own statement_timeout, and its kernel
+        # keeps answering TCP keepalive. GUNICORN_WORKER_CLASS has to stay
+        # sync: on gthread --timeout does not interrupt a request.
         GUNICORN_WORKERS: ${GUNICORN_WORKERS}
         GUNICORN_WORKER_CLASS: ${GUNICORN_WORKER_CLASS:-sync}
         GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-30}
         GUNICORN_GRACEFUL_TIMEOUT: ${GUNICORN_GRACEFUL_TIMEOUT:-20}
 
       env_file:
-        # Загружает все переменные, но environment имеет приоритет.
-        # ENV_FILE позволяет держать отдельные наборы: .env — локальный запуск
-        # без Docker, .env.docker — этот стек. Значение задаётся внутри самого
-        # файла окружения, поэтому достаточно одного флага:
+        # Loads every variable, though environment takes precedence.
+        # ENV_FILE allows separate sets: .env for a local run without
+        # Docker, .env.docker for this stack. The value is set inside the
+        # env file itself, so one flag is enough:
         #   docker compose --env-file .env.docker up -d
         - ../${ENV_FILE:-.env}
       volumes:
-        # Журналы остаются на хосте.
+        # The journals stay on the host.
         - ${LOG_HOST_PATH}:/app/${LOG_DIR}
-      # Потолок на то, что уходит в stdout: собственный журнал gunicorn
-      # идёт туда (--access-logfile -), а json-file по умолчанию не имеет
-      # границы вовсе, и этот поток копится в /var/lib/docker до конца
-      # диска ровно так же, как копились бы файлы без ротации. Ротация
-      # файлов приложения этот поток не трогает — он другой.
+      # A ceiling on what goes to stdout: gunicorn's own log goes there
+      # (--access-logfile -), and json-file has no bound at all by default,
+      # so that stream piles up in /var/lib/docker until the disk ends,
+      # exactly as unrotated files would. Rotating the application's files
+      # does not touch this stream -- it is a different one.
       logging:
         driver: json-file
         options:
           max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
           max-file: "${DOCKER_LOG_MAX_FILE:-5}"
-      # Команда не задана намеренно: работает CMD образа — gunicorn с
-      # потолком на запрос. Разработческий вариант (`flask run --debug`,
-      # смонтированные исходники) лежит в docker-compose.override.yml,
-      # который compose подхватывает сам.
+      # No command on purpose: the image's CMD runs -- gunicorn with the
+      # per-request ceiling. The development form (`flask run --debug`, the
+      # sources mounted) lives in docker-compose.override.yml, which compose
+      # picks up on its own.
       healthcheck:
-        # timeout= обязателен: без него у urlopen нет собственного срока, и
-        # проба переживает timeout ниже — её убивают вместо ответа.
-        # Порт берётся из PORT, а не прибит к 5000: иначе смена порта
-        # приложения превращает healthcheck в вечный отказ.
+        # timeout= is required: without it urlopen has no deadline of its
+        # own and the probe outlives the timeout below -- it is killed
+        # instead of answering. The port comes from PORT rather than being
+        # nailed to 5000: otherwise moving the application's port turns the
+        # healthcheck into a permanent failure.
         test: ["CMD-SHELL", "python -c \"import os, urllib.request; urllib.request.urlopen('http://localhost:%s/health' % os.environ.get('PORT', '5000'), timeout=8)\""]
         interval: 30s
         timeout: 10s
@@ -324,17 +335,17 @@ services:
           required: false
       restart: unless-stopped
       environment:
-        # Общие настройки
+        # Settings shared with the application
         PYTHONPATH: /app/src
         FLASK_ENV: ${FLASK_ENV}
         FLASK_DEBUG: ${FLASK_DEBUG}
         SECRET_KEY: ${SECRET_KEY}
         SHORT_CODE_PEPPER: ${SHORT_CODE_PEPPER}
 
-        # База данных – внутри сети используем имя сервиса db
+        # The database -- inside the network we use the service name db
         DATABASE_TYPE: ${DATABASE_TYPE}
         DATABASE_HOST: db
-        # Внутри сети — порт образа, а не настройка хоста.
+        # Inside the network it is the image's port, not the host setting.
         DATABASE_PORT: ${DATABASE_PORT:-5432}
         DATABASE_NAME: ${DATABASE_NAME}
         DATABASE_USER: ${DATABASE_USER}
@@ -346,19 +357,20 @@ services:
         DATABASE_CONNECT_TIMEOUT: ${DATABASE_CONNECT_TIMEOUT}
         DATABASE_STATEMENT_TIMEOUT: ${DATABASE_STATEMENT_TIMEOUT}
 
-        # Redis – внутри сети
+        # Redis -- inside the network
         CACHE_ENABLED: ${CACHE_ENABLED}
 
         REDIS_ENABLED: ${REDIS_ENABLED:-}
-        # Пусто — Redis из этого стека, задано — любой внешний. Подстановка
-        # обязательна: environment сильнее env_file, и без неё значение из
-        # env-файла до контейнера не долетает.
+        # Empty means the Redis from this stack, set means any external one.
+        # The substitution is required: environment beats env_file, and
+        # without it the value from the env file never reaches the
+        # container.
         REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT:-6379}/0}
         REDIS_CONNECT_TIMEOUT: ${REDIS_CONNECT_TIMEOUT}
         REDIS_SOCKET_TIMEOUT: ${REDIS_SOCKET_TIMEOUT}
         REDIS_RETRY_INTERVAL: ${REDIS_RETRY_INTERVAL}
 
-        # Логирование
+        # Logging
         LOGGING_ENABLED: ${LOGGING_ENABLED}
         AUDIT_ENABLED: ${AUDIT_ENABLED}
         LOG_LEVEL: ${LOG_LEVEL}
@@ -369,50 +381,55 @@ services:
 
         # Celery
         CELERY_ENABLED: ${CELERY_ENABLED}
-        # Та же подстановка, что у REDIS_URL: брокер может быть внешним.
+        # The same substitution as REDIS_URL uses: the broker may be
+        # external.
         CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD}@redis_broker:${REDIS_BROKER_PORT:-6379}/0}
         CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis_broker:${REDIS_BROKER_PORT:-6379}/0}
         CELERY_BROKER_TIMEOUT: ${CELERY_BROKER_TIMEOUT}
         HEALTH_CHECK_TIMEOUT: ${HEALTH_CHECK_TIMEOUT}
 
       env_file:
-        # Тот же файл, что у app: воркер пишет в тот же кэш и ту же базу, и
-        # без env_file брал бы умолчания из кода на всё, что не перечислено
-        # выше. environment остаётся главнее и удерживает адреса внутри сети.
+        # The same file app uses: the worker writes to the same cache and
+        # the same database, and without env_file it would take the code's
+        # defaults for everything not listed above. environment still wins
+        # and keeps the addresses inside the network.
         - ../${ENV_FILE:-.env}
       command: celery -A link_shortener.infrastructure.task_queue.celery_app worker --loglevel=info
       volumes:
         - ${LOG_HOST_PATH}:/app/${LOG_DIR}
-      # Том обязателен: воркер пишет те же три файла, что и приложение.
-      # Через create_app он не проходит, поэтому логирование настраивает
-      # себе сам, по сигналу celery — см. task_queue/celery_app.py.
+      # The volume is required: the worker writes the same three files the
+      # application does. It does not go through create_app, so it
+      # configures logging for itself on celery's signal -- see
+      # task_queue/celery_app.py.
       logging:
         driver: json-file
         options:
           max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
           max-file: "${DOCKER_LOG_MAX_FILE:-5}"
-    # Воркер живёт в контейнере в любом случае — и когда приложение поднято
-    # на хосте, и когда в Docker работает весь стек. Развёртыванию, которое
-    # держит в контейнере только приложение, его можно не запускать: при
-    # CELERY_ENABLED=false очередь подменяется NullTaskQueue, и отложенная
-    # работа делается на месте, в самом запросе.
+    # The worker lives in a container either way -- when the application
+    # runs on the host and when the whole stack runs in Docker. A deployment
+    # that keeps only the application in a container may leave it off: with
+    # CELERY_ENABLED=false the queue is replaced by NullTaskQueue and the
+    # deferred work is done in place, inside the request.
 
 
     # ==========================================================================
-    # Ротация журналов
+    # Journal rotation
     # ==========================================================================
-    # Файлы журнала подменяет отдельный процесс, а не само приложение.
-    # Причина в числах: application.log пишут четыре рабочих процесса
-    # gunicorn сразу, и обработчик, который ротирует сам
-    # (RotatingFileHandler), при четырёх писателях уничтожает от 10 до 16
-    # процентов записей — он обрезает файл, пока остальные в него пишут.
-    # Приложение пишет через WatchedFileHandler, который подмену замечает
-    # и открывает новый файл; замер и разбор — в docs/decisions.md.
+    # A separate process moves the journal files aside, not the application
+    # itself. The reason is in the numbers: four gunicorn workers write
+    # application.log at once, and a handler that rotates by itself
+    # (RotatingFileHandler) destroys between 10 and 16 percent of the
+    # records with four writers -- it truncates the file while the others
+    # are writing into it. The application writes through
+    # WatchedFileHandler, which notices the replacement and opens the new
+    # file; the measurement and the reasoning are in docs/decisions.md.
     #
-    # Под своим профилем, как db и redis: ротацию включают именем, а не
-    # правкой этого файла. Кто держит журналы на хосте и ротирует их
-    # хостовым logrotate, профиль `logs` не называет — конфиг тот же,
-    # dockers/logrotate.conf, в нём меняются только пути.
+    # Behind a profile of its own, like db and redis: rotation is turned on
+    # by naming it rather than by editing this file. Whoever keeps the
+    # journals on the host and rotates them with the host's logrotate does
+    # not name the `logs` profile -- the configuration is the same one,
+    # dockers/logrotate.conf, with only the paths changed.
     logrotate:
       build:
         context: ..
@@ -421,24 +438,26 @@ services:
       profiles: ["logs"]
       restart: unless-stopped
       environment:
-        # Частота опроса, а не частота ротации: как часто подменяется файл,
-        # решают daily и weekly в конфиге. Ежечасный опрос нужен затем,
-        # чтобы срабатывал ещё и потолок по размеру, который проверяется
-        # только в момент вызова.
+        # How often it looks, not how often it rotates: how often a file is
+        # moved aside is decided by daily and weekly in the configuration.
+        # The hourly look is what makes the size ceiling work at all, since
+        # that one is only examined at the moment of the call.
         LOG_ROTATE_INTERVAL: ${LOG_ROTATE_INTERVAL:-3600}
-        # Те же три имени, по которым журналы выбирает приложение. Без них
-        # ротатор следил бы за файлами, названными в конфиге буквально, и
-        # развёртывание со своим LOG_FILENAME теряло бы ротацию молча.
+        # The same three names the application chooses its journals by.
+        # Without them the rotator would watch the files named literally in
+        # the configuration, and a deployment with its own LOG_FILENAME
+        # would lose rotation in silence.
         LOG_FILENAME: ${LOG_FILENAME:-application}
         ERROR_LOG_FILENAME: ${ERROR_LOG_FILENAME:-error}
         AUDIT_LOG_FILENAME: ${AUDIT_LOG_FILENAME:-audit}
       volumes:
-        # Тот же каталог, что у app, но по своему пути: конфиг написан от
-        # /logs, чтобы не зависеть от LOG_DIR приложения.
+        # The same directory app uses, under a path of its own: the
+        # configuration is written from /logs so as not to depend on the
+        # application's LOG_DIR.
         - ${LOG_HOST_PATH}:/logs
-      # Своего журнала у ротатора почти нет — он молчит, пока не откажет, —
-      # но потолок ставится и ему: контейнер, который начал отказывать
-      # каждый час, пишет об этом без остановки.
+      # The rotator has almost no output of its own -- it is silent until
+      # it fails -- but it gets a ceiling too: a container that has started
+      # failing every hour says so without stopping.
       logging:
         driver: json-file
         options:

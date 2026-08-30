@@ -6,8 +6,8 @@
 #   uv run pytest tests/integration/docker/ -v
 #   docker compose -f dockers/docker-compose.test.yml down -v
 
-# Отдельное имя проекта, чтобы тестовый стек не пересекался с основным
-# docker-compose.yml (см. комментарий там).
+# A project name of its own, so the test stack does not collide with the
+# main docker-compose.yml (see the comment there).
 name: link-shortener-test
 
 services:
@@ -19,11 +19,11 @@ services:
       POSTGRES_PASSWORD: test_password
       POSTGRES_DB: test_shortener
     ports:
-      # На петлю, как и в основном стеке. Пароли здесь общеизвестны -- они
-      # записаны строкой выше и в conftest'е, — так что публикация на все
-      # интерфейсы отдавала бы базу с этими учётными данными всей сети.
-      # Тесты и CI ходят сюда через localhost, так что привязка их не
-      # касается.
+      # Bound to the loopback, as in the main stack. The passwords here are
+      # common knowledge -- they are written a line above and in the
+      # conftest -- so publishing on every interface would hand the database
+      # and those credentials to the whole network. Tests and CI reach it
+      # over localhost, so the binding does not concern them.
       - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U test_user -d test_shortener"]
@@ -36,7 +36,7 @@ services:
     container_name: shortener_test_redis
     command: redis-server --requirepass test_redis_pass --maxmemory 128mb
     ports:
-      # Та же причина, что и у тестовой базы выше.
+      # The same reason as the test database above.
       - "127.0.0.1:6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "test_redis_pass", "ping"]

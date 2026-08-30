@@ -1,26 +1,27 @@
 #!/bin/sh
 set -e
 
-# Подставляет имена журналов в шаблон и крутит logrotate по расписанию.
+# Substitutes the journal names into the template and runs logrotate on a
+# schedule.
 #
-# Имена берутся из тех же трёх переменных, по которым их выбирает
-# приложение. Без этого шага конфиг называл файлы буквально, и
-# развёртывание, поставившее своё LOG_FILENAME, оставалось без ротации
-# молча: missingok глушит отсутствие файла, ротатор возвращает ноль, а
-# журнал растёт до конца диска.
+# The names come from the same three variables the application chooses them
+# by. Without this step the configuration named the files literally, and a
+# deployment that set its own LOG_FILENAME was left without rotation in
+# silence: missingok swallows the missing file, the rotator returns zero,
+# and the journal grows until the disk ends.
 #
-# Умолчания те же, что у BaseConfig. Второй раз записанные — да, но
-# альтернатива хуже: без них незаданная переменная превращает путь в
-# `/logs/.log`, и ротация снова молча ничего не делает.
+# The defaults are BaseConfig's. Written down a second time, yes, but the
+# alternative is worse: without them an unset variable turns the path into
+# `/logs/.log`, and rotation again quietly does nothing.
 export LOG_FILENAME="${LOG_FILENAME:-application}"
 export ERROR_LOG_FILENAME="${ERROR_LOG_FILENAME:-error}"
 export AUDIT_LOG_FILENAME="${AUDIT_LOG_FILENAME:-audit}"
 
-# Имя журнала — имя, а не путь. Приложение проверяет эти три настройки при
-# старте и отказывается подниматься с плохим именем, но ротатор — отдельный
-# контейнер: он поднимется и станет ротировать `/logs/../что-нибудь`, пока
-# оператор разбирается, почему не встало приложение. Проверка та же по
-# смыслу, что `JOURNAL_NAME` в configs/app/base.py.
+# A journal name is a name, not a path. The application checks these three
+# settings at startup and refuses to come up with a bad one, but the rotator
+# is a separate container: it would come up and rotate `/logs/../anything`
+# while the operator works out why the application did not. The check is the
+# same in meaning as `JOURNAL_NAME` in configs/app/base.py.
 for name in "${LOG_FILENAME}" "${ERROR_LOG_FILENAME}" "${AUDIT_LOG_FILENAME}"; do
     case "${name}" in
         *[!A-Za-z0-9._-]* | .* | "")
@@ -30,28 +31,29 @@ for name in "${LOG_FILENAME}" "${ERROR_LOG_FILENAME}" "${AUDIT_LOG_FILENAME}"; d
     esac
 done
 
-# Именно эти три и никакие другие: envsubst без списка подставит всякую
-# `${...}`, какая попадётся, а в конфиге logrotate таких конструкций быть
-# не должно вовсе — если появится, пусть останется как написана.
+# These three and no others: envsubst with no list substitutes every
+# `${...}` it comes across, and a logrotate configuration should carry no
+# such construct at all -- if one appears, let it stand as written.
 envsubst '${LOG_FILENAME} ${ERROR_LOG_FILENAME} ${AUDIT_LOG_FILENAME}' \
     < /etc/logrotate.d/link_shortener.template \
     > /etc/logrotate.d/link_shortener
 
 echo "logrotate will follow: ${LOG_FILENAME}.log, ${ERROR_LOG_FILENAME}.log, ${AUDIT_LOG_FILENAME}.log"
 
-# `render` — подставить и выйти, без цикла. Существует ради теста, который
-# спрашивает у настоящего logrotate, принимает ли он то, что мы отгружаем:
-# спрашивать надо о готовом конфиге, а готовит его этот скрипт. Тест,
-# повторяющий подстановку своими силами, проверял бы свою копию.
+# `render` -- substitute and exit, no loop. It exists for the test that
+# asks the real logrotate whether it accepts what we ship: the question has
+# to be about the finished configuration, and this script is what finishes
+# it. A test repeating the substitution itself would be checking its own
+# copy.
 if [ "$1" = "render" ]; then
     exit 0
 fi
 
-# Интервал — целое число секунд, и проверяется по той же причине, что
-# имена: `sleep abc` возвращает ошибку и возвращается сразу, так что цикл
-# перестаёт быть расписанием и становится busy-loop — logrotate зовётся без
-# передышки, а `docker logs` наполняется отказами со скоростью диска.
-# Опечатка в переменной, ничего больше.
+# The interval is a whole number of seconds, checked for the same reason as
+# the names: `sleep abc` fails and returns at once, so the loop stops being
+# a schedule and becomes a busy loop -- logrotate is called without pause
+# and `docker logs` fills with refusals at the speed of the disk. A typo in
+# a variable, nothing more.
 case "${LOG_ROTATE_INTERVAL}" in
     "" | *[!0-9]* | 0)
         echo "refusing to run: LOG_ROTATE_INTERVAL='${LOG_ROTATE_INTERVAL}'" \
@@ -60,11 +62,12 @@ case "${LOG_ROTATE_INTERVAL}" in
         ;;
 esac
 
-# Расписание циклом, а не cron: см. Dockerfile.logrotate.
+# A loop for the schedule, not cron: see Dockerfile.logrotate.
 #
-# Отказ не гасится: logrotate возвращает ненулевой код, когда не смог
-# подменить файл — чаще всего из-за прав на каталог, — и об этом надо
-# узнать из `docker logs`, а не по молчанию.
+# A failure is not swallowed: logrotate returns a non-zero code when it
+# could not move a file aside -- most often over permissions on the
+# directory -- and that has to be learnt from `docker logs` rather than
+# from silence.
 while true; do
     logrotate --state /logs/.logrotate.state /etc/logrotate.d/link_shortener \
         || echo 'logrotate failed, see the message above' >&2
