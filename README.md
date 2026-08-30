@@ -1,6 +1,6 @@
 <div align="center">
 
-# Linkr
+# MaizLink
 
 **A URL shortener built the way a service that has to stay up is built.**
 

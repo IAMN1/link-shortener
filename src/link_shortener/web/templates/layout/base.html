@@ -19,10 +19,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Linkr{% endblock %}</title>
+    <title>{% block title %}MaizLink{% endblock %}</title>
     {# A link to a link shortener used to unfurl as an empty card, which for
        this service of all services is a poor advertisement. #}
-    <meta name="description" content="{% block description %}Linkr turns a long address into a short code you can read out loud. Everything the interface does is also an API call.{% endblock %}">
+    <meta name="description" content="{% block description %}MaizLink turns a long address into a short code you can read out loud. Everything the interface does is also an API call.{% endblock %}">
     <meta name="color-scheme" content="light dark">
     {# Turbo paints a returning page twice by default: the cached snapshot
        first, the fresh response second. The body scripts run on both
@@ -127,7 +127,7 @@
     {% block footer %}
     <footer class="footer">
         <div class="container footer-inner">
-            <span>&copy; 2026 Linkr</span>
+            <span>&copy; 2026 MaizLink</span>
             <a href="{{ url_for('frontend.api_docs') }}">API</a>
             <a href="{{ url_for('frontend.openapi') }}">openapi.json</a>
             {# `rel="noopener"` on anything opening a new tab: without it the

@@ -249,10 +249,10 @@ NOT_PROSE = {
     "'Content-Type: application/json'",
     '\'{"url": "https://example.com/…"}\'',
     # Names: the product, the author, the services it talks to.
-    "Linkr",
+    "MaizLink",
     "linkr",
-    "— Linkr",
-    "2026 Linkr",
+    "— MaizLink",
+    "2026 MaizLink",
     "GitHub",
     "Redis",
     # The key, as it is printed on a keyboard the world over.
