@@ -53,9 +53,23 @@ without TLS — a submission in the clear carries the confirmation link to
 anyone on the path.
 
 ```bash
-uv run flask security generate-secrets              # prints both, ready to paste
-uv run flask security generate-secrets --write .env # or fills them in, in place
+uv run flask security generate-secrets               # prints both, ready to paste
+uv run flask security generate-secrets --write .env  # or fills them in, in place
 ```
+
+The Docker stack needs two more, and asks for them explicitly:
+
+```bash
+uv run flask security generate-secrets --write .env.docker --with-service-passwords
+```
+
+`DATABASE_PASSWORD` and `REDIS_PASSWORD` are what this stack's own
+PostgreSQL and Redis are *started* with rather than secrets the
+application signs anything with, which is why they are opted into: a run
+on SQLite with the cache in the process has neither service, and two more
+values to keep out of a paste buy it nothing. Neither service starts
+without one — each refuses with the name of the variable, the command
+above, and the way to point at a service of your own instead.
 
 `--write` refuses a file that already sets either value, because replacing
 `SECRET_KEY` signs out every session and replacing `SHORT_CODE_PEPPER`

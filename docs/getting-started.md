@@ -132,36 +132,43 @@ image's `CMD` instead.
 ## The whole stack, in Docker
 
 PostgreSQL, Redis, a Celery worker and a Mailpit catcher, the way a
-deployment runs. This path is not a paste: the template is written for the
-local run above, so ten values have to be changed before anything starts —
-two of them commented out, which is why they are shown here in full.
+deployment runs. Three commands, and none of them is "then edit ten
+values":
 
 ```bash
-cp .env.example .env.docker
-uv run flask security generate-secrets --write .env.docker
-```
-
-Then edit `.env.docker`:
-
-```ini
-ENV_FILE=.env.docker          # must match what you pass to --env-file
-DATABASE_TYPE=postgresql
-DATABASE_HOST=db              # the service name inside the compose network
-DATABASE_NAME=db_shortener    # a database name, not a file
-DATABASE_USER=shortener
-DATABASE_PASSWORD=<password>
-REDIS_ENABLED=true
-REDIS_PASSWORD=<password>
-CELERY_ENABLED=true
-DOMAIN=localhost:5000         # the name short links are built from
-```
-
-```bash
+cp .env.docker.example .env.docker
+uv run flask security generate-secrets --write .env.docker --with-service-passwords
 docker compose --env-file .env.docker up -d --build
 docker compose --env-file .env.docker exec app \
     flask create-admin --email admin@example.com --password 'ChangeMe1!'
 curl -s http://localhost:5000/health
 ```
+
+> [!NOTE]
+> `.env.docker.example` is the same catalogue as `.env.example` with eight
+> lines set for containers — the backend, the service name of the
+> database, the two switches for Redis and Celery, and the domain short
+> links are built from. Its own header lists all eight with the reason for
+> each, and `test_the_two_templates_do_not_drift.py` holds every other
+> line identical between the two files.
+>
+> There used to be one template for both paths, and it said
+> `COMPOSE_PROFILES=db,cache,broker` and `DATABASE_TYPE=sqlite` on the
+> same page. Following it brought up PostgreSQL and two Redis and left the
+> application on SQLite: the migration wrote a schema inside its own
+> container and exited 0, the application opened an empty file beside it,
+> `/health` answered `healthy` and the landing page answered `500 no such
+> table: roles`. Two of the three are now impossible — the templates
+> cannot contradict each other, and `/health` reports `no_schema` with a
+> 503 rather than `ok`.
+
+> [!TIP]
+> `--with-service-passwords` writes two more values than the local path
+> needs: what this stack's own PostgreSQL and Redis are started with. The
+> repository ships no default password for either, and both services
+> refuse to start rather than come up open — with a message naming the
+> variable, the command that fills it and the way to use a service of your
+> own instead.
 
 ```json
 {
@@ -199,21 +206,11 @@ flowchart LR
 <details>
 <summary>Which services to run yourself</summary>
 
-The template turns on all four:
-
-```ini
-COMPOSE_PROFILES=db,cache,broker,mail
-```
-
-| Profile | Brings up | Left out — then set |
-|---|---|---|
-| `db` | PostgreSQL | `DATABASE_URL` |
-| `cache` | Redis for cache and limits | `REDIS_URL` |
-| `broker` | Redis for the Celery queue | `CELERY_BROKER_URL` |
-| `mail` | the Mailpit catcher | `MAIL_HOST`, `MAIL_PORT` |
-
-An empty value means "everything is external": only `migrations`, `app`
-and `celery_worker` come up.
+Every one of them can be somebody else's. The table of what to name in
+place of each, and the four other ways this stack can be arranged, is
+[below](#choosing-where-each-part-runs) — it is written once there rather
+than twice, because a profile and the switch beside it have to agree and a
+second copy is a second thing that can stop agreeing.
 
 The compose files live in `dockers/`, and the commands above still work
 from the project root because `COMPOSE_FILE` in the env file names them
@@ -236,6 +233,111 @@ Set `FLASK_ENV=production` for it, and note that the profile defaults
 `AUTO_SEED_ROLES` to `false`: seed the roles once, as above.
 
 </details>
+
+---
+
+## Choosing where each part runs
+
+The two blocks above are the ends of a range, not the whole of it. Nothing
+in the stack insists that a part run in a container: each infrastructure
+service is behind a compose profile, and every one of them can be replaced
+by an address instead. The application itself is the same — it is a
+process, and where it runs is your choice.
+
+The rule the whole table follows: **a profile brings a service up, a switch
+tells the application to use one.** They are two different statements and
+both have to be made. A profile on with its switch off runs a container
+nobody talks to; a switch on with its profile off needs the address of a
+service you brought yourself.
+
+| # | Application | Its dependencies | `COMPOSE_PROFILES` | Settings | Also name |
+|---|---|---|---|---|---|
+| 1 | container | containers | `db,cache,broker,mail,logs` | `DATABASE_TYPE=postgresql` · `REDIS_ENABLED=true` · `CELERY_ENABLED=true` | — |
+| 2 | host | containers | `db,cache,broker,mail` | `DATABASE_TYPE=postgresql` · `REDIS_ENABLED=true` · `CELERY_ENABLED=true` | `DATABASE_HOST=localhost` · `REDIS_URL` · `CELERY_BROKER_URL` |
+| 3 | host | host | *(empty)* | `DATABASE_TYPE=sqlite` · `REDIS_ENABLED=false` · `CELERY_ENABLED=false` | — |
+| 4 | container | yours, outside | *(empty)* | `DATABASE_TYPE=postgresql` · `REDIS_ENABLED=true` · `CELERY_ENABLED=true` | `DATABASE_URL` · `REDIS_URL` · `CELERY_BROKER_URL` |
+| 5 | host | database in a container, the rest in the process | `db` | `DATABASE_TYPE=postgresql` · `REDIS_ENABLED=false` · `CELERY_ENABLED=false` | `DATABASE_HOST=localhost` |
+
+> [!NOTE]
+> This table is read by `test_the_documented_matrix_is_coherent.py`. It
+> checks the rule above on every row — a profile whose switch is off, or a
+> switch with neither its profile nor an address, fails the suite. The
+> combination that made this document necessary is row 1 with
+> `DATABASE_TYPE=sqlite`, and that row cannot be written here any more.
+
+**Row 1** is `.env.docker.example` as it ships, and the block above.
+
+**Row 2** — the application on the host against the stack's services. Bring
+up only the infrastructure, then run the application as in the first block:
+
+```bash
+docker compose --env-file .env.docker up -d db redis redis_broker mailpit
+uv run flask alembic upgrade head
+uv run flask run
+# in another terminal, because CELERY_ENABLED=true means somebody has to drain the queue
+uv run celery -A link_shortener.infrastructure.task_queue.celery_app worker --loglevel=info
+```
+
+Naming the services is what keeps `app` and `celery_worker` out; they carry
+no profile, so a bare `up` starts them. The addresses go in `.env`, not in
+`.env.docker`: the ports are published on the loopback —
+`127.0.0.1:5432`, `127.0.0.1:6379` for the cache, `127.0.0.1:6381` for the
+broker — and the passwords are the ones `generate-secrets` wrote.
+
+The worker is the part that is easy to forget, and the service says so
+rather than hiding it: without one `/health` answers `degraded` with
+`"task_queue": "unavailable"` — measured while writing this row. Clicks
+stop being counted and mail stops being sent, and nothing else goes wrong,
+which is exactly why it is worth being told. `CELERY_ENABLED=false` is the
+other honest answer: the work is then done inline, on the request.
+
+**Row 3** is `.env.example` as it ships, and the first block above.
+
+**Row 4** — your own PostgreSQL and Redis, wherever they are. Empty
+`COMPOSE_PROFILES` means only `migrations`, `app` and `celery_worker` come
+up; each address is a single string, and a string beats the `DATABASE_*`
+parts.
+
+**Row 5** and anything else — take a profile out, name what replaces it:
+
+| Profile | Brings up | Left out — then set |
+|---|---|---|
+| `db` | PostgreSQL | `DATABASE_URL`, or the `DATABASE_*` parts |
+| `cache` | Redis for the cache and the limits | `REDIS_URL`, or `REDIS_ENABLED=false` for a cache in the process |
+| `broker` | Redis for the Celery queue | `CELERY_BROKER_URL`, or `CELERY_ENABLED=false` to do the work inline |
+| `mail` | the Mailpit catcher | `MAIL_HOST` and `MAIL_PORT`, or `MAIL_ENABLED=false` |
+| `logs` | journal rotation | rotate them yourself — without it the files grow until the disk ends |
+
+### Which profile, and which backend
+
+`FLASK_ENV` is a separate axis from all of the above: it picks the
+configuration class, and the class sets defaults the env file then
+overrides.
+
+| `FLASK_ENV` | Database | Cache | Notably |
+|---|---|---|---|
+| `development` | SQLite or PostgreSQL | in-process or Redis | debug on, roles seeded at startup, cookies without `Secure` |
+| `staging` | **PostgreSQL only** | Redis | the same mandatory settings production has, `DOMAIN` included |
+| `production` | **PostgreSQL only** | Redis | `Secure` cookies, gunicorn, `AUTO_SEED_ROLES=false`, mail refused without TLS |
+| `testing` | ignores the environment entirely | — | so a test gives the same answer on every machine |
+
+The deployed profiles refuse to start on anything but PostgreSQL, and that
+refusal is the reason: `DATABASE_TYPE` defaults to `sqlite`, so a
+deployment that forgot to configure a database came up on an empty new file
+and answered as though the data had never existed. The full list of what
+they will not start without is in
+[Configuration](configuration.md#what-the-deployed-profiles-refuse-to-start-without).
+
+Two settings are worth knowing before switching a container stack to
+`production`:
+
+* `AUTO_SEED_ROLES` defaults to `false` there — seed once with
+  `flask db load-base-roles`, or an anonymous visitor cannot create a link
+  at all, because `link:create` is carried by the `guest` role;
+* `CORS_ORIGINS` has to contain the address people actually open. The CSRF
+  layer compares the browser's `Origin` against it, so with the wrong value
+  the landing page works — an anonymous caller does not go through CSRF —
+  and every form fails the moment somebody signs in.
 
 ---
 
@@ -301,6 +403,9 @@ menu entry that answers `403` is a bug rather than a fact of life. See
 | The confirmation message never arrives | Check the log. `Verification email not delivered` means the submission server is unreachable — locally, that is the missing catcher on `localhost:1025`. `MAIL_ENABLED=false` means mail is off entirely |
 | Only `app` and `celery_worker` came up | `COMPOSE_PROFILES` is empty or unset in the env file |
 | Links look like `http://0.0.0.0:5000/...` | `HOST=0.0.0.0` with no `DOMAIN`; see the note above |
+| `password authentication failed for user "shortener"` right after a fresh `.env.docker` | The volume outlived the file. PostgreSQL keeps the password it was **initialised** with, so a newly generated `DATABASE_PASSWORD` does not reach a database that already exists. `docker compose --env-file .env.docker down -v` to start over — it takes the data with it — or put the old password back. Measured while walking this guide |
+| A second checkout of the project reuses the first one's database | The compose project is named `link-shortener` in the file rather than taken from the directory, so both checkouts address the same volumes. That is deliberate — it keeps this stack out of the test stack's namespace — but it means two clones are one deployment |
+| `/health` says `"database": "no_schema"` | The database is reachable and has none of this application's tables: the migration went somewhere else, or never ran. `flask alembic upgrade head` against **this** database. The service answers 503 until it does, because it can serve nothing |
 
 ---
 

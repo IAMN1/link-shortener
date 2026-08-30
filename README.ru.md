@@ -78,10 +78,10 @@ uv run flask run
 **В Docker** — PostgreSQL, Redis, Celery, Mailpit
 
 ```bash
-cp .env.example .env.docker
-uv run flask security \
-    generate-secrets --write .env.docker
-# дальше десять значений — см. руководство
+cp .env.docker.example .env.docker
+uv run flask security generate-secrets \
+    --write .env.docker \
+    --with-service-passwords
 docker compose --env-file .env.docker \
     up -d --build
 ```
@@ -90,10 +90,23 @@ docker compose --env-file .env.docker \
 </table>
 
 > [!TIP]
-> `--write` вписывает оба секрета прямо в файл; без них развёрнутые
-> профили не стартуют. Роли в `development` засеваются при старте сами —
-> поэтому `db load-base-roles` нет ни в одном блоке. По шагам, с ожидаемым
-> выводом каждой команды: [Быстрый старт](docs/getting-started.ru.md).
+> Шаблона два, а не один, потому что один файл не отвечает на два вопроса
+> сразу: `.env.example` описывает запуск слева — SQLite и кэш в процессе,
+> `.env.docker.example` описывает запуск справа, где все зависимости в
+> контейнерах. Различаются восемь строк, остальное держит одинаковым тест.
+>
+> `--write` вписывает секреты прямо в файл; без них развёрнутые профили не
+> стартуют. `--with-service-passwords` добавляет ещё два — те, с которыми
+> запускаются собственные PostgreSQL и Redis стека: пароля по умолчанию в
+> репозитории нет, и оба сервиса скорее откажутся стартовать, чем поднимутся
+> открытыми. Роли в `development` засеваются при старте сами — поэтому
+> `db load-base-roles` нет ни в одном блоке.
+>
+> Что-то другое — приложение на хосте против контейнерных сервисов, своя
+> PostgreSQL, другой профиль: вся матрица со значениями для каждого
+> сочетания лежит в
+> [Быстром старте](docs/getting-started.ru.md#где-что-запускать).
+> Там же — по шагам, с ожидаемым выводом каждой команды.
 
 ## Что умеет
 

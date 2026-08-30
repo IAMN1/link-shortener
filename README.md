@@ -76,10 +76,10 @@ uv run flask run
 **In Docker** — PostgreSQL, Redis, Celery, Mailpit
 
 ```bash
-cp .env.example .env.docker
-uv run flask security \
-    generate-secrets --write .env.docker
-# then ten values -- see the guide
+cp .env.docker.example .env.docker
+uv run flask security generate-secrets \
+    --write .env.docker \
+    --with-service-passwords
 docker compose --env-file .env.docker \
     up -d --build
 ```
@@ -88,11 +88,24 @@ docker compose --env-file .env.docker \
 </table>
 
 > [!TIP]
-> `--write` fills the two secrets into the file in place; without them the
-> deployed profiles refuse to start. Roles seed themselves on startup in
+> Two templates rather than one, because one file cannot answer both
+> questions: `.env.example` describes the run on the left, SQLite and a
+> cache in the process; `.env.docker.example` describes the one on the
+> right, with every dependency in a container. Eight lines differ between
+> them and a test holds the rest identical.
+>
+> `--write` fills the secrets into the file in place; without them the
+> deployed profiles refuse to start. `--with-service-passwords` adds the
+> two the stack's own PostgreSQL and Redis are started with — the
+> repository ships no default password, and both services refuse to start
+> rather than come up open. Roles seed themselves on startup in
 > `development`, which is why neither block runs `db load-base-roles`.
-> Step-by-step, with the expected output of every command:
-> [Getting started](docs/getting-started.md).
+>
+> Something else — the application on the host against containerised
+> services, your own PostgreSQL, a different profile: the whole matrix,
+> with the values for each combination, is in
+> [Getting started](docs/getting-started.md#choosing-where-each-part-runs).
+> Step-by-step, with the expected output of every command, is there too.
 
 ## What it does
 

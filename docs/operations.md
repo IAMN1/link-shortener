@@ -94,7 +94,7 @@ explained.
 | Command | |
 |---|---|
 | `security check-secrets` | Are the secrets set properly |
-| `security generate-secrets` | Print a fresh `SECRET_KEY` and `SHORT_CODE_PEPPER`; `--write <file>` fills them into an env file instead, `--force` replaces values already set |
+| `security generate-secrets` | Print a fresh `SECRET_KEY` and `SHORT_CODE_PEPPER`; `--write <file>` fills them into an env file instead, `--force` replaces values already set. `--with-service-passwords` adds `DATABASE_PASSWORD` and `REDIS_PASSWORD` — what the Docker stack's own PostgreSQL and Redis are started with, and refuse to start without |
 | `security list-users` · `security list-roles` | What exists |
 | `security validate-token <token>` | Verdict plus claims |
 | `security reset-password` | Set a new password |

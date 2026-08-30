@@ -20,7 +20,7 @@ you expected, and which profile you were on (`development`, `staging`,
 ```bash
 uv sync
 cp .env.example .env
-uv run flask security generate-secrets   # paste both into .env
+uv run flask security generate-secrets --write .env
 uv run flask alembic upgrade head
 uv run flask db load-base-roles
 uv run pytest tests/
