@@ -222,16 +222,17 @@ the runtime dependencies.
 
 **Why one and not three.** All three were declared, none was named in CI,
 in `CONTRIBUTING.md`, in `docs/`, or in a settings section of its own, and
-none had ever been run over the tree. Measured on the 643 files of `src`
-and `tests`: `autopep8 --diff` proposes no change at all, `black` would
-rewrite **496** of them and `isort` **421**. So the tree is already in
-`autopep8`'s shape, and running either of the others is not "format the
-change I made" — it is reformatting the project in one commit, through a
-diff nobody can review. `black` and `autopep8` also disagree by
-construction, which is why declaring both reads as a stylistic policy the
-repository does not have. `.flake8` selects no code that rewrites a line
-(see *The formatter and the linter read one list* below), so layout is not
-a gate either way and the choice is not forced by the linters.
+none had ever been run over the tree. Measured over the 643 files `src`
+and `tests` held at the time: `autopep8 --diff` proposed no change at all,
+`black` would have rewritten **496** of them and `isort` **421**. So the
+tree is already in `autopep8`'s shape, and running either of the others is
+not "format the change I made" — it is reformatting the project in one
+commit, through a diff nobody can review. `black` and `autopep8` also
+disagree by construction, which is why declaring both reads as a stylistic
+policy the repository does not have. `.flake8` selects no code that
+rewrites a line (see *The formatter and the linter read one list* below),
+so layout is not a gate either way and the choice is not forced by the
+linters.
 
 `isort` stays installed regardless — `pylint` depends on it — but it is no
 longer listed as something this project runs. `CONTRIBUTING.md` now names

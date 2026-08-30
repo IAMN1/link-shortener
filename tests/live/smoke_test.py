@@ -13,13 +13,16 @@ writing the role onto an account (`grant_role`): there is no endpoint
 for it and should not be, since the first administrator cannot be appointed
 by an administrator.
 
-Six clients, because one cannot stand for six callers. A Flask test
+Ten clients, because one cannot stand for ten callers. A Flask test
 client keeps a cookie jar, so the moment any request on it logs in, every
 later request on that client is a cookie-authenticated one -- and the CSRF
 layer refuses unsafe cookie-authenticated requests that carry no token,
 before the request reaches any logic. A single shared client therefore
 turned every later POST and DELETE into 403 and, worse, turned each
 "anonymous" check into a check on a signed-in caller.
+
+Six of them are roles a caller can be; the other four are second devices,
+and they exist because two sections replace an account's password.
 
   - ``guest``    never authenticates. It is what an anonymous caller is.
   - ``api``      authenticates with ``Authorization: Bearer`` and holds no
@@ -40,6 +43,18 @@ turned every later POST and DELETE into 403 and, worse, turned each
                  deleted from the application with this run still green:
                  "logged in, but not yours" is a third answer, and it is
                  the one those checks exist to give.
+
+  - ``changer`` and ``changer_second`` are two devices of one further
+                 account, for the section that changes that account's
+                 password. Sharing the account with the sections around it
+                 would leave them unable to sign in halfway through the
+                 run; sharing one client between the two devices would make
+                 "the other device was signed out" a claim about the device
+                 that made the change.
+  - ``forgetful`` and ``forgetful_second`` are the same pair for the reset
+                 section, which replaces a password too -- and reads the
+                 link out of a delivered message, so its account also has
+                 to be the only one that was mailed anything recently.
 
 Every client answers from an address of its own, and the checks that measure
 a quota get a fresh one. The guest quota counts per address throughout; the

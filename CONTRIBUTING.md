@@ -37,10 +37,11 @@ Formatting first, and there is one formatter:
 uv run autopep8 --in-place --recursive src tests   # the only one this project runs
 ```
 
-It is the only one that agrees with the tree — measured on 643 files,
-`autopep8 --diff` proposes nothing, while `black` would rewrite 496 of them
-and `isort` 421. Neither of those is declared any more; running one is not
-formatting a change, it is reformatting the project.
+It is the only one that agrees with the tree — measured over the 643 files
+the project held at the time, `autopep8 --diff` proposed nothing, while
+`black` would have rewritten 496 of them and `isort` 421. Neither of those
+is declared any more; running one is not formatting a change, it is
+reformatting the project.
 
 ```bash
 uv run pytest tests/                      # 4227 tests, 88% coverage floor

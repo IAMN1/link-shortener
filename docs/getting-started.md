@@ -38,13 +38,17 @@ curl -s -X POST http://127.0.0.1:5000/api/v1/shorten \
 
 ```json
 {
-  "short_code": "q68J3qY",
-  "short_url": "http://localhost:5000/q68J3qY",
-  "original_url": "https://example.com",
-  "is_new": true,
   "clicks": 0,
-  "expires_at": "2026-08-22T08:40:10.886514+00:00",
-  "deletion_token": "IjU4OWY2ZGJk…"
+  "created_at": "2026-08-30T12:36:33.619533+00:00",
+  "deletion_token": "Ijg0YjgwMWY1LWFjMDAtNDM2Zi05ZDM2…",
+  "expires_at": "2026-09-06T12:36:33.619533+00:00",
+  "from_cache": false,
+  "is_new": true,
+  "last_accessed": null,
+  "original_url": "https://example.com",
+  "owner_id": null,
+  "short_code": "q68J3qY",
+  "short_url": "http://localhost:5000/q68J3qY"
 }
 ```
 
@@ -70,7 +74,14 @@ painted, so nothing flashes on the way in.
 | `security generate-secrets --write .env` | Fills `SECRET_KEY` and `SHORT_CODE_PEPPER` in place. Without them `development` invents a key per process, so tokens die on restart | `SECRET_KEY and SHORT_CODE_PEPPER written to .env.` |
 | `flask alembic upgrade head` | Creates the schema | `Running upgrade -> 0001, initial schema` |
 | `flask create-admin` | The first administrator, which no endpoint can make: registration hands out `user`, and granting `admin` needs an account that already holds it | `Admin user admin@example.com created successfully (active: True).` |
-| `flask run` | Serves on `http://127.0.0.1:5000/` | The Werkzeug banner |
+| `flask run` | Serves on `http://127.0.0.1:5000/` | `* Serving Flask app` and `* Debug mode: on` |
+
+> [!NOTE]
+> The line you may be looking for — `* Running on http://127.0.0.1:5000`
+> — is not printed. The template sets `WERKZEUG_LOG_LEVEL=WARNING`, and
+> Werkzeug writes that one through its logger at `INFO`. The two lines
+> above come from Flask itself and are unaffected; `* Debugger is
+> active!` follows them, because it is a warning.
 
 <details>
 <summary>Where are the roles seeded?</summary>
@@ -388,7 +399,7 @@ menu entry that answers `403` is a bug rather than a fact of life. See
 | Symptom | What to do |
 |---|---|
 | `ModuleNotFoundError: No module named 'link_shortener'` | `uv sync`, and run through `uv run` |
-| `Address already in use` on port 5000 | Something else holds it — on macOS often AirPlay Receiver or a Docker stack from an earlier run. `uv run flask run --port 5055`, or stop the other one |
+| `Address already in use` on port 5000 | Something else holds it — on macOS often AirPlay Receiver or a Docker stack from an earlier run. `uv run flask run --port 5055`, or stop the other one. **Set `PORT=5055` in `.env` as well**: the flag moves the socket, and every address the service *writes* comes from the configuration. With only the flag, the links it hands out and the example on the landing page still say 5000, and following one lands nowhere |
 | `no such table: urls` | `uv run flask alembic upgrade head` |
 | `401` on `POST /api/v1/shorten` as an anonymous caller | The `guest` role is missing or lacks `link:create`. `uv run flask db load-base-roles`, then check with `flask security list-roles` |
 | `403` on the same call while signed in | That account's role does not hold `link:create` — `analyst` does not, by design |

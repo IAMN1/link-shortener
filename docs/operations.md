@@ -160,6 +160,8 @@ flowchart LR
     D --> E[clean-expired<br/>expired links]
     D --> U[clean-unverified<br/>unconfirmed accounts]
     D --> P[clean-reset-tokens<br/>spent reset links]
+    D --> V[roll-up-visits<br/>finished days of traffic]
+    D --> C[roll-up-security-events<br/>finished days of evidence]
     W([Weekly]) --> R[stats refresh]
     O([Once, on an existing database]) --> N[normalize-emails --apply]
 ```
@@ -170,6 +172,8 @@ flowchart LR
 | `clean-expired` | Removes only links that already answer `410 Gone`. Not just space: while an expired row sits in the database it occupies a place in its owner's statistics and in `/links/mine` |
 | `clean-unverified` | **Not cosmetic.** An unconfirmed account holds an address: it cannot be registered again (taken) and cannot be signed into (unconfirmed). Without this job anyone can squat addresses in bulk, permanently, and their owners are told "already registered". Confirmed accounts are never touched, whatever their age |
 | `clean-reset-tokens` | One row per reset asked for, and the accounts they belong to are staying — so nothing else ever prunes them. It removes only rows that already grant nothing: spent, or past `PASSWORD_RESET_TTL_MINUTES` |
+| `roll-up-visits` | The raw visit rows are one per redirect. Folding a finished day into one row per link per day is what lets `VISIT_RETENTION_DAYS` delete the raw ones without emptying the long-range charts. Skip it and the sweep has nothing folded to fall back on |
+| `roll-up-security-events` | The same for the security journal, and a job of its own rather than a step in the one above: the two tables fill at different rates and keep their history for different lengths (`SECURITY_EVENT_RETENTION_DAYS` is a year against ninety days). A cron line saying "roll up visits" should not be deleting security history under a name that does not mention it |
 
 > [!WARNING]
 > **A behaviour change.** `clean-expired` used to delete anything untouched
@@ -214,11 +218,20 @@ trail is still being written:
 
 ```json
 {
-  "database": true, "cache": true, "task_queue": true, "rate_limiter": true,
+  "cache": true, "cache_configured": true,
+  "database": true, "database_schema": true,
+  "rate_limiter": true, "task_queue": true,
+  "timed_out": [],
   "logging": {
     "logger": { "active": "structlog", "dropped_calls": 0,
-                "failed_checks": 0, "lost_log_lines": 0 },
-    "audit":  { "active": "structlog", "dropped_calls": 0 }
+                "failed_checks": 0, "last_check": "healthy",
+                "lost_log_lines": 0 },
+    "audit":  { "active": "structlog_audit", "dropped_calls": 0,
+                "failed_checks": 0, "last_check": "healthy",
+                "lost_log_lines": 0 },
+    "journals_written": ["application", "error", "audit"],
+    "journals_unavailable": [],
+    "worker": 14
   }
 }
 ```
@@ -226,6 +239,16 @@ trail is still being written:
 Those counters are reported nowhere else. An audit trail that had quietly
 stopped being written looked, from every surface an operator has, exactly
 like one that was fine.
+
+Five of those fields answer a question the plain `true` beside them cannot:
+
+| Field | What it says |
+|---|---|
+| `database_schema` | Whether the database that answered holds this application's tables. `SELECT 1` succeeds against an empty one, so `database: true` alone once reported a service that answered `500` to every request. `database` true with this false is the state the short `/health` renders as `"database": "no_schema"`, and it answers `503` |
+| `cache_configured` | Whether a cache backend is configured at all. A cache nobody configured cannot be down, so it reports `cache: true`; this field is what tells that apart from a cache that is working |
+| `timed_out` | Names the dependencies that did not answer inside the check's budget. They are reported `false` above as well — this list says which one is hanging, where `false` alone says only that it answered no. An empty list is the healthy case |
+| `journals_unavailable` | Names the journals this process could not open. `journals_written` is the other half: the ones it did, in the order they are written |
+| `worker` | The process the counters were taken in. They live in one worker's memory and a deployment runs several, so a number here is that worker's, not the service's |
 
 > [!IMPORTANT]
 > `/health` is exempt from rate limiting and cannot be given a limit. A

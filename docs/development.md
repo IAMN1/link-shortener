@@ -384,8 +384,8 @@ competing for the same ten cores.
 
 `tests/integration/web/controllers/test_api_docs.py` holds the document
 against the real URL map, so a new endpoint is a failing test rather than an
-undocumented one. Administration is included — 24 paths, 29 operations, of
-which 14 are administrative. Each names the permission that opens it, which
+undocumented one. Administration is included — 33 paths, 39 operations, of
+which 16 are administrative. Each names the permission that opens it, which
 is the one thing a reader cannot recover from the shapes.
 
 The only body written by hand is `GET /api/v1/admin/health`, which the

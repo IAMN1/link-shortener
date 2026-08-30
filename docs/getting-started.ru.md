@@ -38,19 +38,30 @@ curl -s -X POST http://127.0.0.1:5000/api/v1/shorten \
 
 ```json
 {
-  "short_code": "q68J3qY",
-  "short_url": "http://localhost:5000/q68J3qY",
-  "original_url": "https://example.com",
-  "is_new": true,
   "clicks": 0,
-  "expires_at": "2026-08-22T08:40:10.886514+00:00",
-  "deletion_token": "IjU4OWY2ZGJk…"
+  "created_at": "2026-08-30T12:36:33.619533+00:00",
+  "deletion_token": "Ijg0YjgwMWY1LWFjMDAtNDM2Zi05ZDM2…",
+  "expires_at": "2026-09-06T12:36:33.619533+00:00",
+  "from_cache": false,
+  "is_new": true,
+  "last_accessed": null,
+  "original_url": "https://example.com",
+  "owner_id": null,
+  "short_code": "q68J3qY",
+  "short_url": "http://localhost:5000/q68J3qY"
 }
 ```
 
 Дальше откройте `http://localhost:5000/` и войдите как
 `admin@example.com`: панель — по адресу `/dashboard/`, а полное описание
 API — на `http://localhost:5000/api/docs`.
+
+<img src="media/dashboard.png" alt="Панель: недавние ссылки, счётчики переходов и собственная статистика учётной записи" width="820">
+
+Это настоящий снимок того стека, который поднимают команды выше, а не
+макет. Тема тёмная — переключатель стоит в шапке, выбор хранится в куке и
+применяется сервером до того, как страница нарисована, поэтому при входе
+ничего не мигает.
 
 ---
 
@@ -63,7 +74,15 @@ API — на `http://localhost:5000/api/docs`.
 | `security generate-secrets --write .env` | Вписывает `SECRET_KEY` и `SHORT_CODE_PEPPER` на место. Без них `development` придумывает ключ на каждый процесс, и токены умирают при перезапуске | `SECRET_KEY and SHORT_CODE_PEPPER written to .env.` |
 | `flask alembic upgrade head` | Создаёт схему | `Running upgrade -> 0001, initial schema` |
 | `flask create-admin` | Первый администратор, которого не сделать ни одним запросом: регистрация выдаёт роль `user`, а раздавать `admin` может только тот, у кого она уже есть | `Admin user admin@example.com created successfully (active: True).` |
-| `flask run` | Поднимает сервис на `http://127.0.0.1:5000/` | Баннер Werkzeug |
+| `flask run` | Поднимает сервис на `http://127.0.0.1:5000/` | `* Serving Flask app` и `* Debug mode: on` |
+
+> [!NOTE]
+> Строки, которую вы, возможно, ищете, —
+> `* Running on http://127.0.0.1:5000` — не будет. В шаблоне стоит
+> `WERKZEUG_LOG_LEVEL=WARNING`, а Werkzeug печатает её через свой
+> логгер на уровне `INFO`. Две строки выше печатает сам Flask, их это
+> не касается; следом идёт `* Debugger is active!` — это
+> предупреждение.
 
 <details>
 <summary>А где засеваются роли?</summary>
@@ -379,7 +398,7 @@ curl "http://localhost:5000/api/v1/links/mine?offset=0&limit=20" \
 | Симптом | Что делать |
 |---|---|
 | `ModuleNotFoundError: No module named 'link_shortener'` | `uv sync`, и запускать через `uv run` |
-| `Address already in use` на порту 5000 | Порт занят чем-то другим — на macOS часто приёмником AirPlay или докеровским стеком с прошлого раза. `uv run flask run --port 5055` либо остановить занявшего |
+| `Address already in use` на порту 5000 | Порт занят чем-то другим — на macOS часто приёмником AirPlay или докеровским стеком с прошлого раза. `uv run flask run --port 5055` либо остановить занявшего. **Заодно поставьте `PORT=5055` в `.env`**: флаг переносит сокет, а все адреса, которые сервис *выдаёт*, берутся из конфигурации. С одним флагом выданные ссылки и пример на главной по-прежнему называют 5000, и перейти по такой ссылке некуда |
 | `no such table: urls` | `uv run flask alembic upgrade head` |
 | `401` на `POST /api/v1/shorten` от анонимного вызова | Роли `guest` нет или в ней нет `link:create`. `uv run flask db load-base-roles`, проверить через `flask security list-roles` |
 | `403` на том же вызове из-под учётной записи | В роли этой учётки нет `link:create` — у `analyst` его нет намеренно |
