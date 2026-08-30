@@ -1,6 +1,9 @@
 # Contributing
 
 Thanks for looking. Bug reports, questions and patches are all welcome.
+Taking part means keeping to the [Code of Conduct](CODE_OF_CONDUCT.md) —
+and a security problem goes through GitHub's private reporting rather
+than through an issue — [SECURITY.md](SECURITY.md) says how.
 
 ## Before you write code
 
@@ -177,6 +180,7 @@ under the project's licence.
 > flag on `git commit`, and it keeps the project's licensing coherent. The
 > project is under [Apache 2.0](LICENSE), and contributions come in under
 > the same terms.
+
 
 ## Commit messages
 

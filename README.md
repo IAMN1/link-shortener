@@ -239,7 +239,9 @@ locally.
 
 Issues and pull requests are welcome — [CONTRIBUTING.md](CONTRIBUTING.md)
 covers the setup, what a change has to pass, and the one-flag sign-off
-(`git commit -s`) the project uses instead of a CLA.
+(`git commit -s`) the project uses instead of a CLA. Taking part means
+keeping to the [Code of Conduct](CODE_OF_CONDUCT.md), and the address in
+it reaches the maintainer and nobody else.
 
 ## Security
 
