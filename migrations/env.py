@@ -47,13 +47,13 @@ if handed_over_url() is None:
 config = context.config
 
 
-# Устанавливаем URL из нашего приложения (перезаписываем то, что в alembic.ini)
+# Set the URL from our own application, overwriting whatever alembic.ini says.
 #
-# `%` удваивается: значение проходит через ConfigParser с интерполяцией, и
-# сырой процент в пароле ронял команду с "invalid interpolation syntax",
-# показывая пароль открытым текстом в сообщении об ошибке. Хуже того,
-# `%(name)s` не падал, а молча подставлялся — и URL вызывающей стороны
-# оказывался подменён по дороге.
+# `%` is doubled: the value passes through ConfigParser with interpolation,
+# and a raw percent sign in a password brought the command down with
+# "invalid interpolation syntax", printing the password in clear text in the
+# error message. Worse, `%(name)s` did not fail at all -- it was quietly
+# substituted, and the caller's URL was replaced on the way through.
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.

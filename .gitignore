@@ -11,12 +11,12 @@ wheels/
 
 .env
 .env.*
-# Шаблон конфигурации — единственный env-файл, который должен быть в git
+# The configuration template: the only env file that belongs in git
 !.env.example
 
-# Всё, что оставляет после себя запуск, живёт в datas/: базы и логи.
-# Каталоги создаются сами, а в git едут пустыми — чтобы место было видно
-# по дереву, а не только по документации.
+# Everything a run leaves behind lives in datas/: databases and journals.
+# The directories create themselves, and travel in git empty -- so the place
+# for them is visible in the tree rather than only in the documentation.
 datas/databases/*
 !datas/databases/.gitkeep
 datas/logs/*
@@ -29,8 +29,8 @@ datas/logs/*
 .DS_Store
 
 # accidental files
-# Умолчание DATABASE_NAME идёт без расширения, поэтому под *.db не попадает.
-# Оставлено на случай файла, созданного до переезда в datas/databases/.
+# The DATABASE_NAME default carries no extension, so *.db does not cover it.
+# Kept for a file created before the move into datas/databases/.
 db_shortener
 
 # Pytest-generated files

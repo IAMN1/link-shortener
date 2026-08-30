@@ -102,18 +102,19 @@ class LiveTestResult:
 result = LiveTestResult()
 
 mail = MailCatcher()
-"""Почтовый сервер этого прогона. Принимает письма и никуда их не шлёт."""
+"""This run's mail server. It accepts mail and sends it nowhere."""
 
 
 class SmokeConfig(TestingConfig):
     """
-    Профиль прогона: тот же testing, но почта включена и направлена сюда.
+    The run's profile: testing as it stands, but with mail on and pointed
+    here.
 
-    Без неё подтверждение адреса приходилось изображать -- прогон сам
-    выпускал токен и сам писал его слепок в таблицу, то есть проверял
-    ``/api/v1/auth/verify`` против строки, которую выдал не сервис. Тогда
-    ни выпуск токена регистрацией, ни сборка ссылки шаблоном, ни отправка
-    письма не проверялись ничем.
+    Without it, address confirmation had to be acted out -- the run issued a
+    token itself and wrote its digest into the table itself, which checks
+    ``/api/v1/auth/verify`` against a string the service did not issue.
+    Nothing then checked that registration issues a token, that the template
+    builds the link, or that the message goes out at all.
     """
 
     MAIL_ENABLED = True

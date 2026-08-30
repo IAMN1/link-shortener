@@ -1,35 +1,35 @@
 """
-Нагрузочный профиль сокращателя.
+The shortener's load profile.
 
-Запуск (стек должен быть поднят, см. docs/development.md):
+To run it (the stack has to be up, see docs/development.md):
 
     uv sync --group load
     uv run locust -f tests/load/locustfile.py --headless \
         -u 60 -r 20 -t 60s -H http://localhost:5000
 
-Четыре сценария, каждый со своим классом; выбор — флагом `--class-picker`
-или `RedirectUser`/`CreateUser`/`HealthUser`/`MixedUser` в конце командной
-строки.
+Four scenarios, each in a class of its own; choose with `--class-picker` or
+by naming `RedirectUser`/`CreateUser`/`HealthUser`/`MixedUser` at the end of
+the command line.
 
-Профиль называет адрес сам, и свой на каждый запрос. Ограничитель частоты
-считает по адресу (редирект — 200 за минуту, создание — 30), поэтому
-нагрузка с одного адреса упирается в счётчик на третьем запросе в секунду:
-замерялась бы не служба, а он. Замерено: 20 пользователей за одним адресом
-дали 85% ответов 429 — то есть замер без своего адреса на запрос меряет
-ограничитель, а не службу.
+The profile names the client address itself, a different one per request.
+The rate limiter counts by address (200 a minute for a redirect, 30 for a
+creation), so load from a single address runs into the counter at the third
+request a second: what would be measured is the limiter, not the service.
+Measured: 20 users behind one address produced 85% of answers as 429 -- a
+run without an address per request measures the limiter and nothing else.
 
-Свой адрес на запрос — это модель «много разных вызывающих», а не обход
-проверки: сам ограничитель остаётся в пути и по-прежнему стоит одного
-INCR в Redis на каждый запрос. Именно этот случай и надо мерить — от
-насыщения одним вызывающим защищает как раз ограничитель, а пулы и
-тайм-ауты нужны там, где вызывающих много.
+An address per request models "many different callers"; it does not walk
+around the check. The limiter stays in the path and still costs one INCR in
+Redis per request. That is the case worth measuring: saturation by a single
+caller is what the limiter defends against, while pools and timeouts are
+needed where the callers are many.
 
-Адрес доезжает заголовком ``X-Forwarded-For``, а развёртывание для замера
-объявляет доверенным тот адрес, с которого приходит locust
-(``TRUSTED_PROXIES``). Это тот же путь, которым адрес клиента доходит
-из-за балансировщика в бою.
+The address arrives in an ``X-Forwarded-For`` header, and the deployment
+under measurement declares the address locust comes from as trusted
+(``TRUSTED_PROXIES``). That is the same path a client address takes from
+behind a balancer in service.
 
-Файл pytest не собирает: имя не подходит под ``python_files``.
+pytest does not collect this file: its name does not match ``python_files``.
 """
 
 import itertools
@@ -39,21 +39,21 @@ from locust import HttpUser, between, constant, events, task
 
 
 SEED_LINKS = 200
-"""Сколько ссылок создаётся до замера, чтобы редиректу было куда ходить."""
+"""How many links are created first, so the redirect has somewhere to go."""
 
 _addresses = itertools.count(1)
-"""Счётчик, из которого каждый пользователь берёт свой адрес."""
+"""The counter each user takes its own address from."""
 
 SHORT_CODES: list[str] = []
-"""Коды, созданные на подготовке. Общие для всех пользователей."""
+"""The codes created during seeding. Shared by every user."""
 
 
 def _next_address() -> str:
     """
-    Выдать следующий адрес из блока 10.0.0.0/8.
+    Hand out the next address from the 10.0.0.0/8 block.
 
     Returns:
-        Адрес в точечной записи, свой у каждого вызова.
+        An address in dotted notation, a different one on every call.
     """
     n = next(_addresses)
     return f"10.{(n >> 16) & 0xFF}.{(n >> 8) & 0xFF}.{n & 0xFF}"
@@ -62,13 +62,14 @@ def _next_address() -> str:
 @events.test_start.add_listener
 def seed_links(environment, **_kwargs):
     """
-    Создать ссылки, по которым будет ходить редирект.
+    Create the links the redirect will walk.
 
-    Без этого шага редирект измерял бы промах: несуществующий код — это
-    404 из кэша, а не путь «найти ссылку, посчитать переход, ответить».
+    Without this step the redirect would measure a miss: a code that does
+    not exist is a 404 out of the cache, not the path "find the link, count
+    the visit, answer".
 
     Args:
-        environment: Окружение locust; из него берётся базовый адрес.
+        environment: locust's environment; the base address comes from it.
     """
     import requests
 
@@ -87,19 +88,19 @@ def seed_links(environment, **_kwargs):
 
     if not SHORT_CODES:
         raise RuntimeError(
-            "не создано ни одной ссылки: проверьте TRUSTED_PROXIES и "
-            "GUEST_LINK_LIMIT в env-файле замеряемого стека"
+            "not one link was created: check TRUSTED_PROXIES and "
+            "GUEST_LINK_LIMIT in the env file of the stack under measurement"
         )
 
 
 class RedirectUser(HttpUser):
-    """Только редиректы — самый горячий путь сервиса."""
+    """Redirects only -- the hottest path of the service."""
 
     wait_time = constant(0)
 
     @task
     def follow(self) -> None:
-        """Перейти по случайному короткому коду."""
+        """Follow a short code chosen at random."""
         code = random.choice(SHORT_CODES)
         self.client.get(
             f"/{code}",
@@ -110,17 +111,17 @@ class RedirectUser(HttpUser):
 
 
 class CreateUser(HttpUser):
-    """Только создание ссылок — самый дорогой путь: запись плюс инвалидация."""
+    """Creating links only -- the costliest path: a write plus an invalidation."""
 
     wait_time = constant(0)
 
     def on_start(self) -> None:
-        """Завести счётчик, из которого берутся неповторяющиеся адреса."""
+        """Set up the counter the distinct addresses come from."""
         self.counter = 0
 
     @task
     def shorten(self) -> None:
-        """Сократить адрес, которого ещё не было."""
+        """Shorten an address that has not been seen before."""
         self.counter += 1
         self.client.post(
             "/api/v1/shorten",
@@ -131,33 +132,33 @@ class CreateUser(HttpUser):
 
 
 class HealthUser(HttpUser):
-    """Только /health — путь, который опрашивает healthcheck контейнера."""
+    """/health only -- the path the container's healthcheck polls."""
 
     wait_time = constant(0)
 
     @task
     def health(self) -> None:
-        """Спросить состояние зависимостей."""
+        """Ask after the state of the dependencies."""
         self.client.get("/health", name="GET /health")
 
 
 class MixedUser(HttpUser):
     """
-    Смесь в пропорции, в которой сокращатель и работает.
+    The mixture in the proportion a shortener actually works in.
 
-    Девять переходов на одно создание и один опрос состояния на сотню
-    запросов: ссылку создают однажды, а открывают многократно.
+    Nine redirects per creation, and one health poll per hundred requests: a
+    link is created once and opened many times.
     """
 
     wait_time = between(0, 0.05)
 
     def on_start(self) -> None:
-        """Завести счётчик, из которого берутся неповторяющиеся адреса."""
+        """Set up the counter the distinct addresses come from."""
         self.counter = 0
 
     @task(90)
     def follow(self) -> None:
-        """Перейти по случайному короткому коду."""
+        """Follow a short code chosen at random."""
         code = random.choice(SHORT_CODES)
         self.client.get(
             f"/{code}",
@@ -168,7 +169,7 @@ class MixedUser(HttpUser):
 
     @task(9)
     def shorten(self) -> None:
-        """Сократить адрес, которого ещё не было."""
+        """Shorten an address that has not been seen before."""
         self.counter += 1
         self.client.post(
             "/api/v1/shorten",
@@ -179,5 +180,5 @@ class MixedUser(HttpUser):
 
     @task(1)
     def health(self) -> None:
-        """Спросить состояние зависимостей."""
+        """Ask after the state of the dependencies."""
         self.client.get("/health", name="GET /health")

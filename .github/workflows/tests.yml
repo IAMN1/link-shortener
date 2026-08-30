@@ -1,25 +1,25 @@
-# Набор гоняется дважды: в чистом окружении и во враждебном. Первый отвечает
-# на вопрос «проходит ли свежий клон», второй — «проходит ли замусоренная
-# машина так же». Разбор — docs/testing.md, «CI: набор гоняется
-# дважды».
+# The suite is run twice: in a clean environment and in a hostile one. The
+# first answers "does a fresh clone pass", the second "does a polluted
+# machine pass the same way". The reasoning is in docs/testing.md, "CI: the
+# suite runs twice".
 
 name: tests
 
 on:
-  # Каждая ветка и каждый тег: работа идёт в feature-ветках, которые сливают
-  # локально, поэтому push — единственный гарантированный момент.
+  # Every branch and every tag: the work happens in feature branches that
+  # are merged locally, so a push is the only guaranteed moment.
   push:
-  # Кнопка появляется только для файлов из ветки по умолчанию.
+  # The button appears only for files on the default branch.
   workflow_dispatch:
 
-# Более новый push делает вердикт старого прогона ответом на вопрос, который
-# уже никто не задаёт.
+# A newer push turns an older run's verdict into the answer to a question
+# nobody is asking any more.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Ничего не пишется обратно. Объявлено явно: умолчание репозитория может быть
-# read-write.
+# Nothing is written back. Declared explicitly: the repository's default may
+# be read-write.
 permissions:
   contents: read
 
@@ -30,8 +30,8 @@ jobs:
     timeout-minutes: 25
 
     strategy:
-      # Обе половины досчитывают до конца: «clean прошёл, hostile упал» — это
-      # и есть диагноз.
+      # Both halves run to the end: "clean passed, hostile failed" is itself
+      # the diagnosis.
       fail-fast: false
       matrix:
         mode: [clean, hostile]
@@ -40,24 +40,25 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install uv
-        # Точная версия: после v7 действие перестало публиковать плавающие
-        # мажорные теги, и `v9` не резолвится.
+        # An exact version: after v7 the action stopped publishing floating
+        # major tags, and `v9` does not resolve.
         uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
 
       - name: Install dependencies
-        # --locked, не --frozen: первый проверяет, что uv.lock согласован с
-        # pyproject.toml, второй молча ставит что есть.
+        # --locked, not --frozen: the first checks that uv.lock agrees with
+        # pyproject.toml, the second quietly installs whatever is there.
         run: uv sync --locked
 
       - name: Guard requirements.txt against uv.lock
-        # requirements.txt генерируется из того же lock-файла и ставится в
-        # образ через pip. Без сверки CI тестирует один набор пакетов, а образ
-        # везёт другой.
+        # requirements.txt is generated from the same lock file and is what
+        # pip installs into the image. Without this comparison CI tests one
+        # set of packages while the image carries another.
         #
-        # `grep -v '^#'` убирает двухстрочную шапку с командой генерации;
-        # строки происхождения (`# via pkg`) с отступом и остаются в сравнении.
+        # `grep -v '^#'` drops the two-line header naming the command that
+        # generated the file; the provenance lines (`# via pkg`) are indented
+        # and stay in the comparison.
         run: |
           uv export --format requirements-txt --no-hashes --no-emit-project \
             --frozen --no-group browser > "$RUNNER_TEMP/requirements.expected"
@@ -68,23 +69,24 @@ jobs:
           fi
 
       - name: Pre-pull the test stack images
-        # tests/support/real_stack.py даёт `compose up -d` 60 секунд.
-        # Бюджет писался на машине, где образы уже были.
+        # tests/support/real_stack.py gives `compose up -d` 60 seconds. That
+        # budget was written on a machine where the images were already
+        # there.
         run: docker compose -f dockers/docker-compose.test.yml pull --quiet
 
       - name: Pollute the environment
         if: matrix.mode == 'hostile'
-        # Два канала утечки. Файл `.env` профильный загрузчик читает для всех
-        # профилей, кроме testing. Экспортированные переменные выигрывают у
-        # файла и доходят до процесса, даже когда файла нет.
+        # Two channels for a leak. The profile loader reads the `.env` file
+        # for every profile but testing. Exported variables beat the file and
+        # reach the process even when there is no file at all.
         #
-        # Значения выбраны такими, каких не объявляет ни один профиль: тест,
-        # прочитавший любое из них, читает именно этот блок.
+        # The values are chosen so that no profile declares any of them: a
+        # test that read one of these read this block and nothing else.
         #
-        # DATABASE_URL — тот канал, через который утечка случилась. Тест,
-        # попытавшийся им воспользоваться, падает на create_engine():
-        # SQLAlchemy сопоставляет голому `postgresql://` драйвер psycopg2,
-        # которого в проекте нет.
+        # DATABASE_URL is the channel the leak actually came through. A test
+        # that tried to use it fails at create_engine(): SQLAlchemy maps a
+        # bare `postgresql://` to the psycopg2 driver, which this project
+        # does not have.
         run: |
           cp .env.example .env
           {
@@ -108,29 +110,32 @@ jobs:
 
       - name: Guard the number of tests
         env:
-          # Нижняя граница, а не равенство. Добавление тестов правки не
-          # требует, сокращение — требует, и это намеренно.
+          # A floor, not an equality. Adding tests requires no edit here;
+          # losing them does, and that is deliberate.
           #
-          # Идёт за набором в обе стороны: собирается 4227 -- на сто
-          # шестьдесят один больше, чем прежде: срез мёртвого кода закрыл
-          # дыры, которые мутационная проба нашла в domain, в разборе
-          # записей кэша и в телах задач Celery, а срез документации
-          # добавил пять — два сверяют OpenAPI с картой маршрутов, два
-          # требуют описанного тела от каждой операции, которая тело
-          # читает, и один достался даром: сверка схем с инфраструктурой
-          # параметризована по файлам и подхватила новый, — три держат
-          # адрес, который журнал приложения пишет за прокси, и два —
-          # чистоту контекста сборки. Граница, оставленная выше набора,
-          # роняет сборку на ровном месте.
-          # Зазор — двадцать семь.
+          # It follows the suite in both directions: 4227 are collected --
+          # a hundred and sixty-one more than before. The dead-code pass
+          # closed the holes a mutation probe found in domain, in parsing
+          # cache records and in the bodies of Celery tasks; the
+          # documentation pass added five -- two hold the OpenAPI document
+          # against the route table, two require a described body from
+          # every operation that reads one, and one came free, the schema
+          # check against infrastructure being parametrised by file and
+          # having picked the new one up; three hold the address the
+          # application journal writes behind a proxy; and two hold the
+          # build context clean. A floor left above the suite fails the
+          # build for no reason at all.
+          # The gap is twenty-seven.
           MINIMUM_TESTS: 4200
-        # `--error-for-skips` закрывает дверь «пропущен». Эта закрывает
-        # соседнюю: тест, который вовсе не собрался, даёт «N passed» и код 0
-        # при меньшем N. Механизмы тихие — имя вне `python_files`,
-        # `collect_ignore` в conftest, каталог, который pytest не обходит.
+        # `--error-for-skips` closes the door marked "skipped". This closes
+        # the one beside it: a test that was never collected gives "N passed"
+        # and exit code 0 with a smaller N. The mechanisms are quiet -- a
+        # name outside `python_files`, a `collect_ignore` in a conftest, a
+        # directory pytest does not walk.
         #
-        # Код возврата проверяется до того, как счёту поверят: прерванный сбор
-        # печатает собранное до прерывания и выходит с кодом 2.
+        # The return code is checked before the count is believed: an
+        # interrupted collection prints what it collected before the
+        # interruption and exits with code 2.
         run: |
           if ! listing=$(uv run pytest tests/ -o addopts="" --collect-only -q); then
             echo "::error::collection did not finish; any count from it is a lie"
@@ -145,49 +150,51 @@ jobs:
           fi
 
       - name: Run the suite
-        # `-o addopts=""` снимает весь список из pyproject.toml: нужны отчёты
-        # покрытия, а их здесь никто не читает. Строгость при этом не
-        # страдает — strict_markers, strict_config и strict_xfail объявлены
-        # ini-опциями, а не флагами.
+        # `-o addopts=""` drops the whole list from pyproject.toml: it asks
+        # for coverage reports, and nobody reads them here. Strictness does
+        # not suffer -- strict_markers, strict_config and strict_xfail are
+        # declared as ini options rather than flags.
         #
-        # `--error-for-skips` превращает пропуск в отказ. Единственная ветка
-        # пропуска в наборе — недоступный демон Docker: честный пропуск на
-        # ноутбуке и дыра на раннере, где Docker обязан быть.
+        # `--error-for-skips` turns a skip into a failure. The one branch in
+        # the suite that skips is an unreachable Docker daemon: an honest
+        # skip on a laptop and a hole on a runner, where Docker has to be
+        # there.
         run: >
           uv run pytest tests/ -q --no-cov -o addopts="" --tb=short
           --error-for-skips
 
       - name: Run the live surface check
-        # 157 проверок по HTTP и единственное, что проходит по всем правилам
-        # маршрутизации: прогон запоминает, какое правило ответило на каждый
-        # запрос, и краснеет, если какое-то не задето. Он же проходит цепочку
-        # подтверждения адреса через собственный SMTP-приёмник.
+        # 157 checks over HTTP, and the only thing that walks every routing
+        # rule: the run records which rule answered each request and turns
+        # red if one was never reached. It also walks the address
+        # confirmation chain through an SMTP receiver of its own.
         #
-        # Своих сервисов не поднимает: профиль testing игнорирует окружение,
-        # поэтому обе половины матрицы дают один ответ.
+        # It starts no services: the testing profile ignores the
+        # environment, so both halves of the matrix give one answer.
         run: uv run python tests/live/smoke_test.py
 
       - name: Install the browser
-        # Только на clean-половине: браузерный прогон ничего не читает из
-        # окружения, а Chromium — сотня мегабайт на скачивание, и качать её
-        # дважды ради одинакового ответа незачем.
+        # On the clean half only: the browser run reads nothing from the
+        # environment, and Chromium is a hundred megabytes to download --
+        # there is no point fetching it twice for the same answer.
         if: matrix.mode == 'clean'
         run: |
           uv sync --locked --group browser
           uv run playwright install --with-deps chromium
 
       - name: Run the browser check
-        # 67 проверок настоящим браузером. Единственное, что вообще
-        # исполняет web/static/js: остальной набор гоняет тестовый клиент
-        # Flask, в котором нет движка, поэтому файлы страниц можно было
-        # сломать целиком и остаться зелёным.
+        # 67 checks in a real browser. The only thing that executes
+        # web/static/js at all: the rest of the suite drives the Flask test
+        # client, which has no engine in it, so the page scripts could be
+        # broken outright and the suite would stay green.
         if: matrix.mode == 'clean'
         run: uv run python tests/live/browser_test.py
 
-  # Линтеры отдельной задачей и один раз: окружение не читает ни один из них.
-  # Шаги раздельные, чтобы из сводки было видно, какой инструмент возразил.
+  # The linters as a job of their own, run once: not one of them reads the
+  # environment. The steps are separate so the summary says which tool
+  # objected.
   #
-  # Чего здесь нет и почему — docs/testing.md, «CI: линтеры».
+  # What is not here and why -- docs/testing.md, "CI: the linters".
   lint:
     name: lint
     runs-on: ubuntu-latest
@@ -205,41 +212,45 @@ jobs:
         run: uv sync --locked
 
       - name: flake8
-        # Настраивается файлом .flake8: pyproject.toml flake8 не читает.
-        # `select` оставляет дефекты (E9, F) и хвостовой мусор
-        # (W291, W292, W293, W391), отбрасывая раскладку.
+        # Configured by the .flake8 file: flake8 does not read
+        # pyproject.toml. `select` keeps defects (E9, F) and trailing
+        # rubbish (W291, W292, W293, W391), and leaves layout out.
         run: uv run flake8 src tests
 
       - name: pylint
-        # Порог `fail-under = 9.0` задан в pyproject.toml.
+        # The `fail-under = 9.0` threshold is set in pyproject.toml.
         run: uv run pylint src
 
       - name: bandit
-        # Только src: `assert` для bandit находка, а для теста смысл
-        # существования. Разобранные находки помечены `# nosec`.
+        # src only: to bandit an `assert` is a finding, to a test it is the
+        # reason it exists. Findings that have been examined carry
+        # `# nosec`.
         run: uv run bandit -r src -q
 
       - name: mypy
-        # Настройки — секцией `[tool.mypy]` в pyproject.toml, порога нет:
-        # ворота стоят на нуле ошибок. Здесь прогон всегда с нуля — кэша у
-        # свежего клона нет; локально то же даёт
+        # Configured by the `[tool.mypy]` section of pyproject.toml; there
+        # is no threshold, the gate stands at zero errors. Here the run is
+        # always from scratch -- a fresh clone has no cache; locally the
+        # same is had with
         # `rm -rf .mypy_cache && uv run mypy --no-incremental src`.
         run: uv run mypy src
 
       - name: Guard messages.pot against the tree
-        # Каждая строка `#:` в шаблоне ведёт переводчика к месту, где текст
-        # написан. Она устаревает от любой правки, сдвинувшей строки, и
-        # устаревает молча: gettext читает `.mo`, где ссылок нет, поэтому
-        # служба отвечает одинаково с верными и с уехавшими ссылками, а
-        # цену платит тот, кто открывает каталог переводить.
+        # Every `#:` line in the template leads a translator to the place
+        # the text is written. It goes stale on any edit that moved lines,
+        # and goes stale quietly: gettext reads the `.mo`, which carries no
+        # references, so the service answers the same with correct
+        # references and with drifted ones, and the price is paid by
+        # whoever opens the catalogue to translate it.
         #
-        # `grep -v` убирает единственную строку, которая меняется при
-        # каждом запуске `extract` независимо от дерева.
+        # `grep -v` drops the one line that changes on every run of
+        # `extract` regardless of the tree.
         run: |
-          # Версия читается из pyproject.toml, а не пишется здесь: она
-          # попадает в заголовок `Project-Id-Version` каждого каталога, и
-          # записанная в двух местах разошлась бы с проектом на первом же
-          # выпуске -- тихо, потому что каталог никто не перечитывает.
+          # The version is read from pyproject.toml rather than written
+          # here: it goes into the `Project-Id-Version` header of every
+          # catalogue, and written in two places it would part from the
+          # project at the first release -- quietly, because nobody reads a
+          # catalogue header.
           V=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
           uv run pybabel extract -F babel.cfg -o "$RUNNER_TEMP/messages.expected" \
             --project=link-shortener --version="$V" .

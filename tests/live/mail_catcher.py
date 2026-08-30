@@ -1,23 +1,23 @@
 """
-Приёмник почты на петле для живых прогонов.
+A mail receiver on the loopback, for the live runs.
 
-Оба прогона в этом каталоге раньше обходили один и тот же стык. Учётная
-запись подтверждалась либо прямым `UPDATE users SET email_verified = 1`,
-либо строкой подтверждения, которую прогон сам сочинял и сам же клал в
-таблицу. И то и другое проверяет `/api/v1/auth/verify` против токена,
-выданного тестом, а не сервисом: если регистрация перестанет выдавать
-токен или шаблон письма соберёт ссылку не туда, обе проверки останутся
-зелёными. Один такой сценарий уже ломался незамеченным.
+Both runs in this directory used to walk around the same joint. An account
+was confirmed either by a direct `UPDATE users SET email_verified = 1` or
+by a confirmation string the run made up itself and put into the table
+itself. Both check `/api/v1/auth/verify` against a token issued by the test
+rather than by the service: should registration stop issuing a token, or
+the mail template build the link to the wrong place, both checks stay
+green. One such scenario had already broken unnoticed.
 
-Через этот приёмник проходит ровно тот путь, который работает в бою:
-регистрация выпускает токен, шаблон собирает ссылку, ``SMTPMailer``
-отдаёт письмо по SMTP, — а прогон берёт ссылку из доставленного письма и
-идёт по ней. Он же отвечает на вопрос, который прежние обходы не задавали:
-уходит ли письмо вообще.
+Through this receiver runs exactly the path that runs in service:
+registration issues a token, the template builds the link, ``SMTPMailer``
+hands the message over by SMTP -- and the run takes the link out of the
+delivered message and follows it. It also answers the question the old
+detours never asked: does the mail go out at all.
 
-SMTP здесь ровно настолько, насколько его говорит ``smtplib``: приветствие,
-EHLO, конверт, DATA, QUIT. Ни TLS, ни аутентификации — их не предлагает и
-``mailpit``, на который нацелен профиль development.
+There is exactly as much SMTP here as ``smtplib`` speaks: the greeting,
+EHLO, the envelope, DATA, QUIT. Neither TLS nor authentication -- ``mailpit``,
+which the development profile points at, offers neither either.
 """
 
 import re
@@ -29,10 +29,10 @@ from urllib.parse import urlsplit
 
 
 class _Handler(socketserver.StreamRequestHandler):
-    """Один сеанс SMTP."""
+    """One SMTP session."""
 
     def handle(self) -> None:
-        """Отговорить один сеанс и сложить доставленное в ящик."""
+        """Talk one session through and put what arrives in the mailbox."""
         self._say("220 catcher ready")
         while True:
             line = self.rfile.readline()
@@ -57,21 +57,21 @@ class _Handler(socketserver.StreamRequestHandler):
 
     def _say(self, text: str) -> None:
         """
-        Ответить одной строкой протокола.
+        Answer with one line of the protocol.
 
         Args:
-            text: Строка ответа без завершителя.
+            text: The reply line, without its terminator.
         """
         self.wfile.write(text.encode("ascii") + b"\r\n")
         self.wfile.flush()
 
     def _read_message(self) -> str:
         """
-        Прочитать тело письма до одинокой точки.
+        Read the message body up to a lone dot.
 
         Returns:
-            Письмо целиком, с заголовками, точки в начале строк
-            восстановлены.
+            The whole message, headers included, with dots at the start of a
+            line restored.
         """
         lines: List[str] = []
         while True:
@@ -86,7 +86,7 @@ class _Handler(socketserver.StreamRequestHandler):
 
 
 class _Server(socketserver.ThreadingTCPServer):
-    """TCP-сервер с ящиком, общим для всех сеансов."""
+    """A TCP server with one mailbox shared by every session."""
 
     allow_reuse_address = True
     daemon_threads = True
@@ -94,7 +94,7 @@ class _Server(socketserver.ThreadingTCPServer):
     def __init__(self, address):
         """
         Args:
-            address: Пара (хост, порт); порт 0 означает «любой свободный».
+            address: A (host, port) pair; port 0 means "any free one".
         """
         super().__init__(address, _Handler)
         self.mailbox: List[str] = []
@@ -102,17 +102,17 @@ class _Server(socketserver.ThreadingTCPServer):
 
 class MailCatcher:
     """
-    Почтовый сервер, который ничего никуда не отправляет.
+    A mail server that sends nothing anywhere.
 
-    Поднимается на петле, на порту, который выбирает ядро, и живёт в
-    отдельном потоке, пока прогон не остановит его.
+    It comes up on the loopback, on a port the kernel chooses, and lives in
+    a thread of its own until the run stops it.
 
     Attributes:
-        port: Порт, на котором приёмник слушает.
+        port: The port the receiver listens on.
     """
 
     def __init__(self) -> None:
-        """Поднять приёмник и начать принимать сеансы."""
+        """Bring the receiver up and start accepting sessions."""
         self._server = _Server(("127.0.0.1", 0))
         self.port = self._server.server_address[1]
         self._thread = threading.Thread(
@@ -121,30 +121,30 @@ class MailCatcher:
         self._thread.start()
 
     def stop(self) -> None:
-        """Остановить приёмник и освободить порт."""
+        """Stop the receiver and give the port back."""
         self._server.shutdown()
         self._server.server_close()
 
     def clear(self) -> None:
-        """Выбросить всё принятое, чтобы следующая проверка искала своё."""
+        """Throw away everything received, so the next check looks for its own."""
         self._server.mailbox.clear()
 
     def messages_to(self, address: str) -> List[str]:
         """
-        Выбрать письма, адресованные одному получателю.
+        Pick out the messages addressed to one recipient.
 
         Args:
-            address: Адрес в поле ``To``.
+            address: The address in the ``To`` field.
 
         Returns:
-            Тела писем в порядке доставки, уже раскодированные.
+            The message bodies in order of delivery, already decoded.
 
-            Раскодировать обязательно: ``EmailMessage.set_content``
-            выбирает quoted-printable, и ссылка подтверждения приезжает в
-            нём и разорванной мягким переносом --
-            ``token=3DAAAA...AAAA=\\nAAAA``. Почтовый клиент это соберёт
-            обратно, а прогон, читающий сырое тело, взял бы обрубок и
-            получил бы «This confirmation link is not valid».
+            Decoding is not optional: ``EmailMessage.set_content`` chooses
+            quoted-printable, and the confirmation link arrives in it and
+            broken by a soft line break --
+            ``token=3DAAAA...AAAA=\\nAAAA``. A mail client puts that back
+            together; a run reading the raw body would take the stump and be
+            answered "This confirmation link is not valid".
         """
         found = []
         for raw in self._server.mailbox:
@@ -157,19 +157,20 @@ class MailCatcher:
 
     def confirmation_link(self, address: str) -> Optional[str]:
         """
-        Достать ссылку подтверждения из последнего письма адресату.
+        Take the confirmation link out of the last message to an address.
 
-        Путь в образце не назван намеренно: ищется любой адрес с
-        параметром ``token``. Иначе образец повторял бы то, что и должен
-        проверять, и подтверждал бы ссылку, собранную не туда, — ровно
-        так первая версия этой правки и прошла подменённый ``VERIFY_PATH``.
+        The path is deliberately not named in the pattern: any address
+        carrying a ``token`` parameter matches. Otherwise the pattern would
+        repeat the very thing it is meant to check and would confirm a link
+        built to the wrong place -- which is exactly how the first version
+        of this change passed with a substituted ``VERIFY_PATH``.
 
         Args:
-            address: Адрес, на который слали подтверждение.
+            address: The address the confirmation was sent to.
 
         Returns:
-            Ссылка целиком, либо ``None``, если письма нет или ссылки в
-            нём не нашлось.
+            The whole link, or ``None`` when there is no message or no link
+            in it.
         """
         for body in reversed(self.messages_to(address)):
             match = re.search(r"https?://\S*\?\S*token=\S+", body)
@@ -179,13 +180,13 @@ class MailCatcher:
 
     def confirmation_target(self, address: str) -> Optional[str]:
         """
-        Та же ссылка, но одним путём с запросом — как её берёт тест-клиент.
+        The same link as a path and query alone -- how a test client takes it.
 
         Args:
-            address: Адрес, на который слали подтверждение.
+            address: The address the confirmation was sent to.
 
         Returns:
-            Путь с query-строкой, либо ``None``.
+            The path with its query string, or ``None``.
         """
         link = self.confirmation_link(address)
         if link is None:
