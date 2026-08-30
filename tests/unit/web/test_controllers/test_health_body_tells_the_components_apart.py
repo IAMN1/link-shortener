@@ -137,12 +137,37 @@ class TestEachCounterIsPublishedUnderItsOwnName:
     def test_the_components_are_not_swallowed_by_the_logging_section(
         self, client, health_of
     ):
-        """The four are reported beside the chains, not instead of them."""
+        """The dependencies are reported beside the chains, not instead."""
         health_of()
 
         body = client.get("/api/v1/admin/health").get_json()
 
+        # `database_schema` sits beside `database` for the reason
+        # `cache_configured` sits beside `cache`: one boolean cannot say
+        # both "it answered" and "it holds what we need", and the pair
+        # that could not tell them apart reported a healthy database over
+        # one that had never been migrated.
         assert set(body) == {
-            "database", "cache", "cache_configured", "task_queue",
-            "rate_limiter", "timed_out", "logging"
+            "database", "database_schema", "cache", "cache_configured",
+            "task_queue", "rate_limiter", "timed_out", "logging"
         }
+
+
+class TestTheSchemaIsReportedApartFromTheConnection:
+    """
+    ``HealthSnapshot`` exists so that two surfaces reporting one system
+    read it from one place. A field that reached ``/health`` and stopped
+    before this body would be that drift.
+    """
+
+    def test_a_database_that_answers_without_our_tables_says_so(
+        self, client, health_of
+    ):
+        health_of(database_schema=False)
+
+        body = client.get("/api/v1/admin/health").get_json()
+
+        # True and False side by side, which is the whole point: the
+        # connection is perfect and the service serves nothing.
+        assert body["database"] is True
+        assert body["database_schema"] is False

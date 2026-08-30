@@ -15,6 +15,15 @@ class HealthSnapshot:
 
     Attributes:
         database: Whether the database answered.
+        database_schema: Whether the database the service is connected to
+            actually holds this application's tables. Apart from
+            ``database`` because the two failures look nothing alike and
+            only one of them is a connection problem: a database that
+            answers ``SELECT 1`` and holds no schema is reachable, healthy
+            by every network measure, and answers ``500`` to the first
+            real request. Measured -- a Docker stack whose migration ran
+            against a different file reported ``healthy`` while its
+            landing page answered ``500 no such table: roles``.
         cache: Whether the cache answered, or has nothing to answer with.
         cache_configured: Whether a cache backend is configured at all,
             which tells "the cache is fine" from "there is no cache".
@@ -35,6 +44,13 @@ class HealthSnapshot:
     cache_configured: bool
     task_queue: bool
     rate_limiter: bool = True
+    # Defaulted for the same reason ``rate_limiter`` is: the snapshot is
+    # constructed in places that predate the field and have no database to
+    # ask. The default is the optimistic one, which is safe here only
+    # because the one implementation that serves ``/health`` always passes
+    # a measured value -- a test asserting the endpoint's answer would
+    # fail if it stopped.
+    database_schema: bool = True
     timed_out: Tuple[str, ...] = field(default=())
 
     @property
@@ -53,11 +69,17 @@ class HealthSnapshot:
         local setup runs with ``REDIS_ENABLED=false``, and reporting that
         as a failure made a healthy install look broken.
 
+        The schema is part of the verdict rather than a note beside it: an
+        instance connected to a database without this application's tables
+        serves nothing at all, and a verdict that called that healthy is
+        the one this project measured itself giving.
+
         Returns:
             True when nothing is down.
         """
         return (
             self.database
+            and self.database_schema
             and (self.cache or not self.cache_configured)
             and self.task_queue
             and self.rate_limiter
@@ -91,6 +113,22 @@ class HealthCheck(ABC):
 
         Returns:
             ``True`` if the database responds successfully, ``False`` otherwise.
+        """
+        ...
+
+    @abstractmethod
+    def check_schema(self) -> bool:
+        """
+        Verify that the database reached holds this application's tables.
+
+        Separate from ``check_database`` on purpose. The two answer
+        different questions and fail in ways that share no symptom: a
+        connection that cannot be made raises out of the driver, while a
+        connection to an empty database succeeds at everything until the
+        first query against a table that is not there.
+
+        Returns:
+            ``True`` when every table the models declare is present.
         """
         ...
 

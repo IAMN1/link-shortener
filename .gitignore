@@ -11,8 +11,13 @@ wheels/
 
 .env
 .env.*
-# The configuration template: the only env file that belongs in git
+# The configuration templates: the only env files that belong in git. Both
+# negations are needed and neither is redundant -- `.env.*` matches
+# `.env.docker.example` as readily as it matches a real `.env.docker`, so
+# without the second line the Docker template would be ignored and the
+# Docker path would ship with no template at all.
 !.env.example
+!.env.docker.example
 
 # Everything a run leaves behind lives in datas/: databases and journals.
 # The directories create themselves, and travel in git empty -- so the place

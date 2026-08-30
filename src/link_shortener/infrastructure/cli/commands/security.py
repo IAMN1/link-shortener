@@ -61,19 +61,61 @@ def validate_token(
         }
 
 
-def generate_secrets() -> dict[str, str]:
-    """Generate new secure random values for SECRET_KEY and SHORT_CODE_PEPPER.
+# What a rewrite of each name costs the deployment. Used to word the
+# refusal, because the four are not alike: replacing an application secret
+# invalidates what was handed out, while replacing a service password
+# leaves the service itself still expecting the old one.
+_COST_OF_REPLACING = {
+    "SECRET_KEY": "signs out every session and voids every issued token",
+    "SHORT_CODE_PEPPER": "stops the codes already handed out from resolving",
+    "DATABASE_PASSWORD": (
+        "leaves the database still expecting the old one -- the volume "
+        "keeps the password it was initialised with"
+    ),
+    "REDIS_PASSWORD": "leaves both Redis still expecting the old one",
+}
+
+# The passwords the stack's own services are started with. Kept apart from
+# the two above because they answer a different question: those are secrets
+# the application signs with, these are credentials for containers that this
+# deployment happens to run. A local run on SQLite with the cache in memory
+# needs neither, which is why filling them in is asked for rather than
+# assumed.
+SERVICE_PASSWORD_NAMES = ("DATABASE_PASSWORD", "REDIS_PASSWORD")
+
+
+def generate_secrets(with_service_passwords: bool = False) -> dict[str, str]:
+    """Generate new secure random values for the deployment's secrets.
+
+    Args:
+        with_service_passwords: Also generate ``DATABASE_PASSWORD`` and
+            ``REDIS_PASSWORD``, the credentials the stack's own PostgreSQL
+            and Redis are started with. Off by default: a local run has
+            neither service, and writing passwords for containers that do
+            not exist would put two more values in a file to keep secret
+            for nothing.
 
     Returns:
-        Both values, keyed by the variable each belongs in.
+        The values, keyed by the variable each belongs in.
     """
-    return {
+    fresh = {
         "SECRET_KEY": secrets.token_hex(32),
         "SHORT_CODE_PEPPER": secrets.token_hex(32),
     }
+    if with_service_passwords:
+        # url-safe rather than hex: these travel inside DATABASE_URL and
+        # REDIS_URL, where a character needing percent-encoding turns a
+        # working password into an unparseable address.
+        for name in SERVICE_PASSWORD_NAMES:
+            fresh[name] = secrets.token_urlsafe(24)
+    return fresh
 
 
-def write_secrets(path: Path, force: bool = False) -> dict[str, str]:
+def write_secrets(
+    path: Path,
+    force: bool = False,
+    with_service_passwords: bool = False,
+) -> dict[str, str]:
     """
     Put freshly generated secrets into an env file, in place.
 
@@ -92,6 +134,9 @@ def write_secrets(path: Path, force: bool = False) -> dict[str, str]:
         path: Env file to edit. It has to exist already; this command
             fills a template in rather than inventing one.
         force: Replace values that are already set.
+        with_service_passwords: Also fill ``DATABASE_PASSWORD`` and
+            ``REDIS_PASSWORD`` -- what the Docker stack's own PostgreSQL and
+            Redis are started with, and what they refuse to start without.
 
     Returns:
         The values written, keyed by variable name.
@@ -112,7 +157,7 @@ def write_secrets(path: Path, force: bool = False) -> dict[str, str]:
         raise FileNotFoundError(f"{path} does not exist")
 
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-    fresh = generate_secrets()
+    fresh = generate_secrets(with_service_passwords=with_service_passwords)
 
     # What each name already holds, and on which line. A name absent from
     # the file is absent from here too, and gets appended below.
@@ -128,11 +173,18 @@ def write_secrets(path: Path, force: bool = False) -> dict[str, str]:
             if lines[number].split("=", 1)[1].strip()
         )
         if taken:
+            # The consequence is named per value rather than in one
+            # sentence about the two application secrets: with service
+            # passwords in the set, a blanket "it signs out every session"
+            # would be wrong about half of what is listed, and a refusal
+            # that misdescribes the damage is one an operator overrides
+            # without reading.
+            costs = "; ".join(
+                f"{name} -- {_COST_OF_REPLACING[name]}" for name in taken
+            )
             raise ValueError(
                 f"{path} already sets {', '.join(taken)}. "
-                "Pass --force to replace, knowing it signs out every "
-                "session and, for SHORT_CODE_PEPPER, breaks the codes "
-                "already handed out."
+                f"Pass --force to replace, knowing that {costs}."
             )
 
     for name, value in fresh.items():

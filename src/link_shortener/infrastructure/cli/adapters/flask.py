@@ -798,8 +798,19 @@ def maintenance_health():
     else:
         cache_line = "not configured"
 
+    # Three answers rather than two, matching what `/health` renders. A
+    # database that answers and holds none of this application's tables is
+    # not "OK" and is not "FAILED" either -- FAILED sends an operator to
+    # look at connectivity, which is the one thing that is fine.
+    if not state.database:
+        database_line = "FAILED"
+    elif not state.database_schema:
+        database_line = "no schema -- run `flask alembic upgrade head`"
+    else:
+        database_line = "OK"
+
     lines = [
-        ("Database", "OK" if state.database else "FAILED"),
+        ("Database", database_line),
         ("Cache", cache_line),
         ("Task queue", "OK" if state.task_queue else "FAILED"),
         ("Rate limiter", "OK" if state.rate_limiter else "FAILED"),
@@ -1147,7 +1158,11 @@ def security_group():
               help="Fill the secrets into this env file instead of printing them.")
 @click.option("--force", is_flag=True,
               help="With --write: replace values the file already sets.")
-def security_generate_secrets(target, force):
+@click.option("--with-service-passwords", "with_service_passwords", is_flag=True,
+              help="Also generate DATABASE_PASSWORD and REDIS_PASSWORD, which "
+                   "the Docker stack's own PostgreSQL and Redis refuse to "
+                   "start without.")
+def security_generate_secrets(target, force, with_service_passwords):
     """Generate new SECRET_KEY and SHORT_CODE_PEPPER."""
 
     if target is not None:
@@ -1156,7 +1171,10 @@ def security_generate_secrets(target, force):
         # commands. The values are not echoed back -- a secret that goes
         # to a file has no reason to also go to the scrollback.
         try:
-            write_secrets_logic(target, force=force)
+            written = write_secrets_logic(
+                target, force=force,
+                with_service_passwords=with_service_passwords,
+            )
         # ``OSError`` covers the pair that were reaching the operator as
         # a traceback: a file that cannot be written -- a ``.env`` owned
         # by root is the ordinary way -- and a path that is a directory.
@@ -1170,14 +1188,24 @@ def security_generate_secrets(target, force):
             # sweep that dropped them.
             click.echo(str(failure), err=True)
             raise SystemExit(1) from failure
-        click.echo(f"SECRET_KEY and SHORT_CODE_PEPPER written to {target}.")
+        # The names are read back from what was written rather than
+        # spelled out here: with --with-service-passwords the set is four
+        # rather than two, and a fixed sentence would name half of it.
+        # Names only -- a secret that goes to a file has no reason to also
+        # go to the scrollback.
+        names = list(written)
+        listed = (
+            names[0] if len(names) == 1
+            else f"{', '.join(names[:-1])} and {names[-1]}"
+        )
+        click.echo(f"{listed} written to {target}.")
         return
 
-    secrets = gen_secrets_logic()
+    secrets = gen_secrets_logic(with_service_passwords=with_service_passwords)
     click.echo("=" * 80)
     click.echo("Generated secrets (add to .env file):")
-    click.echo(f"SECRET_KEY={secrets['SECRET_KEY']}")
-    click.echo(f"SHORT_CODE_PEPPER={secrets['SHORT_CODE_PEPPER']}")
+    for name, value in secrets.items():
+        click.echo(f"{name}={value}")
     click.echo("=" * 80)
     click.echo("\nWARNING: Keep these values secure and never commit them to version control.")
 

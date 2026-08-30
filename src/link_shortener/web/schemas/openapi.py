@@ -351,6 +351,19 @@ HEALTH_SCHEMA = {
     "type": "object",
     "properties": {
         "database": _DEPENDENCY,
+        "database_schema": {
+            "type": "boolean",
+            "description": (
+                "Whether the database reached holds this application's "
+                "tables. Apart from `database` for the reason "
+                "`cache_configured` is apart from `cache`: one boolean "
+                "cannot say both \"it answered\" and \"it holds what we "
+                "need\". A database the migration never reached answers "
+                "every connectivity probe and answers 500 to every "
+                "request; `database` true with this false is that state, "
+                "and it is the one `/health` reports as `no_schema`."
+            ),
+        },
         "cache": _DEPENDENCY,
         "cache_configured": {
             "type": "boolean",
@@ -442,8 +455,8 @@ HEALTH_SCHEMA = {
         },
     },
     "required": [
-        "database", "cache", "cache_configured", "task_queue",
-        "rate_limiter", "timed_out",
+        "database", "database_schema", "cache", "cache_configured",
+        "task_queue", "rate_limiter", "timed_out",
     ],
 }
 """

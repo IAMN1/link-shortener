@@ -15,19 +15,28 @@ from link_shortener.infrastructure.health.infrastructure_health_check import (
 )
 
 
-def _db_manager(works=True):
+def _db_manager(works=True, missing_tables=()):
     """
-    Build a database manager whose connectivity probe succeeds or fails.
+    Build a database manager whose probes succeed or fail.
 
     Args:
-        works: Whether the probe should succeed.
+        works: Whether the connectivity probe should succeed.
+        missing_tables: Tables the schema probe should report absent.
+            Empty -- the default -- means a whole schema, which is what
+            "a database that works" has to mean here: a bare MagicMock
+            answers ``missing_declared_tables()`` with a truthy Mock,
+            and the checker reads that as a list of missing tables.
 
     Returns:
         A mock database manager.
     """
     manager = MagicMock()
+    manager.missing_declared_tables.return_value = list(missing_tables)
     if not works:
         manager.probe.side_effect = RuntimeError("connection refused")
+        manager.missing_declared_tables.side_effect = RuntimeError(
+            "connection refused"
+        )
     return manager
 
 
@@ -493,3 +502,73 @@ class TestTheWindowIsTheOneThatWasChosen:
         two minutes. This is the assertion that fails when the window
         changes without anyone deciding to change it."""
         assert InfrastructureHealthCheck.CACHE_TTL_SECONDS == 2.0
+
+
+class TestTheSchemaIsAskedAboutSeparately:
+    """
+    "The database answered" and "the database holds our tables" are two
+    questions, and for most of this project's life only the first was
+    asked. A stack whose migration ran against a different database
+    answers ``SELECT 1`` perfectly and answers 500 to every request.
+    """
+
+    def test_a_whole_schema_passes(self):
+        check = InfrastructureHealthCheck(_db_manager(), cache=None)
+        assert check.check_schema() is True
+
+    def test_a_missing_table_fails(self):
+        check = InfrastructureHealthCheck(
+            _db_manager(missing_tables=["roles", "permissions"]), cache=None
+        )
+        assert check.check_schema() is False
+
+    def test_an_unreachable_database_fails_here_too(self):
+        # Not a second alarm for one fault: `database` is False beside it,
+        # and the pair reads "cannot connect" while database-true and
+        # schema-false reads "connected to the wrong database".
+        check = InfrastructureHealthCheck(_db_manager(works=False), cache=None)
+        assert check.check_schema() is False
+        assert check.check_database() is False
+
+    def test_the_snapshot_carries_both_answers_apart(self):
+        check = InfrastructureHealthCheck(
+            _db_manager(missing_tables=["links"]), cache=None
+        )
+
+        state = check.snapshot()
+
+        assert state.database is True
+        assert state.database_schema is False
+
+    def test_a_service_without_its_schema_is_not_healthy(self):
+        check = InfrastructureHealthCheck(
+            _db_manager(missing_tables=["links"]), cache=None
+        )
+
+        assert check.snapshot().healthy is False
+
+    def test_the_answer_is_remembered_once_the_schema_is_whole(self):
+        # The one check here whose answer does not come back: a schema
+        # does not un-migrate itself, and re-asking would hold a pool
+        # connection every thirty seconds forever to re-confirm something
+        # settled at start-up.
+        manager = _db_manager()
+        check = InfrastructureHealthCheck(manager, cache=None)
+
+        assert check.check_schema() is True
+        assert check.check_schema() is True
+
+        assert manager.missing_declared_tables.call_count == 1
+
+    def test_a_missing_schema_is_asked_about_again(self):
+        # The opposite of the above, and the reason the memory is only of
+        # the positive: a service started before its migration must be
+        # able to become healthy without a restart.
+        manager = _db_manager(missing_tables=["roles"])
+        check = InfrastructureHealthCheck(manager, cache=None)
+
+        assert check.check_schema() is False
+        manager.missing_declared_tables.return_value = []
+        assert check.check_schema() is True
+
+        assert manager.missing_declared_tables.call_count == 2

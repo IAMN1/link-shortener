@@ -219,6 +219,9 @@ class TestAdminApiController:
         ctrl = _get_admin_controller(app)
         mock_health = MagicMock()
         mock_health.database = True
+        # A MagicMock attribute is not a boolean and does not survive jsonify:
+        # left unset, the endpoint answered 500 rather than reporting a schema.
+        mock_health.database_schema = True
         mock_health.redis = True
         mock_health.task_queue = True
         mock_health.rate_limiter = True
@@ -241,8 +244,8 @@ class TestAdminApiController:
         # does, from the same snapshot -- plus the logging chains, which
         # nothing else reports at all.
         assert set(data) == {
-            "database", "cache", "cache_configured", "task_queue",
-            "rate_limiter", "timed_out", "logging"
+            "database", "database_schema", "cache", "cache_configured",
+            "task_queue", "rate_limiter", "timed_out", "logging"
         }
         assert data["logging"]["audit"]["dropped_calls"] == 2
         assert data["logging"]["audit"]["failed_checks"] == 1
@@ -262,6 +265,9 @@ class TestAdminApiController:
         ctrl = _get_admin_controller(app)
         mock_health = MagicMock()
         mock_health.database = True
+        # A MagicMock attribute is not a boolean and does not survive jsonify:
+        # left unset, the endpoint answered 500 rather than reporting a schema.
+        mock_health.database_schema = True
         mock_health.redis = True
         mock_health.task_queue = True
         mock_health.rate_limiter = True

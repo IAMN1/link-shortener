@@ -228,6 +228,47 @@ class DatabaseManager:
         with self._probe_engine.connect() as connection:
             connection.execute(text("SELECT 1"))
 
+    def missing_declared_tables(self) -> list[str]:
+        """
+        Which of the tables the models declare the database does not have.
+
+        This exists because "the database answered" and "the database holds
+        this application's schema" are two questions, and only the first
+        was ever asked. A stack whose migration ran somewhere else answers
+        ``SELECT 1`` perfectly: the connection is real, the database is
+        real, and it is empty. Measured on a fresh clone -- the migration
+        container wrote a schema into its own filesystem, the application
+        opened a different database, ``/health`` reported ``healthy`` and
+        the landing page answered ``500 no such table: roles``.
+
+        Asked of the shared engine, and **not** of the probe engine that
+        ``probe`` uses, though the caller is the same health check. The
+        question here is whether the connection this application serves
+        from holds the schema, and a second engine is not that connection:
+        against ``sqlite:///:memory:`` it is a different, empty database
+        altogether, so the probe would report a missing schema for every
+        such deployment -- including the entire test suite, which is how
+        this was caught. The pool cost that ``probe`` avoids is paid once:
+        the caller stops asking as soon as the answer is "nothing missing".
+
+        The set is taken from ``Base.metadata`` rather than named here, so
+        a model added later is covered without anybody remembering to add
+        it. ``alembic_version`` is deliberately not among them: it is
+        alembic's bookkeeping, not this application's schema, and a
+        deployment whose tables were created some other way is not broken.
+
+        Returns:
+            The names that are absent, sorted. Empty when the schema is
+            whole.
+
+        Raises:
+            RuntimeError: If connect() hasn't been called.
+            Exception: Whatever the driver raises when it cannot connect.
+                A database that cannot be reached is not a database with a
+                missing schema, and the two are not merged here.
+        """
+        return self.missing_tables(sorted(Base.metadata.tables))
+
     def close(self):
         """Dispose of the engine and all associated connections."""
         if self.engine:

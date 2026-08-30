@@ -107,6 +107,10 @@ def health_of(admin_controller):
     def answering(**overrides):
         fields = {
             "database": True,
+            # Two questions, like the cache pair below: "answered" and
+            # "holds our tables". Both default to up, so a test naming
+            # neither describes a working deployment.
+            "database_schema": True,
             "redis": True,
             # A configured cache that answers, unless a test says
             # otherwise: the two are separate questions, and a default of

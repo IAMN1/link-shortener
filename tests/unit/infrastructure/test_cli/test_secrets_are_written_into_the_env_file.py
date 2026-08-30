@@ -172,3 +172,110 @@ class TestThePathsThatAreNotAWritableFile:
                 write_secrets(locked)
         finally:
             os.chmod(locked, 0o644)
+
+
+DOCKER_TEMPLATE = """\
+# Signs JWTs, sessions and cache entries
+SECRET_KEY=
+OTHER=untouched
+# Salts the short codes
+SHORT_CODE_PEPPER=
+# What the stack's own PostgreSQL is started with
+DATABASE_PASSWORD=
+# What both Redis are started with
+REDIS_PASSWORD=
+"""
+
+
+@pytest.fixture
+def docker_env_file(tmp_path):
+    """An env template shaped like `.env.docker.example`: four empty names."""
+    path = tmp_path / ".env.docker"
+    path.write_text(DOCKER_TEMPLATE, encoding="utf-8")
+    return path
+
+
+class TestTheServicePasswordsAreOptedInto:
+    """
+    The stack's own PostgreSQL and Redis refuse to start without a
+    password, and the repository ships none -- so the setup command has to
+    be able to produce them. It does not do so by default: a run on the
+    host has neither service, and two more secrets in a file that never
+    needed them is two more things to keep out of a paste.
+    """
+
+    def test_by_default_only_the_two_application_secrets_are_written(
+        self, docker_env_file
+    ):
+        written = write_secrets(docker_env_file)
+
+        assert set(written) == {"SECRET_KEY", "SHORT_CODE_PEPPER"}
+        body = docker_env_file.read_text(encoding="utf-8")
+        assert "DATABASE_PASSWORD=\n" in body
+        assert "REDIS_PASSWORD=\n" in body
+
+    def test_the_flag_adds_the_two_service_passwords(self, docker_env_file):
+        written = write_secrets(docker_env_file, with_service_passwords=True)
+
+        assert set(written) == {
+            "SECRET_KEY",
+            "SHORT_CODE_PEPPER",
+            "DATABASE_PASSWORD",
+            "REDIS_PASSWORD",
+        }
+
+    def test_all_four_reach_the_file(self, docker_env_file):
+        written = write_secrets(docker_env_file, with_service_passwords=True)
+
+        body = docker_env_file.read_text(encoding="utf-8")
+        for name, value in written.items():
+            assert f"{name}={value}\n" in body
+
+    def test_the_four_values_differ(self, docker_env_file):
+        written = write_secrets(docker_env_file, with_service_passwords=True)
+
+        assert len(set(written.values())) == 4
+
+    def test_the_service_passwords_survive_a_url(self, docker_env_file):
+        # They are carried inside DATABASE_URL and REDIS_URL. A character
+        # that has to be percent-encoded there turns a working password
+        # into an address the driver cannot parse, and the failure lands
+        # at connect time rather than at generation time.
+        written = write_secrets(docker_env_file, with_service_passwords=True)
+
+        for name in ("DATABASE_PASSWORD", "REDIS_PASSWORD"):
+            assert not set(written[name]) - set(
+                "abcdefghijklmnopqrstuvwxyz"
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+            ), f"{name} carries a character that needs encoding in a URL"
+
+    def test_everything_else_is_still_left_alone(self, docker_env_file):
+        write_secrets(docker_env_file, with_service_passwords=True)
+
+        body = docker_env_file.read_text(encoding="utf-8")
+        assert "OTHER=untouched\n" in body
+        assert "# What both Redis are started with\n" in body
+
+    def test_a_second_run_names_the_cost_of_each_value(self, docker_env_file):
+        write_secrets(docker_env_file, with_service_passwords=True)
+
+        with pytest.raises(ValueError) as refusal:
+            write_secrets(docker_env_file, with_service_passwords=True)
+
+        said = str(refusal.value)
+        # The cost is not the same for the four, and a refusal that
+        # described them all as "signs out every session" would be wrong
+        # about half of what it lists -- and a refusal that misdescribes
+        # the damage is one an operator overrides without reading it.
+        assert "signs out every session" in said
+        assert "the volume keeps the password it was initialised with" in said
+        assert "both Redis still expecting the old one" in said
+
+    def test_force_replaces_the_service_passwords_too(self, docker_env_file):
+        first = write_secrets(docker_env_file, with_service_passwords=True)
+        second = write_secrets(
+            docker_env_file, force=True, with_service_passwords=True
+        )
+
+        assert first["DATABASE_PASSWORD"] != second["DATABASE_PASSWORD"]
+        assert first["REDIS_PASSWORD"] != second["REDIS_PASSWORD"]

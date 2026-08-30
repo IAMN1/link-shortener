@@ -14,6 +14,15 @@ from link_shortener.application.use_cases.base_use_case import BaseUseCase
 class ServiceHealthStatus:
     """Data object holding the health status of infrastructure components."""
     database: bool
+    database_schema: bool
+    """Whether the database reached holds this application's tables.
+
+    Beside the boolean above, because that one cannot say it: a database
+    the migration never reached answers every connectivity probe and
+    serves nothing. Carried here so the admin surfaces show the same
+    three states ``/health`` and ``flask maintenance health`` show,
+    rather than a green Database over a service answering 500.
+    """
     redis: bool
     cache_configured: bool
     """Whether a cache backend is configured at all.
@@ -93,6 +102,7 @@ class GetServiceHealthUseCase(BaseUseCase):
 
         return ServiceHealthStatus(
             database=state.database,
+            database_schema=state.database_schema,
             redis=state.cache,
             cache_configured=state.cache_configured,
             task_queue=state.task_queue,

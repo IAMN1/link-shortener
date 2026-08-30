@@ -361,6 +361,11 @@ class AdminApiController:
         health = self.admin_service.get_service_health(context)
         body: Dict[str, Any] = {
             "database": health.database,
+            # Beside the boolean for the same reason ``cache_configured``
+            # is: "answered" and "holds our schema" are two questions, and
+            # the first one alone reported healthy over a database the
+            # migration had never reached.
+            "database_schema": health.database_schema,
             "cache": health.redis,
             # Beside the boolean, because the boolean cannot say it: a
             # cache nobody configured answers every probe well, so

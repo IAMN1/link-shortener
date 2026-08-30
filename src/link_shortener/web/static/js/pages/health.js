@@ -27,7 +27,7 @@
     // screen exactly when the page was reporting a failure. `null && x`
     // is `null`, which is the "unknown" value `render` already takes.
     function paint(data) {
-        render('db', state(data, 'database', data && data.database));
+        render('db', databaseState(data));
         render('redis', state(data, 'cache', data && data.cache));
         render('celery', state(data, 'task_queue', data && data.task_queue));
         // The limiter fails open: with its backend gone it enforces
@@ -45,6 +45,21 @@
     // deployment with no Redis, and "not answering" over a broker that
     // was merely slow. `/health` and `flask maintenance health` had told
     // all three apart from the same snapshot all along.
+    // The database row alone has a fifth state, because the endpoint
+    // reports two booleans for it. "Answered" and "holds our tables" are
+    // separate questions, and the second one failing looks like nothing:
+    // the connection is perfect and every request answers 500. It is not
+    // a row of its own -- an operator reading "Database" wants one verdict
+    // about the database, and two rows that can disagree is the shape this
+    // page already avoided for the cache.
+    function databaseState(data) {
+        var verdict = state(data, 'database', data && data.database);
+        if (verdict === 'ok' && data && data.database_schema === false) {
+            return 'no_schema';
+        }
+        return verdict;
+    }
+
     function state(data, key, ok) {
         if (!data || ok === null || ok === undefined) return 'unknown';
         if ((data.timed_out || []).indexOf(key) !== -1) return 'timeout';
@@ -73,6 +88,8 @@
                 word.textContent = t('timed_out');
             } else if (verdict === 'absent') {
                 word.textContent = t('not_configured');
+            } else if (verdict === 'no_schema') {
+                word.textContent = t('no_schema');
             } else if (verdict === 'ok') {
                 word.textContent = t('answering');
             } else {

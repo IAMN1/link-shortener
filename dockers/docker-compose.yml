@@ -99,7 +99,27 @@ services:
       # The port inside the network is the same DATABASE_PORT the
       # application reaches the database by: one value instead of two that
       # can drift apart.
-      command: -p ${DATABASE_PORT:-5432}
+      #
+      # The entrypoint is wrapped rather than replaced: the guard runs, then
+      # the image's own entrypoint runs with the same argument it would have
+      # had. Without the guard an empty DATABASE_PASSWORD reaches the image
+      # and it refuses with a sentence about POSTGRES_PASSWORD -- a name
+      # that appears nowhere in this project's configuration, in a log the
+      # reader has to go and find, while `docker compose up` reports
+      # success. `:?` cannot be used instead: compose interpolates the whole
+      # file whatever the profiles, so it would also stop a deployment that
+      # rightly has no password here because its database is external.
+      entrypoint:
+        - sh
+        - -c
+        - |
+          if [ -z "$$POSTGRES_PASSWORD" ]; then
+            echo "DATABASE_PASSWORD is empty, and the 'db' profile is on: this stack runs its own PostgreSQL and will not start it without a password." >&2
+            echo "Fill it in:  flask security generate-secrets --write <your env file> --with-service-passwords" >&2
+            echo "Or run your own database: take 'db' out of COMPOSE_PROFILES and set DATABASE_URL." >&2
+            exit 1
+          fi
+          exec docker-entrypoint.sh postgres -p ${DATABASE_PORT:-5432}
       ports:
         # Three distinct values: the bind address, the port on the host, the
         # port inside the network. DATABASE_HOST_PORT is moved when the host
@@ -134,7 +154,26 @@ services:
       container_name: link_shortener_redis
       # Our own cache. An external one is REDIS_URL, with the profile off.
       profiles: ["cache"]
-      command: redis-server --port ${REDIS_PORT:-6379} --requirepass ${REDIS_PASSWORD} --maxmemory 512mb --maxmemory-policy allkeys-lru
+      environment:
+        # Passed in so the guard below can look at it.
+        REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # An empty password used to be worse than no protection: written as
+      # `--requirepass ${REDIS_PASSWORD}`, the substitution left nothing
+      # behind in the exec form and redis read the next flag as the value --
+      # `requirepass "--maxmemory" "512mb"` -- and died with `wrong number
+      # of arguments`, a message that names neither the variable nor the
+      # file. Measured on a fresh clone.
+      command:
+        - sh
+        - -c
+        - |
+          if [ -z "$$REDIS_PASSWORD" ]; then
+            echo "REDIS_PASSWORD is empty, and the 'cache' profile is on: this stack runs its own Redis and will not start it without a password." >&2
+            echo "Fill it in:  flask security generate-secrets --write <your env file> --with-service-passwords" >&2
+            echo "Or run your own Redis: take 'cache' out of COMPOSE_PROFILES and set REDIS_URL." >&2
+            exit 1
+          fi
+          exec redis-server --port ${REDIS_PORT:-6379} --requirepass "$$REDIS_PASSWORD" --maxmemory 512mb --maxmemory-policy allkeys-lru
       restart: unless-stopped
       ports:
         # Loopback only: whoever can write to the cache gets an open
@@ -165,7 +204,23 @@ services:
       # Our own broker. An external one is CELERY_BROKER_URL, with the
       # profile off.
       profiles: ["broker"]
-      command: redis-server --port ${REDIS_BROKER_PORT:-6379} --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy noeviction
+      environment:
+        REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # The same guard as the cache above, and for the same measured
+      # reason. Both instances share one password: they are one deployment's
+      # two Redis, and a second variable would be a second thing to keep
+      # right for no gain.
+      command:
+        - sh
+        - -c
+        - |
+          if [ -z "$$REDIS_PASSWORD" ]; then
+            echo "REDIS_PASSWORD is empty, and the 'broker' profile is on: this stack runs its own Redis for Celery and will not start it without a password." >&2
+            echo "Fill it in:  flask security generate-secrets --write <your env file> --with-service-passwords" >&2
+            echo "Or run your own broker: take 'broker' out of COMPOSE_PROFILES and set CELERY_BROKER_URL." >&2
+            exit 1
+          fi
+          exec redis-server --port ${REDIS_BROKER_PORT:-6379} --requirepass "$$REDIS_PASSWORD" --maxmemory 256mb --maxmemory-policy noeviction
       restart: unless-stopped
       ports:
         # The host port on the left, the one inside the network on the

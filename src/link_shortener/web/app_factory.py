@@ -314,8 +314,27 @@ def create_app(config=None) -> Flask:
                 return "timeout"
             return "ok" if ok else "unavailable"
 
+        def describe_database() -> str:
+            """Render the database's state, schema included.
+
+            Three answers rather than two, because a reachable database
+            with none of this application's tables is neither "ok" nor
+            "unavailable": every network measure of it is fine, and it
+            serves nothing. It used to render as "ok" -- measured on a
+            Docker stack whose migration ran against a different file,
+            where this endpoint said healthy and the landing page said
+            500 no such table: roles.
+            """
+            if "database" in state.timed_out:
+                return "timeout"
+            if not state.database:
+                return "unavailable"
+            if not state.database_schema:
+                return "no_schema"
+            return "ok"
+
         components = {
-            "database": describe("database", state.database),
+            "database": describe_database(),
             # "ok" would claim a working cache on a deployment that runs
             # without one.
             "cache": (
@@ -341,7 +360,16 @@ def create_app(config=None) -> Flask:
         # and it is the snapshot's to give -- a component added to one
         # expression and not the other is a surface disagreeing with a
         # surface, which is what this object exists to prevent.
-        if not state.database:
+        # A missing schema is counted with the database being down rather
+        # than with a failed cache, and it is the one addition to this rule
+        # that is not about restarting. Neither state is fixed by a
+        # restart; both make the instance answer 5xx to every request, and
+        # 503 is what takes it out of a load balancer's rotation. Reporting
+        # 200 there is what let a stack that served nothing look like a
+        # stack that served everything.
+        serves_requests = state.database and state.database_schema
+
+        if not serves_requests:
             status = "unhealthy"
         elif state.healthy:
             status = "healthy"
@@ -353,7 +381,7 @@ def create_app(config=None) -> Flask:
                 "status": status,
                 "components": components,
             },
-            200 if state.database else 503,
+            200 if serves_requests else 503,
         )
 
     # ------------------------------------------------------------------

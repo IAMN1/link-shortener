@@ -111,6 +111,12 @@ class InfrastructureHealthCheck(HealthCheck):
         self._lock = threading.Lock()
         self._cached: Optional[HealthSnapshot] = None
         self._cached_at = 0.0
+        # Set once the schema has been seen whole; see ``check_schema``
+        # for why this one answer is remembered while the others are
+        # re-asked. A plain attribute rather than a guarded one: the
+        # observation runs under ``_lock``, and the only write is False
+        # to True.
+        self._schema_seen = False
 
     def snapshot(self) -> HealthSnapshot:
         """
@@ -174,6 +180,25 @@ class InfrastructureHealthCheck(HealthCheck):
             "rate_limiter": self.check_rate_limiter,
         }
 
+        # The schema is asked on this thread rather than in the pool
+        # below, and the reason is a trap this project has already written
+        # up: under ``SingletonThreadPool`` an in-memory SQLite database
+        # hands every thread its own -- so the worker inspects a database
+        # nobody migrated and every such deployment reports a missing
+        # schema. Measured: it reddened the CLI, integration and e2e
+        # suites at once, all of which run on ``sqlite:///:memory:``.
+        #
+        # What that costs, said plainly: this call is outside the budget,
+        # so a database that hangs rather than refusing holds ``/health``
+        # open. The window is bounded by the memo inside ``check_schema``
+        # -- once the schema has been seen whole the call touches nothing
+        # -- so it exists only before the first success, which is start-up,
+        # when the instance is not serving anyway. Inside the pool the
+        # in-memory case has no answer at all, and a probe that is wrong
+        # about every SQLite deployment is worse than one that can be slow
+        # once.
+        schema_whole = self.check_schema()
+
         # Not a context manager: its __exit__ joins the worker threads, and a
         # check that is hanging would hold the response open there instead.
         executor = ThreadPoolExecutor(max_workers=len(checks))
@@ -199,6 +224,7 @@ class InfrastructureHealthCheck(HealthCheck):
 
         return HealthSnapshot(
             database=results["database"],
+            database_schema=schema_whole,
             cache=results["cache"],
             cache_configured=self.is_cache_configured(),
             task_queue=results["task_queue"],
@@ -240,6 +266,40 @@ class InfrastructureHealthCheck(HealthCheck):
             return True
         except Exception:
             return False
+
+    def check_schema(self) -> bool:
+        """Check that the database reached holds this application's tables.
+
+        A database that cannot be reached at all reports ``False`` here
+        too, and that is not a second alarm for one fault -- ``database``
+        is already ``False`` beside it, and the pair reads "cannot
+        connect", while ``database`` true and this one false reads
+        "connected to the wrong database, or the migration never ran".
+
+        Asked until it succeeds once, then remembered. Unlike every other
+        check here, this one asks a question whose answer does not come
+        back: a schema does not un-migrate itself, and the fault being
+        guarded against -- a migration that ran against a different
+        database -- is fixed by a deployment rather than by waiting. A
+        table dropped by hand afterwards shows up in the error journal on
+        the request that needed it, which is where an operator would look
+        for it; what must not happen is this probe holding a pool
+        connection every thirty seconds forever to re-confirm something
+        settled at start-up.
+
+        Returns:
+            ``True`` when every table the models declare is present.
+        """
+        if self._schema_seen:
+            return True
+
+        try:
+            whole = not self.db_manager.missing_declared_tables()
+        except Exception:
+            return False
+
+        self._schema_seen = whole
+        return whole
 
     def check_cache(self) -> bool:
         """Check whether the cache backend is available.

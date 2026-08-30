@@ -52,6 +52,13 @@ def app(db_manager):
 
     # Replace the container's db component so it uses our pre-seeded manager
     app.container.db_component._manager = db_manager
+    # And the health checker, which does not go through the component: it
+    # was handed a manager while `create_app` ran, and the line above does
+    # not reach what it already holds. Left behind, it answered about the
+    # empty database `create_app` built -- reachable, and without a single
+    # table -- so `flask maintenance health` reported a missing schema and
+    # exited 1 while every other command in this module worked.
+    app.container.health_check.db_manager = db_manager
 
     return app
 
@@ -746,6 +753,10 @@ class TestASwitchedOffCacheIsNotABrokenCache:
 
         application = create_app(config=NoCache())
         application.container.db_component._manager = db_manager
+        # The health checker holds the manager it was handed while
+        # `create_app` ran; the line above does not reach it. See the
+        # module-level `app` fixture for what that cost.
+        application.container.health_check.db_manager = db_manager
         return application
 
     @pytest.mark.parametrize(

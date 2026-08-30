@@ -441,6 +441,13 @@ def script_strings() -> Dict[str, str]:
         # the row read "Redis: answering" on a deployment that runs
         # without Redis at all.
         "not_configured": gettext("not configured"),
+        # Beside "answering" for the same reason "not configured" is. A
+        # database that answers every probe and holds none of this
+        # application's tables is not a database that is answering, and it
+        # is not one that is down either -- the connection is perfect and
+        # the service answers 500 to everything. Measured on a Docker
+        # stack whose migration ran against a different file.
+        "no_schema": gettext("answering, no schema"),
         "unknown": gettext("unknown"),
         # The counters below it belong to one worker process out of
         # several, and the number is the only thing that says so.
