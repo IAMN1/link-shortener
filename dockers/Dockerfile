@@ -36,6 +36,15 @@ COPY ./src ./src/
 COPY alembic.ini ./
 COPY ./migrations ./migrations/
 
+# `FLASK_APP` lives here rather than in an env file, and the image needs the
+# file for the same reason the host does: without it `flask <anything>` inside
+# a container answers "Could not locate a Flask application" unless whatever
+# env file the deployment happens to use names the application. That was the
+# fault this move was made to close, and it stayed open in the image --
+# measured by running `flask --help` in a container with no `FLASK_APP` in its
+# environment.
+COPY .flaskenv ./
+
 RUN groupadd --gid 1000 appuser && \
     useradd --create-home --uid 1000 --gid 1000 appuser && \
     mkdir -p /app/logs && \

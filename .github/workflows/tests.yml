@@ -113,20 +113,30 @@ jobs:
           # A floor, not an equality. Adding tests requires no edit here;
           # losing them does, and that is deliberate.
           #
-          # It follows the suite in both directions: 4227 are collected --
-          # a hundred and sixty-one more than before. The dead-code pass
-          # closed the holes a mutation probe found in domain, in parsing
-          # cache records and in the bodies of Celery tasks; the
-          # documentation pass added five -- two hold the OpenAPI document
-          # against the route table, two require a described body from
-          # every operation that reads one, and one came free, the schema
-          # check against infrastructure being parametrised by file and
-          # having picked the new one up; three hold the address the
-          # application journal writes behind a proxy; and two hold the
-          # build context clean. A floor left above the suite fails the
-          # build for no reason at all.
-          # The gap is twenty-seven.
-          MINIMUM_TESTS: 4200
+          # It follows the suite in both directions: 4526 are collected.
+          # The gap is 26. Written as a figure rather than in words,
+          # because past a hundred the words stop being read and this one
+          # is checked by a test that would have to spell every number.
+          #
+          # The floor is moved up when the suite grows by enough that the
+          # old one stops catching anything. It sat at 4200 while the suite
+          # reached 4511, which left 311 tests that could be lost in
+          # silence -- seven per cent of the run, and the whole point of
+          # the guard is that losing tests is loud. Moved with the run that
+          # added the documentation tests, not before it: a floor left
+          # above the suite fails the build for no reason at all.
+          #
+          # The 4200 was placed when the suite stood at 4227, a hundred and
+          # sixty-one more than the run before it. The dead-code pass closed
+          # the holes a mutation probe found in domain, in parsing cache
+          # records and in the bodies of Celery tasks; the documentation
+          # pass added five -- two hold the OpenAPI document against the
+          # route table, two require a described body from every operation
+          # that reads one, and one came free, the schema check against
+          # infrastructure being parametrised by file and having picked the
+          # new one up; three hold the address the application journal
+          # writes behind a proxy; and two hold the build context clean.
+          MINIMUM_TESTS: 4500
         # `--error-for-skips` closes the door marked "skipped". This closes
         # the one beside it: a test that was never collected gives "N passed"
         # and exit code 0 with a smaller N. The mechanisms are quiet -- a

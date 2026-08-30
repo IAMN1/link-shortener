@@ -1,6 +1,7 @@
 import atexit
 
 from flask import Flask, redirect
+from sqlalchemy.exc import IntegrityError
 from flask_cors import CORS
 
 from link_shortener.infrastructure import (
@@ -73,6 +74,25 @@ def _seed_base_roles_if_ready(container) -> None:
 
         with db_manager.session() as session:
             seed_base_roles(session)
+    except IntegrityError as clash:
+        # Every worker seeds at startup, and the pass is "read, then write":
+        # two of them find the same permission missing and both insert it,
+        # so the loser meets the unique index. Measured on a container with
+        # `GUNICORN_WORKERS=4` against an empty database -- three of the four
+        # reported `duplicate key value violates unique constraint
+        # "permissions_name_key"`.
+        #
+        # The outcome is right either way: each worker seeds the whole set in
+        # one transaction, so the winner's commit leaves nothing half-written
+        # and the losers roll back entirely. What was wrong was the sentence.
+        # An operator reading "AUTO_SEED_ROLES failed" on a first deployment
+        # has every reason to think the roles are missing -- and the fix for
+        # missing roles, running `flask db load-base-roles`, is a step they
+        # then take for no reason.
+        logger.info(
+            "Roles were seeded by another process; this one rolled back",
+            detail=str(clash.orig) if clash.orig else str(clash),
+        )
     except Exception as e:
         logger.warning("AUTO_SEED_ROLES failed", error=str(e))
 

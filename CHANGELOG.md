@@ -59,7 +59,7 @@ frozen" is the honest one.
   pages.
 - **Docker Compose stack** — application, PostgreSQL, two Redis instances,
   a Celery worker and log rotation, with a development overlay.
-- **Test suite** — 4219 tests, 98.60% statement coverage against a floor of
+- **Test suite** — 4526 tests, 98.59% statement coverage against a floor of
   88%, plus two live runs against a real stack: 157 HTTP checks and 67
   browser checks. CI runs the suite twice, in a clean environment and a
   polluted one.
