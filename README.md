@@ -1,8 +1,8 @@
 <div align="center">
 
-# MaizLink
+<img src="docs/media/banner.png" alt="MaizLink — a URL shortener built the way a service that has to stay up is built" width="820">
 
-**A URL shortener built the way a service that has to stay up is built.**
+# MaizLink
 
 Clean architecture, role-based access control, a two-level cache, and a test
 suite that fails when the documentation starts lying.
@@ -21,23 +21,7 @@ suite that fails when the documentation starts lying.
 
 **English** · [Русский](README.ru.md)
 
-<!-- ─────────────────────────────────────────────────────────────────────
-     DEMO GOES HERE
-
-     Drop the file in docs/media/ and uncomment one of the lines below.
-     Recommended: a GIF, 1280×720 or wider, under 10 MB — GitHub does not
-     autoplay video in a README, so a GIF is the only thing that moves
-     without a click.
-
-     <img src="docs/media/demo.gif" alt="Shortening a link and opening the dashboard" width="820">
-
-     For a still:
-     <img src="docs/media/dashboard.png" alt="The dashboard" width="820">
-
-     For a video, GitHub renders an uploaded .mp4 as a player — paste the
-     URL GitHub gives you after dragging the file into an issue comment:
-     https://github.com/user-attachments/assets/<id>
-     ───────────────────────────────────────────────────────────────────── -->
+<img src="docs/media/demo.gif" alt="A long address is shortened, the theme is switched to dark, and the dashboard opens on its links, a month of visit statistics by device and browser, the audit journal and the role editor" width="820">
 
 </div>
 
