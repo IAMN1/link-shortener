@@ -1,0 +1,15 @@
+# A blank issue is the one that arrives without the fields that make a
+# report usable, so the two forms are the way in.
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/IAMN1/link-shortener/security/advisories/new
+    about: >
+      Report privately instead. A public issue exposes everyone running
+      the code until there is a fix. See SECURITY.md for what to expect.
+  - name: A question about running it
+    url: https://github.com/IAMN1/link-shortener/tree/master/docs
+    about: >
+      Getting started, configuration, operations and testing are written
+      up under docs/. If the answer is not there, that is worth an issue —
+      open a bug report and say which page you looked at.

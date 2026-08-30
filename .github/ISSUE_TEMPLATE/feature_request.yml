@@ -1,0 +1,53 @@
+name: Feature request
+description: Something the service does not do yet
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `CONTRIBUTING.md` asks for an issue before code on anything larger
+        than a fix, and this is that issue. It costs you nothing and saves
+        the case where a change is written well and then turned down for a
+        reason nobody could have guessed from the outside.
+
+  - type: checkboxes
+    id: roadmap
+    attributes:
+      label: Before you write
+      options:
+        - label: >
+            I have looked at [docs/roadmap.md](https://github.com/IAMN1/link-shortener/blob/master/docs/roadmap.md),
+            which records what was considered and deliberately not built,
+            and what each idea would have cost.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What you were trying to do, and where the service stopped you.
+        Written as the problem rather than as the solution: the shape of
+        the answer is worth discussing, and it is easier to discuss when
+        the question is visible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: How you would expect it to work, if you have a view.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: >
+        The workaround you are using, or the reason there is none. A
+        feature with a tolerable workaround and one without are different
+        requests.
+    validations:
+      required: false

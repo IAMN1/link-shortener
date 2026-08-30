@@ -1,0 +1,103 @@
+name: Bug report
+description: Something behaves differently from what it says it does
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The fields below are the ones
+        `CONTRIBUTING.md` calls the most useful part of a report: what you
+        did, what happened, what you expected, and which profile you were
+        on. Several behaviours differ between profiles by design, so the
+        last one decides whether a report can be reproduced at all.
+
+        **A security problem does not go here.** Use GitHub's private
+        reporting — the *Security* tab, *Report a vulnerability*. A public
+        issue makes the problem known to everyone the moment it is known
+        to the maintainer.
+
+  - type: textarea
+    id: what-you-did
+    attributes:
+      label: What you did
+      description: >
+        In enough detail to repeat it — a request, a curl command, a
+        sequence of clicks, a CLI invocation.
+      placeholder: |
+        curl -X POST http://localhost:5000/api/v1/shorten \
+             -H 'Content-Type: application/json' \
+             -d '{"url": "https://example.com"}'
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: >
+        The answer, the page, the exit code — and the traceback if there
+        was one. Paste it whole rather than the line that looked relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-you-expected
+    attributes:
+      label: What you expected instead
+      description: >
+        If a document or a `--help` text led you to expect it, say which —
+        the documentation being wrong is a bug in its own right.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile
+      description: >
+        `FLASK_ENV`, or the profile the stack was started with. The
+        `testing` profile reads no environment at all, which is why it is
+        here as an option — a behaviour seen only under pytest belongs to
+        a different question.
+      options:
+        - development
+        - staging
+        - production
+        - testing (the suite)
+        - not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how-run
+    attributes:
+      label: How it was running
+      options:
+        - Docker Compose (the stack in dockers/)
+        - Locally, flask run
+        - Locally, gunicorn
+        - Celery worker
+        - CLI only (flask ...)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The tag, or the output of `git rev-parse --short HEAD`.
+      placeholder: 0.9.0, or 6294d37
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Anything from the journals
+      description: >
+        Lines from `application.log`, `errors.log` or `audit.log` around
+        the moment it happened. Optional, and please take the secrets out
+        first — `audit.log` is the one journal that can carry them.
+      render: text
+    validations:
+      required: false
