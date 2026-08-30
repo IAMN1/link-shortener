@@ -1,6 +1,6 @@
 # Testing
 
-**4227 tests**, 98.60% coverage against a floor of 88%, plus two live runs
+**4227 tests**, 98.59% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -383,7 +383,11 @@ container-backed checks do.
 
 ### Documentation that has drifted
 
-Two tests read the docs and compare them with the code:
+A document is code nobody compiles: it stays grammatical after it stops
+being true, and the reader has no way to tell. Eleven tests read these
+documents and hold them against the tree.
+
+**Against what the service does**
 
 - `test_documented_rate_limits.py` parses the limits table in
   [Configuration](configuration.md#rate-limits) and holds it against
@@ -392,6 +396,50 @@ Two tests read the docs and compare them with the code:
   wrong one is worse than one naming none, because it is believed.
 - `test_api_docs.py` holds `/api/openapi.json` against the real URL map: a
   new endpoint is a failing test rather than an undocumented endpoint.
+- `test_the_documented_json_matches_the_answer.py` holds the JSON examples
+  in [Getting started](getting-started.md) and [Operations](operations.md)
+  against the bodies they illustrate — field names, not values. Two of them
+  had drifted: the shorten example was four fields short in both languages,
+  and the health example six.
+- `test_the_documented_api_counts.py` holds the sentence in
+  [Development](development.md) that states how many paths and operations
+  the API document describes.
+- `test_the_documented_matrix_is_coherent.py` parses the table of ways to
+  arrange the stack and refuses a row that contradicts itself.
+- `test_every_setting_has_its_line.py` holds `.env.example` to being the
+  exhaustive list every other document says it is.
+
+**Against the numbers they publish**
+
+- `test_documented_live_run_sizes.py` reads the size of each live run out
+  of the script by `ast` and holds six documents to it.
+- `test_the_documented_suite_size.py` holds the nine places that publish
+  the size of the suite to one number, and the gap the workflow's comment
+  names to the gap it has.
+- `test_the_documented_decision_count.py` counts the write-ups in
+  [Decisions](decisions.md) two ways and holds the three documents that
+  state the number — in words, in two languages — to it.
+
+**Against each other**
+
+- `test_the_translations_carry_the_same_facts.py` compares the two READMEs,
+  and the two tutorials, on everything that is not prose: settings,
+  commands, routes, permissions, images, numbers. It is what found a
+  screenshot the Russian tutorial never had.
+- `test_the_documentation_links_resolve.py` follows every internal link and
+  every anchor in every markdown file. An anchor is the half that rots
+  quietly: renaming a heading is an ordinary edit, and it breaks every link
+  pointing at it without touching them.
+
+One more sits beside them and works the other way round. It reads no
+document: it holds the *behaviour* two of them publish a table about.
+`test_the_own_domain_needs_no_cors_entry.py` walks all four rows of that
+table — whether the form after a sign-in is admitted, for an origin that is
+the service's own address and for one that is not, with `CORS_ORIGINS`
+empty and with it named. The table was written after a claim in a
+deployment guide turned out to be wrong in a way nothing could have caught:
+the guide said the own address had to be listed, and the CSRF layer had
+been adding `BASE_URL` on its own all along.
 
 ## Mail in development
 

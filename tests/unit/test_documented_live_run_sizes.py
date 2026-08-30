@@ -13,6 +13,10 @@ to 123 checks left five documents saying 118, and the drift was found by
 eye or not at all -- which is how a reader ends up trusting a number that
 was true two months ago.
 
+`CHANGELOG.md` was the sixth, and was missing from the list below for a
+while: it states both sizes in the paragraph describing a release, where
+they are read by whoever is deciding whether to upgrade.
+
 So the chain is: the live run itself says *constant equals what ran*, and
 this file says *documents equal the constant*. Neither can be dropped for
 the other. This one is a unit test because it reads files rather than
@@ -39,6 +43,7 @@ BROWSER = ROOT / "tests/live/browser_test.py"
 
 DOCUMENTS = (
     "CONTRIBUTING.md",
+    "CHANGELOG.md",
     "README.md",
     "README.ru.md",
     "docs/testing.md",
@@ -52,13 +57,22 @@ quietly drop out of a glob.
 """
 
 COUNT = re.compile(
-    r"(\d+)\s*(?:checks|проверок|проверки|проверка)\b"
+    r"(\d+)\s*(?:[A-Za-zА-Яа-я-]+\s+){0,2}(?:checks|проверок|проверки|проверка)\b"
 )
 """A count of checks, in either language.
 
 Anchored on the noun rather than on the number, so "2787 tests" and a port
 number are not swept in. Both grammatical forms of the Russian are listed
 because the plural changes with the number: 123 проверки, 21 проверка.
+
+Up to two words may stand between the number and the noun, because that is
+how a sentence says it: `CHANGELOG.md` writes "157 HTTP checks and 67
+browser checks", and a pattern demanding the noun immediately after the
+number read that file as naming no sizes at all -- which is a silent pass,
+not a failure, since a document that names nothing contradicts nothing.
+Two and not more: the gap is what an adjective fits in, and widening it
+further starts reaching across clauses to a number that is about something
+else.
 """
 
 FRACTION = re.compile(r"\b(\d+)/(\d+)\b")

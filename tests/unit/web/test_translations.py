@@ -281,7 +281,7 @@ NOT_PROSE = {
     # the request itself.
     "GET /api/v1/links/{code}",
     "POST /api/v1/shorten",
-    "api/v1/shorten",
+    "/api/v1/shorten",
     "POST",
     "openapi.json",
     "API",
