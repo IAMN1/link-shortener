@@ -256,3 +256,6 @@ expect, what is already known, and what I will not pursue you for.
 too. Keep the copyright notice, say what you changed, and note that the
 licence carries an explicit patent grant: a contributor cannot later sue
 users over patents in what they contributed.
+
+The licence covers the code and not the name: section 6 grants no
+trademark rights, so a fork travels under a name of its own.

@@ -180,7 +180,13 @@ under the project's licence.
 > flag on `git commit`, and it keeps the project's licensing coherent. The
 > project is under [Apache 2.0](LICENSE), and contributions come in under
 > the same terms.
-
+>
+> Those terms are not this project's promise but the licence's own:
+> section 5 places any contribution deliberately submitted for inclusion
+> under the same licence, unless you state otherwise in writing. What the
+> sign-off adds is the other half — that you had the right to submit it.
+> You keep the copyright in what you wrote; the project gets a licence to
+> use it, not ownership of it.
 
 ## Commit messages
 
