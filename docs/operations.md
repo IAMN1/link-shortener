@@ -264,6 +264,13 @@ The audit journal is separate on purpose: it records what was done to
 links, accounts and roles — through the API, the admin panel and the
 commands alike — and it is the one an incident is reconstructed from.
 
+They are also read without a shell. `/dashboard/service/journals` serves
+all three, filtered by event, account, address, code or a span of time,
+and `audit:view` is what opens the audit one — an administrator holding
+`admin:all` is refused it.
+
+<img src="media/journals.png" alt="The Journals page showing the audit journal: filters for event, account, address, code and dates, and rows naming who created a link and when" width="820">
+
 ### How fast they grow
 
 Measured on this tree, driving ordinary traffic through the application

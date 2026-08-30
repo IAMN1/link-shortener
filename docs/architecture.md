@@ -390,6 +390,13 @@ stateDiagram-v2
 | `analyst` | An analyst | `stats:view_full`, `stats:view_any`, `link:view_own` |
 | `admin` | An administrator | `admin:all` |
 
+Roles are seeded from [`configs/rbac/roles.yaml`](../src/link_shortener/infrastructure/configs/rbac/roles.yaml)
+and edited afterwards in the panel — the five above are system roles the
+service refuses to change, and a role of your own is made from the same
+fifteen permissions:
+
+<img src="media/role-permissions.png" alt="The Create Role form: name, description, and the fifteen permissions grouped by what they act on — admin, audit, link, logs and stats" width="820">
+
 ### You cannot grant more than you hold
 
 Every path by which permissions reach a user checks whether the caller is

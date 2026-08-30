@@ -68,6 +68,10 @@ the route asks.
 Answers are memoised per request: the anonymous branch opens a Unit of Work
 to read the `guest` role, and a sidebar asks about eight permissions.
 
+The same template, rendered for two roles, is the whole argument:
+
+<img src="media/sidebar-by-role.png" alt="Two sidebars side by side: the analyst is offered My Links, My Stats and Service Stats; the administrator is offered those plus Create Link, Journals, Users, Roles and Health Check" width="520">
+
 **Why not role names.** That is how it was: `{% if 'analyst' in
 g.current_user.roles %}`. The server checks permissions, so the two asked
 different questions and drifted apart wherever a role held a permission its
