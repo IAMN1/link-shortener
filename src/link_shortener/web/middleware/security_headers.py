@@ -19,11 +19,20 @@ successful injection can reach, which is a different claim and the honest
 one. The consequence that would hurt most -- a script reading the session
 -- is closed elsewhere and better, by cookies that carry ``httponly``,
 ``secure`` and ``samesite="Strict"``.
+
+One header here is conditional. ``Strict-Transport-Security`` answers a
+question the others do not: not what a loaded page may do, but whether the
+*next* visit is allowed to start in the clear. ``COOKIE_SECURE`` already
+keeps the session off a plain connection, so nothing leaks -- but the
+first request of a later visit is still made over ``http://`` and can
+still be answered by whoever is on the path. It is sent only where
+``USE_HTTPS`` says there is TLS to insist on, and ``HSTS_MAX_AGE`` carries
+the reasoning about its value.
 """
 
 import secrets
 
-from flask import Flask, Response, g
+from flask import Flask, Response, current_app, g
 
 
 NONCE_BYTES = 16
@@ -145,6 +154,18 @@ class SecurityHeadersMiddleware:
             """
             for name, value in HEADERS.items():
                 response.headers.setdefault(name, value)
+
+            # Only where the service is actually served over TLS. Sent from
+            # a plain-HTTP origin the header is ignored by every browser,
+            # which makes it harmless and useless at once -- and on a
+            # development run it would be the one header that outlives the
+            # run, since a browser that accepted it once refuses plain
+            # `http://localhost` afterwards for as long as the max-age says.
+            max_age = current_app.config.get("HSTS_MAX_AGE", 0)
+            if current_app.config.get("USE_HTTPS") and max_age:
+                response.headers.setdefault(
+                    "Strict-Transport-Security", f"max-age={max_age}"
+                )
 
             # `setdefault` here too: a view that needs its own policy --
             # none does today -- says so by setting one, and this must not

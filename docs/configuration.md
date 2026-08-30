@@ -165,8 +165,9 @@ the same endpoint sends its own cookie and gets the language on screen.
 | `SESSION_COOKIE_SECURE` | `false`, `true` in production | The same for Flask's session cookie |
 | `SESSION_COOKIE_SAMESITE` | `Lax` | |
 | `SESSION_COOKIE_HTTPONLY` | `true` | |
-| `CORS_ORIGINS` | `http://localhost:5000`; the template adds `http://127.0.0.1:5000` | Origins allowed to send credentials |
-| `TRUSTED_PROXIES` | empty | Only from these is `X-Forwarded-For` believed |
+| `HSTS_MAX_AGE` | `31536000` (a year) | Seconds a browser remembers to reach this service over TLS only. Sent as `Strict-Transport-Security` and read **only where `USE_HTTPS` is on**, so a plain-HTTP run never sends it. `0` switches it off — the setting for a deployment whose reverse proxy sends the header itself, since two of them are not additive and the browser reads the first. Without `includeSubDomains` and without `preload`: the first speaks for every sibling on the domain, the second is recorded in the browsers and takes months to undo |
+| `CORS_ORIGINS` | `http://localhost:5000`; the template adds `http://127.0.0.1:5000`; **empty in `staging` and `production`** | Origins allowed to send credentials. Empty is not closed: the CSRF layer admits `BASE_URL` on its own, so the service's own pages keep working with nothing named here. What is empty is the list of *other* origins |
+| `TRUSTED_PROXIES` | empty | Only from these is `X-Forwarded-For` believed, and then the **last** entry, which is the only one the caller could not write. Empty behind a proxy is the mistake that costs most — see the warning below |
 | `VISIT_TRACKING_ENABLED` | `true` | Record each redirect as an event, not only count it. Off, `urls.clicks` still counts and every chart with time on an axis stays empty |
 | `VISIT_RETENTION_DAYS` | `90` | How long a raw visit row is kept. Finished days are folded into one row per link per day first, so the long-range charts keep their shape after the rows behind them go. `0` disables the sweep and the table grows without limit |
 | `SECURITY_EVENT_RETENTION_DAYS` | `365` | How long a raw security event row is kept. Folded into one row per kind per day first, like the visits. A year rather than ninety days: a visit is traffic and last quarter's answers a question this quarter's answers better, while a sign-in is evidence and is usually asked about long after the fact. `0` disables the sweep |
@@ -177,11 +178,56 @@ the same endpoint sends its own cookie and gets the language on screen.
 > built-in default is `localhost` alone — so a run with no `.env` meets
 > this. The CSRF layer compares the browser's `Origin` against this list
 > before letting an unsafe cookie-authenticated request through. With
-> `localhost` alone,
-> opening `http://127.0.0.1:5000` gives a working landing page — an
-> anonymous caller does not go through CSRF — and "CSRF token missing or
-> invalid" on every form the moment you sign in. Measured on the Docker
-> stack.
+> `localhost` alone, opening `http://127.0.0.1:5000` gives a working
+> landing page — an anonymous caller does not go through CSRF — and "CSRF
+> token missing or invalid" on every form the moment you sign in. Measured
+> on the Docker stack.
+>
+> **The list is not the whole answer, and this is where it is easy to draw
+> the wrong conclusion.** The CSRF layer adds `BASE_URL` to the origins it
+> admits, on its own — so the address a visitor actually arrives at is
+> already covered by `DOMAIN`, and `CORS_ORIGINS` is needed only for an
+> origin that is *different* from it. Measured with
+> `DOMAIN=demo.example.com`, on the form that follows a sign-in:
+>
+> | Visitor arrives at | `CORS_ORIGINS` | The form after sign-in |
+> |---|---|---|
+> | `https://demo.example.com` | empty | `201` |
+> | `https://demo.example.com` | names it | `201` |
+> | `https://other.example.com` | empty | `403` |
+> | `https://other.example.com` | names `other` | `201` |
+>
+> The Docker case above is the third row: `DOMAIN` says `localhost:5000`
+> and the visitor typed `127.0.0.1`, which is a different origin. The fix
+> is either spelling — name it here, or make it the one `DOMAIN` says.
+
+> [!WARNING]
+> **`TRUSTED_PROXIES` empty behind a proxy makes every visitor one caller.**
+> With nothing named, `X-Forwarded-For` is not read and the client is
+> whoever connected — which behind a balancer is the balancer. The guest
+> quota and the rate limiter both count by that address, so the whole
+> internet shares one allowance. Measured with `GUEST_LINK_LIMIT=3`, six
+> visitors from six addresses through one proxy:
+>
+> | `TRUSTED_PROXIES` | Six visitors, six addresses |
+> |---|---|
+> | empty | `201, 201, 201, 429, 429, 429` — the fourth refused on his first link |
+> | `10.0.0.1` | `201, 201, 201, 201, 201, 201` |
+>
+> A deployed profile says so in its startup log rather than refusing to
+> start: empty is correct where the service is reached directly, and that
+> is a real deployment. The opposite mistake is worse — naming an address
+> range you do not own lets a caller write any `X-Forwarded-For` it likes
+> and take a fresh quota per request. Name the addresses your own proxy
+> connects from, and no others.
+
+> [!NOTE]
+> `COOKIE_SECURE` and `HSTS_MAX_AGE` answer different halves of the same
+> question. The first keeps the session off a plain connection: the cookie
+> is simply not sent. The second is about the request before that one — the
+> first of a later visit, which a browser makes over `http://` unless it
+> was told otherwise, and which whoever is on the path can answer instead
+> of you. Nothing leaks in that exchange; what is lost is the visit.
 
 ## Rate limits
 
@@ -267,7 +313,7 @@ guessing is gone while the configuration says it is there.
 
 | Variable | Default | |
 |---|---|---|
-| `MAIL_ENABLED` | `false`; `true` in the template | With it off, registration still answers `202` and no message leaves |
+| `MAIL_ENABLED` | `false`; `true` in the template | With it off, registration still answers `202` and no message leaves — and the account it created cannot sign in, because nothing confirms the address. `401 EMAIL_NOT_VERIFIED` is the answer, and the only way past it is an administrator: `POST /api/v1/admin/users/{id}/verify-email`. A deployment that means to take registrations has to turn mail on |
 | `MAIL_HOST`, `MAIL_PORT` | `localhost`, 1025 in development | Aimed at the Mailpit catcher |
 | `MAIL_USE_TLS` / `MAIL_USE_SSL` | `false` in development | `production` requires one of them |
 | `MAIL_FROM` | — | Mandatory when mail is on |

@@ -1,6 +1,6 @@
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 from link_shortener.infrastructure.configs.app.env import (
-    env_bool, env_int, env_str, is_unset, read_env_for
+    env_bool, env_int, env_list, env_str, is_unset, read_env_for
 )
 
 
@@ -128,6 +128,30 @@ class ProductionConfig(BaseConfig):
     # --------------------------------------------------------------------------
     # Security: cookies should be secure in production
     # --------------------------------------------------------------------------
+
+    # --------------------------------------------------------------------------
+    # CORS: nothing is allowed until a deployment names it
+    # --------------------------------------------------------------------------
+    CORS_ORIGINS: list = env_list("CORS_ORIGINS", [])
+    """
+    Origins allowed to send credentials, and empty until one is named.
+
+    The base default is ``http://localhost:5000``, which is right for a run
+    on a laptop and wrong everywhere else: inherited here it left a deployed
+    service answering ``Access-Control-Allow-Origin: http://localhost:5000``
+    with ``Allow-Credentials: true``, so a page a visitor opened on that port
+    could read this service's answers with that visitor's cookies. Nobody
+    needs the allowance, and a deployment that does needs a different value
+    anyway.
+
+    Empty is not the same as closed. The CSRF layer adds ``BASE_URL`` to the
+    origins it admits, so the service's own pages keep working with nothing
+    named here -- measured: with ``CORS_ORIGINS`` empty, a signed-in form
+    post from ``https://maizlink.example`` answered 201 and the same post
+    from ``https://evil.example`` answered 403. What is empty is the list of
+    *other* origins, which is the honest default for one.
+    """
+
     COOKIE_SECURE: bool = env_bool("COOKIE_SECURE", True)
     SESSION_COOKIE_SECURE: bool = env_bool("SESSION_COOKIE_SECURE", True)
 

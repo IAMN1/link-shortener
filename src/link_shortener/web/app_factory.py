@@ -432,6 +432,38 @@ def create_app(config=None) -> Flask:
             settings=", ".join(generated),
         )
 
+    # Empty `TRUSTED_PROXIES` says two different things and the difference
+    # cannot be read from the value: "this service is reached directly", in
+    # which case it is right, and "there is a proxy in front and nobody
+    # named it", in which case every visitor in the world shares one
+    # identity. `get_client_ip()` falls back to the connection's address,
+    # which behind a balancer is the balancer -- so the guest quota and the
+    # rate limiter count everyone as one caller. Measured with a limit of
+    # three: six visitors from six addresses through one proxy got
+    # 201, 201, 201, 429, 429, 429, the fourth refused on his first link.
+    #
+    # A warning rather than a refusal, because the first reading is a real
+    # deployment: a service on a public address with no proxy in front of
+    # it is configured correctly with this empty. What it cannot do is stay
+    # silent, since the wrong reading looks like a working service until
+    # somebody complains about a quota they never spent.
+    # "Deployed" is read the way `_deployed_backend_errors` reads it --
+    # neither DEBUG nor TESTING -- and not from the profile's name. A
+    # configuration handed to `create_app` as an object carries no `ENV`
+    # attribute, so `env` above is the string "custom" for every such
+    # caller, which is every test and every deployment that builds its
+    # configuration in code. A check written against the name would have
+    # been silent exactly where it is needed.
+    deployed = not app.config.get("DEBUG") and not app.config.get("TESTING")
+    if deployed and not app.config.get("TRUSTED_PROXIES"):
+        logger.warning(
+            "TRUSTED_PROXIES is empty: X-Forwarded-For is not read, so the "
+            "guest quota and the rate limiter count by the connecting "
+            "address. Correct where this service is reached directly; "
+            "behind a proxy it makes every visitor one caller",
+            profile=env,
+        )
+
     logger.info(
         "Application Fully initialized",
         env=env,

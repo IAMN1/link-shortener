@@ -23,6 +23,8 @@ import re
 
 import pytest
 
+from tests.unit.web.conftest import TestConfig
+
 
 PAGES = ["/", "/login", "/register"]
 """Pages a browser is served. The policy has to hold on every one."""
@@ -125,3 +127,74 @@ class TestThePolicyIsShapedAroundThisApplication:
         second = client.get("/").headers["Content-Security-Policy"]
 
         assert first != second
+
+
+class TestTheHeaderThatSpeaksForTheNextVisit:
+    """
+    ``Strict-Transport-Security`` was the one header not sent at all.
+
+    The others say what a page that already loaded may do. This one is
+    about the request *before* the page: the first one of a later visit,
+    which a browser makes over ``http://`` unless it was told not to, and
+    which whoever is on the path can still answer. ``COOKIE_SECURE`` keeps
+    the session out of that request, so nothing leaks -- what is lost is
+    the visit itself, to whoever answered.
+
+    It is conditional, and the condition is the point: sent from a
+    plain-HTTP development run it would be the one header that outlives
+    the run. A browser that accepted it once refuses plain
+    ``http://localhost`` for as long as the max-age says, and the run is
+    not there to tell it otherwise.
+    """
+
+    def _app_with(self, request, **settings):
+        """Build a second application whose config carries ``settings``."""
+        from link_shortener.web.app_factory import create_app
+
+        config = TestConfig()
+        for name, value in settings.items():
+            setattr(config, name, value)
+        return create_app(config=config)
+
+    def test_a_plain_http_deployment_is_not_told_anything(self, client):
+        """
+        The default profile is served over HTTP, and the header would be
+        both ignored and remembered -- ignored by a browser reading it
+        from a plain origin, remembered by one that reached the same
+        origin over TLS once.
+        """
+        assert "Strict-Transport-Security" not in client.get("/").headers
+
+    def test_a_tls_deployment_is_told_for_a_year(self, request):
+        """
+        ``USE_HTTPS`` is what says there is TLS to insist on.
+        """
+        app = self._app_with(request, USE_HTTPS=True, HSTS_MAX_AGE=31536000)
+        with app.test_client() as tls:
+            header = tls.get("/").headers["Strict-Transport-Security"]
+
+        assert header == "max-age=31536000"
+
+    def test_zero_switches_it_off_behind_a_proxy_that_sends_its_own(self, request):
+        """
+        Two ``Strict-Transport-Security`` headers are not additive and the
+        browser reads the first, so a deployment whose proxy sends one
+        needs a way to stop this one rather than a way to duplicate it.
+        """
+        app = self._app_with(request, USE_HTTPS=True, HSTS_MAX_AGE=0)
+        with app.test_client() as proxied:
+            assert "Strict-Transport-Security" not in proxied.get("/").headers
+
+    def test_it_speaks_for_this_host_only(self, request):
+        """
+        No ``includeSubDomains``: it would speak for every sibling on the
+        domain, and several of those may have no TLS at all. No
+        ``preload``: that one is recorded in the browsers themselves and
+        takes months to undo.
+        """
+        app = self._app_with(request, USE_HTTPS=True, HSTS_MAX_AGE=31536000)
+        with app.test_client() as tls:
+            header = tls.get("/").headers["Strict-Transport-Security"]
+
+        assert "includeSubDomains" not in header
+        assert "preload" not in header

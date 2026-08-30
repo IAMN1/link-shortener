@@ -3183,3 +3183,118 @@ When a decision is made that a reader would otherwise question, add a
 section with the same three parts. The value is not the decision — it is the
 measurement behind it. An entry that says "we chose X because it is better"
 is worse than no entry: it looks like reasoning and carries none.
+
+### The one header that speaks for the visit after this one
+
+**Decided** (2026-08-30): the response carries
+`Strict-Transport-Security: max-age=31536000` wherever `USE_HTTPS` is on,
+and carries nothing where it is off. `HSTS_MAX_AGE` sets the number and `0`
+switches it off. No `includeSubDomains`, no `preload`.
+
+**Why it was missing and why that mattered.** Five headers were sent and
+this was not one of them. The five say what a page that already loaded may
+do; this one is about the request *before* the page — the first of a later
+visit, which a browser makes over `http://` unless it was told otherwise.
+`COOKIE_SECURE` already keeps the session out of that request, so the
+answer to "what leaks" is nothing. What is lost is the visit itself, to
+whoever answered instead of this service.
+
+**Why conditional on `USE_HTTPS`.** Sent from a plain-HTTP origin the
+header is ignored, which makes it harmless and useless at once — but not
+in a development run. A browser that once reached the same origin over TLS
+remembers, and afterwards refuses plain `http://localhost` for as long as
+the max-age says, with the run no longer there to tell it otherwise. The
+condition is what keeps the header out of every profile that is not
+actually behind TLS.
+
+**Why a year.** The window is not "how long a session lasts" but "how long
+until this browser's next first request". A month covers people who come
+back this month, which is the wrong set: the visitor the header exists for
+is the one who has not been here in a while and types the address without
+a scheme.
+
+**Why `0` rather than a boolean.** A deployment whose reverse proxy sends
+the header needs a way to stop this one, not a way to duplicate it: two
+`Strict-Transport-Security` headers are not additive, and a browser reads
+the first. Caddy sends one by default. One number expresses "off", "the
+default" and "something else" without a second setting to disagree with it.
+
+**What was left out, deliberately.** `includeSubDomains` speaks for every
+sibling on the domain — several of which may have no TLS at all, and none
+of which this service knows about. `preload` is recorded in the browsers
+themselves and takes months to undo, which makes it a decision about the
+domain rather than about this application. A deployment that wants either
+has a proxy in front of it and can say so there, where whoever sets it owns
+the whole domain.
+
+**What holds it.** Four tests in
+`tests/unit/web/test_middleware/test_security_headers.py`, and each half of
+the condition has its own: sending the header unconditionally reddens the
+two that check it is absent, and never sending it reddens the two that
+check it is present.
+
+
+### A deployed profile allows no origin it was not given
+
+**Decided** (2026-08-30): `CORS_ORIGINS` defaults to `[]` in `staging` and
+`production`. The base default, `http://localhost:5000`, stays where it
+belongs — on the profiles served from a laptop.
+
+**What the inherited default did.** Nothing asked a deployment to revisit
+it. The profile refuses to start without five values and this was not among
+them, so a service on a real domain answered, measured:
+
+```
+Origin http://localhost:5000     -> Allow-Origin: http://localhost:5000
+                                    Allow-Credentials: true
+Origin https://maizlink.example  -> no CORS headers
+Origin https://evil.example      -> no CORS headers
+```
+
+The allowance served nobody. The service's own pages are same-origin and
+consult it never; what it did allow was a page opened on that port, on any
+visitor's machine, to send requests carrying that visitor's cookies and read
+the answers back. Unsafe methods still meet CSRF, so the reach is reading —
+which for this service includes an account's own links and statistics.
+
+**Why empty is not closed.** `csrf.py` adds `BASE_URL` to the origins it
+admits, so forms keep working with nothing named. Measured with
+`CORS_ORIGINS` empty and `DOMAIN=maizlink.example`: a signed-in form post
+from `https://maizlink.example` answered 201, the same post from
+`https://evil.example` answered 403. A deployment with a separate front-end
+names its origin the way it names every other setting.
+
+**What holds it.** `test_deployed_profiles_name_no_origin.py`, which asks
+both deployed profiles and checks the base one still names the loopback —
+the default was never the defect, inheriting it was.
+
+### An empty proxy list is said out loud, not refused
+
+**Decided** (2026-08-30): a profile that is neither `DEBUG` nor `TESTING`
+warns at startup when `TRUSTED_PROXIES` is empty. It still starts.
+
+**Why not a refusal.** The empty value has two readings and the value
+cannot tell them apart: "this service is reached directly", which is a real
+deployment and correctly configured, and "there is a proxy in front and
+nobody named it", which is the one that costs. Refusing would stop the
+first to catch the second.
+
+**What the second one costs.** `get_client_ip()` falls back to the
+connecting address, which behind a balancer is the balancer, and both the
+guest quota and the rate limiter count by it. Measured with
+`GUEST_LINK_LIMIT=3`, six visitors from six addresses through one proxy:
+empty gave `201, 201, 201, 429, 429, 429` — the fourth visitor refused on
+his first link — and `TRUSTED_PROXIES=['10.0.0.1']` gave six creations. The
+service looks healthy throughout; the quota is spent by strangers.
+
+**Why the condition is not the profile's name.** A configuration handed to
+`create_app` as an object carries no `ENV` attribute, so `env` there is the
+string `custom` for every caller that builds its configuration in code —
+which is every test and any deployment that does the same. A check written
+against `production` and `staging` would have been silent in exactly those
+places. "Deployed" is read as *neither DEBUG nor TESTING*, the same way
+`_deployed_backend_errors` reads it.
+
+**What holds it.** `test_the_empty_proxy_list_is_said_out_loud.py`. Both
+halves of the condition have a test: warning unconditionally reddens the
+local-profile check, warning never reddens the deployed one.

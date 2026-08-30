@@ -434,6 +434,28 @@ class BaseConfig:
     Affects generation of BASE_URL when DOMAIN is set.
     """
 
+    HSTS_MAX_AGE: int = env_int("HSTS_MAX_AGE", 31536000)
+    """
+    Seconds a browser should remember to reach this service over TLS only.
+
+    Read only where ``USE_HTTPS`` is on, so a development run on plain HTTP
+    never sends the header whatever this says. A year is the value the
+    header is worth sending at all: the point of it is the *first* request
+    of a later visit, which is the one a network can still redirect, and a
+    short window closes that only for people who came back this week.
+
+    ``0`` switches it off, which is the setting for a deployment whose
+    reverse proxy sends the header itself -- two ``Strict-Transport-Security``
+    headers are not additive, and the browser reads the first.
+
+    Deliberately without ``includeSubDomains`` and without ``preload``.
+    Both reach past this service: the first speaks for every sibling on the
+    domain, several of which may not have TLS at all, and the second is
+    recorded in the browsers themselves and takes months to undo. A
+    deployment that wants either has a proxy in front of it and can say so
+    there, where the person setting it owns the whole domain.
+    """
+
     DOMAIN: Optional[str] = env_str("DOMAIN")
     """
     Public domain name of the service (e.g., "short.example.com").

@@ -139,8 +139,15 @@
             <p>{% trans link=docs %}No SDK and no key ceremony. The full description lives at {{ link }}.{% endtrans %}</p>
             {# `white-space: pre` holds this block, so the line breaks and
                the indentation below are the ones that reach the screen --
-               nothing here may be reflowed for tidiness. #}
-            <div class="code-block"><span class="c-dim">$</span> <span class="c-cmd">curl</span> <span class="c-flag">-X</span> <span class="c-cmd">POST</span> <span class="c-val">{{ request.url_root }}api/v1/shorten</span> <span class="c-dim">\</span>
+               nothing here may be reflowed for tidiness.
+
+               The address comes from `BASE_URL`, not from `request.url_root`.
+               Behind a TLS-terminating proxy the request this process sees
+               arrives over plain HTTP, so `url_root` printed `http://` under
+               a service reached over `https://` -- and this block is meant to
+               be copied. `rstrip` because `BASE_URL` ends with a slash only
+               when it is built from HOST:PORT. #}
+            <div class="code-block"><span class="c-dim">$</span> <span class="c-cmd">curl</span> <span class="c-flag">-X</span> <span class="c-cmd">POST</span> <span class="c-val">{{ config.BASE_URL.rstrip('/') }}/api/v1/shorten</span> <span class="c-dim">\</span>
      <span class="c-flag">-H</span> <span class="c-val">'Content-Type: application/json'</span> <span class="c-dim">\</span>
      <span class="c-flag">-d</span> <span class="c-val">'{"url": "https://example.com/…"}'</span></div>
         </div>
