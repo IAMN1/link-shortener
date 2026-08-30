@@ -1,0 +1,39 @@
+# Dependabot opens a pull request per update, and every one of them runs
+# the full workflow -- the suite twice, the linters, the coverage floor.
+# That is the point: an upgrade arrives already measured against this
+# project rather than as a version bump to be trusted.
+#
+# Note for whoever merges one: Dependabot writes `uv.lock` and leaves
+# `requirements.txt` alone, and the Dockerfile installs from the second.
+# The workflow's "Guard requirements.txt against uv.lock" step fails in
+# that case rather than letting the image go stale, and the fix is to
+# re-run the export it prints.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    # Grouped, because thirty direct dependencies at one PR each turns a
+    # useful signal into a feed. A major version is left on its own: it is
+    # the one that needs reading rather than merging.
+    groups:
+      python-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "build(deps)"
+      prefix-development: "build(deps-dev)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "build(ci)"
