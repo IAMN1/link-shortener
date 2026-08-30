@@ -5,6 +5,7 @@ from flask import Flask, Response, g, request
 
 from link_shortener.application import Logger
 from link_shortener.web.middleware.hooks import response_hook
+from link_shortener.web.security.context import get_client_ip
 
 
 class RequestLoggingMiddleware:
@@ -50,7 +51,17 @@ class RequestLoggingMiddleware:
                 "Request started",
                 method=request.method,
                 path=request.path,
-                remote_addr=request.remote_addr,
+                # The same address every other line of this request carries.
+                # `request.remote_addr` is the connection's far end, which
+                # behind a proxy is the proxy: every "Request started" line
+                # would name one address while the use-case lines beside it,
+                # bound from `RequestContext`, name the client -- one field,
+                # one file, one request, two answers. It also splits a search:
+                # `GET /api/v1/journals/application?remote_addr=` matches
+                # `remote_addr` exactly, so an investigation into one client
+                # would be handed the work and not the requests that carried
+                # it. With `TRUSTED_PROXIES` empty this is `request.remote_addr`.
+                remote_addr=get_client_ip(),
                 request_id=g.request_id,
                 user_agent=user_agent
             )

@@ -2918,6 +2918,41 @@ the Google Python Style Guide (3.8.2) asks it to "describe the contents and
 usage of the module". Both are about what is inside. Neither asks who is
 outside.
 
+### One request names one address, in every line it writes
+
+**Decided** (2026-08-30): `RequestLoggingMiddleware` writes `remote_addr`
+from `get_client_ip()` — the same function `RequestContext` asks, and the
+same one the rate limiter counts by. It had been writing
+`request.remote_addr`, the far end of the connection.
+
+**Why.** Behind a proxy those are different addresses, and both were being
+written into one field of one file. Measured on a running instance with
+`TRUSTED_PROXIES=127.0.0.1`, one request carrying
+`X-Forwarded-For: 198.51.100.7`, two lines of `application.log` under
+request id `798a6e8b-1`:
+
+```
+{"method": "GET", "path": "/api/v1/stats", "remote_addr": "127.0.0.1", "request_id": "798a6e8b-1", ..., "event": "Request started"}
+{"request_id": "798a6e8b-1", "remote_addr": "198.51.100.7", ..., "request_path": "/api/v1/stats", ..., "event": "Stats retrieved"}
+```
+
+The same request, after the change: `198.51.100.7` in both.
+
+**What it cost beyond the reading.** `GET /api/v1/journals/application`
+matches `remote_addr` exactly — a deliberate decision, recorded above under
+*The journals can be searched*. So a search for a client's address returned
+the work its requests did and not the requests that carried it, while a
+search for the proxy's own address returned everything that had ever
+arrived. Half a trail is worse than none: it looks like the whole one.
+
+**What is given up.** The proxy's address is no longer anywhere in the
+application journal, so a `TRUSTED_PROXIES` naming the wrong balancer is
+found by reading the configuration rather than the log. That is the cheaper
+loss: the misconfiguration is static and visible in one file, whereas the
+addresses it corrupts are one per request and are what an incident is
+reconstructed from. With `TRUSTED_PROXIES` empty — the default — the two
+expressions return the same value and nothing about the journal changes.
+
 ## Known limits
 
 Things that are wrong, understood, and deliberately left. Each says what it

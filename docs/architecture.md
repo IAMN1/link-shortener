@@ -376,7 +376,9 @@ stateDiagram-v2
 
 - **X-Forwarded-For** is read only from an address in `TRUSTED_PROXIES`, and
   the rightmost entry is taken — the one the proxy itself appended.
-- **The rate limiter** counts by that same `get_client_ip()`.
+- **The rate limiter** counts by that same `get_client_ip()`, and so do the
+  journals: the line opening a request and the audit line beside it name
+  one address rather than the proxy and the client.
 - **CORS** is confined to the `CORS_ORIGINS` list.
 
 ---
