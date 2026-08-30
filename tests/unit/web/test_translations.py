@@ -19,6 +19,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 
 import pytest
 from babel.messages.mofile import read_mo
@@ -32,6 +33,17 @@ WEB = pathlib.Path(link_shortener.web.__file__).parent
 TRANSLATIONS = WEB / "translations"
 TEMPLATES = WEB / "templates"
 ROOT = WEB.parents[2]
+
+VERSION = tomllib.load((ROOT / "pyproject.toml").open("rb"))["project"]["version"]
+"""
+The project's version, read rather than written here.
+
+It reaches the header of every catalogue through ``pybabel``'s
+``--version``, and a copy of it kept in this file would go on stating the
+version of whichever release it was written for. Only the header carries
+it, and this test compares the messages rather than the header -- so a
+stale copy would have gone on passing while saying something false.
+"""
 """The project root -- ``src/link_shortener/web`` is three levels down."""
 
 LANGUAGES = ("ru", "zh")
@@ -207,7 +219,7 @@ class TestTheTemplateOnDiskIsCurrent:
             done = subprocess.run(
                 [sys.executable, "-m", "babel.messages.frontend",
                  "extract", "-F", "babel.cfg", "-o", str(fresh),
-                 "--project=link-shortener", "--version=0.1.0", "."],
+                 "--project=link-shortener", f"--version={VERSION}", "."],
                 cwd=ROOT, capture_output=True, text=True,
             )
             assert done.returncode == 0, done.stderr
@@ -229,6 +241,36 @@ class TestTheTemplateOnDiskIsCurrent:
 
         assert not new, f"marked but never extracted -- re-run `pybabel extract`: {new}"
         assert not gone, f"extracted but no longer in any template: {gone}"
+
+    @pytest.mark.parametrize(
+        "catalogue",
+        [
+            "messages.pot",
+            "ru/LC_MESSAGES/messages.po",
+            "zh/LC_MESSAGES/messages.po",
+        ],
+    )
+    def test_every_catalogue_states_the_project_version(self, catalogue):
+        """The header names the version the project is actually at.
+
+        ``pybabel extract`` writes the version it is given into the
+        template, and ``pybabel update`` then rewrites the entries of each
+        catalogue and leaves its header untouched. So a release moves the
+        template and leaves both translations behind, and nothing says so:
+        ``gettext`` reads the compiled ``.mo``, where the header answers no
+        question anybody asks.
+
+        Measured rather than assumed -- it happened while the version was
+        being moved from 0.1.0 to 0.9.0, and the header was the last place
+        to find out.
+        """
+        header = (TRANSLATIONS / catalogue).read_text(encoding="utf-8")[:2000]
+
+        assert f"Project-Id-Version: link-shortener {VERSION}" in header, (
+            f"{catalogue} does not state {VERSION}; `pybabel update` leaves "
+            "the header alone, so it has to be rewritten -- CONTRIBUTING.md "
+            "carries the command"
+        )
 
 
 # ==========================================================================

@@ -43,7 +43,7 @@ and `isort` 421. Neither of those is declared any more; running one is not
 formatting a change, it is reformatting the project.
 
 ```bash
-uv run pytest tests/                      # 4219 tests, 88% coverage floor
+uv run pytest tests/                      # 4222 tests, 88% coverage floor
 uv run flake8 src tests
 uv run pylint src                         # floor 9.0
 uv run bandit -r src -q
@@ -69,12 +69,20 @@ edited string means the catalogues have to be brought along with it:
 
 ```bash
 D=src/link_shortener/web/translations
+V=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
 uv run pybabel extract -F babel.cfg -o $D/messages.pot \
-    --project=link-shortener --version=0.1.0 .
+    --project=link-shortener --version="$V" .
 uv run pybabel update -i $D/messages.pot -d $D          # merge, keeping what exists
 # …fill in the new msgstr in $D/ru/LC_MESSAGES/messages.po and zh/…
+sed -i '' "s/^\"Project-Id-Version: link-shortener .*/\"Project-Id-Version: link-shortener $V\\\\n\"/" \
+    $D/*/LC_MESSAGES/messages.po                        # update writes the .pot header, not these
 uv run pybabel compile -d $D                            # .mo is what gettext reads
 ```
+
+The `sed` is not decoration. `pybabel update` rewrites the entries of a
+catalogue and leaves its header alone, so after a release the `.pot` says
+the new version and both `.po` files still say the old one — and nothing
+reports it, because `gettext` reads the `.mo` and never looks at that line.
 
 `update`, never `init` — `init` starts an empty catalogue and throws away
 every translation already made. `init` is only for a language that has none.
