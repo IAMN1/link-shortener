@@ -12,6 +12,9 @@ from link_shortener.infrastructure.database.models.permission_model import Permi
 from link_shortener.infrastructure.database.models.role_model import RoleModel
 from link_shortener.infrastructure.database.models.base import Base
 from link_shortener.infrastructure.database.models.user_model import UserModel
+from link_shortener.infrastructure.database.repositories.sql_time import (
+    as_utc
+)
 from link_shortener.application import Logger
 from link_shortener.domain import (
     EmailAlreadyRegisteredError, Role, RoleNotFoundError, User,
@@ -533,8 +536,17 @@ class SQLAlchemyUserRepository(UserRepository):
             roles=roles,
             is_active=model.is_active,
             email_verified=model.email_verified,
-            created_at=model.created_at,
-            last_login=model.last_login,
+            # Restored to UTC on the way out, the way the link
+            # repository restores its three. SQLite stores no offset, so
+            # a moment read back from it is naive -- and this one is not
+            # merely compared, it is serialised: `UserResponseSchema`
+            # printed `2026-08-30T17:10:09.606313` for an account while
+            # `POST /api/v1/shorten` printed `...+00:00` for a link made
+            # in the same second, one API answering in two shapes. The
+            # schema's own docstring says it is handed "a timezone-aware
+            # datetime or None".
+            created_at=as_utc(model.created_at),
+            last_login=as_utc(model.last_login) if model.last_login else None,
         )
 
     def _domain_to_orm_fields(self, user: User, model: UserModel) -> UserModel:

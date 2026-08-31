@@ -33,6 +33,9 @@ from link_shortener.web.middleware.rate_limit import (
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
 from link_shortener.web.middleware.security_headers import SecurityHeadersMiddleware
 from link_shortener.web.security.context import create_request_context
+from link_shortener.infrastructure.database.models.role_model import (
+    RoleModel
+)
 from link_shortener.web.security.template_access import register_template_access
 
 RBAC_TABLES = ("roles", "permissions")
@@ -42,6 +45,33 @@ Their absence is the ordinary state of a database nobody has migrated yet,
 which is a step the documented setup goes through on purpose: create, then
 migrate, then seed.
 """
+
+
+def _roles_are_present(db_manager) -> bool:
+    """
+    Say whether the roles table holds anything at all.
+
+    Asked after a losing insert, to tell the two outcomes apart: a race
+    the winner completed leaves the whole set committed, and every other
+    integrity failure leaves nothing -- each worker seeds in one
+    transaction, so there is no half-written state for this to read
+    wrongly.
+
+    Args:
+        db_manager: Database manager to ask.
+
+    Returns:
+        True when at least one role is stored. False when none is, and
+        also when the question itself cannot be answered -- a database
+        that will not answer is not evidence that another process
+        succeeded, and the louder of the two lines is the safe one to
+        print.
+    """
+    try:
+        with db_manager.session() as session:
+            return session.query(RoleModel).first() is not None
+    except Exception:
+        return False
 
 
 def _seed_base_roles_if_ready(container) -> None:
@@ -89,10 +119,27 @@ def _seed_base_roles_if_ready(container) -> None:
         # has every reason to think the roles are missing -- and the fix for
         # missing roles, running `flask db load-base-roles`, is a step they
         # then take for no reason.
-        logger.info(
-            "Roles were seeded by another process; this one rolled back",
-            detail=str(clash.orig) if clash.orig else str(clash),
-        )
+        #
+        # Asked rather than assumed, because the sentence is a claim about
+        # another process and this one cannot see it. Every other way to
+        # meet the unique index leaves the table empty instead: a name
+        # written twice in the RBAC file is refused by the loader before
+        # any of this, and an entry missing a NOT NULL column arrives
+        # here wearing the race's clothes -- measured, `NOT NULL
+        # constraint failed: permissions.resource`, nought roles, and an
+        # info line saying somebody else had done the seeding.
+        detail = str(clash.orig) if clash.orig else str(clash)
+        if _roles_are_present(db_manager):
+            logger.info(
+                "Roles were seeded by another process; this one rolled back",
+                detail=detail,
+            )
+        else:
+            logger.warning(
+                "AUTO_SEED_ROLES failed and the roles table is empty",
+                error=detail,
+                next_step="flask db load-base-roles",
+            )
     except Exception as e:
         logger.warning("AUTO_SEED_ROLES failed", error=str(e))
 

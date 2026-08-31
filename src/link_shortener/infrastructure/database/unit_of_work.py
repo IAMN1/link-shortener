@@ -150,6 +150,13 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         self._email_verifications = None
         self._password_resets = None
         self._link_visits = None
+        # The ninth, and it was the one left out: every other accessor
+        # refuses after the context closes, while `security_events`
+        # returned a repository still bound to the closed session --
+        # measured. A write through it would open a transaction nobody
+        # commits and drop a security event in silence, which is the
+        # one journal that exists to have no silences in it.
+        self._security_events = None
 
     # ------------------------------------------------------------------
     # Explicit commit / flush / rollback

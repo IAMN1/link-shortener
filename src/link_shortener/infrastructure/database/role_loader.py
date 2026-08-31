@@ -132,9 +132,15 @@ class RoleLoader:
         Returns:
             What the pass did, including which roles it deliberately did
             not touch.
+
+        Raises:
+            ValueError: If the file names the same permission or role
+                twice.
         """
         with open(file_path, "r") as f:
             config = yaml.safe_load(f)
+
+        self._refuse_duplicate_names(config, file_path)
 
         summary = LoadSummary()
 
@@ -163,6 +169,46 @@ class RoleLoader:
             )
 
         return summary
+
+    @staticmethod
+    def _refuse_duplicate_names(config: Dict[str, Any], file_path: Path) -> None:
+        """
+        Refuse a file that names the same permission or role twice.
+
+        Both names are unique in the schema, and the upsert pass looks a
+        name up before inserting it -- but sessions are built with
+        ``autoflush=False``, so the second copy's lookup does not see the
+        first one pending and adds a second row. The clash therefore
+        surfaces at the flush, as an ``IntegrityError`` naming an index,
+        after the whole seed has been assembled.
+
+        Which is the wrong place to find out, because the seed also runs
+        at start-up in every worker, where an ``IntegrityError`` already
+        means something else entirely: two workers racing to insert the
+        same permission, an expected outcome that is logged and moved
+        past. A duplicated name in the file arrives there wearing that
+        outcome's clothes -- the deployment comes up with an empty
+        ``roles`` table, answering 401 to anonymous shortening, while its
+        log says another process did the seeding.
+
+        Args:
+            config: The parsed YAML document.
+            file_path: Where it was read from, so the message names it.
+
+        Raises:
+            ValueError: If either section repeats a name.
+        """
+        for section, key in (("permissions", "name"), ("roles", "name")):
+            seen = set()
+            for entry in config.get(section) or []:
+                name = entry.get(key)
+                if name in seen:
+                    raise ValueError(
+                        f"{file_path} names the {section[:-1]} {name!r} "
+                        "more than once; each name is unique in the "
+                        "database, so the second one cannot be stored"
+                    )
+                seen.add(name)
 
     def _upsert_permission(
         self,

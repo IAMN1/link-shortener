@@ -53,12 +53,27 @@ class _Logger:
         self.said.append(("exception", message, kwargs))
 
 
-def _container(logger):
-    """A container whose schema is in place and whose session works."""
+def _container(logger, roles_present=True):
+    """A container whose schema is in place and whose session works.
+
+    Args:
+        logger: Logger the code under test will be handed.
+        roles_present: What the ``roles`` table answers afterwards. This
+            is the fact that tells a lost race from a seed that failed:
+            the winner of a race commits the whole set, and every other
+            way to meet the constraint leaves the table empty. Spelled
+            out here rather than left to the mock, which answers every
+            query with an object and would make the happy branch pass
+            whatever the code asked.
+    """
     container = MagicMock()
     container.get_logger.return_value = logger
     manager = MagicMock()
     manager.missing_tables.return_value = []
+    session = manager.session.return_value.__enter__.return_value
+    session.query.return_value.first.return_value = (
+        object() if roles_present else None
+    )
     container.get_db_manager.return_value = manager
     return container
 
@@ -103,6 +118,107 @@ class TestTheLoserOfTheRaceIsNotReportedAsAFailure:
 
         detail = [kwargs for level, _, kwargs in logger.said if level == "info"]
         assert detail and "permissions_name_key" in str(detail[0]), detail
+
+
+class TestAnIntegrityFailureThatIsNotARaceIsNotCalledOne:
+    """
+    The sentence names another process, and this one cannot see it.
+
+    A race is not the only way to reach the unique index. An RBAC entry
+    missing a NOT NULL column gets there too -- measured: ``NOT NULL
+    constraint failed: permissions.resource``, nought roles stored, and
+    an info line saying somebody else had done the seeding. The operator
+    reading it has been told the opposite of what happened, on a first
+    deployment whose service then answers 401 to anonymous shortening.
+
+    What tells the two apart is the table itself. Each worker seeds the
+    whole set in one transaction, so a race the winner completed leaves
+    every role committed, and a failure leaves none.
+    """
+
+    def _seed_failing_with(self, clash, roles_present):
+        """Run the start-up seeding against a failure and a table state.
+
+        Args:
+            clash: The exception seeding raises.
+            roles_present: Whether the table holds roles afterwards.
+
+        Returns:
+            The logger, carrying what was said.
+        """
+        logger = _Logger()
+        with patch.object(app_factory, "seed_base_roles", side_effect=clash):
+            app_factory._seed_base_roles_if_ready(
+                _container(logger, roles_present=roles_present)
+            )
+        return logger
+
+    def test_an_empty_table_is_reported_as_a_failure(self):
+        clash = IntegrityError(
+            "INSERT INTO permissions",
+            {},
+            Exception("NOT NULL constraint failed: permissions.resource"),
+        )
+
+        logger = self._seed_failing_with(clash, roles_present=False)
+
+        assert "warning" in _levels(logger), (
+            f"an empty roles table was reported as a race: {logger.said}"
+        )
+
+    def test_the_failure_names_the_command_that_fixes_it(self):
+        """
+        A warning that only says something went wrong leaves the reader
+        where the misleading info line left them.
+        """
+        clash = IntegrityError("INSERT", {}, Exception("NOT NULL"))
+
+        logger = self._seed_failing_with(clash, roles_present=False)
+
+        said = [kwargs for level, _, kwargs in logger.said if level == "warning"]
+        assert said and "load-base-roles" in str(said[0]), said
+
+    def test_a_seeded_table_is_still_read_as_a_race(self):
+        """
+        The other half. The demotion this clause exists for must survive:
+        four workers against an empty database, three of them losing, and
+        no warning on a first deployment that went perfectly well.
+        """
+        clash = IntegrityError(
+            "INSERT INTO permissions",
+            {},
+            Exception('duplicate key value violates unique constraint'),
+        )
+
+        logger = self._seed_failing_with(clash, roles_present=True)
+
+        assert "warning" not in _levels(logger), logger.said
+
+    def test_a_database_that_will_not_answer_warns_rather_than_reassures(self):
+        """
+        The question can fail too, and silence is not evidence that
+        another process succeeded.
+        """
+        logger = _Logger()
+        container = _container(logger)
+        manager = container.get_db_manager.return_value
+        working = manager.session.return_value
+        # The first call is the seeding itself and has to work, or the
+        # run never reaches the clause under test -- written as a blanket
+        # `side_effect` this test broke the seeding instead and passed on
+        # the warning from the generic handler, proving nothing.
+        manager.session.side_effect = [
+            working, RuntimeError("connection is closed")
+        ]
+        clash = IntegrityError("INSERT", {}, Exception("unique"))
+
+        with patch.object(app_factory, "seed_base_roles", side_effect=clash):
+            app_factory._seed_base_roles_if_ready(container)
+
+        assert manager.session.call_count == 2, (
+            "the verification never asked the database"
+        )
+        assert "warning" in _levels(logger), logger.said
 
 
 class TestARealFailureStillWarns:

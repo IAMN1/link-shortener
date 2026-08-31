@@ -389,3 +389,88 @@ class TestWhatUpdateExistingActuallyUpdates:
                 name="link:create"
             ).one()
             assert stored.description == "as it was"
+
+
+class TestAFileThatNamesSomethingTwiceIsRefusedByName:
+    """
+    A duplicated name in the RBAC file used to be told as somebody else's
+    news.
+
+    The upsert pass looks a name up before inserting it, but sessions are
+    built with ``autoflush=False``, so the second copy's lookup does not
+    see the first one pending: two rows are added and the unique index
+    refuses them at the flush -- after the whole seed is assembled, and
+    as an ``IntegrityError``.
+
+    That is exactly the exception start-up seeding already has a meaning
+    for. Every worker seeds at start-up, two of them race for the same
+    permission, and the loser's ``IntegrityError`` is logged as the
+    expected outcome it is. A duplicated name arrives wearing those
+    clothes: the seed rolls back whole, the deployment comes up with an
+    empty ``roles`` table and answers 401 to anonymous shortening, and
+    the only line in the log says another process did the seeding.
+
+    Measured before the guard: 0 roles and 0 permissions in the database,
+    ``UNIQUE constraint failed: permissions.name`` as the only evidence.
+    """
+
+    def _file_with_a_repeated(self, section, tmp_path):
+        """Write the shipped RBAC file with one entry of ``section`` twice.
+
+        Args:
+            section: Either ``"permissions"`` or ``"roles"``.
+            tmp_path: Directory to write the copy into.
+
+        Returns:
+            Path to the copy.
+        """
+        import yaml as _yaml
+
+        config = _yaml.safe_load(DEFAULT_RBAC_CONFIG_PATH.read_text())
+        config[section].append(dict(config[section][0]))
+        path = tmp_path / f"repeated_{section}.yaml"
+        path.write_text(_yaml.safe_dump(config))
+        return path
+
+    @pytest.mark.parametrize("section", ["permissions", "roles"])
+    def test_the_repeated_name_is_named(self, fresh_db, tmp_path, section):
+        """
+        The message has to carry the name, because the file ships with
+        dozens of entries and the operator has to find the one.
+        """
+        path = self._file_with_a_repeated(section, tmp_path)
+        repeated = __import__("yaml").safe_load(path.read_text())[section][0]
+
+        with fresh_db.session() as session:
+            with pytest.raises(ValueError) as refusal:
+                RoleLoader(session).load_from_yaml(path)
+
+        assert repeated["name"] in str(refusal.value)
+
+    @pytest.mark.parametrize("section", ["permissions", "roles"])
+    def test_it_is_not_reported_as_a_lost_race(
+        self, fresh_db, tmp_path, section
+    ):
+        """
+        The distinction that matters: a race is an ``IntegrityError`` and
+        is passed over in silence at start-up, so this must not be one.
+        """
+        from sqlalchemy.exc import IntegrityError
+
+        path = self._file_with_a_repeated(section, tmp_path)
+
+        with fresh_db.session() as session:
+            with pytest.raises(ValueError) as refusal:
+                RoleLoader(session).load_from_yaml(path)
+
+        assert not isinstance(refusal.value, IntegrityError)
+
+    def test_the_shipped_file_repeats_nothing(self, fresh_db):
+        """
+        The other half, and the one that would fail loudest: the guard
+        must not refuse the file the service actually ships with.
+        """
+        with fresh_db.session() as session:
+            seed_base_roles(session)
+
+        assert _role_permission_counts(fresh_db).get("admin", 0) > 0
