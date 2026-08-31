@@ -1,10 +1,14 @@
 # Docker Compose for integration and E2E tests.
 # Starts real PostgreSQL and Redis for level 2/3 testing.
 #
-# Usage:
-#   docker compose -f dockers/docker-compose.test.yml up -d
+# Usage. The first and third lines are optional: `tests/support/real_stack.py`
+# brings this file up on its own, which is what `docs/testing.md` means by
+# "services for 2b start themselves". Run them by hand only to keep the
+# containers between runs, or to be rid of them afterwards.
+#
+#   docker compose -f dockers/docker-compose.test.yml up -d      # optional
 #   uv run pytest tests/integration/docker/ -v
-#   docker compose -f dockers/docker-compose.test.yml down -v
+#   docker compose -f dockers/docker-compose.test.yml down -v    # optional
 
 # A project name of its own, so the test stack does not collide with the
 # main docker-compose.yml (see the comment there).

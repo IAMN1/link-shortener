@@ -388,6 +388,15 @@ services:
         redis_broker:
           condition: service_healthy
           required: false
+        # The same wait the application has, and for the same reason: this
+        # worker writes -- click counts, the roll-ups, the mail records --
+        # so it must not run against a schema that has not been applied.
+        # It was missing here while the guide and its diagram both said
+        # `migrations` had to exit 0 "before `app` and `celery_worker`".
+        # Measured on a run whose migration failed: `app` stayed `Created`
+        # and the worker was `Up` beside it.
+        migrations:
+          condition: service_completed_successfully
       restart: unless-stopped
       environment:
         # Settings shared with the application

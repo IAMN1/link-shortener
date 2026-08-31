@@ -57,6 +57,12 @@ DOCKER_DIFFERS = {
     "REDIS_ENABLED": "true",
     "CELERY_ENABLED": "true",
     "DOMAIN": "localhost:5000",
+    # The ninth. The docker template ships `logs` in COMPOSE_PROFILES,
+    # which brings up the rotator, and a rotator needs files to rotate --
+    # so this half of the pair is stated here rather than left to
+    # `FLASK_ENV=development`, whose default is false. The local template
+    # ships no profiles that would care, and leaves it to the profile.
+    "LOG_TO_FILE": "true",
 }
 
 
@@ -210,6 +216,27 @@ class TestTheDockerTemplateIsCoherentWithItself:
                 "COMPOSE_PROFILES brings up the broker and CELERY_ENABLED "
                 "keeps the work inline, so the queue container and the "
                 "worker container both run for nobody."
+            )
+
+    def test_the_logs_profile_and_the_switch_agree(self, docker):
+        """
+        The fourth pair, and the one that was shipped broken.
+
+        `logs` brings up the rotator; `LOG_TO_FILE` is what makes the
+        files it rotates. The template shipped the profile and left the
+        switch to `FLASK_ENV=development`, whose default is false --
+        measured on a live walk of that stack: the rotator came up and
+        announced "logrotate will follow: application.log, error.log,
+        audit.log", the log directory held only its own state file, and
+        all three journal pages answered empty for every role entitled
+        to read them, on a stack whose journals are a headline feature.
+        """
+        profiles = docker["COMPOSE_PROFILES"][1].split(",")
+        if "logs" in profiles:
+            assert docker.get("LOG_TO_FILE", (None, ""))[1] == "true", (
+                "COMPOSE_PROFILES brings up the rotator and LOG_TO_FILE "
+                "does not write the files it rotates, so the container "
+                "runs for nobody and every journal reads empty."
             )
 
     def test_the_env_file_names_itself(self, docker):
