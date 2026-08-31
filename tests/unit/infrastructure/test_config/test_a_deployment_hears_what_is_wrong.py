@@ -693,6 +693,98 @@ class TestTheLoggedUrlSaysWhetherAPasswordWasSent:
         assert "s3cret" not in shown, shown
 
 
+class TestTheOtherPlaceAPasswordCanBeWritten:
+    """
+    libpq takes the password in two places and this masked one of them.
+
+    ``postgresql://user:pw@host/db`` is the spelling SQLAlchemy parses
+    into ``URL.password``, and ``hide_password`` covers it. The other is
+    a connection keyword in the query string --
+    ``postgresql://user@host/db?password=s3cret`` -- which is a working
+    credential and not a decoration: measured through
+    ``create_connect_args``, psycopg is handed ``password='s3cret'``.
+
+    Rendered by ``hide_password`` alone it came out verbatim, and this
+    value is not kept to the terminal: ``app_factory`` writes it into the
+    startup line, so it lands in ``application.log``, which is served
+    under ``logs:view`` -- a permission ``auditor`` holds, in the journal
+    this project's own rule says carries no secrets. The one place that
+    promises the result is safe to print has to keep that promise for
+    both spellings.
+    """
+
+    QUERY_PASSWORD = (
+        "postgresql+psycopg://shortener@db.internal:5432/shortener"
+        "?password=s3cret&sslmode=require"
+    )
+
+    def test_a_password_in_the_query_is_masked(self, monkeypatch):
+        configure(monkeypatch, DATABASE_URL=self.QUERY_PASSWORD)
+
+        shown = StagingConfig().display_database_url
+
+        assert "s3cret" not in shown, shown
+        assert "***" in shown, shown
+
+    def test_an_ssl_key_password_is_masked_too(self, monkeypatch):
+        """The same keyword family, and the same consequence."""
+        configure(
+            monkeypatch,
+            DATABASE_URL=(
+                "postgresql+psycopg://shortener@db.internal:5432/shortener"
+                "?sslpassword=k3ypass"
+            ),
+        )
+
+        shown = StagingConfig().display_database_url
+
+        assert "k3ypass" not in shown, shown
+
+    def test_the_rest_of_the_query_is_left_alone(self, monkeypatch):
+        """
+        The other half: masking must not eat the settings an operator
+        reads this line to check.
+        """
+        configure(monkeypatch, DATABASE_URL=self.QUERY_PASSWORD)
+
+        shown = StagingConfig().display_database_url
+
+        assert "sslmode=require" in shown, shown
+        assert "db.internal:5432" in shown, shown
+
+    def test_a_url_with_nothing_to_hide_is_unchanged(self, monkeypatch):
+        """And a query carrying no credential is printed as it stands."""
+        plain = (
+            "postgresql+psycopg://shortener@db.internal:5432/shortener"
+            "?sslmode=require&connect_timeout=5"
+        )
+        configure(monkeypatch, DATABASE_URL=plain)
+
+        shown = StagingConfig().display_database_url
+
+        assert "***" not in shown, shown
+        assert "connect_timeout=5" in shown, shown
+
+    def test_the_mask_reads_the_same_in_both_places(self, monkeypatch):
+        """
+        One line should not be masked two ways. Rendered without care the
+        query mask arrives percent-encoded, as ``%2A%2A%2A`` beside a
+        plain ``:***@``.
+        """
+        configure(
+            monkeypatch,
+            DATABASE_URL=(
+                "postgresql+psycopg://shortener:userinfo_pw@db.internal"
+                ":5432/shortener?password=query_pw"
+            ),
+        )
+
+        shown = StagingConfig().display_database_url
+
+        assert "%2A" not in shown, shown
+        assert shown.count("***") == 2, shown
+
+
 class TestThePoolFollowsTheBackendThatWillBeOpened:
     """``DATABASE_TYPE`` decided this too, and it defaults to sqlite.
 
@@ -869,3 +961,56 @@ class TestTheRefusalIsVisibleBeforeTheTraceback:
         ConfigFactory.create_config("staging")
 
         assert capsys.readouterr().err == ""
+
+
+class TestTheLifetimeHstsIsGivenIsOneABrowserReads:
+    """
+    ``HSTS_MAX_AGE`` was the one new integer nothing checked.
+
+    Its failure is entirely silent. ``max-age`` is ``delta-seconds`` in
+    RFC 6797, which is unsigned, so a browser handed ``max-age=-1``
+    discards the whole header rather than reading it as "off" -- and the
+    deployment that wrote it is left with no HSTS while its configuration
+    says a year. Nothing in the response, the log, or the start-up says
+    so: the header is sent, and it is sent void.
+
+    Zero is deliberately *not* refused. It is the documented way to
+    silence this header behind a proxy that sends its own, and two
+    ``Strict-Transport-Security`` headers are not additive.
+    """
+
+    @pytest.mark.parametrize("profile_cls", DEPLOYED_PROFILES.values())
+    def test_a_negative_lifetime_is_refused(self, monkeypatch, profile_cls):
+        """The value a browser cannot read must not reach a response."""
+        errors = validation_errors(
+            monkeypatch, profile_cls, HSTS_MAX_AGE="-1"
+        )
+
+        assert "HSTS_MAX_AGE" in errors
+
+    @pytest.mark.parametrize("profile_cls", DEPLOYED_PROFILES.values())
+    @pytest.mark.parametrize("value", ["0", "31536000"])
+    def test_a_readable_lifetime_is_accepted(
+        self, monkeypatch, profile_cls, value
+    ):
+        """
+        The other half. Zero is the switch-off behind a proxy of its own,
+        and a year is the default -- refusing either would be a worse
+        fault than the one being closed.
+        """
+        errors = validation_errors(
+            monkeypatch, profile_cls, HSTS_MAX_AGE=value
+        )
+
+        assert "HSTS_MAX_AGE" not in errors
+
+    def test_the_refusal_says_what_to_write_instead(self, monkeypatch):
+        """
+        An operator reads this line and has to know the bound, not merely
+        that something was wrong.
+        """
+        errors = validation_errors(
+            monkeypatch, ProductionConfig, HSTS_MAX_AGE="-1"
+        )
+
+        assert "HSTS_MAX_AGE must not be negative, got -1" in errors

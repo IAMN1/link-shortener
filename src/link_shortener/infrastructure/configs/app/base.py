@@ -2,6 +2,7 @@ import re
 import secrets
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import quote
 
 from sqlalchemy.engine import URL, make_url
 
@@ -70,6 +71,10 @@ is what every release before this one did everywhere.
 """
 
 
+MASK = "***"
+"""What a masked secret is rendered as, in the userinfo and in the query alike."""
+
+
 def display_url(url: str) -> str:
     """
     Render a database URL with its password masked.
@@ -99,7 +104,39 @@ def display_url(url: str) -> str:
             # "leave this alone", so it returned the empty password
             # unchanged and the mask stayed.
             parsed = parsed._replace(password=None)
-        return parsed.render_as_string(hide_password=True)
+
+        # The renderer masks one place a password can be: the userinfo
+        # component it parsed into ``password``. libpq takes it in a
+        # second, and psycopg is handed it just as readily --
+        # ``...?password=s3cret`` reaches the driver as ``password=``,
+        # measured through ``create_connect_args``. Rendered by
+        # ``hide_password`` alone that spelling came out verbatim, into
+        # the startup line and from there into ``application.log``, which
+        # is read under ``logs:view`` -- a permission `auditor` holds, and
+        # a journal this project's own rule says holds no secrets.
+        #
+        # Masked by key rather than refused at validation, because this
+        # function is the one place that promises the result is safe to
+        # print, and it is called on URLs from several sources.
+        credentials = {
+            name: value for name, value in parsed.query.items()
+            if name.lower().endswith("password")
+        }
+        if not credentials:
+            return parsed.render_as_string(hide_password=True)
+
+        parsed = parsed.set(
+            query={**parsed.query, **dict.fromkeys(credentials, MASK)}
+        )
+        rendered = parsed.render_as_string(hide_password=True)
+
+        # The renderer percent-encodes query values, so the mask arrives
+        # as ``%2A%2A%2A`` and the same line ends up masked two different
+        # ways -- ``:***@`` in the userinfo and that in the query. Put
+        # back here rather than by choosing an alphanumeric mask, because
+        # the two places should read alike and ``***`` is what every other
+        # line in this project prints.
+        return rendered.replace(quote(MASK, safe=""), MASK)
     except Exception:
         # Never let a log line be the thing that stops a command. An
         # unparsable URL has no password to reveal in any recognisable
@@ -1946,6 +1983,13 @@ class BaseConfig:
             ("RECENT_DAYS", self.RECENT_DAYS),
             ("VISIT_RETENTION_DAYS", self.VISIT_RETENTION_DAYS),
             ("SECURITY_EVENT_RETENTION_DAYS", self.SECURITY_EVENT_RETENTION_DAYS),
+            # Non-negative rather than positive: zero is a working setting
+            # here, and the only way to switch the header off behind a proxy
+            # that sends its own. A negative one is the quiet failure --
+            # `max-age` is `delta-seconds` in RFC 6797, so a browser reading
+            # `max-age=-1` discards the whole header and the service is left
+            # with no HSTS at all while its configuration says a year.
+            ("HSTS_MAX_AGE", self.HSTS_MAX_AGE),
         )
         for name, value in non_negative_settings:
             if value < 0:
