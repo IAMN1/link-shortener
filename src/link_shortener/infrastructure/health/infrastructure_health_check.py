@@ -190,13 +190,27 @@ class InfrastructureHealthCheck(HealthCheck):
         #
         # What that costs, said plainly: this call is outside the budget,
         # so a database that hangs rather than refusing holds ``/health``
-        # open. The window is bounded by the memo inside ``check_schema``
-        # -- once the schema has been seen whole the call touches nothing
-        # -- so it exists only before the first success, which is start-up,
-        # when the instance is not serving anyway. Inside the pool the
-        # in-memory case has no answer at all, and a probe that is wrong
-        # about every SQLite deployment is worse than one that can be slow
-        # once.
+        # open for as long as it hangs.
+        #
+        # The memo inside ``check_schema`` bounds that, but only on the
+        # happy path -- it latches on success, and a missing schema is
+        # deliberately asked about again so that a database migrated
+        # while the service runs is noticed. So in the one fault this
+        # check exists to find, the unbounded call is not spent once at
+        # start-up: it is spent on every observation, for as long as the
+        # schema is missing. Measured with a 2 s stub against a 0.5 s
+        # budget: 2.01 s on the first call and 2.01 s on the next two,
+        # where a whole schema costs 2.01 s once and 0.00 s afterwards.
+        # An observation is taken at most once per ``CACHE_TTL_SECONDS``
+        # and runs under ``_lock``, so that is the period of the cost,
+        # not its duration.
+        #
+        # Accepted rather than overlooked, and the trade is with the
+        # alternative: inside the pool the in-memory case has no answer
+        # at all, and a probe that is wrong about every SQLite deployment
+        # is worse than one that can be slow while a deployment is
+        # unmigrated -- a state in which the service serves nothing
+        # anyway, and whose remedy this row is what tells an operator.
         schema_whole = self.check_schema()
 
         # Not a context manager: its __exit__ joins the worker threads, and a

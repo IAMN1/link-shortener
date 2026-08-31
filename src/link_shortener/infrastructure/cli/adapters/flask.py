@@ -875,12 +875,20 @@ def maintenance_health():
         # stderr is the verdict, so a cron line that keeps only the error
         # stream still learns which dependency it was called about. It
         # exited 1 and said nothing there at all.
-        # Every way of being unhealthy puts a FAILED in the table above:
-        # the verdict is a conjunction over the same four dependencies,
-        # and a cache that is not configured cannot make it false. So the
-        # list is never empty here, and a fallback for that case would be
-        # a branch nothing can reach.
-        failed = [name for name, verdict in lines if verdict == "FAILED"]
+        # Read as "not one of the answers that pass", rather than as the
+        # literal word FAILED. The database has three answers and only
+        # two of them are spelled that way: a live connection holding
+        # none of this application's tables is a failure the verdict
+        # counts, and it says `no schema` instead. Written against FAILED
+        # this list came out empty for exactly that fault -- measured:
+        # `Unhealthy: ` on stderr, naming nothing, for the one failure
+        # whose remedy is a single documented command. A row added later
+        # is covered by the same rule as long as its passing answers are
+        # these two.
+        failed = [
+            name for name, verdict in lines
+            if verdict not in ("OK", "not configured")
+        ]
         click.echo("Unhealthy: " + ", ".join(failed), err=True)
         raise SystemExit(1)
 

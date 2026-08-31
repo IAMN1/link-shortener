@@ -73,6 +73,12 @@ LIMITER_DOWN = HealthSnapshot(
     task_queue=True, rate_limiter=False,
 )
 
+SCHEMA_MISSING = HealthSnapshot(
+    database=True, cache=True, cache_configured=True,
+    task_queue=True, rate_limiter=True, database_schema=False,
+)
+"""Everything answers, and the database holds none of our tables."""
+
 
 class TestTheCommandReadsEveryDependencyTheProbeReads:
 
@@ -173,6 +179,47 @@ class TestTheRefusalReachesTheErrorStream:
 
         for name in ("Database", "Cache", "Task queue", "Rate limiter"):
             assert re.search(rf"^{name}: ", result.stdout, re.M), result.stdout
+
+    def test_a_database_without_the_schema_is_named_too(self, app, runner):
+        """
+        The one fault whose row is not spelled ``FAILED``.
+
+        A live connection holding none of this application's tables is a
+        failure the verdict counts, and its row says ``no schema -- run
+        `flask alembic upgrade head` `` instead. The verdict list was
+        built by matching the word ``FAILED``, so for this fault alone it
+        came out empty: measured, stderr was exactly ``Unhealthy: ``,
+        naming nothing -- to a schedule that keeps only the error stream,
+        an exit code and a sentence with the subject missing, for the one
+        failure whose remedy is a single documented command.
+        """
+        answering(app, SCHEMA_MISSING)
+
+        result = runner.invoke(app.cli, ["maintenance", "health"])
+
+        assert result.exit_code == 1
+        assert "Database" in result.stderr, result.stderr
+
+    def test_the_verdict_never_names_nothing(self, app, runner):
+        """
+        The property behind the case above, stated once: an exit of 1
+        with an empty list is the shape of the defect, whichever row
+        produces it.
+        """
+        for snapshot in (SCHEMA_MISSING, LIMITER_DOWN, QUEUE_DOWN):
+            answering(app, snapshot)
+
+            result = runner.invoke(app.cli, ["maintenance", "health"])
+
+            assert result.exit_code == 1
+            verdict = [
+                line for line in result.stderr.splitlines()
+                if line.startswith("Unhealthy:")
+            ]
+            assert verdict, result.stderr
+            assert verdict[0].removeprefix("Unhealthy:").strip(), (
+                f"the verdict named no dependency: {verdict[0]!r}"
+            )
 
     def test_a_healthy_run_says_nothing_on_stderr(self, app, runner):
         """Silence is the whole point of the error stream."""

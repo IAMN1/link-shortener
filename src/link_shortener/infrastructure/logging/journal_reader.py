@@ -384,10 +384,25 @@ class FileJournalReader(JournalReaderPort):
                 reached_start = False
                 break
         else:
-            # Every file was read to its end, so there is genuinely nothing
-            # older -- unless the archives were not asked for, in which case
-            # what was reached is the start of the live file and no more.
-            reached_start = reached_start and (include_archives or not archives)
+            # Nothing was opened at all -- a journal this deployment has
+            # never written to, which is the ordinary state of `error.log`
+            # and of all three with `LOG_TO_FILE=false`. There is no start
+            # to fail to reach, so saying so left the page carrying both
+            # "nothing has been written to this journal" and "older lines
+            # exist", measured on a run with logging off. Only when no
+            # archive holds anything either: a rotated file the reader did
+            # not ask for is older content, and `oldest_available` below
+            # is what names it.
+            if not files_read and not archives:
+                reached_start = True
+            else:
+                # Every file was read to its end, so there is genuinely
+                # nothing older -- unless the archives were not asked for,
+                # in which case what was reached is the start of the live
+                # file and no more.
+                reached_start = reached_start and (
+                    include_archives or not archives
+                )
 
         return JournalPage(
             lines=tuple(collected[-wanted:]),

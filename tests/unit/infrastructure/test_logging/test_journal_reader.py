@@ -159,6 +159,75 @@ class TestTheEndOfTheJournal:
         assert page.files_read == ()
 
 
+class TestAJournalNobodyHasWrittenTo:
+    """
+    The ordinary state of `error.log`, and of all three under
+    `LOG_TO_FILE=false`.
+
+    Nothing is opened, so the loop over the files never runs a body and
+    `reached_start` kept the `False` it was initialised with -- which the
+    page renders as "Older lines exist", directly beside its own "Nothing
+    has been written to this journal". Measured on a live walk of the
+    documented local setup, where logging to file is off as shipped: the
+    footer read `Lines: 0 · — · Older lines exist.`
+
+    There is no start to fail to reach when there is no file. What must
+    not follow from that is claiming the same about a journal whose live
+    file is missing while rotated generations of it are sitting beside
+    it -- those are older lines, and the reader is told about them
+    through `oldest_available` instead.
+    """
+
+    def test_a_journal_with_no_file_has_reached_its_start(self, journals):
+        reader, _dir, _write = journals
+
+        page = reader.tail(Journal.ERROR, limit=200)
+
+        assert page.lines == ()
+        assert page.files_read == ()
+        assert page.reached_start, (
+            "the page says older lines exist for a journal with no file"
+        )
+
+    def test_a_journal_written_to_and_read_whole_still_says_so(self, journals):
+        """The control: the flag must keep meaning what it meant."""
+        reader, _dir, write = journals
+        write("error.log", [record(i) for i in range(3)])
+
+        page = reader.tail(Journal.ERROR, limit=200)
+
+        assert page.reached_start
+
+    def test_a_missing_live_file_with_archives_beside_it_does_not(
+        self, journals
+    ):
+        """
+        The case the fix must not swallow: rotation moved everything into
+        a generation the reader did not ask for, so there *are* older
+        lines and the page has to keep saying so.
+        """
+        reader, _dir, write = journals
+        write("error.log.1", [record(i) for i in range(3)])
+
+        page = reader.tail(Journal.ERROR, limit=200)
+
+        assert page.files_read == ()
+        assert not page.reached_start, (
+            "the archives hold older lines and the page claims otherwise"
+        )
+        assert page.oldest_available == "error.log.1"
+
+    def test_those_archives_are_reachable_when_asked_for(self, journals):
+        """And the same read, having asked, reaches their start."""
+        reader, _dir, write = journals
+        write("error.log.1", [record(i) for i in range(3)])
+
+        page = reader.tail(Journal.ERROR, limit=200, include_archives=True)
+
+        assert len(page.lines) == 3
+        assert page.reached_start
+
+
 class TestTheCeilingOnOneRead:
 
     def test_a_caller_cannot_ask_for_more_than_the_hard_limit(self, journals):

@@ -560,6 +560,41 @@ class TestTheSchemaIsAskedAboutSeparately:
 
         assert manager.missing_declared_tables.call_count == 1
 
+    def test_the_answer_turns_green_without_a_restart(self):
+        """
+        The half the guide got wrong, in a sentence written this session.
+
+        The memo latches on success only, so a database that gains its
+        schema while the service runs is noticed at the next observation
+        -- no restart. The troubleshooting row briefly said otherwise
+        ("run the migration, then restart the service"), which sends an
+        operator to bounce a service that was about to recover on its
+        own. Measured: `database_schema` False, migration, then True in
+        the same process.
+
+        The other direction is the one that is remembered, and
+        `test_the_answer_is_remembered_once_the_schema_is_whole` above
+        holds it. Both are stated here so that neither can be quoted
+        alone.
+        """
+        missing = ["links"]
+        manager = _db_manager()
+        manager.missing_declared_tables.side_effect = lambda: list(missing)
+        check = InfrastructureHealthCheck(manager, cache=None)
+        # Through `snapshot`, which is what `/health` calls, and with its
+        # cache stood down: an observation stands in for the next for
+        # `CACHE_TTL_SECONDS`, so without this the check would be timing
+        # that cache rather than the memo under test.
+        check.CACHE_TTL_SECONDS = 0.0
+
+        assert check.snapshot().database_schema is False
+
+        missing.clear()
+
+        assert check.snapshot().database_schema is True, (
+            "the service did not notice a schema that appeared while it ran"
+        )
+
     def test_a_missing_schema_is_asked_about_again(self):
         # The opposite of the above, and the reason the memory is only of
         # the positive: a service started before its migration must be
