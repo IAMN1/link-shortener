@@ -143,8 +143,19 @@ image's `CMD` instead.
 ## The whole stack, in Docker
 
 PostgreSQL, Redis, a Celery worker and a Mailpit catcher, the way a
-deployment runs. Three commands, and none of them is "then edit ten
+deployment runs. Five commands, and none of them is "then edit ten
 values":
+
+Stop the `flask run` from the first block before you start: this stack
+publishes the same port, and leaving it up costs twice — `up` fails with
+`bind: address already in use`, and if it does not, the `curl` at the end
+is answered by the local server rather than by the stack. Its `"cache":
+"disabled"` is the tell.
+
+This block is written for a first run. If you already have a `.env.docker`,
+move it aside rather than letting the first line copy over it — the
+password in it is the one the database volume was initialised with, and it
+is not recoverable from anywhere else.
 
 ```bash
 cp .env.docker.example .env.docker
@@ -155,12 +166,22 @@ docker compose --env-file .env.docker exec app \
 curl -s http://localhost:5000/health
 ```
 
+> [!WARNING]
+> If `up` ends with `service "migrations" didn't complete successfully:
+> exit 1`, the console does not say why — the reason is in the container:
+> `docker logs link-shortener-migrations-1`. The likeliest one on a second
+> run is `password authentication failed for user "shortener"`: the
+> database volume outlived the env file and keeps the password it was
+> **initialised** with, so the freshly generated one does not open it. The
+> troubleshooting table at the end of this page has the two ways out.
+
 > [!NOTE]
-> `.env.docker.example` is the same catalogue as `.env.example` with eight
+> `.env.docker.example` is the same catalogue as `.env.example` with nine
 > lines set for containers — the backend, the service name of the
-> database, the two switches for Redis and Celery, and the domain short
-> links are built from. Its own header lists all eight with the reason for
-> each, and `test_the_two_templates_do_not_drift.py` holds every other
+> database, the two switches for Redis and Celery, the domain short links
+> are built from, and journals written to file, because this stack ships
+> the rotator that moves them. Its own header lists all nine with the
+> reason for each, and `test_the_two_templates_do_not_drift.py` holds every other
 > line identical between the two files.
 >
 > There used to be one template for both paths, and it said
@@ -171,7 +192,11 @@ curl -s http://localhost:5000/health
 > `/health` answered `healthy` and the landing page answered `500 no such
 > table: roles`. Two of the three are now impossible — the templates
 > cannot contradict each other, and `/health` reports `no_schema` with a
-> 503 rather than `ok`.
+> 503 rather than `ok`. That answer is settled when the process starts and
+> remembered once the schema has been seen whole, so a schema that
+> disappears under a running service is not noticed until it restarts —
+> measured on two live walks, which is a bound worth knowing rather than a
+> promise of continuous watching.
 
 > [!TIP]
 > `--with-service-passwords` writes two more values than the local path
@@ -198,8 +223,12 @@ profile keeps its cache in the process rather than in Redis.
 
 > [!WARNING]
 > `--env-file` is not optional. Without it compose reads `.env`, which is
-> written for a local SQLite run — and it will not see `COMPOSE_PROFILES`
-> either, so neither the database nor Redis comes up.
+> written for a local SQLite run — and its compose section names the same
+> profiles, so the services do come up: measured,
+> `docker compose --env-file .env config --services` resolves all eight,
+> `db`, both Redis and the catcher included. What you get is the stack
+> running beside an application told `DATABASE_TYPE=sqlite`, which speaks
+> to none of it — the arrangement the two templates exist to prevent.
 
 There is no separate step for migrations: `migrations` runs
 `alembic upgrade head` and has to exit `0` before `app` and
@@ -302,14 +331,34 @@ stop being counted and mail stops being sent, and nothing else goes wrong,
 which is exactly why it is worth being told. `CELERY_ENABLED=false` is the
 other honest answer: the work is then done inline, on the request.
 
-**Row 3** is `.env.example` as it ships, and the first block above.
+**Row 3** is the application settings `.env.example` ships, and the first block above. Its `COMPOSE_PROFILES` column is empty because this row runs no containers — the file itself names five profiles, in the section headed "For docker compose only", for the reader who points compose at `.env`. Doing that is what the warning above is about.
 
 **Row 4** — your own PostgreSQL and Redis, wherever they are. Empty
 `COMPOSE_PROFILES` means only `migrations`, `app` and `celery_worker` come
 up; each address is a single string, and a string beats the `DATABASE_*`
 parts.
 
-**Row 5** and anything else — take a profile out, name what replaces it:
+The address is written from inside the container, which is the part that
+catches people: `localhost` there is the container itself. A service
+published on the host's loopback is reached as `host.docker.internal`,
+which needs `extra_hosts: host.docker.internal:host-gateway` outside
+Docker Desktop and was measured going unreachable mid-run even with it.
+Where your services are themselves containers, the address that does not
+depend on any of that is their own name on their own network — join it as
+an external network and use `db:5432`.
+
+**Row 5** and anything else — take a profile out, name what replaces it.
+Name the services on the command line here too, for the reason row 2 gives:
+
+```bash
+docker compose --env-file .env.docker up -d db
+```
+
+Measured: with `COMPOSE_PROFILES=db` a bare `up -d` resolves four services,
+not one — `app`, `celery_worker` and `migrations` carry no profile, so they
+come along. On this row that starts a second application in a container,
+which grabs the published port and then loops on `redis` and `redis_broker`
+names that nothing answers to.
 
 | Profile | Brings up | Left out — then set |
 |---|---|---|
@@ -345,10 +394,13 @@ Two settings are worth knowing before switching a container stack to
 * `AUTO_SEED_ROLES` defaults to `false` there — seed once with
   `flask db load-base-roles`, or an anonymous visitor cannot create a link
   at all, because `link:create` is carried by the `guest` role;
-* `CORS_ORIGINS` has to contain the address people actually open. The CSRF
-  layer compares the browser's `Origin` against it, so with the wrong value
-  the landing page works — an anonymous caller does not go through CSRF —
-  and every form fails the moment somebody signs in.
+* `CORS_ORIGINS` has to contain any address people open that is **not**
+  the one in `DOMAIN`. The CSRF layer compares the browser's `Origin`
+  against this list plus `BASE_URL`, which `DOMAIN` already covers — so the
+  service's own pages need nothing here, and a second address does. With
+  the wrong value the landing page works — an anonymous caller does not go
+  through CSRF — and every form fails the moment somebody signs in. The
+  measured table is in [Configuration](configuration.md).
 
 ---
 
@@ -360,15 +412,18 @@ by default. A link you just made can be deleted right there, because a
 guest link has nothing to prove ownership with except the token issued
 alongside it.
 
-The **Info** tab resolves any short code; its click counters are shown only
-to whoever made the link. There is no **Extended** tab for a guest —
-extended figures are for the owner or for a holder of `stats:view_any`.
+The **Look up a code** card resolves any short code; its click counters are
+shown only to whoever made the link. The card above it shortens, and its
+two tabs are **One link** and **Many at once**. There is no extended view
+for a guest — extended figures are for the owner or for a holder of
+`stats:view_any`.
 
 ```bash
-# With a time to live of one hour
+# With a time to live of one hour. A URL this page has not shortened
+# already: the same one twice returns the first link, lifetime and all
 curl -X POST http://localhost:5000/api/v1/shorten \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com", "ttl_seconds": 3600}'
+  -d '{"url": "https://example.com/an-hour", "ttl_seconds": 3600}'
 
 # Sign in, then use the token
 curl -X POST http://localhost:5000/api/v1/auth/login \
@@ -400,8 +455,8 @@ menu entry that answers `403` is a bug rather than a fact of life. See
 |---|---|
 | `ModuleNotFoundError: No module named 'link_shortener'` | `uv sync`, and run through `uv run` |
 | `Address already in use` on port 5000 | Something else holds it — on macOS often AirPlay Receiver or a Docker stack from an earlier run. `uv run flask run --port 5055`, or stop the other one. **Set `PORT=5055` in `.env` as well**: the flag moves the socket, and every address the service *writes* comes from the configuration. With only the flag, the links it hands out and the example on the landing page still say 5000, and following one lands nowhere |
-| `no such table: urls` | `uv run flask alembic upgrade head` |
-| `401` on `POST /api/v1/shorten` as an anonymous caller | The `guest` role is missing or lacks `link:create`. `uv run flask db load-base-roles`, then check with `flask security list-roles` |
+| `no such table: roles` (and `urls`, and the rest) | The schema was never applied to this database. `uv run flask alembic upgrade head`. `roles` is the one usually seen first — the landing page asks what a guest may do before anything reaches a link |
+| `401` on `POST /api/v1/shorten` as an anonymous caller | The `guest` role is missing or lacks `link:create`. Check with `flask security list-roles`. If the role is **missing**, `uv run flask db load-base-roles` creates it. If it is there and short of a permission, that command will not touch it — seeding leaves an existing role alone on purpose, so an edit made in the panel survives. Put the permission back in the panel, or replace the role's set from the shipped file: `uv run flask db load-custom-roles src/link_shortener/infrastructure/configs/rbac/roles.yaml --update-existing` (measured: `load-base-roles` alone left `guest` with `stats:view_basic` and the 401 in place) |
 | `403` on the same call while signed in | That account's role does not hold `link:create` — `analyst` does not, by design |
 | `already sets SECRET_KEY` | The file has been filled in before. `--force` replaces the values, which signs out every session and, for `SHORT_CODE_PEPPER`, stops the codes already handed out from resolving |
 | Values in `.env` are ignored | The `testing` profile ignores `.env` deliberately. Otherwise a real environment variable outranks the file |
@@ -414,9 +469,9 @@ menu entry that answers `403` is a bug rather than a fact of life. See
 | The confirmation message never arrives | Check the log. `Verification email not delivered` means the submission server is unreachable — locally, that is the missing catcher on `localhost:1025`. `MAIL_ENABLED=false` means mail is off entirely |
 | Only `app` and `celery_worker` came up | `COMPOSE_PROFILES` is empty or unset in the env file |
 | Links look like `http://0.0.0.0:5000/...` | `HOST=0.0.0.0` with no `DOMAIN`; see the note above |
-| `password authentication failed for user "shortener"` right after a fresh `.env.docker` | The volume outlived the file. PostgreSQL keeps the password it was **initialised** with, so a newly generated `DATABASE_PASSWORD` does not reach a database that already exists. `docker compose --env-file .env.docker down -v` to start over — it takes the data with it — or put the old password back. Measured while walking this guide |
+| `password authentication failed for user "shortener"` right after a fresh `.env.docker` | The volume outlived the file. PostgreSQL keeps the password it was **initialised** with, so a newly generated `DATABASE_PASSWORD` does not reach a database that already exists. `docker compose --env-file .env.docker down -v` to start over — it takes the data with it — or put the old password back. **Keep the old file to put it back from**: the block's first command copies the template over `.env.docker`, so following it a second time destroys the one copy of that password and leaves erasing the data as the only way out. If `.env.docker` already exists, move it aside instead of overwriting it. Measured while walking this guide |
 | A second checkout of the project reuses the first one's database | The compose project is named `link-shortener` in the file rather than taken from the directory, so both checkouts address the same volumes. That is deliberate — it keeps this stack out of the test stack's namespace — but it means two clones are one deployment |
-| `/health` says `"database": "no_schema"` | The database is reachable and has none of this application's tables: the migration went somewhere else, or never ran. `flask alembic upgrade head` against **this** database. The service answers 503 until it does, because it can serve nothing |
+| `/health` says `"database": "no_schema"` | The database is reachable and has none of this application's tables: the migration went somewhere else, or never ran. `flask alembic upgrade head` against **this** database. The service answers 503 until it does, because it can serve nothing. No restart needed: a missing schema is asked about again on every observation, so `/health` turns green on its own once the migration has run — measured. It is the other direction that is remembered, and the note above says so |
 
 ---
 
@@ -424,7 +479,7 @@ menu entry that answers `403` is a bug rather than a fact of life. See
 
 ```bash
 uv run pytest tests/     # the suite; Docker services for level 2b start themselves
-uv run flask alembic migrate "what changed"   # a new revision after editing models
+uv run flask alembic migrate "what changed"   # this repository keeps one revision: see Operations
 ```
 
 - How it is put together — [Architecture](architecture.md)

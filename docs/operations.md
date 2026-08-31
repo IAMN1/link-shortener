@@ -33,7 +33,7 @@ answer.
 flask alembic upgrade head        # apply
 flask alembic status              # where the database stands
 flask alembic history             # the chain of revisions
-flask alembic migrate "what changed"   # autogenerate a new revision
+flask alembic migrate "what changed"   # autogenerate — see the rule above before keeping it
 flask alembic downgrade -1        # step back one
 ```
 
@@ -298,7 +298,7 @@ and `audit:view` is what opens the audit one — an administrator holding
 
 Measured on this tree, driving ordinary traffic through the application
 with file logging on: **796 bytes per request**, three records each, and
-**750 bytes per audited event**. `error.log` stays empty while nothing is
+**473 bytes per audited event** (344–525 across browser agents and four destinations). `error.log` stays empty while nothing is
 wrong.
 
 | Traffic | `application.log` per day | per month |
@@ -318,7 +318,7 @@ moving is done from outside.
 The configuration that does it ships with the project, in
 [`dockers/logrotate.conf`](../dockers/logrotate.conf): the application and
 error journals daily, or at 100 MB, keeping 14 compressed generations; the
-audit journal weekly, keeping 200. It is a template rather than a finished
+audit journal weekly, or at 1 GB, keeping 200. It is a template rather than a finished
 file — the three journal names are written as `${LOG_FILENAME}`,
 `${ERROR_LOG_FILENAME}` and `${AUDIT_LOG_FILENAME}`, the same settings the
 application chooses them by, so a deployment that renames a journal keeps

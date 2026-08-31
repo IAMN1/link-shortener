@@ -22,7 +22,6 @@ uv sync
 cp .env.example .env
 uv run flask security generate-secrets --write .env
 uv run flask alembic upgrade head
-uv run flask db load-base-roles
 uv run pytest tests/
 ```
 
@@ -44,7 +43,7 @@ is declared any more; running one is not formatting a change, it is
 reformatting the project.
 
 ```bash
-uv run pytest tests/                      # 4526 tests, 88% coverage floor
+uv run pytest tests/                      # 4608 tests, 88% coverage floor
 uv run flake8 src tests
 uv run pylint src                         # floor 9.0
 uv run bandit -r src -q
@@ -55,7 +54,7 @@ Plus the two live runs, if your change touches HTTP or the frontend:
 
 ```bash
 uv run python tests/live/smoke_test.py    # 157 checks
-uv run python tests/live/browser_test.py  # 67 checks, needs --group browser
+uv run python tests/live/browser_test.py  # 68 checks, needs --group browser
 ```
 
 CI runs all of it, twice — once in a clean environment and once in a

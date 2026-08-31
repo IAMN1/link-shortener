@@ -329,7 +329,7 @@ Read by `docker compose`, not by the application.
 |---|---|
 | `ENV_FILE` | Which env file the services load; must match what you pass to `--env-file` |
 | `COMPOSE_FILE` | Which compose files make up the stack. Set because they live in `dockers/` |
-| `COMPOSE_PROFILES` | Which of `db`, `cache`, `broker`, `mail` to run yourself |
+| `COMPOSE_PROFILES` | Which of `db`, `cache`, `broker`, `mail`, `logs` to run yourself |
 | `APP_HOST_PORT`, `DATABASE_HOST_PORT`, `REDIS_HOST_PORT`, `MAILPIT_UI_PORT` | Where each service is published on the host |
 | `APP_SRC_PATH`, `LOG_HOST_PATH` | What the dev overlay mounts. Relative to `dockers/`, hence the `../` |
 

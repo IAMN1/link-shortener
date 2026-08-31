@@ -220,3 +220,80 @@ class TestTheArrangementThatBrokeIsUnwritable:
                     f"this: PostgreSQL in a container, the application on "
                     f"SQLite, both healthy, nothing served."
                 )
+
+
+RU_DOCS = Path("docs/getting-started.ru.md")
+"""The Russian twin of the guide, which carries the same warning."""
+
+DENIALS = {
+    DOCS: (
+        "will not see `COMPOSE_PROFILES`",
+        "neither the database nor Redis comes up",
+    ),
+    RU_DOCS: (
+        "не увидит `COMPOSE_PROFILES`",
+        "не поднимется ни база, ни Redis",
+    ),
+}
+"""Sentences that say the services stay down when compose reads ``.env``.
+
+A ban list rather than a pattern for the true statement, because there
+are many right ways to describe what happens and only these wrong ones
+were written. Each is quoted from the document as it stood.
+"""
+
+
+class TestTheWarningDescribesWhatComposeActuallyDoes:
+    """
+    ``--env-file`` is not optional, and the guide said so for the wrong
+    reason.
+
+    It told the reader that compose reading ``.env`` "will not see
+    ``COMPOSE_PROFILES`` either, so neither the database nor Redis comes
+    up". The template sets that variable -- it has a whole section headed
+    "For docker compose only" -- so the services come up: measured,
+    ``docker compose --env-file .env config --services`` resolves all
+    eight, ``db``, both Redis, the catcher and the rotator included.
+
+    What the reader then has is worse than the warning described, not
+    milder: a full stack running beside an application told
+    ``DATABASE_TYPE=sqlite``, which speaks to none of it. That is the
+    arrangement the two templates exist to prevent, and the document
+    promised it could not happen.
+
+    Held against the template rather than against a fixed sentence: if
+    ``.env.example`` ever stops shipping profiles, the old warning becomes
+    true again and this check stops objecting to it.
+    """
+
+    def _shipped_profiles(self):
+        """What ``COMPOSE_PROFILES`` the local template sets, if any."""
+        found = re.search(
+            r"^COMPOSE_PROFILES=(.*)$",
+            TEMPLATE.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+        return [p for p in (found.group(1).split(",") if found else []) if p]
+
+    def test_the_template_still_ships_profiles(self):
+        """
+        The premise of the check below, stated so that it cannot pass by
+        having become vacuous.
+        """
+        assert self._shipped_profiles(), (
+            f"{TEMPLATE} no longer sets COMPOSE_PROFILES; the warning in "
+            f"the guide may now be true as originally written, and this "
+            f"check has to be revisited rather than left passing"
+        )
+
+    @pytest.mark.parametrize("document", sorted(DENIALS, key=str))
+    def test_no_guide_says_the_services_stay_down(self, document):
+        prose = document.read_text(encoding="utf-8")
+
+        said = [denial for denial in DENIALS[document] if denial in prose]
+
+        assert not said, (
+            f"{document} says {said}, while {TEMPLATE} ships "
+            f"COMPOSE_PROFILES={','.join(self._shipped_profiles())} -- "
+            f"compose reads it and brings those services up"
+        )

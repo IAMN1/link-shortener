@@ -76,7 +76,7 @@ EXPECTED = {
         "setting": 5, "route": 31, "permission": 14, "image": 2, "number": 12,
     },
     "docs/getting-started.md": {
-        "setting": 21, "command": 9, "route": 3, "permission": 8,
+        "setting": 22, "command": 9, "route": 3, "permission": 8,
         "image": 1, "number": 20,
     },
 }
@@ -106,3 +106,89 @@ def test_the_patterns_still_find_what_they_found(rel):
         f"If the document grew, update the expectation; if it did not, a "
         f"pattern above has stopped matching and the comparisons are empty"
     )
+
+
+DESTRUCTIVE = "down -v"
+"""The flag that removes the volumes, and with them the database."""
+
+SAYS_WHAT_IS_LOST = {
+    "en": re.compile(
+        r"takes the data with it|destroy|delete|erase|wipe|lose|loses|lost",
+        re.IGNORECASE,
+    ),
+    "ru": re.compile(
+        # Both stems of "erase": `стирать` gives "стирает", `стереть`
+        # gives "стерев" and "стёр" -- and the second is the one the
+        # sentence actually uses. Written with only the first, this check
+        # reddened on the corrected document, which is the right failure
+        # to have had: a pattern that misses the word is a check that
+        # would have passed the defect.
+        r"стир|стер|стёр|сотр|удал|уничтож|потер|очист", re.IGNORECASE
+    ),
+}
+"""Words that name a loss, per language.
+
+Wide on purpose: the check is that the sentence says *something* is
+destroyed, not that it says it in one blessed phrasing. Rewording the
+sentence must not redden this; dropping the consequence must.
+"""
+
+
+def sentences_naming(rel: str, needle: str) -> list:
+    """
+    The lines of a document that mention something.
+
+    Whole lines rather than parsed sentences, because both guides carry
+    this advice inside a table row, where the consequence sits between two
+    dashes and no sentence splitter would keep it with its command.
+
+    Args:
+        rel: Path of the document, relative to the repository root.
+        needle: What the line must mention.
+
+    Returns:
+        The lines that mention it.
+    """
+    return [
+        line for line in (ROOT / rel).read_text(encoding="utf-8").splitlines()
+        if needle in line
+    ]
+
+
+class TestADestructiveCommandNamesWhatItDestroys:
+    """
+    A warning is the easiest thing to lose in translation.
+
+    Prose is not what the checks above look at, and rightly -- a sentence
+    rewritten in Russian says what its author meant. This one is the
+    exception, because it is not really prose: `down -v` removes the
+    volumes, and the sentence offering it as a remedy for a password
+    mismatch is the only place a reader is told so.
+
+    Measured before this: the English row said "it takes the data with
+    it"; the Russian said "начать заново, вместе с данными" -- an
+    appositive with no verb, which reads as easily as "start over, with
+    the data still there". A reader following the Russian could run it on
+    a stack holding real data believing the data survives.
+    """
+
+    @pytest.mark.parametrize("en, ru", PAIRS)
+    def test_both_languages_name_the_loss(self, en, ru):
+        for rel, language in ((en, "en"), (ru, "ru")):
+            for line in sentences_naming(rel, DESTRUCTIVE):
+                assert SAYS_WHAT_IS_LOST[language].search(line), (
+                    f"{rel} offers `{DESTRUCTIVE}` without saying what it "
+                    f"removes: {line.strip()[:160]}"
+                )
+
+    def test_the_guides_still_carry_the_advice(self):
+        """
+        The check above passes in silence over a document that stopped
+        mentioning the command at all, which is how a check like this
+        rots. Both guides have to still be saying it.
+        """
+        for rel in ("docs/getting-started.md", "docs/getting-started.ru.md"):
+            assert sentences_naming(rel, DESTRUCTIVE), (
+                f"{rel} no longer mentions `{DESTRUCTIVE}`; if that is "
+                f"deliberate, this check has nothing left to hold"
+            )

@@ -20,7 +20,7 @@ The frontend is at the same level. What a page shows is decided by a
 
 | | |
 |---|---|
-| No HTTPS in development | In the production form, TLS terminates at the proxy in front of the service |
+| No HTTPS in development | And none in the shipped production form either: gunicorn is exposed directly, with no proxy in the stack. TLS is expected to terminate at one a deployment puts in front, which is what `TRUSTED_PROXIES`, `USE_HTTPS` and `HSTS_MAX_AGE` are for — nothing here has been run behind one |
 | No link previews or OG tags | — |
 | No API version above v1 | — |
 | Pool values reach SQLAlchemy as given | A negative `DATABASE_MAX_OVERFLOW` breaks engine construction with an unhelpful error |

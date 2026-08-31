@@ -977,10 +977,16 @@ The links whose fetch would mean something — the short URLs in the tables —
 carry `target="_blank"`, which takes them out of Turbo's hands entirely.
 Measured: hovering one sends no request, so the click counter stays honest.
 
-**What was left open.** Prefetches are logged like any other request, and
-log rotation does not exist yet. Turbo marks them `X-Sec-Purpose: prefetch`,
-so they can be filtered out of the request log if that becomes the reason
-the files grow.
+**What was left open.** Prefetches are logged like any other request.
+Turbo marks them `X-Sec-Purpose: prefetch`, so they can be filtered out of
+the request log if that becomes the reason the files grow.
+
+~~And log rotation does not exist yet.~~ Struck the next day by "Rotation
+is somebody else's job" below: `dockers/logrotate.conf` ships with the
+project and does it. Left standing, this half answered the same question
+the other way round three hundred lines apart, which is the failure this
+document names a rule against -- a decision revised later has to be
+struck from the earlier entry.
 
 ### The cached preview of a returning page is turned off
 
