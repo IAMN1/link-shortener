@@ -66,6 +66,12 @@
         if (key === 'cache' && data.cache_configured === false) {
             return 'absent';
         }
+        // The queue gets the same answer for the same state. Without it
+        // this page called a queue that does not exist "ok", beside a
+        // cache in exactly the same position marked absent.
+        if (key === 'task_queue' && data.task_queue_configured === false) {
+            return 'absent';
+        }
         return ok ? 'ok' : 'down';
     }
 

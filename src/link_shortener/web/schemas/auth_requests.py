@@ -33,6 +33,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from link_shortener.web.schemas.strict import StrictRequest
+
 
 def _body(
     required: List[str], example: Dict[str, Any]
@@ -79,7 +81,7 @@ def _body(
     return apply
 
 
-class CredentialsRequest(BaseModel):
+class CredentialsRequest(StrictRequest):
     """
     An address and a password: what ``/login`` and ``/register`` read.
 
@@ -103,7 +105,7 @@ class CredentialsRequest(BaseModel):
     ))
 
 
-class EmailRequest(BaseModel):
+class EmailRequest(StrictRequest):
     """
     An address on its own: ``/resend-verification`` and ``/forgot-password``.
 
@@ -121,7 +123,7 @@ class EmailRequest(BaseModel):
     ))
 
 
-class VerifyEmailRequest(BaseModel):
+class VerifyEmailRequest(StrictRequest):
     """
     The token out of a confirmation link, as the page sends it.
 
@@ -140,7 +142,7 @@ class VerifyEmailRequest(BaseModel):
     ))
 
 
-class ResetPasswordRequest(BaseModel):
+class ResetPasswordRequest(StrictRequest):
     """The token out of a reset link, and the password to set with it."""
 
     token: Optional[str] = Field(
@@ -158,7 +160,7 @@ class ResetPasswordRequest(BaseModel):
     ))
 
 
-class ChangePasswordRequest(BaseModel):
+class ChangePasswordRequest(StrictRequest):
     """
     The password the caller has and the one they want.
 
@@ -183,6 +185,13 @@ class ChangePasswordRequest(BaseModel):
     ))
 
 
+# Lenient, alone among the request bodies, and deliberately so. This one
+# is optional -- every browser reaches `/auth/refresh` and `/auth/logout`
+# with no body at all, because its token is in the HttpOnly cookie -- and
+# both routes share `_read_refresh_token`, which builds it from whatever
+# arrived. Made strict, a stray field in a logout body refuses the logout:
+# a security action blocked over a field the route did not need. Measured:
+# `POST /api/v1/auth/logout` answered 400 instead of ending the session.
 class RefreshTokenRequest(BaseModel):
     """
     The refresh token, for a client that keeps no cookie jar.

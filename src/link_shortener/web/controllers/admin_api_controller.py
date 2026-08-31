@@ -375,6 +375,7 @@ class AdminApiController:
             # has no Redis. ``/health`` and ``flask maintenance health``
             # both told the two apart already, off this same field.
             "cache_configured": health.cache_configured,
+            "task_queue_configured": health.task_queue_configured,
             "task_queue": health.task_queue,
             "rate_limiter": health.rate_limiter,
             # "Did not answer in time" is not the finding "answered no"

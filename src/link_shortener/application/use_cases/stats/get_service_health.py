@@ -37,6 +37,13 @@ class ServiceHealthStatus:
     this same field on the snapshot, which stopped here.
     """
     task_queue: bool
+    task_queue_configured: bool = True
+    """Whether there is a broker behind the queue at all.
+
+    The sibling of ``cache_configured`` above, and it was missing for the
+    same reason nothing noticed: ``task_queue`` alone reads "ok" both when
+    the workers answer and when the work is done in the request.
+    """
     rate_limiter: bool = True
     """Whether request limits are currently being enforced."""
     timed_out: Tuple[str, ...] = field(default=())
@@ -105,6 +112,7 @@ class GetServiceHealthUseCase(BaseUseCase):
             database_schema=state.database_schema,
             redis=state.cache,
             cache_configured=state.cache_configured,
+            task_queue_configured=state.task_queue_configured,
             task_queue=state.task_queue,
             rate_limiter=state.rate_limiter,
             timed_out=state.timed_out,

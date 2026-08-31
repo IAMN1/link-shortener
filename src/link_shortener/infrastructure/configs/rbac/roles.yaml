@@ -183,12 +183,26 @@ roles:
   # nothing else. Note what is absent: no `link:` permission, no
   # `admin:manage_*`, nothing that writes.
   - name: "auditor"
-    description: "Reads the journals and the health report; changes nothing"
+    description: "Reads the journals, the health report and the figures; changes nothing"
     is_system: true
+    # The statistics are here because without them this role saw less than
+    # nobody. Measured on two live walks: `GET /api/v1/stats` and both
+    # visit endpoints answered 200 to an anonymous caller -- `guest` holds
+    # `stats:view_basic` -- and 403 to a signed-in auditor, who held no
+    # statistics permission at all. Somebody reading the journals about an
+    # incident could not see how much traffic the service was taking while
+    # it happened, and a visitor who had not signed in could.
+    #
+    # `stats:view_full` as well as the basic one: the reader this role is
+    # for is looking at what happened across the service, and the popular
+    # links are part of that picture. It stays a reading role -- nothing
+    # here creates, changes or deletes anything.
     permissions:
       - "audit:view"
       - "logs:view"
       - "admin:view_system_health"
+      - "stats:view_basic"
+      - "stats:view_full"
 
   # Administrator role – has full control over the system.
   - name: "admin"

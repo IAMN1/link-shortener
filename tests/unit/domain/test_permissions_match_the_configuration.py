@@ -82,19 +82,92 @@ class TestTheRolesAreBuiltFromThoseNames:
 
         Its whole value is that it can be handed to somebody who should see
         the record without being able to touch what the record is about, so
-        an added ``admin:manage_*`` or any ``link:`` permission would empty
-        it of meaning while leaving the name in place.
+        an added ``admin:manage_*`` or any writing ``link:`` permission
+        would empty it of meaning while leaving the name in place.
+
+        Held as that property rather than as an exact set. Pinned to three
+        names, this check refused a change made for a measured reason --
+        the role saw *less than nobody*: `GET /api/v1/stats` and both visit
+        endpoints answered 200 to an anonymous caller and 403 to a
+        signed-in auditor, because `guest` holds `stats:view_basic` and
+        this role held no statistics permission at all. What must not
+        change is that everything here reads.
         """
         auditor = next(
             role for role in configuration["roles"] if role["name"] == "auditor"
         )
+        granted = set(auditor["permissions"])
 
-        assert set(auditor["permissions"]) == {
+        must_have = {
             SystemPermissions.AUDIT_VIEW.value,
             SystemPermissions.LOGS_VIEW.value,
             SystemPermissions.ADMIN_VIEW_SYSTEM_HEALTH.value,
         }
+        assert must_have <= granted, (
+            f"the auditor no longer reads {sorted(must_have - granted)}, "
+            f"which is what the role is for"
+        )
+
+        writes = {
+            name for name in granted
+            if any(
+                verb in name
+                for verb in ("manage", "create", "delete", "update", "all")
+            )
+        }
+        assert not writes, (
+            f"the auditor grants {sorted(writes)}, which touches what the "
+            f"record is about"
+        )
+
         assert auditor["is_system"] is True
+
+    def test_every_signed_in_role_reads_what_an_anonymous_caller_reads(
+        self, configuration
+    ):
+        """
+        The property the auditor broke, stated over all of them.
+
+        `guest` is what an unauthenticated visitor acts under, so what it
+        may *read* is the floor of the service: a role below it refuses its
+        holder something they could have had by signing out. Measured
+        before this: `GET /api/v1/stats` and both visit endpoints answered
+        200 with no token and 403 to a signed-in auditor.
+
+        Reading only, and that narrowness is the finding rather than a
+        convenience. `analyst` deliberately does not hold `link:create`
+        while `guest` does -- it is a reading role, and the landing page
+        says so in as many words: "This account may look links up, but not
+        create them." Doing less than an anonymous caller is a decision
+        this project makes on purpose; seeing less than one was not.
+
+        `admin` passes on `admin:all`, which the authorization service
+        treats as passing every check.
+        """
+        writing = ("manage", "create", "delete", "update", "all")
+
+        def reads_only(permissions):
+            return {
+                name for name in permissions
+                if not any(verb in name for verb in writing)
+            }
+
+        roles = {
+            role["name"]: set(role.get("permissions", []))
+            for role in configuration["roles"]
+        }
+        floor = reads_only(roles["guest"])
+        assert floor, (
+            "the guest role reads nothing; this check would hold nothing"
+        )
+
+        for name, granted in roles.items():
+            if name == "guest" or SystemPermissions.ADMIN_ALL.value in granted:
+                continue
+            assert floor <= granted, (
+                f"role {name} is refused {sorted(floor - granted)}, which "
+                f"an anonymous caller may read"
+            )
 
     def test_the_administrator_is_still_one_permission(self, configuration):
         """And that permission is not the audit journal's.

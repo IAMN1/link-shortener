@@ -390,7 +390,7 @@ stateDiagram-v2
 | `guest` | An unauthenticated visitor | `link:create`, `stats:view_basic` |
 | `user` | A registered account | `link:create`, `link:view_own`, `link:delete_own` |
 | `analyst` | An analyst | `stats:view_full`, `stats:view_any`, `link:view_own` |
-| `auditor` | Whoever reads the journals | `audit:view`, `logs:view`, `admin:view_system_health` |
+| `auditor` | Whoever reads the journals | `audit:view`, `logs:view`, `admin:view_system_health`, `stats:view_basic`, `stats:view_full` |
 | `admin` | An administrator | `admin:all` |
 
 Roles are seeded from [`configs/rbac/roles.yaml`](../src/link_shortener/infrastructure/configs/rbac/roles.yaml)

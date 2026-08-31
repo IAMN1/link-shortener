@@ -241,6 +241,7 @@ class InfrastructureHealthCheck(HealthCheck):
             database_schema=schema_whole,
             cache=results["cache"],
             cache_configured=self.is_cache_configured(),
+            task_queue_configured=self.is_task_queue_configured(),
             task_queue=results["task_queue"],
             rate_limiter=results["rate_limiter"],
             timed_out=tuple(timed_out),
@@ -359,6 +360,27 @@ class InfrastructureHealthCheck(HealthCheck):
             ``True`` if the cache talks to a server.
         """
         return bool(self.cache and self.cache.is_configured())
+
+    def is_task_queue_configured(self) -> bool:
+        """
+        Report whether there is a broker behind the queue at all.
+
+        The sibling of ``is_cache_configured``, and here for the same
+        reason: a bare boolean cannot tell "the workers are answering"
+        from "the work is done in the request". The cache already made
+        that distinction and the queue did not, so `/health` answered
+        `"cache": "disabled"` and `"task_queue": "ok"` on the same
+        deployment, where neither had a server -- measured on a live walk
+        of the row that puts both in the process.
+
+        Nothing about the verdict changes: work done inline is done, and a
+        queue nobody configured cannot be down. What changes is that a
+        reader can now tell which of the two they are looking at.
+
+        Returns:
+            ``True`` when the queue hands work to a broker.
+        """
+        return getattr(self.task_queue, "celery_app", None) is not None
 
     def check_task_queue(self) -> bool:
         """Check whether the task queue is operational.

@@ -374,6 +374,18 @@ HEALTH_SCHEMA = {
             ),
         },
         "task_queue": _DEPENDENCY,
+        "task_queue_configured": {
+            "type": "boolean",
+            "description": (
+                "Whether there is a broker behind the queue at all. With "
+                "`CELERY_ENABLED=false` the work is done during the "
+                "request, so `task_queue` answers true; this tells that "
+                "apart from workers that are answering. The sibling of "
+                "`cache_configured`, and it was missing: a deployment "
+                "with neither cache nor broker reported the two "
+                "differently for one and the same state."
+            ),
+        },
         "rate_limiter": _DEPENDENCY,
         "timed_out": {
             "type": "array",
@@ -456,6 +468,7 @@ HEALTH_SCHEMA = {
     },
     "required": [
         "database", "database_schema", "cache", "cache_configured",
+        "task_queue_configured",
         "task_queue", "rate_limiter", "timed_out",
     ],
 }
@@ -617,14 +630,27 @@ PATHS: Dict[str, Any] = {
                     "required": False,
                     "description": (
                         "The token returned when a link was created without "
-                        "an account"
+                        "an account. This header is the only place it is "
+                        "read from: a query parameter is not accepted, and "
+                        "sending it that way answers 401 exactly as a "
+                        "forged token does. Deliberate -- a token in a "
+                        "query string reaches browser history, the "
+                        "`Referer` of the next request, and every proxy "
+                        "log on the way."
                     ),
                     "schema": {"type": "string"},
                 },
             ],
             "responses": {
                 "200": {"description": "Deleted", **_json("MessageResponse")},
-                "401": _error("Neither an account nor a valid token"),
+                # One code for three situations -- no token, a forged
+                # one, and a good one sent somewhere this route does not
+                # read. Telling them apart would tell an unauthenticated
+                # caller which of their guesses was closer.
+                "401": _error(
+                    "Neither an account nor a valid token in "
+                    "X-Deletion-Token"
+                ),
                 "403": _error("Not this caller's link to delete"),
                 "404": _error("No link carries that code"),
             },

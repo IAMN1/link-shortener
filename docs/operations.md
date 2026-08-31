@@ -221,6 +221,7 @@ trail is still being written:
   "cache": true, "cache_configured": true,
   "database": true, "database_schema": true,
   "rate_limiter": true, "task_queue": true,
+  "task_queue_configured": true,
   "timed_out": [],
   "logging": {
     "logger": { "active": "structlog", "dropped_calls": 0,
@@ -240,12 +241,13 @@ Those counters are reported nowhere else. An audit trail that had quietly
 stopped being written looked, from every surface an operator has, exactly
 like one that was fine.
 
-Five of those fields answer a question the plain `true` beside them cannot:
+Six of those fields answer a question the plain `true` beside them cannot:
 
 | Field | What it says |
 |---|---|
 | `database_schema` | Whether the database that answered holds this application's tables. `SELECT 1` succeeds against an empty one, so `database: true` alone once reported a service that answered `500` to every request. `database` true with this false is the state the short `/health` renders as `"database": "no_schema"`, and it answers `503` |
 | `cache_configured` | Whether a cache backend is configured at all. A cache nobody configured cannot be down, so it reports `cache: true`; this field is what tells that apart from a cache that is working |
+| `task_queue_configured` | Whether there is a broker behind the queue at all. With `CELERY_ENABLED=false` the work is done during the request, so `task_queue` reports `true`; this field is what tells that apart from workers that are answering. It was missing, and a deployment running neither cache nor broker reported the two differently for one and the same state |
 | `timed_out` | Names the dependencies that did not answer inside the check's budget. They are reported `false` above as well — this list says which one is hanging, where `false` alone says only that it answered no. An empty list is the healthy case |
 | `journals_unavailable` | Names the journals this process could not open. `journals_written` is the other half: the ones it did, in the order they are written |
 | `worker` | The process the counters were taken in. They live in one worker's memory and a deployment runs several, so a number here is that worker's, not the service's |

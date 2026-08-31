@@ -401,6 +401,26 @@ class SQLAlchemyUserRepository(UserRepository):
         # is still one administrator.
         return query.distinct().count()
 
+    def ids_with_role(self, role_id: str) -> List[str]:
+        """The accounts wearing a role, active or not.
+
+        Args:
+            role_id: The role to find the wearers of.
+
+        Returns:
+            Their ids.
+        """
+        # The same shape as the count below, and the same reasons: no
+        # filter on ``is_active``, and distinct because the join repeats.
+        return [
+            row[0]
+            for row in self.session.query(UserModel.id)
+            .join(UserModel.roles)
+            .filter(RoleModel.id == role_id)
+            .distinct()
+            .all()
+        ]
+
     def count_with_role(self, role_id: str) -> int:
         """Count the accounts wearing a role, active or not.
 

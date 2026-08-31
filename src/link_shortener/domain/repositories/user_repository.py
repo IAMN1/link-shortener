@@ -173,6 +173,26 @@ class UserRepository(ABC):
         ...
 
     @abstractmethod
+    def ids_with_role(self, role_id: str) -> List[str]:
+        """
+        The accounts wearing a role, active or not.
+
+        The counting sibling below exists for the audit trail. This one
+        exists because deleting a role has to put the accounts it leaves
+        bare back on the default one, and that needs their identity
+        rather than their number -- measured before it did: an account
+        whose only role was deleted signed in and was refused everything,
+        including what an anonymous caller may do.
+
+        Args:
+            role_id: The role to find the wearers of.
+
+        Returns:
+            Their ids. Empty when nobody wears it.
+        """
+        ...
+
+    @abstractmethod
     def count_with_role(self, role_id: str) -> int:
         """
         Count the accounts wearing a role, active or not.

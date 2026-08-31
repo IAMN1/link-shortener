@@ -5,6 +5,9 @@ from link_shortener.application import (
     UpdateRolePermissionsUseCase, DeleteRoleUseCase, ListRolesUseCase,
     GetRoleUseCase, RoleManagementService, Logger
 )
+from link_shortener.application.services.user_management_service import (
+    UserManagementService,
+)
 
 
 @dataclass
@@ -18,6 +21,10 @@ class AdminRoleUseCasesComponent:
 
     uow_factory: UnitOfWorkFactory
     role_service: RoleManagementService
+    # Deleting a role puts the accounts it leaves bare back on the default
+    # one, and that goes through the same service the other door uses.
+    user_service: UserManagementService
+    default_role_name: str
     logger: Logger
     audit_logger: AuditLogger
 
@@ -56,6 +63,8 @@ class AdminRoleUseCasesComponent:
         return DeleteRoleUseCase(
             uow_factory=self.uow_factory,
             role_service=self.role_service,
+            user_service=self.user_service,
+            default_role_name=self.default_role_name,
             logger=self.logger,
             audit_logger=self.audit_logger,
         )

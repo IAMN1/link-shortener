@@ -1,5 +1,7 @@
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from link_shortener.web.schemas.strict import StrictRequest
 
 from link_shortener.domain.policies.password_policy import MIN_PASSWORD_LENGTH
 from link_shortener.domain.policies.role_policy import (
@@ -9,7 +11,7 @@ from link_shortener.domain.policies.role_policy import (
 from link_shortener.domain.value_objects.email import EMAIL_PATTERN
 
 
-class CreateUserRequest(BaseModel):
+class CreateUserRequest(StrictRequest):
     """Request schema for creating a new user."""
     email: str = Field(
         ...,
@@ -62,7 +64,7 @@ class CreateUserRequest(BaseModel):
     )
 
 
-class UpdateUserRolesRequest(BaseModel):
+class UpdateUserRolesRequest(StrictRequest):
     """Request schema for replacing a user's roles."""
     roles: List[str] = Field(
         ...,
@@ -79,7 +81,7 @@ class UpdateUserRolesRequest(BaseModel):
     )
 
 
-class CreateRoleRequest(BaseModel):
+class CreateRoleRequest(StrictRequest):
     """Request schema for creating a new role."""
     name: str = Field(
         ...,
@@ -117,7 +119,7 @@ class CreateRoleRequest(BaseModel):
     )
 
 
-class UpdateRolePermissionsRequest(BaseModel):
+class UpdateRolePermissionsRequest(StrictRequest):
     """Request schema for updating role permissions (full replacement)."""
     permissions: List[str] = Field(
         ...,

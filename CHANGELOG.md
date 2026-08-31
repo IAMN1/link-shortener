@@ -10,6 +10,34 @@ recalled — the same rule the rest of this project's documents are held to.
 
 ## [Unreleased]
 
+### Changed
+
+- The `auditor` role now holds `stats:view_basic` and `stats:view_full`.
+  Without them it saw less than nobody: measured on two live walks,
+  `GET /api/v1/stats` and both visit endpoints answered 200 to an
+  anonymous caller and 403 to a signed-in auditor, so whoever read the
+  journals about an incident could not see the traffic while it happened.
+  It remains a reading role.
+
+  **A database that already holds the roles keeps the old set.** Seeding
+  leaves an existing role alone on purpose, so an edit made in the panel
+  survives — which means `flask db load-base-roles` will not add these.
+  Take them from the shipped file with
+  `flask db load-custom-roles src/link_shortener/infrastructure/configs/rbac/roles.yaml --update-existing`,
+  or add them to the role in the panel.
+
+- Request bodies refuse a field the service does not declare, with `400`
+  and the field named, where they used to ignore it. `POST /api/v1/shorten`
+  answered `201` to `{"url": ..., "custom_code": "..."}` and gave a
+  generated code: there is no custom code in the HTTP API, and the caller
+  had no way to learn they had not been given one. `RefreshTokenRequest`
+  stays lenient, because both routes that use it are reached with no body
+  at all and a stray field must not refuse a logout.
+
+- Deleting a role puts the accounts it leaves with no role at all back on
+  the default one. Such an account could sign in and was then refused
+  everything, including what an anonymous caller may do.
+
 ## [0.9.0] — 2026-08-30
 
 First public release.
@@ -59,7 +87,7 @@ frozen" is the honest one.
   pages.
 - **Docker Compose stack** — application, PostgreSQL, two Redis instances,
   a Celery worker and log rotation, with a development overlay.
-- **Test suite** — 4608 tests, 98.69% statement coverage against a floor of
+- **Test suite** — 4633 tests, 98.69% statement coverage against a floor of
   88%, plus two live runs against a real stack: 157 HTTP checks and 68
   browser checks. CI runs the suite twice, in a clean environment and a
   polluted one.

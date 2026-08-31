@@ -149,7 +149,8 @@ class TestEachCounterIsPublishedUnderItsOwnName:
         # one that had never been migrated.
         assert set(body) == {
             "database", "database_schema", "cache", "cache_configured",
-            "task_queue", "rate_limiter", "timed_out", "logging"
+            "task_queue", "task_queue_configured", "rate_limiter",
+            "timed_out", "logging"
         }
 
 

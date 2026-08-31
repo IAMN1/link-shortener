@@ -176,6 +176,11 @@ def uow(stored):
     unit.users.find_by_id.side_effect = stored.get
     unit.roles.get_by_name.return_value = None
     unit.refresh_sessions.revoke_all_for_user.return_value = 0
+    # Nobody wore the role unless a test says otherwise. Spelled out
+    # because a bare Mock answers this with a Mock, which is not a list
+    # and is not empty either -- deleting a role now reads it to put the
+    # accounts left bare back on the default role.
+    unit.users.ids_with_role.return_value = []
     return unit
 
 
@@ -522,6 +527,8 @@ class TestRolesThemselvesAreRecorded:
         use_case = DeleteRoleUseCase(
             uow_factory=uow_factory,
             role_service=Mock(),
+            user_service=Mock(),
+            default_role_name="user",
             logger=Mock(),
             audit_logger=audit,
         )
@@ -548,6 +555,8 @@ class TestRolesThemselvesAreRecorded:
         use_case = DeleteRoleUseCase(
             uow_factory=uow_factory,
             role_service=Mock(),
+            user_service=Mock(),
+            default_role_name="user",
             logger=Mock(),
             audit_logger=audit,
         )
@@ -577,6 +586,8 @@ class TestRolesThemselvesAreRecorded:
         use_case = DeleteRoleUseCase(
             uow_factory=uow_factory,
             role_service=service,
+            user_service=Mock(),
+            default_role_name="user",
             logger=Mock(),
             audit_logger=audit,
         )
@@ -690,6 +701,8 @@ class TestNothingIsRecordedWhenNothingHappened:
         use_case = DeleteRoleUseCase(
             uow_factory=uow_factory,
             role_service=service,
+            user_service=Mock(),
+            default_role_name="user",
             logger=Mock(),
             audit_logger=audit,
         )

@@ -28,6 +28,12 @@ class HealthSnapshot:
         cache_configured: Whether a cache backend is configured at all,
             which tells "the cache is fine" from "there is no cache".
         task_queue: Whether the queue can accept work.
+        task_queue_configured: Whether there is a broker behind it at all,
+            which tells "the workers are answering" from "the work is done
+            in the request". The sibling of ``cache_configured``, and it
+            was missing: on the arrangement that puts both in the process,
+            ``/health`` answered ``"cache": "disabled"`` and
+            ``"task_queue": "ok"`` for two dependencies in the same state.
         rate_limiter: Whether request limits are actually being enforced. A
             limiter that cannot reach its backend lets everything through,
             brute-force protection on the auth endpoints included, and
@@ -51,6 +57,10 @@ class HealthSnapshot:
     # a measured value -- a test asserting the endpoint's answer would
     # fail if it stopped.
     database_schema: bool = True
+    # Defaulted true for the same reason, and true is the honest default
+    # here: every construction that predates this field is a Celery-backed
+    # one or a test that never asks.
+    task_queue_configured: bool = True
     timed_out: Tuple[str, ...] = field(default=())
 
     @property

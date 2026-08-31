@@ -409,7 +409,18 @@ def create_app(config=None) -> Flask:
                 if state.cache_configured
                 else "disabled"
             ),
-            "task_queue": describe("task_queue", state.task_queue),
+            # The same distinction the cache gets, and it was missing:
+            # with `CELERY_ENABLED=false` the work is done in the request
+            # and there is no queue to be up or down, but this said "ok" --
+            # so a deployment with neither cache nor broker answered
+            # `"cache": "disabled"` and `"task_queue": "ok"` for two
+            # dependencies in the same state. Measured on the arrangement
+            # that puts both in the process.
+            "task_queue": (
+                describe("task_queue", state.task_queue)
+                if state.task_queue_configured
+                else "inline"
+            ),
             # Not "ok"/"unavailable": the limiter is reachable or not, but
             # what matters to an operator is whether limits are on.
             "rate_limiter": (

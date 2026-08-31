@@ -8,6 +8,9 @@ from link_shortener.application.services.role_management_service import RoleMana
 from link_shortener.application.use_cases.admin.privilege_guard import (
     require_administrator_survives_without,
 )
+from link_shortener.application.services.user_management_service import (
+    UserManagementService,
+)
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
 
@@ -21,14 +24,22 @@ class DeleteRoleUseCase(BaseUseCase):
     Attributes:
         uow_factory: Callable factory for creating Unit of Work instances.
         role_service: Service that removes the role itself.
+        user_service: Service the fallback role is assigned through, so
+            that both doors a role reaches an account by ask the same
+            policy.
         logger: Application logger.
         audit_logger: Audit logger, where the removal is recorded -- it
             takes the role's permissions off everyone who wore it.
+        default_role_name: The role an account falls back to when this
+            deletion leaves it with none. The same name registration
+            grants, read from one setting rather than written twice.
     """
     uow_factory: UnitOfWorkFactory
     role_service: RoleManagementService
+    user_service: UserManagementService
     logger: Logger
     audit_logger: AuditLogger
+    default_role_name: str
 
     def execute(
             self,
@@ -90,8 +101,85 @@ class DeleteRoleUseCase(BaseUseCase):
             # be translated here into codes; the vocabulary is now one, and
             # the status table keeps deciding: 404 for the first, like the
             # neighbouring `delete_user`, and 400 for the second.
+            # Who wore it, not just how many: the accounts this leaves
+            # bare have to be put back on the default role, and that
+            # needs their identity. Read before the deletion, because
+            # afterwards nothing wears the role.
+            wearers = uow.users.ids_with_role(doomed.id) if doomed else []
+
             self.role_service.delete_role(uow, role_name)
+
+            rerolled = self._put_the_bare_ones_back(uow, wearers, log)
             uow.commit()
 
-        log.info("Role deleted", role_name=role_name, holders=holders)
+        log.info(
+            "Role deleted",
+            role_name=role_name,
+            holders=holders,
+            rerolled=rerolled,
+        )
         audit.log_role_deleted(role=role_name, holders=holders)
+
+    def _put_the_bare_ones_back(self, uow, wearers, log) -> int:
+        """
+        Give the default role to accounts this deletion left with none.
+
+        Deleting a role takes it off every account at once. An account
+        whose only role it was is then left with an empty set, and an
+        empty set is not the same as the least privilege -- measured: such
+        an account signed in (200) and was then refused everything,
+        including `POST /api/v1/shorten`, which an anonymous caller may
+        do. It could not be told apart from a working account until it
+        tried something, and nothing said so at deletion time.
+
+        The default role rather than the one that was deleted: what the
+        administrator asked for was that the role stop existing, and
+        recreating it under another name would be answering a different
+        request. This is the same role registration grants, and it goes
+        through the same guard, so a deployment that has pointed
+        ``DEFAULT_ROLE_NAME`` at something unassignable is refused here as
+        it is there.
+
+        Args:
+            uow: The unit of work the deletion runs in.
+            wearers: Ids of the accounts that wore the deleted role.
+            log: Logger already bound to this request.
+
+        Returns:
+            How many accounts were put back on the default role.
+        """
+        if not wearers:
+            return 0
+
+        fallback = uow.roles.get_by_name(self.default_role_name)
+        if fallback is None:
+            # Said rather than raised: the role is already gone and the
+            # transaction is worth keeping. What is lost is the fallback,
+            # and an operator reading this knows which accounts to look at.
+            log.warning(
+                "Accounts left without a role and the default role is missing",
+                default_role_name=self.default_role_name,
+                accounts=len(wearers),
+            )
+            return 0
+
+        rerolled = 0
+        for user_id in wearers:
+            account = uow.users.find_by_id(user_id)
+            if account is None or account.roles:
+                continue
+            # Through the service rather than by writing the entity here:
+            # it is one of the two doors a role reaches an account by, and
+            # the assignability policy is asked at both. A deployment that
+            # has pointed `DEFAULT_ROLE_NAME` at something unassignable is
+            # refused here exactly as registration refuses it.
+            self.user_service.update_roles(uow, user_id, [fallback])
+            rerolled += 1
+
+        if rerolled:
+            log.info(
+                "Accounts put back on the default role",
+                default_role_name=self.default_role_name,
+                accounts=rerolled,
+            )
+        return rerolled

@@ -809,10 +809,19 @@ def maintenance_health():
     else:
         database_line = "OK"
 
+    # The queue gets the cache's three answers for the same reason: with
+    # `CELERY_ENABLED=false` there is no queue to be up or down, and "OK"
+    # said the same thing for a working broker and for no broker at all --
+    # beside a cache in the same position that said "not configured".
+    if state.task_queue_configured:
+        queue_line = "OK" if state.task_queue else "FAILED"
+    else:
+        queue_line = "not configured"
+
     lines = [
         ("Database", database_line),
         ("Cache", cache_line),
-        ("Task queue", "OK" if state.task_queue else "FAILED"),
+        ("Task queue", queue_line),
         ("Rate limiter", "OK" if state.rate_limiter else "FAILED"),
     ]
     width = max(len(name) for name, _ in lines) + 1

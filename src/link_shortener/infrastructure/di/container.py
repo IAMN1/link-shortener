@@ -406,6 +406,8 @@ class Container:
             self._admin_role_use_cases = AdminRoleUseCasesComponent(
                 uow_factory=self._uow_factory,
                 role_service=self._role_management_service,
+                user_service=self._user_management_service,
+                default_role_name=self.config.DEFAULT_ROLE_NAME,
                 logger=self.logger_component.get_logger(__name__),
                 audit_logger=self._audit_logger(),
             )

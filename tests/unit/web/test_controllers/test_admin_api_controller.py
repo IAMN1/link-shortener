@@ -226,6 +226,7 @@ class TestAdminApiController:
         mock_health.task_queue = True
         mock_health.rate_limiter = True
         mock_health.cache_configured = True
+        mock_health.task_queue_configured = True
         mock_health.timed_out = ()
         mock_health.logging = LoggingStatus(
             worker=4242,
@@ -245,7 +246,8 @@ class TestAdminApiController:
         # nothing else reports at all.
         assert set(data) == {
             "database", "database_schema", "cache", "cache_configured",
-            "task_queue", "rate_limiter", "timed_out", "logging"
+            "task_queue", "task_queue_configured", "rate_limiter",
+            "timed_out", "logging"
         }
         assert data["logging"]["audit"]["dropped_calls"] == 2
         assert data["logging"]["audit"]["failed_checks"] == 1
@@ -272,6 +274,7 @@ class TestAdminApiController:
         mock_health.task_queue = True
         mock_health.rate_limiter = True
         mock_health.cache_configured = True
+        mock_health.task_queue_configured = True
         mock_health.timed_out = ()
         mock_health.logging = None
         ctrl.admin_service.get_service_health.return_value = mock_health

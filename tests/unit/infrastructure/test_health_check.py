@@ -560,6 +560,52 @@ class TestTheSchemaIsAskedAboutSeparately:
 
         assert manager.missing_declared_tables.call_count == 1
 
+    def test_a_queue_in_the_process_is_told_from_one_with_a_broker(self):
+        """
+        The cache had this distinction and the queue did not.
+
+        With `CELERY_ENABLED=false` the work is done during the request:
+        there is no queue to be up or down, and `task_queue` answers true
+        — correctly, because the work is done. What was missing is the
+        second boolean that says which of the two you are looking at.
+        Measured on the arrangement that puts both cache and queue in the
+        process: `/health` answered `"cache": "disabled"` beside
+        `"task_queue": "ok"` for two dependencies in the same state.
+        """
+        celery_backed = InfrastructureHealthCheck(
+            _db_manager(), cache=None, task_queue=Mock(celery_app=Mock())
+        )
+        in_the_process = InfrastructureHealthCheck(
+            _db_manager(), cache=None, task_queue=Mock(spec=[])
+        )
+
+        assert celery_backed.is_task_queue_configured() is True
+        assert in_the_process.is_task_queue_configured() is False
+
+    def test_no_queue_at_all_is_not_called_configured(self):
+        """`CELERY_ENABLED=false` may leave nothing here at all."""
+        check = InfrastructureHealthCheck(
+            _db_manager(), cache=None, task_queue=None
+        )
+
+        assert check.is_task_queue_configured() is False
+
+    def test_the_verdict_does_not_change(self):
+        """
+        The point of the distinction is that it changes nothing about
+        health: work done inline is done, and a queue nobody configured
+        cannot be down.
+        """
+        check = InfrastructureHealthCheck(
+            _db_manager(), cache=None, task_queue=None
+        )
+
+        state = check.snapshot()
+
+        assert state.task_queue is True
+        assert state.task_queue_configured is False
+        assert state.healthy is True
+
     def test_the_answer_turns_green_without_a_restart(self):
         """
         The half the guide got wrong, in a sentence written this session.
