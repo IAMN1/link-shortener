@@ -147,7 +147,7 @@
                         }
                         var status = r.is_new ? t('status_created') : t('status_existing');
                         html += '<div class="result-field"><span class="result-url">' + shortUrl(r.short_url) + '</span>'
-                            + '<button class="result-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)">' + escapeHtml(t('copy')) + '</button></div>'
+                            + '<button class="result-copy js-copy-made" type="button">' + escapeHtml(t('copy')) + '</button></div>'
                             + '<div class="text-xs text-muted mb-1">' + escapeHtml(status) + ' &mdash; ' + escapeHtml(r.url) + '</div>'
                             + deleteControl(r);
                     });
@@ -249,6 +249,42 @@
             + '</div>';
     }
 
+    // Bound after each render, like the delete buttons and for the same
+    // reason -- and, unlike them, it was not always bound at all. This
+    // button carried `onclick="navigator.clipboard.writeText(...)"`, and
+    // an inline handler is exactly what `script-src 'self' 'nonce-...'`
+    // refuses: a nonce names a script element, it does not reach an
+    // attribute. Measured in a browser -- the button rendered, the click
+    // logged "Executing inline event handler violates the following
+    // Content Security Policy directive", and the clipboard stayed empty.
+    // The policy was right and the button was the exception.
+    function bindCopyButtons(scope) {
+        scope.querySelectorAll('.js-copy-made').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var shown = btn.previousElementSibling;
+                if (!shown) return;
+                // Selected first, and kept selected whatever follows: a
+                // clipboard write is refused outside a secure context --
+                // plain HTTP on anything but localhost, which a first
+                // deployment without TLS is -- and `navigator.clipboard`
+                // is not defined there at all. The selection is the
+                // fallback that needs no permission and no new string in
+                // three catalogues: the address is highlighted, and the
+                // browser's own copy is one keystroke away.
+                var range = document.createRange();
+                range.selectNodeContents(shown);
+                var selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(shown.textContent).catch(
+                        function() { /* the selection above is the answer */ }
+                    );
+                }
+            });
+        });
+    }
+
     // Bound after each render, because the card is rewritten each time.
     function bindDeleteButtons(scope) {
         scope.querySelectorAll('.js-delete-made').forEach(function(btn) {
@@ -287,7 +323,7 @@
         var html = '<div class="result-card">'
             + '<div class="lab mb-1">' + escapeHtml(data.is_new ? t('status_created') : t('status_existing')) + '</div>'
             + '<div class="result-field"><span class="result-url">' + shortUrl(data.short_url) + '</span>'
-            + '<button class="result-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)">' + escapeHtml(t('copy')) + '</button></div>'
+            + '<button class="result-copy js-copy-made" type="button">' + escapeHtml(t('copy')) + '</button></div>'
             + '<div class="text-sm text-muted mt-1">' + escapeHtml(data.original_url) + '</div>'
             + deleteControl(data)
             + '</div>';
@@ -305,6 +341,7 @@
         r.innerHTML = html;
         reveal(from, r);
         bindDeleteButtons(r);
+        bindCopyButtons(r);
     }
     function reveal(from, r) {
         r.classList.remove('hidden');

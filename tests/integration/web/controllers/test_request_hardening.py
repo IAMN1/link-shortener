@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from tests.integration.conftest import csrf_headers
+from tests.integration.conftest import auth_headers, csrf_headers
 
 
 _addresses = itertools.count(1)
@@ -75,6 +75,98 @@ class TestABodyThatIsNotAnObject:
         response = _post(client, "/api/v1/shorten", json={"url": _url()})
 
         assert response.status_code == 201, response.get_json()
+
+
+class TestTheAdminSurfaceAnswersTheSameWayAboutAShape:
+    """
+    Three doors read the body; two of them went through the guard.
+
+    ``web/request_body.json_object`` exists because ``**`` on a list
+    raises ``TypeError`` before Pydantic is reached, and the class above
+    holds the two public creation endpoints to it. The admin controller
+    read ``request.get_json() or {}`` at four sites instead, so one API
+    answered a malformed body two ways -- 400 with a named field from
+    every public route, 500 from the administrative ones. A 500 also
+    files the refusal in error monitoring next to real crashes.
+
+    Behind a permission, so the shape is asked about by a caller who is
+    allowed through the door: a 401 would pass a check like this without
+    ever reaching the body.
+    """
+
+    @pytest.fixture()
+    def administrator(self, app):
+        """A client holding the two permissions these routes ask for."""
+        from tests.integration.conftest import account_with_permissions
+
+        return account_with_permissions(
+            app,
+            f"admin-shape-{uuid.uuid4().hex[:8]}@example.com",
+            "Str0ng!Passw0rd",
+            f"shape-admin-{uuid.uuid4().hex[:6]}",
+            ["admin:manage_users", "admin:manage_roles"],
+        )
+
+    @pytest.mark.parametrize("body", [[1, 2], "text", 5, True])
+    @pytest.mark.parametrize("path", [
+        "/api/v1/admin/users",
+        "/api/v1/admin/roles",
+    ])
+    def test_a_body_that_is_not_an_object_is_refused_with_400(
+        self, administrator, path, body
+    ):
+        client, token, _user_id = administrator
+
+        answer = client.post(
+            path, json=body, headers=csrf_headers(client, auth_headers(token))
+        )
+
+        assert answer.status_code == 400, (
+            f"{path} answered {answer.status_code} to {body!r}: "
+            f"{answer.get_data(as_text=True)[:200]}"
+        )
+
+    @pytest.mark.parametrize("path", [
+        "/api/v1/admin/users",
+        "/api/v1/admin/roles",
+    ])
+    def test_the_refusal_names_the_body(self, administrator, path):
+        """
+        The same sentence the public routes give, so a client reading one
+        API does not have to learn two vocabularies for one mistake.
+        """
+        client, token, _user_id = administrator
+
+        answer = client.post(
+            path, json=[1, 2],
+            headers=csrf_headers(client, auth_headers(token)),
+        )
+
+        assert "JSON object" in answer.get_data(as_text=True), (
+            answer.get_data(as_text=True)[:200]
+        )
+
+    def test_a_well_formed_body_still_works(self, administrator):
+        """
+        The other half: the guard must not refuse what it is there to let
+        through.
+        """
+        client, token, _user_id = administrator
+
+        answer = client.post(
+            "/api/v1/admin/roles",
+            json={
+                "name": f"shape-ok-{uuid.uuid4().hex[:6]}",
+                "description": "created past the shape guard",
+                # Not empty, and not anything: a role must carry at least
+                # one permission, and an actor may only confer what it
+                # holds. Registration grants this one.
+                "permissions": ["link:create"],
+            },
+            headers=csrf_headers(client, auth_headers(token)),
+        )
+
+        assert answer.status_code == 201, answer.get_data(as_text=True)
 
 
 class TestAMissingContentType:

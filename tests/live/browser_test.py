@@ -7,8 +7,9 @@ drives the Flask test client, which has no browser in it -- so the twelve
 files that turn an API answer into something a person reads are, as far as
 any other run can tell, empty. Reversing ``data.message || data.error`` in
 all twelve -- putting the machine-readable code back in front of the
-sentence on every form -- leaves the suite green at 4526 and the HTTP run
-green at 157/157, and takes this one from 67/67 to 20/67.
+sentence on every form -- leaves the suite green at 4608 and the HTTP run
+green at 157/157, and takes this one down to twenty of the sixty-seven
+checks it held when that was measured.
 
 Run it by hand, as ``smoke_test.py`` is run:
 
@@ -436,7 +437,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 67
+    expected = 68
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -553,6 +554,39 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         # And the address that was submitted, so a script rendering the
         # wrong field is caught rather than merely a missing one.
         assert "from-a-browser" in page.inner_text("#result")
+
+    @check("the copy button on a result actually copies")
+    def _():
+        """
+        It carried `onclick="navigator.clipboard.writeText(...)"`, and an
+        inline handler is what `script-src 'self' 'nonce-...'` refuses --
+        a nonce names a script element and does not reach an attribute.
+        Measured before the fix: the button rendered, the click logged
+        "Executing inline event handler violates the following Content
+        Security Policy directive", and the clipboard stayed empty. The
+        policy was right; the button was the one place in the tree
+        written as though it were not there.
+        """
+        page = page_for("/")
+        page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+        refusals = []
+        page.on("console", lambda message: refusals.append(message.text))
+
+        page.fill("#url-single", "https://example.com/copy-me")
+        page.click("#form-single button[type=submit]")
+        page.wait_for_selector("#result .result-copy", timeout=5000)
+        shown = page.inner_text("#result .result-url").strip()
+        page.click("#result .result-copy")
+        page.wait_for_timeout(300)
+
+        assert page.evaluate("navigator.clipboard.readText()") == shown, (
+            "the clipboard did not receive the short URL"
+        )
+        inline = [
+            line for line in refusals
+            if "inline event handler" in line
+        ]
+        assert not inline, f"the click was refused by the policy: {inline}"
 
     @check("a refused shortening shows a sentence, not a code")
     def _():

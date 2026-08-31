@@ -35,6 +35,7 @@ login page reports success for a configuration whose every later form is
 refused. The request under test is the one *after* it.
 """
 
+import pytest
 from sqlalchemy import text
 
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
@@ -132,6 +133,102 @@ class TestAnyOtherAddressDoesNeedOne:
         _account(app)
 
         assert _form_after_sign_in(app, OTHER) == 201
+
+
+class TestBothSpellingsOfThisMachine:
+    """
+    A local run answers to two names, and a person types either.
+
+    `.env.example` lists both spellings at port 5000 and says why: with
+    `localhost` alone, "someone who opened `http://127.0.0.1:5000` sees a
+    working front page ... and 'CSRF token missing or invalid' on every
+    form the moment they sign in -- measured on a live run".
+
+    That fix was pinned to a port. The guide tells a reader to move the
+    published port when 5000 is taken, and moving it put the failure back:
+    measured on a container stack published at 5101, every signed-in form
+    at `http://127.0.0.1:5101` answered 403 `CSRF_TOKEN_INVALID` while the
+    same form at `http://localhost:5101` answered 201 -- and the logout was
+    refused the same way, silently, leaving the dashboard open to the next
+    person at that browser. The two stale entries for 5000, where nothing
+    was listening, were admitted throughout.
+
+    So the twin is derived from `BASE_URL` rather than listed in a
+    template: it follows the port instead of naming one.
+    """
+
+    def _loopback_app(self, tmp_path, port):
+        """An app whose own address is loopback on `port`."""
+        class Config(TestingConfig):
+            pass
+
+        Config.DOMAIN = None
+        Config.USE_HTTPS = False
+        Config.HOST = "localhost"
+        Config.PORT = port
+        Config.CORS_ORIGINS = []
+        Config.MAIL_ENABLED = False
+        Config.DATABASE_URL = f"sqlite:///{tmp_path}/twin.db"
+
+        app = create_app(config=Config())
+        with app.app_context():
+            manager = app.container.get_db_manager()
+            manager.create_tables()
+            with manager.session() as session:
+                seed_base_roles(session)
+        return app
+
+    @pytest.mark.parametrize("spelling", ["localhost", "127.0.0.1"])
+    def test_a_form_is_accepted_from_either(self, tmp_path, spelling):
+        app = self._loopback_app(tmp_path, 5101)
+        _account(app)
+
+        status = _form_after_sign_in(app, f"http://{spelling}:5101")
+
+        assert status == 201, (
+            f"a signed-in form from http://{spelling}:5101 was refused, "
+            f"while the service answers on that very address"
+        )
+
+    def test_the_twin_follows_the_port(self, tmp_path):
+        """
+        The half that pinning to 5000 got wrong: the pair has to be the
+        port actually published, not a port a template remembers.
+        """
+        app = self._loopback_app(tmp_path, 5101)
+        _account(app)
+
+        assert _form_after_sign_in(app, "http://127.0.0.1:5000") == 403
+
+    def test_a_real_domain_gains_no_twin(self, tmp_path):
+        """
+        The other direction, and the one that matters for a deployment:
+        this must not admit anything for a service that names a domain.
+        """
+        app = _app(tmp_path, cors_origins=[])
+        _account(app)
+
+        assert _form_after_sign_in(app, "http://127.0.0.1:5101") == 403
+        assert _form_after_sign_in(app, OWN) == 201
+
+    def test_a_host_that_merely_looks_loopback_gains_nothing(self):
+        """
+        `localhost.evil.example` is somebody else's domain. The twin is
+        keyed on the whole host name, not on what it contains.
+        """
+        from link_shortener.web.middleware.csrf import (
+            CsrfProtectionMiddleware
+        )
+
+        class Bare:
+            config = {
+                "CORS_ORIGINS": [],
+                "BASE_URL": "https://localhost.evil.example",
+            }
+
+        admitted = CsrfProtectionMiddleware._build_allowed_origins(Bare())
+
+        assert admitted == frozenset({"https://localhost.evil.example"})
 
 
 class TestSignInIsNotTheCheck:

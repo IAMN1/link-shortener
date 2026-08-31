@@ -16,6 +16,7 @@ only offer what the request behind it would be allowed to do.
 
 from flask import Flask, g
 
+from link_shortener.domain.policies.password_policy import MIN_PASSWORD_LENGTH
 from link_shortener.web.security.context import get_current_domain_user
 
 
@@ -51,11 +52,19 @@ def can(permission: str) -> bool:
 
 def register_template_access(app: Flask) -> None:
     """
-    Make ``can`` available to every template.
+    Make ``can`` and the password floor available to every template.
+
+    The floor travels with them because the two password forms wrote it
+    out as ``minlength="6"`` while the policy enforced eight -- so a
+    seven-character password passed the browser and was refused by the
+    service, with the page having promised otherwise. That drift was
+    found and closed once already on the Python side, where
+    ``CreateUserRequest`` now reads the constant and a test holds it;
+    the markup was the surviving copy.
 
     Args:
         app: The application to register the context processor on.
     """
     @app.context_processor
     def inject_access():  # pragma: no cover - trivial closure, exercised via templates
-        return {"can": can}
+        return {"can": can, "min_password_length": MIN_PASSWORD_LENGTH}

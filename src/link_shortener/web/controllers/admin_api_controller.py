@@ -8,7 +8,7 @@ administrative permissions.
 
 from typing import Any, Dict
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 from link_shortener.application import AdminService
 from link_shortener.application.ports.logging_status import ChainStatus
 from link_shortener.application.use_cases.auth.resend_verification import (
@@ -24,6 +24,7 @@ from link_shortener.web.schemas.admin.admin_request import (
 from link_shortener.web.schemas.admin.admin_responses import RoleResponseSchema, UserResponseSchema
 from link_shortener.web.schemas.link import ShortLinkResponse
 from link_shortener.web.paging import window_from_query
+from link_shortener.web.request_body import json_object
 from link_shortener.web.security.context import create_request_context
 from link_shortener.web.security.decorators import require_permission
 from link_shortener.domain.i18n import N_
@@ -106,7 +107,7 @@ class AdminApiController:
         Reads JSON body with ``email``, ``password``, ``roles``, ``is_active``.
         Returns the created user's data with status 201.
         """
-        data = request.get_json() or {}
+        data = json_object()
         validated = CreateUserRequest(**data)
         context = create_request_context()
         result = self.admin_service.create_user(
@@ -155,7 +156,7 @@ class AdminApiController:
 
         Reads JSON body with ``roles`` list.
         """
-        data = request.get_json() or {}
+        data = json_object()
         validated = UpdateUserRolesRequest(**data)
         context = create_request_context()
         result = self.admin_service.update_user_roles(user_id, validated.roles, context)
@@ -283,7 +284,7 @@ class AdminApiController:
         Reads JSON body with ``name``, ``description``, ``permissions``.
         Returns the created role with status 201.
         """
-        data = request.get_json() or {}
+        data = json_object()
         validated = CreateRoleRequest(**data)
         context = create_request_context()
         result = self.admin_service.create_role(
@@ -324,7 +325,7 @@ class AdminApiController:
 
         Reads JSON body with ``permissions`` list.
         """
-        data = request.get_json() or {}
+        data = json_object()
         validated = UpdateRolePermissionsRequest(**data)
         context = create_request_context()
         result = self.admin_service.update_role_permissions(

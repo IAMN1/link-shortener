@@ -197,6 +197,53 @@ def set_csrf_cookie(response, secure: bool, token: str):
     return response
 
 
+LOOPBACK_TWINS = {"localhost": "127.0.0.1", "127.0.0.1": "localhost"}
+"""The two spellings of this machine, each naming the other.
+
+A browser treats them as different origins; a person treats them as the
+same address and types whichever they remember.
+"""
+
+
+def _loopback_twin(parsed) -> set:
+    """
+    The other spelling of a loopback base URL, if that is what this is.
+
+    ``.env.example`` lists both spellings of the loopback address at port
+    5000, and says why: "someone who opened `http://127.0.0.1:5000` sees a
+    working front page (an anonymous caller does not go through CSRF) and
+    'CSRF token missing or invalid' on every form the moment they sign in
+    -- measured on a live run".
+
+    That fix was pinned to the port. The guide tells a reader to move the
+    published port when 5000 is taken, and moving it puts the failure
+    back: measured on a stack published at 5101, `http://localhost:5101`
+    wrote fine and `http://127.0.0.1:5101` answered 403
+    `CSRF_TOKEN_INVALID` on every signed-in form -- including the logout,
+    which failed silently and left the dashboard open. Meanwhile the two
+    stale entries for 5000, where nothing is listening, were still
+    admitted.
+
+    Derived from ``BASE_URL`` rather than added to the template, so it
+    follows the port instead of naming one. Only for loopback: a
+    deployment names a real ``DOMAIN`` -- both deployed profiles refuse to
+    start without one -- and nothing here widens anything for it.
+
+    Args:
+        parsed: The parsed ``BASE_URL``.
+
+    Returns:
+        A set holding the twin origin, or an empty one.
+    """
+    host = parsed.hostname or ""
+    twin = LOOPBACK_TWINS.get(host)
+    if not twin:
+        return set()
+
+    port = f":{parsed.port}" if parsed.port else ""
+    return {f"{parsed.scheme}://{twin}{port}"}
+
+
 class CsrfProtectionMiddleware:
     """
     Rejects state-changing requests that are authenticated by cookie but
@@ -249,6 +296,7 @@ class CsrfProtectionMiddleware:
             parsed = urlparse(base_url)
             if parsed.scheme and parsed.netloc:
                 origins.add(f"{parsed.scheme}://{parsed.netloc}")
+                origins.update(_loopback_twin(parsed))
 
         return frozenset(origins)
 
