@@ -27,6 +27,7 @@ service whose whole job is to be a small redirect. The document is served at
 Postman, a client generator -- and ``/api/docs`` renders it as a page.
 """
 
+import re
 from typing import Any, Dict, Optional, Type
 
 from pydantic import BaseModel
@@ -108,6 +109,207 @@ MODELS: Dict[str, Type[BaseModel]] = {
 """Every schema the API speaks, taken from the models it validates with."""
 
 
+ANONYMOUS_ROLE = "guest"
+"""The role an unauthenticated caller acts under, per ``AuthenticationMiddleware``."""
+
+_PATH_PARAMETER = re.compile(r"<(?:[^:<>]+:)?([^<>]+)>")
+"""Flask's ``<name>`` and ``<converter:name>``, as OpenAPI's ``{name}``."""
+
+
+def as_documented_path(rule: str) -> str:
+    """
+    A Flask rule written the way this document writes it.
+
+    Args:
+        rule: The rule as Flask holds it, e.g. ``/api/v1/links/<code>``.
+
+    Returns:
+        The same path in the document's spelling, ``/api/v1/links/{code}``.
+    """
+    return _PATH_PARAMETER.sub(r"{\1}", rule)
+
+
+def _anonymous_may(app) -> "Any":
+    """
+    A question this document can ask about an anonymous caller.
+
+    Asked of the running authorization service rather than read out of
+    ``roles.yaml``: the file is the seed, the database is the answer, and
+    a deployment that has edited ``guest`` has edited its own API. It is
+    also the same call ``require_permission`` makes -- ``is_allowed(None,
+    permission)`` -- so the document and the guard cannot disagree about
+    what a visitor may do.
+
+    Read through the application rather than imported, because this module
+    describes the API and must not reach into infrastructure to do it;
+    ``test_schemas_stay_above_infrastructure.py`` holds that, and caught
+    the first version of this function reading the RBAC file directly.
+
+    Args:
+        app: The application whose container holds the service.
+
+    Returns:
+        A predicate taking a permission and answering whether an
+        anonymous caller holds it. When there is no service to ask -- no
+        container, or a database that cannot answer -- it answers False,
+        which makes every guarded operation say a token is required: a
+        stricter contract than the service enforces, never a looser one.
+    """
+    container = getattr(app, "container", None)
+    service = None
+    if container is not None:
+        getter = getattr(container, "get_authorization_service", None)
+        if getter is not None:
+            try:
+                service = getter()
+            except Exception:  # pragma: no cover - a document is not worth a crash
+                service = None
+
+    def may(permission: str) -> bool:
+        if service is None:
+            return False
+        try:
+            return bool(service.is_allowed(None, permission))
+        except Exception:  # pragma: no cover - same reason
+            return False
+
+    return may
+
+
+CREDENTIALS_ARE_NOT_THE_QUESTION = frozenset({
+    ("/api/v1/auth/login", "post"),
+    ("/api/v1/auth/register", "post"),
+    ("/api/v1/auth/refresh", "post"),
+    ("/api/v1/auth/logout", "post"),
+    ("/api/v1/auth/verify", "get"),
+    ("/api/v1/auth/verify", "post"),
+    ("/api/v1/auth/forgot-password", "post"),
+    ("/api/v1/auth/reset-password", "post"),
+    ("/api/v1/auth/resend-verification", "post"),
+})
+"""Operations whose ``401`` is about the request, not about a missing token.
+
+Everywhere else a ``401`` means "no credentials, or credentials that do not
+stand up", and the document has to say a token belongs there. On these it
+means something else and a token would not help: sign-in answers ``401``
+because the password is wrong, and refresh and sign-out read the session
+cookie, which is why ``AuthenticationMiddleware`` ignores a failed
+``Authorization`` header on exactly those two.
+
+Listed rather than derived because nothing in the code distinguishes them:
+the status is the same integer either way. Kept short, and every entry is
+an ``/auth`` operation -- a route outside ``/auth`` that answers 401 needs
+a token, and the test holds exactly that.
+"""
+
+
+def security_for(permission: Optional[str], anonymous_may) -> list:
+    """
+    What an operation should declare about credentials.
+
+    Three answers, and the middle one is the whole reason this is computed
+    rather than typed:
+
+    * **No decorator** -- nothing to declare. ``[]`` says so explicitly,
+      which is not the same as saying nothing at all.
+    * **Guarded by a permission the ``guest`` role holds** -- an anonymous
+      caller may use it *and* a token is honoured. OpenAPI spells that
+      ``[{}, {"bearerAuth": []}]``: the empty object is "no credentials",
+      and a client generator reads it as optional.
+    * **Guarded by a permission ``guest`` lacks** -- a token is required.
+
+    Measured before this existed: of 39 operations, **two** declared
+    ``security`` and 34 of the rest listed ``401``/``403`` among their own
+    responses -- a document telling a reader that a call needs no
+    credentials and answers 401. Swagger UI sends no token for such an
+    operation, and a generated client has no place to put one.
+
+    Args:
+        permission: What ``require_permission`` put on the view, if any.
+        anonymous_may: Predicate answering whether an anonymous caller
+            holds a permission.
+
+    Returns:
+        The value for the operation's ``security`` key.
+    """
+    if permission is None:
+        return []
+    if anonymous_may(permission):
+        return [{}, {"bearerAuth": []}]
+    return [{"bearerAuth": []}]
+
+
+def _add_security(paths: Dict[str, Any], app) -> Dict[str, Any]:
+    """
+    Say which operations need a token, reading the routes themselves.
+
+    The truth lives on the view functions: ``require_permission`` leaves
+    the permission it enforces on the wrapper, and this walks the route
+    table to find it. Nothing here is a list to maintain -- an operation
+    that gains or loses a guard changes what the document says about it on
+    the next start-up.
+
+    An operation the route table does not cover is left exactly as the
+    hand-written table has it, which is how the two ``auth`` operations
+    that already declare ``bearerAuth`` keep theirs.
+
+    Args:
+        paths: The path table, after the cross-cutting responses.
+        app: The application whose routes describe the API.
+
+    Returns:
+        A copy carrying ``security`` on every operation the routes reach.
+    """
+    anonymous_may = _anonymous_may(app)
+
+    described = {path: dict(operations) for path, operations in paths.items()}
+    for rule in app.url_map.iter_rules():
+        documented = as_documented_path(str(rule))
+        operations = described.get(documented)
+        if not operations:
+            continue
+
+        view = app.view_functions.get(rule.endpoint)
+        permission = getattr(view, "required_permission", None)
+        needs_a_caller = getattr(view, "requires_credentials", False)
+
+        for method in (rule.methods or set()):
+            verb = method.lower()
+            if verb not in OPERATION_VERBS or verb not in operations:
+                continue
+            operation = dict(operations[verb])
+            if "security" in operation:
+                operations[verb] = operation
+                continue
+
+            if permission is not None:
+                declared = security_for(permission, anonymous_may)
+            elif needs_a_caller:
+                # No decorator names a permission, and the route still
+                # cannot be used by anybody anonymous -- the journals pick
+                # theirs from the journal asked for, and changing your own
+                # password is authorised by being signed in.
+                declared = [{"bearerAuth": []}]
+            elif (documented, verb) in CREDENTIALS_ARE_NOT_THE_QUESTION:
+                declared = []
+            elif "401" in operation.get("responses", {}) or "403" in operation.get(
+                "responses", {}
+            ):
+                # It answers a refusal that a credential can change, and
+                # nothing here says a credential is required -- deleting a
+                # guest link takes its deletion token, an owner's link
+                # takes a session. Optional is the truthful answer, and it
+                # is what puts the token box in front of the reader.
+                declared = [{}, {"bearerAuth": []}]
+            else:
+                declared = []
+
+            operation["security"] = declared
+            operations[verb] = operation
+
+    return described
+
+
 def _ref(name: str) -> Dict[str, Any]:
     """Reference a component schema by name."""
     return {"$ref": f"#/components/schemas/{name}"}
@@ -154,6 +356,26 @@ THROTTLE_REFUSAL = (
 CSRF_REFUSAL = (
     "a cookie-authenticated write carrying no valid X-CSRF-Token"
 )
+
+UNDECLARED_INPUT_REFUSAL = (
+    "a body field or a query parameter this operation does not declare"
+)
+"""The other answer every API operation can give, and none declared.
+
+This service refuses what it does not understand rather than ignoring it:
+a request body carrying an undeclared field is refused by
+``StrictRequest``, and a query parameter no operation declares is refused
+by ``middleware/query_strictness.py``, which reads *this* document to
+decide. Both answer ``400 VALIDATION_ERROR`` with the name of what was
+wrong.
+
+Folded in here for the reason the two above are: OpenAPI 3.x cannot state
+a response once for a document, and typing it into thirty-nine operations
+is how a document falls behind. Measured before this line existed: the
+contract run generated a request with one unknown parameter and got
+``400`` from operations whose documented answers were ``200, 401, 403,
+429`` -- the service refusing correctly and the document not saying so.
+"""
 
 def _throttle_headers() -> Dict[str, Any]:
     """
@@ -265,6 +487,26 @@ def _add_cross_cutting_responses(paths: Dict[str, Any]) -> Dict[str, Any]:
             if key.lower() not in SAFE_VERBS:
                 responses["403"] = _merge_response(
                     responses.get("403"), CSRF_REFUSAL
+                )
+
+            if "requestBody" in value:
+                # Flask answers 415 when a body is expected and the
+                # request does not carry `Content-Type: application/json`
+                # -- including when it carries no body at all. Measured by
+                # the contract run: `POST /api/v1/auth/verify` with no
+                # body answered 415 against a document declaring 200, 400,
+                # 403 and 429.
+                responses["415"] = _merge_response(
+                    responses.get("415"),
+                    "a body that is not declared as JSON",
+                )
+
+            if path.startswith("/api/v1"):
+                # Under `/api/v1` only, which is where both rules apply:
+                # a page reads what it knows of the query string and
+                # ignores the rest, deliberately.
+                responses["400"] = _merge_response(
+                    responses.get("400"), UNDECLARED_INPUT_REFUSAL
                 )
 
             refusal = _merge_response(responses.get("429"), THROTTLE_REFUSAL)
@@ -766,6 +1008,13 @@ PATHS: Dict[str, Any] = {
                 "400": _error("Unknown period, or a malformed code"),
                 "401": _error("scope=mine without a session"),
                 "403": _error("Not entitled to the statistics"),
+                # Named here as well as in the parameter's own description,
+                # which said "A code no link carries is 404" while the list
+                # of answers did not include it. Found by the contract run:
+                # `?code=<a code nothing carries>` answered 404
+                # LINK_NOT_FOUND against a document declaring 200, 400,
+                # 401, 403 and 429.
+                "404": _error("No link carries that code"),
             },
         }
     },
@@ -809,6 +1058,8 @@ PATHS: Dict[str, Any] = {
                 "400": _error("days out of range, or a malformed code"),
                 "401": _error("scope=mine without a session"),
                 "403": _error("Not entitled to the statistics"),
+                # As on the span above, and found the same way.
+                "404": _error("No link carries that code"),
             },
         }
     },
@@ -887,8 +1138,11 @@ PATHS: Dict[str, Any] = {
                 "200": {"description": "Tokens", **_json("TokenPairResponse")},
                 "400": _error("Malformed body or malformed email"),
                 "401": _error(
-                    "Wrong credentials, an inactive account, or an address "
-                    "nobody has confirmed (EMAIL_NOT_VERIFIED)"
+                    "Refused. Wrong credentials, an inactive account and an "
+                    "address nobody has confirmed are one answer -- "
+                    "INVALID_CREDENTIALS, with the same sentence -- so that "
+                    "the reply cannot be used to tell whether a password "
+                    "landed. The journal keeps the three apart"
                 ),
                 "429": _error("Too many attempts from this address"),
             },
@@ -1600,8 +1854,21 @@ PATHS: Dict[str, Any] = {
             "parameters": [CODE_PARAMETER],
             "responses": {
                 "302": {"description": "Redirect to the original URL"},
-                "404": _error("No link carries that code"),
-                "410": _error("The link has expired"),
+                # A page, not an envelope. This route is followed by a
+                # browser -- it is the whole product -- so a code nobody
+                # carries is answered with the service's own 404 page, and
+                # the two refusals below are the only ones in this document
+                # that are not JSON. Declared as what they are: the
+                # contract run read `text/html; charset=utf-8` against a
+                # document promising `application/json`.
+                "404": {
+                    "description": "No link carries that code",
+                    "content": {"text/html": {"schema": {"type": "string"}}},
+                },
+                "410": {
+                    "description": "The link has expired",
+                    "content": {"text/html": {"schema": {"type": "string"}}},
+                },
             },
         }
     },
@@ -1609,17 +1876,38 @@ PATHS: Dict[str, Any] = {
 """What the routing table and the decorators know, written out once."""
 
 
-def build_openapi(base_url: str, version: str = "1.0.0") -> Dict[str, Any]:
+def build_openapi(
+    base_url: str, version: str = "1.0.0", app=None
+) -> Dict[str, Any]:
     """
     Assemble the OpenAPI document.
 
     Args:
         base_url: Public base URL of this deployment.
         version: Version to report for the API.
+        app: The application whose routes say which operations need a
+            token. Defaults to the one in the current application context,
+            which is where both callers stand; passed explicitly by tests
+            that build a document outside one. Without either, the
+            operations carry only what the table below declares -- and
+            what the service actually serves is always built with an
+            application, because a document is only ever asked for through
+            a request.
 
     Returns:
         The document, ready to be serialized as JSON.
     """
+    if app is None:
+        # `current_app` is a proxy and raises outside a context rather than
+        # answering None, so the absence is asked about rather than caught
+        # after the fact.
+        from flask import current_app, has_app_context
+
+        # The proxy itself, not the object behind it: everything below asks
+        # it for `url_map`, `view_functions` and `container`, which it
+        # forwards, and reaching for the object needs an attribute mypy is
+        # right to say Flask does not declare.
+        app = current_app if has_app_context() else None
     schemas: Dict[str, Any] = {}
     for name, model in MODELS.items():
         schema = model.model_json_schema(
@@ -1675,7 +1963,11 @@ def build_openapi(base_url: str, version: str = "1.0.0") -> Dict[str, Any]:
                 ),
             },
         ],
-        "paths": _add_cross_cutting_responses(PATHS),
+        "paths": (
+            _add_security(_add_cross_cutting_responses(PATHS), app)
+            if app is not None
+            else _add_cross_cutting_responses(PATHS)
+        ),
         "components": {
             "schemas": schemas,
             "securitySchemes": {

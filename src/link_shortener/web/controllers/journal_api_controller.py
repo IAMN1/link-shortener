@@ -30,6 +30,7 @@ from link_shortener.domain import DomainError
 from link_shortener.domain.i18n import N_
 from link_shortener.web.schemas.journal import JournalPageResponse, JournalQuery
 from link_shortener.web.schemas.security import SecurityCountsResponse
+from link_shortener.web.security.decorators import requires_credentials
 from link_shortener.web.security.context import create_request_context
 
 
@@ -67,6 +68,7 @@ class JournalApiController:
             "/<journal>", view_func=self.read_journal_page, methods=["GET"]
         )
 
+    @requires_credentials
     def read_counters(self):
         """
         Handle ``GET /api/v1/journals/counters`` -- the figures of a span.
@@ -100,6 +102,7 @@ class JournalApiController:
             SecurityCountsResponse.from_domain(counts).model_dump(mode="json")
         )
 
+    @requires_credentials
     def read_journal_page(self, journal: str):
         """
         Handle ``GET /api/v1/journals/<journal>`` -- the end of one journal.

@@ -5,6 +5,7 @@ Provides decorators that enforce authentication and permission checks.
 """
 
 import functools
+from typing import Any, cast
 
 from flask import g, redirect, request, url_for
 
@@ -55,6 +56,17 @@ def require_permission(permission: str):
                 )
 
             return view_func(*args, **kwargs)
+
+        # The permission, left where a reader of the route table can find
+        # it. The published document has to say which operations need a
+        # token, and the only truthful source for that is this decorator:
+        # a list kept beside it is a list that stops agreeing with it.
+        # `openapi.py` reads this attribute off the view; nothing else
+        # depends on it.
+        # Cast because a decorated view is typed as a wrapper, which
+        # declares no such attribute: the mark is data for `openapi.py`,
+        # not part of the calling contract.
+        cast(Any, wrapper).required_permission = permission
         return wrapper
     return decorator
 
@@ -133,4 +145,40 @@ def login_required(view_func):
                 )
             return redirect(url_for('frontend.login_page'))
         return view_func(*args, **kwargs)
+
+    # Read by `openapi.py`, for the reason written at
+    # `requires_credentials` below: the published document has to say that
+    # this operation needs a caller, and this decorator is where that is
+    # true.
+    cast(Any, wrapper).requires_credentials = True
     return wrapper
+
+
+def requires_credentials(view_func):
+    """
+    Mark a view that needs a caller but decides the rest for itself.
+
+    ``require_permission`` says which permission opens a route, and the
+    published document reads it to say whether a token is needed. Two
+    kinds of route carry no such decorator and still cannot be used by
+    anybody anonymous:
+
+    * the journals, which pick the permission from the journal asked for
+      -- ``audit:view`` for one, ``logs:view`` for the other, and the
+      route's own docstring explains why the check cannot be a decorator;
+    * ``change-password``, whose authorization *is* that the account is
+      the one the request authenticated as.
+
+    Without this mark the document said those operations needed no
+    credentials while listing ``401`` among their answers. It carries no
+    behaviour: the checks stay where they are, and this is only what lets
+    the document describe them truthfully.
+
+    Args:
+        view_func: The view to mark.
+
+    Returns:
+        The same view.
+    """
+    cast(Any, view_func).requires_credentials = True
+    return view_func

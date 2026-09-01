@@ -3,7 +3,9 @@ from pydantic import ConfigDict, Field
 
 from link_shortener.web.schemas.strict import StrictRequest
 
-from link_shortener.domain.policies.password_policy import MIN_PASSWORD_LENGTH
+from link_shortener.domain.policies.password_policy import (
+    MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH,
+)
 from link_shortener.domain.policies.role_policy import (
     ROLE_DESCRIPTION_MAX_LENGTH, ROLE_NAME_MAX_LENGTH, ROLE_NAME_MIN_LENGTH,
     ROLE_NAME_PATTERN,
@@ -16,7 +18,12 @@ class CreateUserRequest(StrictRequest):
     email: str = Field(
         ...,
         pattern=EMAIL_PATTERN,
-        description="User Email"
+        description="User Email",
+        # `format` beside the pattern, so every address in the published
+        # document is described the same way: a reader of one operation
+        # learns what a reader of the next one does, and a client
+        # generator that understands `format` gets the hint here too.
+        json_schema_extra={"format": "email"},
     )
     """The shape comes from the value object every path builds afterwards.
 
@@ -30,6 +37,12 @@ class CreateUserRequest(StrictRequest):
     password: str = Field(
         ...,
         min_length=MIN_PASSWORD_LENGTH,
+        # The ceiling in the document only, not as a second gate: the
+        # policy already refuses a longer one, and a schema that refused
+        # it first would answer with Pydantic's sentence where every other
+        # password rule answers with the policy's. What this fixes is a
+        # document that stated the floor and left the ceiling unsaid.
+        json_schema_extra={"maxLength": MAX_PASSWORD_LENGTH},
         description=(
             f"User password (min {MIN_PASSWORD_LENGTH} characters, and not "
             f"one attackers already have)"

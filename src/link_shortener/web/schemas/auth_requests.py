@@ -33,7 +33,45 @@ from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from link_shortener.domain.policies.password_policy import (
+    MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH,
+)
+from link_shortener.domain.value_objects.email import EMAIL_PATTERN
 from link_shortener.web.schemas.strict import StrictRequest
+
+
+AN_ADDRESS: Dict[str, Any] = {"format": "email", "pattern": EMAIL_PATTERN}
+"""What the service means by an address, in the document's own words.
+
+Put in the **schema** and not in the field's validation, and the
+difference is the whole of it: these models are lenient readers by design
+-- the rule lives in ``Email``, which is where every other way into this
+service meets it -- and turning them into gates would answer a malformed
+address with Pydantic's sentence instead of the domain's, on two routes
+and not on the rest.
+
+What it fixes is a document that did not say what it accepts. ``email``
+was published as a plain string, so a client generated from it had no way
+to know an address was wanted, and the contract run -- which builds
+requests from the schema -- sent ``"invalid-url"`` to sign-in,
+registration, the reset request and the resend, and got ``400`` from all
+four. The service was right and the document was silent.
+
+The pattern is the one ``Email`` matches with, imported rather than
+copied: two spellings of one rule is how they start to disagree.
+"""
+
+A_PASSWORD: Dict[str, Any] = {
+    "minLength": MIN_PASSWORD_LENGTH,
+    "maxLength": MAX_PASSWORD_LENGTH,
+}
+"""The length a password has to be, from the policy that enforces it.
+
+Length only. The policy also refuses passwords on a common-passwords list,
+and a list is not a thing a JSON Schema can express -- so a document
+saying "at least eight characters" is telling the truth and not the whole
+of it, which is the best a schema can do here.
+"""
 
 
 def _body(
@@ -91,10 +129,15 @@ class CredentialsRequest(StrictRequest):
     """
 
     email: Optional[str] = Field(
-        default=None, description="Address the account signs in with."
+        default=None,
+        description="Address the account signs in with.",
+        json_schema_extra=AN_ADDRESS,
     )
     password: Optional[str] = Field(
-        default=None, description="Its password.")
+        default=None,
+        description="Its password.",
+        json_schema_extra=A_PASSWORD,
+    )
 
     model_config = ConfigDict(json_schema_extra=_body(
         required=["email", "password"],
@@ -114,7 +157,9 @@ class EmailRequest(StrictRequest):
     """
 
     email: Optional[str] = Field(
-        default=None, description="Address to send the message to."
+        default=None,
+        description="Address to send the message to.",
+        json_schema_extra=AN_ADDRESS,
     )
 
     model_config = ConfigDict(json_schema_extra=_body(
@@ -148,7 +193,9 @@ class ResetPasswordRequest(StrictRequest):
     token: Optional[str] = Field(
         default=None, description="Token from the reset link.")
     new_password: Optional[str] = Field(
-        default=None, description="Password to set on the account."
+        default=None,
+        description="Password to set on the account.",
+        json_schema_extra=A_PASSWORD,
     )
 
     model_config = ConfigDict(json_schema_extra=_body(
@@ -173,7 +220,9 @@ class ChangePasswordRequest(StrictRequest):
         default=None, description="The password the account has now."
     )
     new_password: Optional[str] = Field(
-        default=None, description="The password to replace it with."
+        default=None,
+        description="The password to replace it with.",
+        json_schema_extra=A_PASSWORD,
     )
 
     model_config = ConfigDict(json_schema_extra=_body(

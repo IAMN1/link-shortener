@@ -242,6 +242,128 @@ class TestEveryApiRouteIsDescribed:
 
         assert not undeclared, f"429 undeclared on: {sorted(undeclared)}"
 
+    def test_every_api_operation_declares_the_undeclared_input_refusal(
+        self, document
+    ):
+        """
+        This service refuses what it does not understand, on every route.
+
+        A body field no model declares is refused by ``StrictRequest``; a
+        query parameter no operation declares is refused by
+        ``middleware/query_strictness.py`` -- which reads *this* document
+        to decide, so every operation in it is one that rule speaks for.
+        Both answer ``400``.
+
+        Found by the contract run: a request carrying one unknown
+        parameter was answered ``400`` by operations whose documented
+        answers were ``200, 401, 403, 429``. Held here as well as there,
+        because a generated run reaches this only when it happens to
+        generate an unknown name, and this has to hold every time.
+        """
+        undeclared = [
+            f"{verb.upper()} {path}"
+            for path, path_item in document["paths"].items()
+            if path.startswith("/api/v1")
+            for verb, operation in operations_of(path_item)
+            if "400" not in operation["responses"]
+        ]
+
+        assert not undeclared, f"400 undeclared on: {sorted(undeclared)}"
+
+    def test_every_operation_taking_a_body_declares_the_media_type_refusal(
+        self, document
+    ):
+        """
+        A body that is not JSON is refused before the endpoint is reached.
+
+        Flask answers ``415`` when a view asks for JSON and the request
+        does not carry ``Content-Type: application/json`` -- including
+        when it carries no body at all. Measured by the contract run:
+        ``POST /api/v1/auth/verify`` with no body answered ``415`` against
+        a document declaring ``200, 400, 403, 429``.
+        """
+        undeclared = [
+            f"{verb.upper()} {path}"
+            for path, path_item in document["paths"].items()
+            for verb, operation in operations_of(path_item)
+            if "requestBody" in operation
+            and "415" not in operation["responses"]
+        ]
+
+        assert not undeclared, f"415 undeclared on: {sorted(undeclared)}"
+
+    def test_the_refusals_it_declares_are_ones_the_service_gives(self, client):
+        """
+        The other direction, so the two checks above are not a formality.
+
+        A document may declare anything; these two are declared because
+        the service answers them.
+        """
+        undeclared_parameter = client.get(
+            "/api/v1/stats?there-is-no-such-parameter=1"
+        )
+        no_media_type = client.post("/api/v1/auth/verify", data="not json")
+
+        assert undeclared_parameter.status_code == 400
+        assert no_media_type.status_code == 415
+
+    def test_an_address_is_documented_as_the_service_reads_it(self, document):
+        """
+        The document says what an address is, in the domain's own words.
+
+        ``email`` was published as a plain string, so a client generated
+        from this document had no way to know an address was wanted -- and
+        the contract run, which builds requests from the schema, sent
+        ``"invalid-url"`` to sign-in, registration, the reset request and
+        the resend, meeting a ``400`` none of them had predicted.
+
+        The pattern is imported from ``Email`` rather than copied, so the
+        published rule and the enforced rule cannot drift; this checks
+        that the published one is still that.
+        """
+        from link_shortener.domain.value_objects.email import EMAIL_PATTERN
+
+        schemas = document["components"]["schemas"]
+        # Request models only: a response carries whatever the account
+        # actually has, and holding an answer to the shape of an input is
+        # how a service starts refusing to describe its own data.
+        addressed = [
+            name for name, schema in schemas.items()
+            if name.endswith("Request") and "email" in schema.get("properties", {})
+        ]
+
+        assert addressed, "no request model carries an address any more"
+        for name in addressed:
+            email = schemas[name]["properties"]["email"]
+            assert email.get("pattern") == EMAIL_PATTERN, name
+            assert email.get("format") == "email", name
+
+    def test_a_password_is_documented_with_the_bounds_the_policy_sets(self, document):
+        """
+        Length is the part of the policy a schema can carry, so it does.
+
+        The rest -- a list of common passwords -- is not a shape, and the
+        document says nothing it cannot keep.
+        """
+        from link_shortener.domain.policies.password_policy import (
+            MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH,
+        )
+
+        schemas = document["components"]["schemas"]
+        fields = [
+            (name, field)
+            for name, schema in schemas.items()
+            if name.endswith("Request")
+            for field in schema.get("properties", {})
+            if field in {"password", "new_password"}
+        ]
+
+        assert fields, "no request model carries a password any more"
+        for name, field in fields:
+            described = schemas[name]["properties"][field]
+            assert described.get("minLength") == MIN_PASSWORD_LENGTH, (name, field)
+            assert described.get("maxLength") == MAX_PASSWORD_LENGTH, (name, field)
+
     def test_a_path_level_field_is_not_mistaken_for_an_operation(self):
         """
         A path item may carry more than operations, and did not survive it.
