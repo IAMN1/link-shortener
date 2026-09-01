@@ -5,6 +5,7 @@ Serves HTML pages for the authenticated user's dashboard.
 All pages rely on client-side JS to fetch data from the API.
 """
 
+from link_shortener.web.paging import MAX_OFFSET
 from flask import Blueprint, render_template, request
 from flask_babel import gettext
 
@@ -178,7 +179,13 @@ class DashboardController:
         """
         ctx = self._get_context()
         page = max(1, request.args.get("page", 1, type=int))
-        offset = (page - 1) * USERS_PER_PAGE
+        # Clamped at the same ceiling the API listings use, and for the
+        # same reason: a number wider than the column type reaches the
+        # database and the database refuses it. Measured before this line,
+        # `?page=1318762989985418969088` answered 500 to an administrator
+        # -- the fault `web/paging.py` describes, on the page rather than
+        # on the API.
+        offset = min((page - 1) * USERS_PER_PAGE, MAX_OFFSET)
         found = self.admin_service.list_users(
             ctx, limit=USERS_PER_PAGE + 1, offset=offset
         )

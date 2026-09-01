@@ -153,3 +153,43 @@ class TestTheWindowStillMeansWhatItSays:
 
         assert response.status_code == 200
         assert len(response.get_json()) == 1
+
+
+class TestThePageOfTheAccountsPageIsBoundedToo:
+    """
+    The dashboard reads its own ``page`` and made its own offset.
+
+    ``web/paging.py`` bounds what the API listings read, and the users page
+    does not go through it: it takes ``page`` off the query string and
+    multiplies. Measured before this was clamped, against SQLite and as an
+    administrator::
+
+        GET /dashboard/users?page=2                       -> 200
+        GET /dashboard/users?page=1318762989985418969088  -> 500
+
+    The number is wider than the column type, so the database refuses it
+    and the caller gets a 500 there is nothing to do about -- the same
+    fault the API listings had at the other end of the range, arriving
+    through the page instead.
+    """
+
+    def test_a_page_beyond_any_table_still_answers(self, operator):
+        """A window past the end is an empty page, not a failure."""
+        client, token, _ = operator
+
+        answered = client.get(
+            "/dashboard/users?page=1318762989985418969088",
+            headers=auth_headers(token),
+        )
+
+        assert answered.status_code == 200
+
+    def test_an_ordinary_page_still_answers(self, operator):
+        """The half that keeps the clamp from being a cap on paging."""
+        client, token, _ = operator
+
+        answered = client.get(
+            "/dashboard/users?page=2", headers=auth_headers(token)
+        )
+
+        assert answered.status_code == 200
