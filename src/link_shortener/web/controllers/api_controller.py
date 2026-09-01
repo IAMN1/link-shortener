@@ -132,11 +132,55 @@ class ApiController:
         context = create_request_context()
         result_dto = self.link_service.get_link_info(short_code, context)
         response_data = ShortLinkResponse.from_dto(result_dto)
-        if not can_view_link_details(result_dto.owner_id, self.authorization_service):
+
+        # The token is the only thing a guest link has in place of an
+        # owner, and it is what the delete route already accepts as proof.
+        # Without this the promise made on the landing page and in the
+        # guide -- "its click counters are shown only to whoever made the
+        # link" -- was true of nobody for a guest link: `owner_id` is
+        # null, so the check below withheld the counters from the person
+        # who made it as firmly as from a stranger. Measured: a guest was
+        # handed `clicks: 0` in the answer that created the link and
+        # `clicks: null` on every look at it afterwards.
+        #
+        # It widens nothing. The token is signed with `SECRET_KEY` and
+        # names the row rather than the code, so it proves this caller
+        # made *this* link and stops proving anything the moment the link
+        # is deleted and its code handed out again.
+        made_it = result_dto.link_id is not None and result_dto.link_id == link_id_from(
+            current_app.config["SECRET_KEY"],
+            request.headers.get("X-Deletion-Token"),
+        )
+        if not made_it and not can_view_link_details(
+            result_dto.owner_id, self.authorization_service
+        ):
             response_data.owner_id = None
             response_data.clicks = None
             response_data.last_accessed = None
-        return jsonify(response_data.model_dump())
+
+        answer = jsonify(response_data.model_dump())
+        # Two different bodies now come back from one URL, and what tells
+        # them apart is a request header -- so the answer has to say so.
+        # Measured before this line existed: both the answer carrying
+        # `clicks` and the answer carrying `clicks: null` came back
+        # `Vary: Cookie, Accept-Language, Accept-Encoding` with no
+        # `Cache-Control` at all, because the caller is a guest and
+        # `PrivateCacheMiddleware` returns above its `no-store` branch for
+        # anybody anonymous. A shared cache was free to store the one with
+        # the counters and hand it to the next caller of the same URL.
+        #
+        # That middleware makes exactly this argument for `Cookie` and
+        # `Accept-Language` -- "a shared cache had every right to hand one
+        # visitor's page to the next" -- and this header joined the answer
+        # after the list was written.
+        answer.vary.add("X-Deletion-Token")
+        if made_it:
+            # The counters belong to whoever made the link, which is the
+            # same thing `no-store` is for on an account's own pages.
+            # `Vary` alone leans on every cache in the path implementing it
+            # correctly; this leans on none of them.
+            answer.headers["Cache-Control"] = "no-store"
+        return answer
 
     # ------------------------------------------------------------------
     # GET /api/v1/links/<short_code>/extended
