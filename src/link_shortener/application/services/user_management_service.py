@@ -115,6 +115,17 @@ class UserManagementService:
 
         Raises:
             UserNotFoundError: If no account carries that id.
+            ValidationError: If the new set is empty. An account with no
+                roles is not an account with the least privilege -- it
+                has *less* than an anonymous caller, who is answered as
+                ``guest``. Measured: such an account signed in, and was
+                then refused ``POST /api/v1/shorten``, which a visitor
+                who never signed in may do. The admin API already refused
+                an empty list at its schema and answered ``400
+                VALIDATION_ERROR``; every other way in reached this and
+                was let through, which is how deleting a role stripped
+                its wearers. To park an account, ``deactivate_user`` is
+                the door -- it says what it does and can be undone.
             RoleNotAssignableError: At the first role no account may wear.
                 This is one of the two doors a role reaches an account
                 through, and the policy is asked at both.
@@ -123,6 +134,11 @@ class UserManagementService:
         user = uow.users.find_by_id(user_id)
         if not user:
             raise UserNotFoundError(user_id)
+
+        if not roles:
+            raise ValidationError(
+                N_("An account must keep at least one role"), field="roles"
+            )
 
         # ``User.create`` asks this on the way in; this is the other way
         # a role reaches an account, and it goes around the factory.
