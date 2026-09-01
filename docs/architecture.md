@@ -267,13 +267,30 @@ operation.
 >
 > Rows 1, 2 and 4 of [the arrangement
 > table](getting-started.md#choosing-where-each-part-runs) never had this:
-> Redis is one cache and every process invalidates in it. Where the cache
-> is in the process, `CACHE_ENABLED=false` removes even the one.
+> Redis is one cache and every process invalidates in it. Measured on row
+> 2 — application on the host, services in containers: a `flask link
+> delete` at a shell left **zero** stale answers, the very next redirect
+> was `404`, and a link created at a shell was served from the first
+> request. Where the cache is in the process, `CACHE_ENABLED=false`
+> removes even the one stale redirect.
+>
+> **What no arrangement notices is a row changed underneath it.** The
+> sweep above is triggered by a row that is *gone*; a destination edited
+> in the database directly is still a row, so the entry stays and the
+> redirect goes on sending people to the old address for as long as
+> `CACHE_LINK_TTL` says. Measured on row 2, with Redis: ten redirects over
+> five seconds all went to the old destination while `link info` — which
+> reads the database — reported the new one, and `flask cache clear` fixed
+> it at once because that cache is shared. On rows 3 and 5 the same
+> command reaches only its own process, and the wait is the TTL.
 
 ### Signed values
 
-Everything the cache stores is signed with `itsdangerous.TimestampSigner`
-under `SECRET_KEY` — the same library Flask signs sessions with.
+Everything the **Redis** cache stores is signed with
+`itsdangerous.TimestampSigner` under `SECRET_KEY` — the same library Flask
+signs sessions with. The in-process cache signs nothing and needs to: its
+entries live in this process's own memory, where anybody able to write to
+them can already write anything else.
 
 - **A value is not portable.** The Redis key is used as the salt, so each
   key derives its own signing key. An entry issued for one code does not
@@ -344,9 +361,12 @@ flowchart LR
 - The JWT carries a `type` claim (`access` / `refresh`), and the middleware
   accepts **only** an access token; a refresh token is good for
   `/auth/refresh` and nothing else.
-- An access token carries `sid`, the name of its session, and that is
-  checked on every request. Without it the token would be irrevocable:
-  logging out would only delete the client's copy.
+- An access token carries `sid`, the chain its login belongs to, and that
+  is checked on every request. Without it the token would be irrevocable:
+  logging out would only delete the client's copy. Measured: on the first
+  sign-in `sid` and the refresh token's `jti` are the same value, and they
+  part on the first rotation — `jti` names a row, `sid` names the chain
+  that row belongs to.
 - `is_active` is checked on every request, when an access token is issued
   and at login: deactivation revokes access immediately.
 - Cookie lifetimes come from `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` and
@@ -389,8 +409,11 @@ stateDiagram-v2
     Revoked --> [*]
 ```
 
-- Every refresh token carries `jti` (a row in `refresh_sessions`) and
-  `chain_id` — one chain per login, however many times the token rotates.
+- Every refresh token carries `jti`, the row in `refresh_sessions` it was
+  issued as. The chain — one per login, however many times the token
+  rotates — is a column of that row, not a claim: measured, a refresh
+  token's claims are `email, exp, iat, jti, sub, type` and no more, which
+  is why spending one is a lookup rather than a reading.
 - Logging out revokes its own session and leaves other devices alone;
   blocking an account revokes all of them.
 - Presenting a spent token means a copy exists: **its chain** is revoked,
@@ -431,9 +454,11 @@ fifteen permissions:
 
 ### You cannot grant more than you hold
 
-Every path by which permissions reach a user checks whether the caller is
-entitled to hand them out: assigning roles, creating a user, creating a
-role, changing the permissions of one. A holder of `admin:all` passes
+Every path over HTTP by which permissions reach a user checks whether the
+caller is entitled to hand them out: assigning roles, creating a user,
+creating a role, changing the permissions of one. The CLI is outside that
+rule and says so where it is written: a shell already has the database, so
+`flask create-user --role admin` is not an escalation it could prevent. A holder of `admin:all` passes
 freely.
 
 Without that check, `admin:manage_users` is shorthand for `admin:all`:

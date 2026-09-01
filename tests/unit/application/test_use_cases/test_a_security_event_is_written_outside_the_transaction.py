@@ -88,6 +88,43 @@ def _audit_calls(node: ast.AST):
             yield inner
 
 
+def _own_methods_called_in(node: ast.AST) -> set:
+    """The names of ``self.…`` methods this node calls.
+
+    Args:
+        node: Where to look.
+
+    Returns:
+        The method names, without ``self.``.
+    """
+    called = set()
+    for inner in ast.walk(node):
+        if not isinstance(inner, ast.Call):
+            continue
+        func = inner.func
+        if isinstance(func, ast.Attribute) and getattr(
+            func.value, "id", ""
+        ) == "self":
+            called.add(func.attr)
+    return called
+
+
+def _methods_of(tree: ast.AST) -> dict:
+    """Every method in a module, by name.
+
+    Args:
+        tree: The parsed module.
+
+    Returns:
+        ``{name: node}``.
+    """
+    return {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
 def written_inside_a_transaction():
     """Find every audit call made while a unit of work is open.
 
@@ -95,15 +132,33 @@ def written_inside_a_transaction():
     a property of every one of them, including the ones a test would have to
     build a database for.
 
+    **Through one hop, not only lexically.** The first version looked for
+    ``audit.log_*`` inside the ``with`` and nothing else, so a call moved
+    into a helper the block calls was invisible to it -- which is exactly
+    what happened: ``delete_role`` began recording a re-roling from
+    ``_put_the_bare_ones_back``, called inside the transaction, and this
+    sweep stayed green. One hop is enough for the shape this rule is about;
+    a use case that hides the call two methods deep is not the failure
+    being guarded against, and chasing every depth would mean resolving
+    calls this file cannot see.
+
     Returns:
         ``(path, line, method)`` for each call inside an open transaction.
     """
     found = []
     for path in sorted(USE_CASES.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        methods = _methods_of(tree)
         for node in ast.walk(tree):
-            if isinstance(node, ast.With) and _opens_a_unit_of_work(node):
-                for call in _audit_calls(node):
+            if not (isinstance(node, ast.With) and _opens_a_unit_of_work(node)):
+                continue
+            for call in _audit_calls(node):
+                found.append((str(path), call.lineno, call.func.attr))
+            for name in _own_methods_called_in(node):
+                helper = methods.get(name)
+                if helper is None:
+                    continue
+                for call in _audit_calls(helper):
                     found.append((str(path), call.lineno, call.func.attr))
     return found
 

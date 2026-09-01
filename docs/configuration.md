@@ -48,9 +48,10 @@ set.
 | `REDIS_URL` | These profiles default `REDIS_ENABLED=true`, and an enabled Redis with no address is a cache and a limiter with nothing to connect to |
 
 Conditionally mandatory: `MAIL_HOST` and `MAIL_FROM` when
-`MAIL_ENABLED=true`. `production` additionally refuses to submit mail
-without TLS — a submission in the clear carries the confirmation link to
-anyone on the path.
+`MAIL_ENABLED=true`. Both deployed profiles — `production` and `staging` —
+additionally refuse to submit mail without TLS: a submission in the clear
+carries the confirmation link to anyone on the path, and a staging
+deployment mails real addresses too.
 
 ```bash
 uv run flask security generate-secrets               # prints both, ready to paste
@@ -145,7 +146,7 @@ breaks against a browser's cookie as well.
 |---|---|---|
 | `error` | never translated | A code, not a sentence |
 | `message` | cookie, then `Accept-Language`, then default | What a person reads |
-| `details[].message` | English | Written inside Pydantic from a rule name, not a sentence this project owns |
+| `details[].message` | translated where the sentence is this project's, English where it is Pydantic's | A refusal this service words carries a template and follows the rules above — measured, `lang=ru` answers `«surprise» этой конечной точке неизвестен` inside `details`. What stays English is what Pydantic wrote, such as `Extra inputs are not permitted`: a rule name rather than a sentence this project owns |
 | A 5xx `message` | English, and always the same one | It says only "An internal error occurred", on the page as in the envelope; what actually failed is in `application.log` |
 | `application.log` | English | The operator reading it did not choose the visitor's language |
 | Mail | the language of the request that triggered it | Carried on `RequestContext.language`, because the worker rendering it has no request to ask |
@@ -264,7 +265,7 @@ the same endpoint sends its own cookie and gets the language on screen.
 Anything absent from the table goes by `DEFAULT_RATE_LIMIT` — 100 requests
 per `DEFAULT_RATE_LIMIT_PERIOD` (60 seconds).
 
-`RATE_LIMIT_AUTH_DISABLED=true` silences all six `auth.*` rows at once. It
+`RATE_LIMIT_AUTH_DISABLED=true` silences all nine `auth.*` rows at once. It
 is a development switch; in production it must stay off, or there is no
 protection against password guessing.
 
@@ -327,7 +328,7 @@ guessing is gone while the configuration says it is there.
 |---|---|---|
 | `MAIL_ENABLED` | `false`; `true` in the template | With it off, registration still answers `202` and no message leaves — and the account it created cannot sign in, because nothing confirms the address. The sign-in is refused as `401 INVALID_CREDENTIALS` — the same answer a wrong password gets, so the refusal cannot be read as "that password was right" — and the only way past it is an administrator: `POST /api/v1/admin/users/{id}/verify-email`. Which of the two it was is in the audit journal, under `audit:view`. A deployment that means to take registrations has to turn mail on |
 | `MAIL_HOST`, `MAIL_PORT` | `localhost`, 1025 in development | Aimed at the Mailpit catcher |
-| `MAIL_USE_TLS` / `MAIL_USE_SSL` | `false` in development | `production` requires one of them |
+| `MAIL_USE_TLS` / `MAIL_USE_SSL` | `false` in development | `production` and `staging` each require one of them |
 | `MAIL_FROM` | — | Mandatory when mail is on |
 | `EMAIL_VERIFICATION_TTL_HOURS` | 24 | Hours a confirmation link stays usable |
 | `PASSWORD_RESET_TTL_MINUTES` | 60 | Minutes a password reset link stays usable. Minutes, and shorter than the line above, because this link is a way into the account rather than proof of a mailbox |
@@ -351,9 +352,11 @@ Read by `docker compose`, not by the application.
 code reads, and it misses it in both directions on purpose.
 
 It is wider: the Compose variables above are read by `docker compose` and by
-nothing in `src`, and so are gunicorn's tuning knobs and the four `FLASK_*`
-settings the `flask` command reads for itself before this application is
-imported.
+nothing in `src`, and so are gunicorn's tuning knobs and three of the four
+`FLASK_*` names, which the `flask` command reads for itself before this
+application is imported. `FLASK_ENV` is the exception among those four, and
+it is the one this document opens with: `configs/app/factory.py` reads it
+to pick the profile.
 
 It is narrower by exactly one key. `FLASK_RUN_FROM_CLI` is read in
 `configs/app/factory.py`, and it is the only variable `src` reads that the

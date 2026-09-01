@@ -525,3 +525,124 @@ class TestAFileThatNamesSomethingTwiceIsRefusedByName:
             seed_base_roles(session)
 
         assert _role_permission_counts(fresh_db).get("admin", 0) > 0
+
+
+class TestAPermissionTheServiceDoesNotDefine:
+    """
+    A name the table does not carry is refused, not dropped.
+
+    ``PermissionModel.name.in_(names)`` returns what it finds and says
+    nothing about what it did not, so a file asking for a permission that
+    does not exist produced a role with none at all -- and the pass
+    reported ``roles created: 1``. Measured on a live database: a role
+    named ``made-up`` was created holding nothing, exit 0, while the same
+    input through the admin API answers ``400 PERMISSIONS_NOT_FOUND``.
+    """
+
+    def _file_asking_for(self, tmp_path, name: str):
+        """A role file naming one permission."""
+        path = tmp_path / "roles.yaml"
+        path.write_text(
+            "permissions: []\n"
+            "roles:\n"
+            "  - name: \"asks-for-it\"\n"
+            "    description: \"a role for the probe\"\n"
+            f"    permissions: [\"{name}\"]\n"
+        )
+        return path
+
+    def test_it_is_refused_by_name(self, fresh_db, tmp_path):
+        with fresh_db.session() as session:
+            seed_base_roles(session)
+
+        path = self._file_asking_for(tmp_path, "nosuch:permission")
+
+        with fresh_db.session() as session:
+            with pytest.raises(ValidationError) as refusal:
+                RoleLoader(session).load_from_yaml(path, update_existing=True)
+
+        assert "nosuch:permission" in str(refusal.value)
+
+    def test_a_permission_that_exists_is_granted(self, fresh_db, tmp_path):
+        """The half that keeps the refusal from being a wall."""
+        with fresh_db.session() as session:
+            seed_base_roles(session)
+
+        path = self._file_asking_for(tmp_path, "link:create")
+
+        with fresh_db.session() as session:
+            summary = RoleLoader(session).load_from_yaml(
+                path, update_existing=True
+            )
+
+        assert summary.roles_created == ["asks-for-it"]
+
+        with fresh_db.session() as session:
+            made = session.query(RoleModel).filter_by(name="asks-for-it").one()
+            assert [p.name for p in made.permissions] == ["link:create"]
+
+
+class TestReplacingASystemRoleSaysWhichKindItWas:
+    """
+    This door may rewrite a system role; the report has to say it did.
+
+    The admin API refuses -- ``PUT /api/v1/admin/roles/user/permissions``
+    answers ``400 ROLE_IS_SYSTEM`` -- and this one allows it deliberately:
+    it is the way back when a system role has lost a permission, which is
+    what the troubleshooting table sends an operator here for. Measured
+    before this: a file granting ``admin:all`` to ``user`` was applied with
+    exit 0 and a line that read like any other, and every account holding
+    ``user`` could then open the admin pages.
+    """
+
+    def test_the_report_names_it_as_a_system_role(self, fresh_db, tmp_path):
+        with fresh_db.session() as session:
+            seed_base_roles(session)
+
+        path = tmp_path / "roles.yaml"
+        path.write_text(
+            "permissions: []\n"
+            "roles:\n"
+            "  - name: \"user\"\n"
+            "    description: \"Regular registered user\"\n"
+            "    permissions: [\"link:create\"]\n"
+        )
+
+        with fresh_db.session() as session:
+            summary = RoleLoader(session).load_from_yaml(
+                path, update_existing=True
+            )
+
+        assert "user (a system role)" in summary.describe()
+
+    def test_a_role_of_the_operators_own_is_not_labelled(self, fresh_db, tmp_path):
+        """The other half: the label has to mean something."""
+        with fresh_db.session() as session:
+            seed_base_roles(session)
+
+        made = tmp_path / "made.yaml"
+        made.write_text(
+            "permissions: []\n"
+            "roles:\n"
+            "  - name: \"theirs\"\n"
+            "    description: \"a role an operator made\"\n"
+            "    permissions: [\"link:create\"]\n"
+        )
+        with fresh_db.session() as session:
+            RoleLoader(session).load_from_yaml(made, update_existing=True)
+
+        changed = tmp_path / "changed.yaml"
+        changed.write_text(
+            "permissions: []\n"
+            "roles:\n"
+            "  - name: \"theirs\"\n"
+            "    description: \"a role an operator made\"\n"
+            "    permissions: [\"link:view_own\"]\n"
+        )
+        with fresh_db.session() as session:
+            summary = RoleLoader(session).load_from_yaml(
+                changed, update_existing=True
+            )
+
+        assert "theirs" in summary.describe()
+        assert "theirs (a system role)" not in summary.describe()

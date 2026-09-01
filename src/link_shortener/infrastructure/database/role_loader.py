@@ -35,11 +35,22 @@ class RegrantedRole:
         name: The role.
         permissions_before: What it granted when the pass found it.
         permissions_after: What it grants now.
+        is_system: Whether this is one of the service's own roles. The
+            admin API refuses to touch those -- `PUT
+            /api/v1/admin/roles/user/permissions` answers `400
+            ROLE_IS_SYSTEM` -- and this door does not, deliberately: it is
+            the way back when a system role has lost a permission, which
+            is what the troubleshooting table sends an operator here for.
+            Deliberate is not the same as silent, so the report says which
+            of the two kinds it rewrote: measured, a file granting
+            `admin:all` to `user` was applied with exit 0 and a line that
+            read the same as any other.
     """
 
     name: str
     permissions_before: List[str]
     permissions_after: List[str]
+    is_system: bool = False
 
 
 @dataclass
@@ -98,7 +109,13 @@ class LoadSummary:
             # tell that from a pass that did nothing at all.
             parts.append(
                 "permissions replaced on: "
-                + ", ".join(sorted(role.name for role in self.roles_regranted))
+                + ", ".join(
+                    f"{role.name} (a system role)" if role.is_system
+                    else role.name
+                    for role in sorted(
+                        self.roles_regranted, key=lambda r: r.name
+                    )
+                )
             )
         if self.roles_left_alone:
             parts.append(
@@ -352,6 +369,24 @@ class RoleLoader:
             perms = self.session.query(PermissionModel).filter(
                 PermissionModel.name.in_(perm_names)
             ).all()
+
+            # A name the table does not carry is refused rather than
+            # dropped. `in_` returns what it finds and says nothing about
+            # what it did not, so a file asking for `nosuch:permission`
+            # produced a role with no permissions at all and a report of
+            # "roles created: 1" -- measured, and the same input over HTTP
+            # answers `400 PERMISSIONS_NOT_FOUND`. Two doors, one rule.
+            missing = sorted(set(perm_names) - {p.name for p in perms})
+            if missing:
+                raise ValidationError(
+                    f"{role_name!r} asks for "
+                    + ", ".join(repr(name) for name in missing)
+                    + ", which this service does not define. Add the "
+                    "permission to the file's `permissions:` section, or "
+                    "correct the name.",
+                    field="permissions",
+                )
+
             role.permissions = perms
 
             granted_after = sorted(p.name for p in perms)
@@ -365,6 +400,7 @@ class RoleLoader:
                         name=role_name,
                         permissions_before=granted_before,
                         permissions_after=granted_after,
+                        is_system=bool(role.is_system),
                     )
                 )
 

@@ -110,10 +110,10 @@ class DeleteRoleUseCase(BaseUseCase):
 
             self.role_service.delete_role(uow, role_name)
 
-            rerolled = self._put_the_bare_ones_back(
-                uow, wearers, log, audit, role_name
-            )
+            put_back = self._put_the_bare_ones_back(uow, wearers, log)
             uow.commit()
+
+        rerolled = len(put_back)
 
         log.info(
             "Role deleted",
@@ -123,9 +123,23 @@ class DeleteRoleUseCase(BaseUseCase):
         )
         audit.log_role_deleted(role=role_name, holders=holders)
 
-    def _put_the_bare_ones_back(
-        self, uow, wearers, log, audit, role_name: str
-    ) -> int:
+        # After the transaction closed, like the record above it and for
+        # the reason this file's rule gives: an event written inside the
+        # `with` is an event that survives a rollback, and a journal that
+        # records what did not happen is worse than one that records less.
+        # The first version of this put the call inside
+        # `_put_the_bare_ones_back` -- which runs inside the block -- and
+        # the sweep that holds the rule did not notice, because it looks
+        # for `audit.log_*` lexically within an `ast.With` and the call had
+        # moved into a method of its own.
+        for user_id in put_back:
+            audit.log_roles_changed(
+                target_user_id=user_id,
+                roles_before=[role_name],
+                roles_after=[self.default_role_name],
+            )
+
+    def _put_the_bare_ones_back(self, uow, wearers, log) -> list:
         """
         Give the default role to accounts this deletion left with none.
 
@@ -154,7 +168,7 @@ class DeleteRoleUseCase(BaseUseCase):
             How many accounts were put back on the default role.
         """
         if not wearers:
-            return 0
+            return []
 
         fallback = uow.roles.get_by_name(self.default_role_name)
         if fallback is None:
@@ -166,9 +180,9 @@ class DeleteRoleUseCase(BaseUseCase):
                 default_role_name=self.default_role_name,
                 accounts=len(wearers),
             )
-            return 0
+            return []
 
-        rerolled = 0
+        put_back: list = []
         for user_id in wearers:
             account = uow.users.find_by_id(user_id)
             if account is None or account.roles:
@@ -196,22 +210,15 @@ class DeleteRoleUseCase(BaseUseCase):
                 )
                 continue
 
-            # On the record, because it is a change to what that account
-            # may do -- the rule this vocabulary is built on. It arrives
-            # through a deletion rather than through the roles endpoint,
-            # and an investigator asking "why does this account hold the
-            # default role" has nothing else to read.
-            audit.log_roles_changed(
-                target_user_id=user_id,
-                roles_before=[role_name],
-                roles_after=[fallback.name],
-            )
-            rerolled += 1
+            # Collected rather than recorded here: the record goes out
+            # after the transaction closes, which is where every event in
+            # this service is written.
+            put_back.append(user_id)
 
-        if rerolled:
+        if put_back:
             log.info(
                 "Accounts put back on the default role",
                 default_role_name=self.default_role_name,
-                accounts=rerolled,
+                accounts=len(put_back),
             )
-        return rerolled
+        return put_back

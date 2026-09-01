@@ -120,8 +120,8 @@ jobs:
           # A floor, not an equality. Adding tests requires no edit here;
           # losing them does, and that is deliberate.
           #
-          # It follows the suite in both directions: 4633 are collected.
-          # The gap is 133. Written as a figure rather than in words,
+          # It follows the suite in both directions: 4921 are collected.
+          # The gap is 421. Written as a figure rather than in words,
           # because past a hundred the words stop being read and this one
           # is checked by a test that would have to spell every number.
           #

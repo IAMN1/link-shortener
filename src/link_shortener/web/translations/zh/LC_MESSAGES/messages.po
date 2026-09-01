@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-31 23:41+0300\n"
+"POT-Creation-Date: 2026-09-01 19:04+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -27,11 +27,11 @@ msgstr "密码不能为空"
 #: src/link_shortener/application/use_cases/journals/read_journal.py:303
 #: src/link_shortener/application/use_cases/links/delete_link.py:197
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:177
-#: src/link_shortener/web/middleware/authentication.py:147
+#: src/link_shortener/web/middleware/authentication.py:223
 #: src/link_shortener/web/security/authorization.py:71
-#: src/link_shortener/web/security/decorators.py:51
-#: src/link_shortener/web/security/decorators.py:106
-#: src/link_shortener/web/security/decorators.py:132
+#: src/link_shortener/web/security/decorators.py:52
+#: src/link_shortener/web/security/decorators.py:118
+#: src/link_shortener/web/security/decorators.py:144
 msgid "Authentication required"
 msgstr "需要登录"
 
@@ -77,9 +77,9 @@ msgstr "无法保存该链接"
 
 #: src/link_shortener/application/use_cases/journals/read_journal.py:310
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:183
-#: src/link_shortener/web/controllers/api_controller.py:235
-#: src/link_shortener/web/security/decorators.py:54
-#: src/link_shortener/web/security/decorators.py:109
+#: src/link_shortener/web/controllers/api_controller.py:294
+#: src/link_shortener/web/security/decorators.py:55
+#: src/link_shortener/web/security/decorators.py:121
 msgid "Not authorized"
 msgstr "未获授权"
 
@@ -114,7 +114,7 @@ msgid "Link with code (%(code)s) not found"
 msgstr "找不到代码为 (%(code)s) 的链接"
 
 #: src/link_shortener/domain/exceptions.py:184
-#: src/link_shortener/web/middleware/error_handler.py:441
+#: src/link_shortener/web/middleware/error_handler.py:478
 msgid "Link not found"
 msgstr "找不到该链接"
 
@@ -751,12 +751,12 @@ msgstr "请求体必须是 JSON 对象"
 msgid "Confirmation for %(email)s could not be queued"
 msgstr "无法将发往 %(email)s 的确认邮件加入队列"
 
-#: src/link_shortener/web/controllers/api_controller.py:340
-#: src/link_shortener/web/controllers/api_controller.py:404
+#: src/link_shortener/web/controllers/api_controller.py:399
+#: src/link_shortener/web/controllers/api_controller.py:463
 msgid "Sign in to see your own statistics"
 msgstr "登录后可查看自己的统计"
 
-#: src/link_shortener/web/controllers/api_controller.py:393
+#: src/link_shortener/web/controllers/api_controller.py:452
 msgid "days must be a whole number"
 msgstr "days 必须是整数"
 
@@ -787,16 +787,16 @@ msgstr "没有刷新令牌"
 msgid "Invalid or expired refresh token"
 msgstr "刷新令牌无效或已过期"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:160
-#: src/link_shortener/web/controllers/dashboard_controller.py:224
+#: src/link_shortener/web/controllers/dashboard_controller.py:161
+#: src/link_shortener/web/controllers/dashboard_controller.py:231
 msgid "User not found"
 msgstr "找不到该账户"
 
-#: src/link_shortener/web/controllers/dashboard_controller.py:255
+#: src/link_shortener/web/controllers/dashboard_controller.py:262
 msgid "Role not found"
 msgstr "找不到该角色"
 
-#: src/link_shortener/web/controllers/journal_api_controller.py:165
+#: src/link_shortener/web/controllers/journal_api_controller.py:168
 #, python-format
 msgid "No journal is called %(name)s"
 msgstr "没有名为 %(name)s 的日志"
@@ -805,65 +805,65 @@ msgstr "没有名为 %(name)s 的日志"
 msgid "This request could not be verified. Reload the page and try again."
 msgstr "无法验证此请求。请刷新页面后重试。"
 
-#: src/link_shortener/web/middleware/error_handler.py:178
-#: src/link_shortener/web/middleware/error_handler.py:557
+#: src/link_shortener/web/middleware/error_handler.py:177
+#: src/link_shortener/web/middleware/error_handler.py:594
 msgid "An internal error occurred"
 msgstr "发生了内部错误"
 
-#: src/link_shortener/web/middleware/error_handler.py:274
+#: src/link_shortener/web/middleware/error_handler.py:273
 msgid "The request could not be understood"
 msgstr "无法理解该请求"
 
-#: src/link_shortener/web/middleware/error_handler.py:275
+#: src/link_shortener/web/middleware/error_handler.py:274
 msgid "You do not have access to this"
 msgstr "您无权访问"
 
-#: src/link_shortener/web/middleware/error_handler.py:276
+#: src/link_shortener/web/middleware/error_handler.py:275
 msgid "That conflicts with something already stored"
 msgstr "这与已保存的内容冲突"
 
-#: src/link_shortener/web/middleware/error_handler.py:277
+#: src/link_shortener/web/middleware/error_handler.py:276
 msgid "What was sent is too large"
 msgstr "发送的内容过大"
 
-#: src/link_shortener/web/middleware/error_handler.py:278
+#: src/link_shortener/web/middleware/error_handler.py:277
 msgid "The service expects a JSON body"
 msgstr "服务需要 JSON 格式的请求体"
 
-#: src/link_shortener/web/middleware/error_handler.py:279
+#: src/link_shortener/web/middleware/error_handler.py:278
 msgid "The service is unavailable right now"
 msgstr "服务当前不可用"
 
-#: src/link_shortener/web/middleware/error_handler.py:328
+#: src/link_shortener/web/middleware/error_handler.py:327
 msgid "Page not found"
 msgstr "找不到页面"
 
-#: src/link_shortener/web/middleware/error_handler.py:331
+#: src/link_shortener/web/middleware/error_handler.py:330
 msgid "Resource not found"
 msgstr "找不到资源"
 
-#: src/link_shortener/web/middleware/error_handler.py:342
+#: src/link_shortener/web/middleware/error_handler.py:372
 msgid "Method not allowed"
 msgstr "不允许使用该方法"
 
-#: src/link_shortener/web/middleware/error_handler.py:351
+#: src/link_shortener/web/middleware/error_handler.py:385
 #, python-format
 msgid "Method %(method)s not allowed"
 msgstr "不允许使用 %(method)s 方法"
 
-#: src/link_shortener/web/middleware/error_handler.py:374
+#: src/link_shortener/web/middleware/error_handler.py:411
 msgid "Request validation failed"
 msgstr "请求校验未通过"
 
-#: src/link_shortener/web/middleware/error_handler.py:521
+#: src/link_shortener/web/middleware/error_handler.py:558
 msgid "Bad request"
 msgstr "错误的请求"
 
-#: src/link_shortener/web/middleware/error_handler.py:525
+#: src/link_shortener/web/middleware/error_handler.py:562
 msgid "Malformed request body"
 msgstr "请求体格式有误"
 
-#: src/link_shortener/web/middleware/error_handler.py:552
+#: src/link_shortener/web/middleware/error_handler.py:589
 msgid "Internal server error"
 msgstr "服务器内部错误"
 

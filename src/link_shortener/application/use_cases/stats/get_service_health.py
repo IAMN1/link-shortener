@@ -63,6 +63,7 @@ class ServiceHealthStatus:
     builds this use case without one still gets the rest.
     """
 
+@dataclass
 class GetServiceHealthUseCase(BaseUseCase):
     """Check the health of all infrastructure dependencies.
 
@@ -72,25 +73,23 @@ class GetServiceHealthUseCase(BaseUseCase):
     disagree about the same component with nothing to say which is out of
     date. The snapshot carries its own time budget, so there is nothing
     left for a cache to buy here.
+
+    Declared as dataclass fields like every other use case here. It was
+    the one that took its dependencies through ``__init__`` -- which reads
+    the same to a caller and differently to anybody sweeping the layer,
+    and `architecture.md` states the rule for all of them.
+
+    Attributes:
+        health_check_port: The bounded snapshot every surface reads from.
+        logger: Application logger.
+        logging_status: Reader for the state of the logging and audit
+            chains. Optional because the health answer predates it, and a
+            caller that builds this without one still gets the rest.
     """
 
-    def __init__(
-        self,
-        health_check_port: HealthCheck,
-        logger: Logger,
-        logging_status: Optional[LoggingStatusPort] = None,
-    ):
-        """
-        Args:
-            health_check_port: Implementation of HealthCheck.
-            logger: Application logger.
-            logging_status: Reader for the state of the logging and audit
-                chains. Optional because the health answer predates it, and
-                a caller that builds this without one still gets the rest.
-        """
-        self.health_check = health_check_port
-        self.logging_status = logging_status
-        self.logger = logger
+    health_check_port: HealthCheck
+    logger: Logger
+    logging_status: Optional[LoggingStatusPort] = None
 
     def execute(self, context: RequestContext) -> ServiceHealthStatus:
         """
@@ -105,7 +104,7 @@ class GetServiceHealthUseCase(BaseUseCase):
         log = self._get_logger(self.logger, context)
         log.debug("Checking service health")
 
-        state = self.health_check.snapshot()
+        state = self.health_check_port.snapshot()
 
         return ServiceHealthStatus(
             database=state.database,

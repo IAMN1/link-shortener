@@ -1,6 +1,6 @@
 # Testing
 
-**4633 tests**, 98.68% coverage against a floor of 88%, plus two live runs
+**4921 tests**, 98.68% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -15,6 +15,7 @@ actually for.
 | 2a · integration | In-memory SQLite | `uv run pytest tests/integration/ --ignore=tests/integration/docker/` |
 | 2b · integration | Real PostgreSQL and Redis in Docker | `uv run pytest tests/integration/docker/` |
 | 3 · e2e | A user's path on SQLite, and the same one on PostgreSQL with Redis | `uv run pytest tests/e2e/` |
+| 4 · contract | Requests generated from the published OpenAPI document | `uv run pytest tests/contract/` |
 | — | Everything | `uv run pytest tests/` |
 | — | With coverage | `uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing` |
 
@@ -43,6 +44,7 @@ tests/
 │   └── docker/              # Real PostgreSQL + Redis
 │
 ├── e2e/                     # Whole user journeys
+├── contract/                # Generated from /api/openapi.json by Schemathesis
 ├── support/                 # Shared machinery: the stack, the rotation writers
 ├── live/                    # smoke_test.py · browser_test.py · mail_catcher.py
 └── load/                    # The locust profile; pytest does not collect it
@@ -51,7 +53,7 @@ tests/
 > [!NOTE]
 > **The directory decides the category, not a hand-written mark.**
 > `pytest_collection_modifyitems` in `tests/conftest.py` applies a marker by
-> path: `unit`, `integration`, `docker`, `e2e`. A marker written into a file
+> path: `unit`, `integration`, `docker`, `e2e`, `contract`. A marker written into a file
 > could disagree with where the file lives; this way `-m integration`
 > selects exactly what sits in `integration/`.
 
@@ -321,9 +323,16 @@ strings, and they get their own check: three forms, and ten takes the third
 
 ### The machine
 
-`tests/conftest.py` moves each test into an empty directory and strips
-**everything** except an explicit allow-list: the run's own variables, the
-interpreter's, the locale, the runner's and the Docker daemon's.
+`tests/conftest.py` offers a fixture that moves a test into an empty
+directory and strips **everything** except an explicit allow-list: the
+run's own variables, the interpreter's, the locale, the runner's and the
+Docker daemon's. It is opted into per module —
+`pytestmark = pytest.mark.usefixtures("detached_env")` — by the eight
+modules whose subject is what the configuration reads; a run-wide version
+would move every test in the suite out of the repository, and most of them
+have business being in it. What *is* run-wide is narrower and is the
+fixture beside it: whatever a test puts in the environment is put back
+after it.
 
 That is not the first attempt. The previous three went the other way round,
 listing what to remove, and each missed something:
@@ -482,7 +491,7 @@ catch tests that read configuration nobody gave them.
 flowchart TD
     subgraph clean["clean"]
         C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
-        C2 --> C3[count collected tests<br/>minimum 4200] --> C4[pytest --error-for-skips]
+        C2 --> C3[count collected tests<br/>minimum 4500] --> C4[pytest --error-for-skips]
         C4 --> C5[smoke_test.py<br/>157 checks] --> C6[browser_test.py<br/>68 checks]
     end
     subgraph hostile["hostile"]
