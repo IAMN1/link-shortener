@@ -241,6 +241,35 @@ The click counter therefore lags by `CACHE_STATS_TTL`, which is the price
 the cache exists for. Invalidation failures are logged and do not abort the
 operation.
 
+> [!WARNING]
+> **That table describes one process.** With `REDIS_ENABLED=false` the two
+> levels live in the memory of whichever process holds them, so an
+> invalidation reaches only the process that performed it — which is what
+> the startup line `Redis is off, using the in-memory cache; entries are
+> not shared between workers` is about, and it applies to the CLI as much
+> as to a second worker.
+>
+> Measured on the arrangement the local profile ships: a link created and
+> followed over HTTP, then `flask link delete <code>` in a terminal. The
+> command answered `Link '<code>' has been deleted` and the row was gone —
+> `GET /api/v1/links/<code>` answered `404` — while `GET /<code>` on the
+> running server went on answering `302` to the original destination for
+> six minutes and two `cache clear` runs, out of its own cache.
+>
+> **What closes it, and what it leaves.** Counting a click is the one thing
+> that always asks the database, and it now drops both levels for a code
+> whose row is not there to increment. So the serving process learns of the
+> deletion on the first redirect after it and answers `404` from the second
+> on. One stale redirect remains, and is unavoidable: nothing about that
+> request reaches the database before the answer goes out, which is what
+> the L1 cache is for. It is also written to the audit journal as a
+> `URL_ACCESSED`, which is true — the service did redirect.
+>
+> Rows 1, 2 and 4 of [the arrangement
+> table](getting-started.md#choosing-where-each-part-runs) never had this:
+> Redis is one cache and every process invalidates in it. Where the cache
+> is in the process, `CACHE_ENABLED=false` removes even the one.
+
 ### Signed values
 
 Everything the cache stores is signed with `itsdangerous.TimestampSigner`
@@ -467,7 +496,15 @@ The numbers live in [Configuration](configuration.md#rate-limits), in one
 table generated from `BaseConfig.RATE_LIMITS`. The mechanics:
 
 - The guest quota is counted separately from request frequency:
-  `GUEST_LINK_LIMIT` per `GUEST_LINK_WINDOW_DAYS`, per address.
+  `GUEST_LINK_LIMIT` per `GUEST_LINK_WINDOW_DAYS`, per address. What is
+  counted is the links that **exist** and were made inside the window, not
+  the ones that were made: the query is `count(*) WHERE owner_id IS NULL
+  AND guest_identifier = :id AND created_at >= cutoff`, so deleting a link
+  frees its place at once — measured, a guest refused at ten was answered
+  `201` immediately after removing one with its deletion token. It bounds
+  what a guest keeps rather than how often they ask; the throttle below
+  is what bounds the asking. An expired link still occupies a place until
+  it is deleted or falls out of the window, because it is still a row.
 - Counting is per address while the caller is anonymous, and per account the
   moment they sign in.
 - `/health` and everything under `/static/` are never throttled: the

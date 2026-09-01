@@ -261,3 +261,67 @@ class TestTheDockerTemplateIsCoherentWithItself:
                 f"{DOCKER} ships a value for {name}. A secret in a tracked "
                 f"file is a secret on every deployment that copied it."
             )
+
+
+NUMBER_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
+    "twelve": 12,
+}
+"""Enough to count the settings that differ, spelled as the prose spells them."""
+
+COUNTED_IN_PROSE = [
+    # (file, pattern), where group 1 is the number word.
+    (DOCKER, r"with (\w+) lines set for a stack"),
+    (DOCKER, r"outside the\s*#\s*(\w+) named below"),
+    (DOCKER, r"The (\w+) settings that differ"),
+    (GUIDE := DOCKER.parent / "docs" / "getting-started.md",
+     r"same catalogue as `\.env\.example` with (\w+)\s*\n?>? ?lines set"),
+    (GUIDE, r"header lists all (\w+) with the"),
+]
+"""Every sentence that states how many settings the templates differ by."""
+
+
+class TestTheProseCountsTheSettingsCorrectly:
+    """
+    Three sentences in one file said eight while a fourth said nine.
+
+    ``.env.docker.example`` opened with "with **eight** lines set for a
+    stack that runs entirely in containers" and "a value differs outside
+    the **eight** named below", then listed "The **nine** settings that
+    differ from ``.env.example``" fifteen lines further down. Measured, the
+    templates differ by nine assignments: ``CELERY_ENABLED``,
+    ``DATABASE_HOST``, ``DATABASE_NAME``, ``DATABASE_TYPE``,
+    ``DATABASE_USER``, ``DOMAIN``, ``ENV_FILE``, ``LOG_TO_FILE`` and
+    ``REDIS_ENABLED`` -- so the guide, which says nine, was right and the
+    file describing itself was wrong about itself, twice.
+
+    Nothing noticed, because the drift test above holds the *list* and
+    never read the sentence that counts it. The count is the first thing a
+    reader meets and the last thing anybody checks.
+    """
+
+    @pytest.mark.parametrize(
+        "path,pattern", COUNTED_IN_PROSE,
+        ids=[f"{p.name}:{i}" for i, (p, _) in enumerate(COUNTED_IN_PROSE)],
+    )
+    def test_the_number_it_states_is_the_number_that_differ(self, path, pattern):
+        import re
+
+        text = path.read_text(encoding="utf-8")
+        found = re.search(pattern, text)
+
+        assert found, (
+            f"{path.name} no longer carries the sentence this reads "
+            f"({pattern!r}). If it was rewritten, point this at the new "
+            f"wording rather than dropping the check."
+        )
+        stated = NUMBER_WORDS.get(found.group(1).lower())
+        assert stated is not None, (
+            f"{path.name} states {found.group(1)!r}, which is not a number "
+            f"this test can read"
+        )
+        assert stated == len(DOCKER_DIFFERS), (
+            f"{path.name} says {found.group(1)} settings differ; "
+            f"{len(DOCKER_DIFFERS)} do: {sorted(DOCKER_DIFFERS)}"
+        )

@@ -101,7 +101,7 @@ without a word about it.
 
 | Variable | Default | |
 |---|---|---|
-| `GUEST_LINK_LIMIT` | 10 | Links per window for one address. Applied under a lock on the guest identifier, so concurrent requests cannot spend the same quota twice — on PostgreSQL; on SQLite the limit is advisory |
+| `GUEST_LINK_LIMIT` | 10 | Links one address may **have** from inside the window, not links it may make: a deletion frees its place at once, and an expired link keeps its place until it is deleted. Applied under a lock on the guest identifier, so concurrent requests cannot spend the same quota twice — on PostgreSQL; on SQLite the limit is advisory |
 | `GUEST_LINK_WINDOW_DAYS` | 1 | The window |
 | `DEFAULT_GUEST_TTL_SECONDS` | 604800 | Seven days |
 
@@ -174,14 +174,24 @@ the same endpoint sends its own cookie and gets the language on screen.
 | `AUTO_SEED_ROLES` | `true`; `false` in `staging` and `production` | Ensure the five system roles on every startup. Where it is off, `flask db load-base-roles` has to be run once — an anonymous caller acts as `guest`, and that role is what carries `link:create` |
 
 > [!WARNING]
-> The template lists both spellings of the loopback on purpose, and the
-> built-in default is `localhost` alone — so a run with no `.env` meets
-> this. The CSRF layer compares the browser's `Origin` against this list
-> before letting an unsafe cookie-authenticated request through. With
-> `localhost` alone, opening `http://127.0.0.1:5000` gives a working
-> landing page — an anonymous caller does not go through CSRF — and "CSRF
-> token missing or invalid" on every form the moment you sign in. Measured
-> on the Docker stack.
+> The CSRF layer compares the browser's `Origin` against this list before
+> letting an unsafe cookie-authenticated request through. It used to be
+> the whole comparison, and then `localhost` alone meant that opening
+> `http://127.0.0.1:5000` gave a working landing page — an anonymous
+> caller does not go through CSRF — and "CSRF token missing or invalid"
+> on every form the moment you signed in. That is no longer so: the layer
+> now derives the other spelling of a loopback `BASE_URL` itself, at
+> whatever port `BASE_URL` names, so **both spellings of this machine work
+> whatever this list says**. Measured on a stack published at 5101 with
+> `CORS_ORIGINS` naming only port 5000: `Origin: http://localhost:5101`
+> and `Origin: http://127.0.0.1:5101` both answered `201`, and
+> `http://evil.example.com` answered `403`. The two loopback entries the
+> template ships are now belt beside braces, and only for the default
+> port.
+>
+> The twin is loopback only — it is derived from `BASE_URL`, and a
+> deployment names a real `DOMAIN`, which both deployed profiles refuse to
+> start without. Nothing below is widened for one.
 >
 > **The list is not the whole answer, and this is where it is easy to draw
 > the wrong conclusion.** The CSRF layer adds `BASE_URL` to the origins it
@@ -197,9 +207,11 @@ the same endpoint sends its own cookie and gets the language on screen.
 > | `https://other.example.com` | empty | `403` |
 > | `https://other.example.com` | names `other` | `201` |
 >
-> The Docker case above is the third row: `DOMAIN` says `localhost:5000`
-> and the visitor typed `127.0.0.1`, which is a different origin. The fix
-> is either spelling — name it here, or make it the one `DOMAIN` says.
+> The loopback case is **not** the third row any more, and that is the
+> whole of the paragraph above: `DOMAIN` saying `localhost:5000` while the
+> visitor typed `127.0.0.1` used to land there, and the twin now puts it
+> in the first. A second real domain still lands in the third row and
+> still has to be named here.
 
 > [!WARNING]
 > **`TRUSTED_PROXIES` empty behind a proxy makes every visitor one caller.**
@@ -313,7 +325,7 @@ guessing is gone while the configuration says it is there.
 
 | Variable | Default | |
 |---|---|---|
-| `MAIL_ENABLED` | `false`; `true` in the template | With it off, registration still answers `202` and no message leaves — and the account it created cannot sign in, because nothing confirms the address. `401 EMAIL_NOT_VERIFIED` is the answer, and the only way past it is an administrator: `POST /api/v1/admin/users/{id}/verify-email`. A deployment that means to take registrations has to turn mail on |
+| `MAIL_ENABLED` | `false`; `true` in the template | With it off, registration still answers `202` and no message leaves — and the account it created cannot sign in, because nothing confirms the address. The sign-in is refused as `401 INVALID_CREDENTIALS` — the same answer a wrong password gets, so the refusal cannot be read as "that password was right" — and the only way past it is an administrator: `POST /api/v1/admin/users/{id}/verify-email`. Which of the two it was is in the audit journal, under `audit:view`. A deployment that means to take registrations has to turn mail on |
 | `MAIL_HOST`, `MAIL_PORT` | `localhost`, 1025 in development | Aimed at the Mailpit catcher |
 | `MAIL_USE_TLS` / `MAIL_USE_SSL` | `false` in development | `production` requires one of them |
 | `MAIL_FROM` | — | Mandatory when mail is on |

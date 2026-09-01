@@ -53,8 +53,11 @@ curl -s -X POST http://127.0.0.1:5000/api/v1/shorten \
 ```
 
 Дальше откройте `http://localhost:5000/` и войдите как
-`admin@example.com`: панель — по адресу `/dashboard/`, а полное описание
-API — на `http://localhost:5000/api/docs`.
+`admin@example.com`: панель — по адресу `/dashboard/`, а описание JSON-API
+— на `http://localhost:5000/api/docs`: каждая операция под `/api/v1` и
+перенаправление `/<код>` рядом с ними. Чего там нет — то и не входит в
+API: страницы панели и `/health`, который это руководство велит дёрнуть
+ниже.
 
 <img src="media/dashboard.png" alt="Панель: недавние ссылки, счётчики переходов и собственная статистика учётной записи" width="820">
 
@@ -72,7 +75,7 @@ API — на `http://localhost:5000/api/docs`.
 | `uv sync` | Создаёт `.venv` и ставит проект в editable-режиме, поэтому `flask` и `alembic` работают без `PYTHONPATH` | Список установленных пакетов |
 | `cp .env.example .env` | Шаблон уже подходит для локального запуска: `DATABASE_TYPE=sqlite`, `CELERY_ENABLED=false`, Redis выключен | — |
 | `security generate-secrets --write .env` | Вписывает `SECRET_KEY` и `SHORT_CODE_PEPPER` на место. Без них `development` придумывает ключ на каждый процесс, и токены умирают при перезапуске | `SECRET_KEY and SHORT_CODE_PEPPER written to .env.` |
-| `flask alembic upgrade head` | Создаёт схему | `Running upgrade -> 0001, initial schema` |
+| `flask alembic upgrade head` | Создаёт схему | `INFO  [alembic.runtime.migration] Running upgrade  -> 0001, initial schema` — строку печатает собственный журнал alembic, отсюда приставка |
 | `flask create-admin` | Первый администратор, которого не сделать ни одним запросом: регистрация выдаёт роль `user`, а раздавать `admin` может только тот, у кого она уже есть | `Admin user admin@example.com created successfully (active: True).` |
 | `flask run` | Поднимает сервис на `http://127.0.0.1:5000/` | `* Serving Flask app` и `* Debug mode: on` |
 
@@ -100,7 +103,9 @@ API — на `http://localhost:5000/api/docs`.
 должен писать роли при загрузке. Там роли засеваются один раз руками:
 
 ```bash
-uv run flask db load-base-roles      # Roles and permissions seeded.
+uv run flask db load-base-roles      # Roles and permissions seeded. permissions created: 15; roles created: 5
+                                     # (второй раз: permissions created: 0; roles created: 0;
+                                     #  left as they are: admin, analyst, auditor, guest, user)
 uv run flask security list-roles     # что теперь несёт каждая роль
 ```
 
@@ -405,9 +410,10 @@ docker compose --env-file .env.docker up -d db
 гостевой ссылке нечем доказать владение, кроме токена, выданного вместе с
 ней.
 
-Карточка **Look up a code** разворачивает любой короткий код, но счётчики
+Карточка **Найти по коду** (*Look up a code*) разворачивает любой короткий код, но счётчики
 переходов показываются только тому, кто ссылку создал. Карточка над ней
-сокращает, и это её вкладки — **One link** и **Many at once**. Расширенного
+сокращает, и это её вкладки — **Одна ссылка** (*One link*) и **Сразу несколько**
+(*Many at once*). Расширенного
 вида у гостя нет: расширенные цифры — для владельца или для того, у кого
 есть `stats:view_any`.
 
@@ -428,12 +434,14 @@ curl "http://localhost:5000/api/v1/links/mine?offset=0&limit=20" \
 
 | Раздел панели | Чем открывается |
 |---|---|
-| My Links | `link:view_own`, удаление — `link:delete_own` |
-| My Stats | `link:view_own` |
-| Create Link | `link:create` |
-| Service Stats | `stats:view_basic`; таблица популярных ссылок — `stats:view_full` |
-| Users, Roles, Health Check | административные разрешения |
-| Журналы | `audit:view` или `logs:view`; каждый журнал предлагается только тому, кто вправе его читать |
+| Обзор (Overview) | любая вошедшая учётная запись — прав не спрашивает и говорит, чего эта учётка *не* может |
+| Мои ссылки (My Links) | `link:view_own`, удаление — `link:delete_own` |
+| Моя статистика (My Stats) | `link:view_own` |
+| Создать ссылку (Create Link) | `link:create` |
+| Статистика службы (Service Stats) | `stats:view_basic`; таблица популярных ссылок — `stats:view_full` |
+| Пользователи, Роли, Состояние (Users, Roles, Health Check) | административные разрешения |
+| Журналы (Journals) | `audit:view` или `logs:view`; каждый журнал предлагается только тому, кто вправе его читать |
+| Безопасность (Security) | любая вошедшая учётная запись — там смена собственного пароля |
 
 Что показать роли, решает то самое разрешение, которое спрашивает
 страница, поэтому пункт меню, отвечающий `403`, — это дефект, а не
@@ -448,9 +456,9 @@ curl "http://localhost:5000/api/v1/links/mine?offset=0&limit=20" \
 | `ModuleNotFoundError: No module named 'link_shortener'` | `uv sync`, и запускать через `uv run` |
 | `Address already in use` на порту 5000 | Порт занят чем-то другим — на macOS часто приёмником AirPlay или докеровским стеком с прошлого раза. `uv run flask run --port 5055` либо остановить занявшего. **Заодно поставьте `PORT=5055` в `.env`**: флаг переносит сокет, а все адреса, которые сервис *выдаёт*, берутся из конфигурации. С одним флагом выданные ссылки и пример на главной по-прежнему называют 5000, и перейти по такой ссылке некуда |
 | `no such table: roles` (и `urls`, и остальные) | Схема к этой базе не применялась. `uv run flask alembic upgrade head`. Первым обычно виден именно `roles`: главная страница спрашивает, что можно гостю, раньше, чем дело дойдёт до ссылок |
-| `401` на `POST /api/v1/shorten` от анонимного вызова | Роли `guest` нет или в ней нет `link:create`. Проверьте через `flask security list-roles`. Если роли **нет** — `uv run flask db load-base-roles` её создаст. Если она есть, но без права, эта команда её не тронет: засев намеренно оставляет существующую роль как есть, чтобы правка через панель уцелела. Верните право в панели или замените набор роли из поставляемого файла: `uv run flask db load-custom-roles src/link_shortener/infrastructure/configs/rbac/roles.yaml --update-existing` (замерено: одна `load-base-roles` оставила `guest` с `stats:view_basic` и тем же 401) |
+| `401` на `POST /api/v1/shorten` от анонимного вызова | Роли `guest` нет или в ней нет `link:create`. Проверьте через `uv run flask security list-roles`. Если роли **нет** — `uv run flask db load-base-roles` её создаст. Если она есть, но без права, эта команда её не тронет: засев намеренно оставляет существующую роль как есть, чтобы чья-то правка уцелела. Замените набор роли из поставляемого файла: `uv run flask db load-custom-roles src/link_shortener/infrastructure/configs/rbac/roles.yaml --update-existing` — команда ответит `permissions replaced on: guest` (замерено: одна `load-base-roles` оставила `guest` с `stats:view_basic` и тем же 401). Через панель не выйдет: пять базовых ролей — системные, и обе двери отказывают — `PUT /api/v1/admin/roles/guest/permissions` отвечает `400 ROLE_IS_SYSTEM`, а на странице ролей они помечены защищёнными и ссылки на правку не имеют |
 | `403` на том же вызове из-под учётной записи | В роли этой учётки нет `link:create` — у `analyst` его нет намеренно |
-| `already sets SECRET_KEY` | Файл уже заполняли. `--force` перезапишет значения, а это разлогинивает все сессии и, в случае `SHORT_CODE_PEPPER`, ломает уже выданные коды |
+| `already sets SECRET_KEY` | Файл уже заполняли. `--force` перезапишет значения, а это разлогинивает все сессии. С `SHORT_CODE_PEPPER` цена меньше, чем кажется: ссылка разрешается поиском сохранённого кода, поэтому уже выданные коды остаются рабочими — замерено, код, сделанный под одним перцем, отвечает `302` из процесса с другим, и тот же URL по-прежнему сводится к нему. Меняется код, который получит URL, ещё **не** сокращённый |
 | Значения из `.env` игнорируются | Профиль `testing` намеренно не читает `.env`. В остальных случаях настоящая переменная окружения старше файла |
 | `No 'script_location' key found` | Голый `alembic` запущен не из каталога с `alembic.ini` — нужен `flask alembic` |
 | `this profile runs on PostgreSQL` | `production` и `staging` работают только на PostgreSQL |

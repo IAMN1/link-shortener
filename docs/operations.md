@@ -89,6 +89,21 @@ explained.
 | `create-admin --email <e> --password <p>` | The first administrator. Without the options it prompts; `--non-interactive` refuses instead and names what is missing — that is the form for provisioning scripts, where stdin is closed |
 | `create-user --email <e> --password <p> --role <r>` | An account with a given role |
 
+> [!WARNING]
+> **An administrator may switch themselves off, and the API does not ask.**
+> `POST /api/v1/admin/users/<own id>/deactivate` under your own token
+> answers `200`, and the next request with that token answers `401` — one
+> call, no confirmation. Deleting your own account is allowed on the same
+> terms. This is deliberate: an administrator resigning their own access
+> is a thing people do on purpose, and a rule against acting on oneself
+> would forbid it.
+>
+> What is not allowed is leaving the service with nobody: the **last**
+> active holder of `admin:all` is refused both operations with `403`, and
+> the count is taken under a lock so two administrators cannot demote each
+> other at once. So the way back always exists — another administrator, or
+> `flask create-admin` at a shell.
+
 ### Security
 
 | Command | |

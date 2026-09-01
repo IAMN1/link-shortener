@@ -54,7 +54,10 @@ curl -s -X POST http://127.0.0.1:5000/api/v1/shorten \
 
 Then open `http://localhost:5000/` and sign in as `admin@example.com` —
 the dashboard is at `/dashboard/`, and `http://localhost:5000/api/docs`
-describes every endpoint.
+describes the JSON API: every operation under `/api/v1`, and the redirect
+at `/<code>` beside them. What is not there is what is not part of it —
+the dashboard pages, and `/health`, which this guide has you call further
+down.
 
 <img src="media/dashboard.png" alt="The dashboard: recent links, click totals and the account's own statistics" width="820">
 
@@ -72,7 +75,7 @@ painted, so nothing flashes on the way in.
 | `uv sync` | Creates `.venv` and installs the project in editable mode, so `flask` and `alembic` run without `PYTHONPATH` | A list of installed packages |
 | `cp .env.example .env` | The template already suits a local run: `DATABASE_TYPE=sqlite`, `CELERY_ENABLED=false`, Redis off | — |
 | `security generate-secrets --write .env` | Fills `SECRET_KEY` and `SHORT_CODE_PEPPER` in place. Without them `development` invents a key per process, so tokens die on restart | `SECRET_KEY and SHORT_CODE_PEPPER written to .env.` |
-| `flask alembic upgrade head` | Creates the schema | `Running upgrade -> 0001, initial schema` |
+| `flask alembic upgrade head` | Creates the schema | `INFO  [alembic.runtime.migration] Running upgrade  -> 0001, initial schema` — alembic writes it through its own logger, so the line carries that prefix |
 | `flask create-admin` | The first administrator, which no endpoint can make: registration hands out `user`, and granting `admin` needs an account that already holds it | `Admin user admin@example.com created successfully (active: True).` |
 | `flask run` | Serves on `http://127.0.0.1:5000/` | `* Serving Flask app` and `* Debug mode: on` |
 
@@ -100,7 +103,9 @@ that a production process should not be writing roles on boot. There, seed
 once by hand:
 
 ```bash
-uv run flask db load-base-roles      # Roles and permissions seeded.
+uv run flask db load-base-roles      # Roles and permissions seeded. permissions created: 15; roles created: 5
+                                     # (run again: permissions created: 0; roles created: 0;
+                                     #  left as they are: admin, analyst, auditor, guest, user)
 uv run flask security list-roles     # what each role now holds
 ```
 
@@ -436,12 +441,14 @@ curl "http://localhost:5000/api/v1/links/mine?offset=0&limit=20" \
 
 | Dashboard section | Opened by |
 |---|---|
+| Overview | any signed-in account — no permission guards it, and it says what the account may *not* do |
 | My Links | `link:view_own`, deleting needs `link:delete_own` |
 | My Stats | `link:view_own` |
 | Create Link | `link:create` |
 | Service Stats | `stats:view_basic`; the popular-links table needs `stats:view_full` |
 | Users, Roles, Health Check | the administrative permissions |
 | Journals | `audit:view` or `logs:view`; each journal is offered only to whoever may read that one |
+| Security | any signed-in account — it holds that account's own password change |
 
 What a role is shown is decided by the permission its page asks for, so a
 menu entry that answers `403` is a bug rather than a fact of life. See
@@ -456,9 +463,9 @@ menu entry that answers `403` is a bug rather than a fact of life. See
 | `ModuleNotFoundError: No module named 'link_shortener'` | `uv sync`, and run through `uv run` |
 | `Address already in use` on port 5000 | Something else holds it — on macOS often AirPlay Receiver or a Docker stack from an earlier run. `uv run flask run --port 5055`, or stop the other one. **Set `PORT=5055` in `.env` as well**: the flag moves the socket, and every address the service *writes* comes from the configuration. With only the flag, the links it hands out and the example on the landing page still say 5000, and following one lands nowhere |
 | `no such table: roles` (and `urls`, and the rest) | The schema was never applied to this database. `uv run flask alembic upgrade head`. `roles` is the one usually seen first — the landing page asks what a guest may do before anything reaches a link |
-| `401` on `POST /api/v1/shorten` as an anonymous caller | The `guest` role is missing or lacks `link:create`. Check with `flask security list-roles`. If the role is **missing**, `uv run flask db load-base-roles` creates it. If it is there and short of a permission, that command will not touch it — seeding leaves an existing role alone on purpose, so an edit made in the panel survives. Put the permission back in the panel, or replace the role's set from the shipped file: `uv run flask db load-custom-roles src/link_shortener/infrastructure/configs/rbac/roles.yaml --update-existing` (measured: `load-base-roles` alone left `guest` with `stats:view_basic` and the 401 in place) |
+| `401` on `POST /api/v1/shorten` as an anonymous caller | The `guest` role is missing or lacks `link:create`. Check with `uv run flask security list-roles`. If the role is **missing**, `uv run flask db load-base-roles` creates it. If it is there and short of a permission, that command will not touch it — seeding leaves an existing role alone on purpose, so an edit somebody made survives. Replace the role's set from the shipped file: `uv run flask db load-custom-roles src/link_shortener/infrastructure/configs/rbac/roles.yaml --update-existing`, which answers `permissions replaced on: guest` (measured: `load-base-roles` alone left `guest` with `stats:view_basic` and the 401 in place). Not from the panel: the five base roles are system roles, and both doors refuse — `PUT /api/v1/admin/roles/guest/permissions` answers `400 ROLE_IS_SYSTEM`, and the roles page shows them as protected with no Edit link |
 | `403` on the same call while signed in | That account's role does not hold `link:create` — `analyst` does not, by design |
-| `already sets SECRET_KEY` | The file has been filled in before. `--force` replaces the values, which signs out every session and, for `SHORT_CODE_PEPPER`, stops the codes already handed out from resolving |
+| `already sets SECRET_KEY` | The file has been filled in before. `--force` replaces the values, which signs out every session. For `SHORT_CODE_PEPPER` it costs less than it sounds: a link is resolved by looking its stored code up, so links already made keep their codes and go on working — measured, a code made under one pepper answers `302` from a process running another, and the same URL still deduplicates to it. What changes is the code a URL *not yet shortened* will get |
 | Values in `.env` are ignored | The `testing` profile ignores `.env` deliberately. Otherwise a real environment variable outranks the file |
 | `No 'script_location' key found` | A bare `alembic` was run from outside the directory holding `alembic.ini` — use `flask alembic` |
 | `this profile runs on PostgreSQL` | `production` and `staging` run on PostgreSQL only |

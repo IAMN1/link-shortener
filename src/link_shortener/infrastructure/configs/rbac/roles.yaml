@@ -120,7 +120,7 @@ permissions:
   - name: "admin:all"
     resource: "admin"
     action: "all"
-    description: "Full administrative access – bypasses all permission checks"
+    description: "Full administrative access – bypasses every permission check except audit:view"
 
 # ------------------------------------------------------------------------------
 # ROLES
@@ -204,9 +204,10 @@ roles:
       - "stats:view_basic"
       - "stats:view_full"
 
-  # Administrator role – has full control over the system.
+  # Administrator role – full control over the system, with one exception
+  # named below and enforced by BEYOND_ADMIN_ALL.
   - name: "admin"
-    description: "System administrator with unrestricted access"
+    description: "System administrator; unrestricted except for reading the audit journal"
     is_system: true
     # One permission, and it is nearly the whole role: ``admin:all`` passes
     # every check but one, and it is also what identifies an administrator

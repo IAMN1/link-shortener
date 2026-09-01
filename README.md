@@ -159,7 +159,7 @@ Thirty-nine operations. Full description: `/api/openapi.json`, rendered at
 | `POST` | `/api/v1/auth/register` | — | `202`, and the same answer whether or not the address was free |
 | `GET`, `POST` | `/api/v1/auth/verify` | — | Spend the confirmation token |
 | `POST` | `/api/v1/auth/resend-verification` | — | Ask for another message |
-| `POST` | `/api/v1/auth/login` | — | Tokens; an unconfirmed address gets `EMAIL_NOT_VERIFIED` |
+| `POST` | `/api/v1/auth/login` | — | Tokens; a wrong password, a switched-off account and an unconfirmed address are all `INVALID_CREDENTIALS` |
 | `POST` | `/api/v1/auth/refresh` | refresh token | Rotate the pair |
 | `POST` | `/api/v1/auth/logout` | session | Revoke it server-side |
 | `POST` | `/api/v1/auth/change-password` | session | Replace your own password; every session goes, this one is reopened |
@@ -223,7 +223,7 @@ Full breakdown: [Testing](docs/testing.md).
 | [Operations](docs/operations.md) | Migrations, CLI, backups, upgrades, health |
 | [Testing](docs/testing.md) | The four levels, the live runs, and what CI enforces |
 | [Development](docs/development.md) | Patterns, the frontend, the load profile |
-| [Decisions](docs/decisions.md) | Ninety-five write-ups of why something is the way it is |
+| [Decisions](docs/decisions.md) | Ninety-six write-ups of why something is the way it is |
 | [Roadmap](docs/roadmap.md) | What was considered and never built, and what each idea would cost |
 
 ## Requirements

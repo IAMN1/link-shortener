@@ -76,8 +76,8 @@ EXPECTED = {
         "setting": 5, "route": 31, "permission": 14, "image": 2, "number": 12,
     },
     "docs/getting-started.md": {
-        "setting": 22, "command": 9, "route": 3, "permission": 8,
-        "image": 1, "number": 20,
+        "setting": 22, "command": 9, "route": 4, "permission": 8,
+        "image": 1, "number": 23,
     },
 }
 """How much each pattern finds today, in the English of each pair.

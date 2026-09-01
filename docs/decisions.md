@@ -3304,3 +3304,45 @@ places. "Deployed" is read as *neither DEBUG nor TESTING*, the same way
 **What holds it.** `test_the_empty_proxy_list_is_said_out_loud.py`. Both
 halves of the condition have a test: warning unconditionally reddens the
 local-profile check, warning never reddens the deployed one.
+
+### Both spellings of the loopback are one origin, and neither is listed
+
+**Decided** (2026-08-31): the CSRF layer derives the other spelling of a
+loopback `BASE_URL` — `localhost` from `127.0.0.1` and back, at the port
+`BASE_URL` names — and admits it alongside `BASE_URL` itself. Nothing is
+added for any other host.
+
+**Why a reader would question it.** It admits an origin the operator never
+listed. `CORS_ORIGINS` is the line a deployment sets to say which origins
+may send credentials, and here is a rule that widens it from underneath.
+That is worth an entry precisely because the widening is invisible in the
+setting.
+
+**What it fixes.** The two loopback entries the templates ship were pinned
+to port 5000. The guide tells a reader to move the published port when 5000
+is taken — and moving it put the failure back: measured on a stack
+published at 5101, `http://localhost:5101` wrote fine and
+`http://127.0.0.1:5101` answered `403 CSRF_TOKEN_INVALID` on every
+signed-in form, the logout included, which failed silently and left the
+dashboard open. Meanwhile the two stale entries for 5000, where nothing was
+listening, were still admitted. A person typing the address does not
+distinguish the two spellings; a browser does.
+
+**Why it widens nothing that matters.** The twin is derived from
+`BASE_URL`, and `BASE_URL` comes from `DOMAIN`, which both deployed
+profiles refuse to start without. A deployment therefore names a real host
+and gains no twin — measured, `DOMAIN=demo.example.com` admits neither
+spelling of the loopback. A host that merely looks like one,
+`localhost.evil.example`, is somebody else's domain and gains nothing
+either: the match is on the whole host, not a suffix. Both loopback
+spellings already reach the same process on the same machine, so admitting
+one when the other is admitted grants no reach that was not there.
+
+**What holds it.**
+`test_the_own_domain_needs_no_cors_entry.py` drives the running
+application from both spellings, at a moved port, from a real domain and
+from a lookalike host. `test_the_documents_admit_the_loopback_twin.py`
+holds the settings documents against it: both templates and
+`configuration.md` described the old failure for a day after the fix
+landed, telling the reader to name an origin the service now admits on its
+own.
