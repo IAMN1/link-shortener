@@ -1,3 +1,4 @@
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -7,9 +8,11 @@ from link_shortener.application.dtos.user import UserResponse
 from link_shortener.application.ports.auth.auth_service import AuthenticationService
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
+from link_shortener.application.ports.rate_limiter import RateLimiter
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import DomainError
+from link_shortener.domain.value_objects.email import Email
 from link_shortener.domain.i18n import N_
 
 
@@ -36,11 +39,87 @@ class LoginUseCase(BaseUseCase):
         logger: Application logger.
         uow_factory: Callable that returns a new Unit of Work instance.
         audit_logger: Audit logger, where the outcome is recorded.
+        rate_limiter: Where the per-account failure budget is counted.
+        account_failure_limit: Wrong guesses one address may make inside
+            the window; zero disables the budget.
+        account_failure_period: The window, in seconds.
     """
     authentication_service: AuthenticationService
     logger: Logger
     uow_factory: UnitOfWorkFactory
     audit_logger: AuditLogger
+    rate_limiter: RateLimiter
+    account_failure_limit: int
+    account_failure_period: int
+
+    def _failure_key(self, email: str) -> str:
+        """
+        Build the counter key for an address without storing the address.
+
+        The key lives in Redis, which is not where a list of this
+        service's users belongs -- the journals already hold addresses,
+        behind a permission, and a cache key is behind none. A digest
+        answers the only question the counter asks, "is this the same
+        address as last time", and answers nothing else.
+
+        Normalised first, through the value object that owns the rule, so
+        that ``Case@Example.com`` and ``case@example.com`` spend one
+        budget rather than two. Done here rather than by constructing an
+        ``Email``: this runs before validation, and an address that turns
+        out to be malformed still has to be counted -- otherwise the
+        cheapest way past the budget is to keep the address invalid.
+
+        Args:
+            email: The address as the caller typed it.
+
+        Returns:
+            A stable key for this address.
+        """
+        digest = hashlib.sha256(
+            Email.normalise(email or "").encode("utf-8")
+        ).hexdigest()
+
+        return f"login-failure:{digest}"
+
+    def _budget_spent(self, email: str) -> bool:
+        """
+        Report whether this address has spent its failure budget.
+
+        Asks without recording: the check happens on every attempt, and a
+        check that counted would spend the budget on the successful ones
+        too.
+
+        Args:
+            email: The address the attempt is against.
+
+        Returns:
+            ``True`` when the account should be refused without the
+            password being looked at.
+        """
+        if self.account_failure_limit <= 0:
+            return False
+
+        return self.rate_limiter.get_remaining(
+            self._failure_key(email),
+            self.account_failure_limit,
+            self.account_failure_period,
+        ) <= 0
+
+    def _spend_budget(self, email: str) -> None:
+        """
+        Record one wrong guess against this address.
+
+        Args:
+            email: The address the attempt was against.
+        """
+        if self.account_failure_limit <= 0:
+            return
+
+        self.rate_limiter.is_allowed(
+            self._failure_key(email),
+            self.account_failure_limit,
+            self.account_failure_period,
+        )
 
     def execute(
         self, email: str, password: str, context: RequestContext
@@ -65,8 +144,32 @@ class LoginUseCase(BaseUseCase):
         audit = self._get_audit_logger(self.audit_logger, context)
         log.info("Login attempt", email=email)
 
+        # Before the password is looked at, and deliberately not by
+        # sleeping. A growing delay is the textbook answer and it cannot be
+        # had here: gunicorn runs synchronous workers, so a sleeping
+        # request holds one, and four held workers are the whole service --
+        # the same exhaustion `MAX_CONTENT_LENGTH` exists to stop, invited
+        # in through the front door. Refusing costs nothing and slows a
+        # guesser by the same amount.
+        #
+        # Answered exactly like a wrong password, as every other refusal on
+        # this route is: saying "too many attempts" would name an address
+        # somebody is interested in, and the budget is spent by addresses
+        # that name no account at all, so the two must not be told apart.
+        if self._budget_spent(email):
+            log.warning("Login refused: account failure budget spent")
+            audit.log_login_failed(email=email, reason="too_many_failures")
+            raise DomainError(
+                N_("Invalid email or password"), code="INVALID_CREDENTIALS"
+            )
+
         user = self.authentication_service.authenticate(email, password)
         if not user:
+            # Only here. The two refusals below arrive with the *right*
+            # password, so they are not guesses, and spending an account's
+            # budget on them would let anyone holding a valid credential
+            # lock out the account it belongs to.
+            self._spend_budget(email)
             log.warning("Login failed", email=email)
             # No user id: nothing was authenticated, and the address is all
             # there is to say who the attempt was against. Whether it names

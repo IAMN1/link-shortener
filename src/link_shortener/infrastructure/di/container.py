@@ -478,6 +478,18 @@ class Container:
                 verification_ttl_hours=self.config.EMAIL_VERIFICATION_TTL_HOURS,
                 password_reset_ttl_minutes=self.config.PASSWORD_RESET_TTL_MINUTES,
                 unverified_ttl_hours=self.config.UNVERIFIED_ACCOUNT_TTL_HOURS,
+                # The same limiter the middleware counts addresses with,
+                # asked for a different key. One backend, so a deployment
+                # that has Redis has both budgets in it and a deployment
+                # that has not has neither -- rather than a second store
+                # to configure and a second thing to be surprised by.
+                rate_limiter=self.rate_limiter_component.get_rate_limiter(),
+                login_account_failure_limit=(
+                    self.config.LOGIN_ACCOUNT_FAILURE_LIMIT
+                ),
+                login_account_failure_period=(
+                    self.config.LOGIN_ACCOUNT_FAILURE_PERIOD
+                ),
             )
             # Wire the synchronous fallback for NullTaskQueue, the same way
             # the click counter is wired. Without a broker the message is

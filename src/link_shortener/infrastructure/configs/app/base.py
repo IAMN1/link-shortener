@@ -799,6 +799,35 @@ class BaseConfig:
     Default time window in seconds for rate limiting.
     """
 
+    LOGIN_ACCOUNT_FAILURE_LIMIT: int = env_int("LOGIN_ACCOUNT_FAILURE_LIMIT", 10)
+    """
+    Failed sign-ins one account tolerates inside its window before refusing.
+
+    ``RATE_LIMITS["auth.login"]`` counts by **address**, which bounds one
+    guesser and nothing else: a hundred addresses trying the same account
+    are a hundred separate budgets, and no counter anywhere had the
+    account's name on it. This one does, so a spray across addresses meets
+    a single budget per account.
+
+    Zero disables it, and then the address limit is again the only one.
+
+    Counted only where the password was wrong. A correct password against a
+    deactivated or unconfirmed account is not a guess and does not spend
+    the budget -- the caller already holds the credential, and locking the
+    holder out of an account they can prove is theirs protects nobody.
+    """
+
+    LOGIN_ACCOUNT_FAILURE_PERIOD: int = env_int(
+        "LOGIN_ACCOUNT_FAILURE_PERIOD", 900
+    )
+    """
+    The window ``LOGIN_ACCOUNT_FAILURE_LIMIT`` is counted over, in seconds.
+
+    Fifteen minutes: long enough that ten guesses an hour is the ceiling a
+    spray meets, short enough that somebody who has locked themselves out
+    with typos waits rather than writes in.
+    """
+
     RATE_LIMITS: dict = {
         # Endpoint-specific overrides: (limit, period_seconds)
         "api.create_short_link": (30, 60),
