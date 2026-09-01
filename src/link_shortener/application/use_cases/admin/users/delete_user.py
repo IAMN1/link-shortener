@@ -13,6 +13,7 @@ from link_shortener.application.services.user_management_service import UserMana
 from link_shortener.application.use_cases.admin.privilege_guard import (
     is_administrator,
     require_administrator_remains,
+    require_may_act_on_user,
 )
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
@@ -74,6 +75,11 @@ class DeleteUserUseCase(BaseUseCase):
         audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
+            # Before anything is counted or removed: a caller who may not
+            # reach this account should not learn whether removing it would
+            # have left the system without an administrator.
+            require_may_act_on_user(context, uow, user_id)
+
             if is_administrator(uow, user_id):
                 require_administrator_remains(uow, user_id)
 

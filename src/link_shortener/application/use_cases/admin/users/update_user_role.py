@@ -11,6 +11,7 @@ from link_shortener.application.services.user_management_service import UserMana
 from link_shortener.application.use_cases.admin.privilege_guard import (
     is_administrator,
     require_administrator_remains,
+    require_may_act_on_user,
     require_may_grant_roles,
     would_keep_admin,
 )
@@ -92,6 +93,13 @@ class UpdateUserRolesUseCase(BaseUseCase):
             # permissions back. Nothing asked whether the caller was
             # entitled to what they were handing out.
             require_may_grant_roles(context, uow, roles)
+
+            # And the same question read backwards. The check above bounds
+            # what the new set may contain; it says nothing about what the
+            # old one did, so a caller holding only ``admin:manage_users``
+            # could hand an ``auditor`` an empty set of roles and take
+            # ``audit:view`` away from the one account that had it.
+            require_may_act_on_user(context, uow, user_id)
 
             # Asked in the same transaction that will write the change, and
             # only when it actually takes the permission away.

@@ -14,6 +14,7 @@ from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.domain import Role, SystemPermissions, User
 from link_shortener.domain.policies.privilege_policy import (
+    require_may_act_on,
     require_may_confer,
     require_not_last_administrator,
 )
@@ -71,6 +72,33 @@ def require_may_grant_permissions(
         DomainError: With code ``FORBIDDEN`` if the actor holds fewer.
     """
     require_may_confer(load_actor(context, uow), permission_names)
+
+
+def require_may_act_on_user(
+    context: RequestContext, uow: UnitOfWork, user_id: str
+) -> None:
+    """
+    Check that the actor may reach this account at all.
+
+    Both users are read from the Unit of Work the operation runs in, for
+    the reason the module docstring gives: the request context carries
+    role names assembled before the operation began, and the account being
+    acted upon is not in it at all.
+
+    An id that names nobody passes: "no such user" is the use case's
+    answer, and refusing here first would tell a caller which ids exist by
+    the shape of the refusal.
+
+    Args:
+        context: Request context with the actor's identity.
+        uow: Active Unit of Work.
+        user_id: The account about to be deleted, deactivated or re-roled.
+
+    Raises:
+        DomainError: With code ``FORBIDDEN`` if the target holds a
+            permission the actor does not.
+    """
+    require_may_act_on(load_actor(context, uow), uow.users.find_by_id(user_id))
 
 
 def require_administrator_remains(uow: UnitOfWork, user_id: str) -> None:

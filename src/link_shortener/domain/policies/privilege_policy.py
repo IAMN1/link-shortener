@@ -22,7 +22,23 @@ A third rule, about which roles may be worn at all, lives in
 ``role_policy`` beside the name it turns on: it needs a role and not an
 actor, and the entity that assembles a user has to be able to ask it.
 
-The second rule is that the last administrator cannot be removed. It is
+The second rule is the first one read backwards: nobody acts on an account
+that holds *authority* they do not. Conferring and taking away are the same
+power seen from two sides, and only the conferring half was guarded -- so a
+role carrying ``admin:manage_users`` and nothing else could delete or
+deactivate an ``auditor``, or strip its roles, none of which "grants"
+anything and none of which was therefore checked. Kubernetes draws the line
+in the same place: ``escalate`` is a verb because raising somebody else's
+privileges is a distinct authority, and so is reaching an account whose
+privileges exceed your own.
+
+Authority, and not simply "more". Written as a plain set difference the
+rule refuses the ordinary work the role exists for: an account that merely
+signed up holds ``link:view_own`` and ``link:delete_own``, which an
+administrative role has no reason to carry, so *every* account would have
+looked like a superior. ``is_privileged`` draws the line the rule needs.
+
+The third rule is that the last administrator cannot be removed. It is
 about availability, not privilege: an account that locks out the final
 holder of ``admin:all`` leaves a system whose admin surface can only be
 recovered from a shell.
@@ -104,6 +120,110 @@ def require_may_confer(actor: Optional[User], permissions: Iterable[str]) -> Non
             template=N_(
                 "You cannot grant permissions you do not hold yourself: "
                 "%(permissions)s"
+            ),
+            params={"permissions": ", ".join(exceeded)},
+        )
+
+
+#: Resources whose every permission is authority over the service rather
+#: than use of it.
+PRIVILEGED_RESOURCES = frozenset({"admin", "audit", "logs"})
+
+#: The suffix that marks a permission reaching past its holder's own rows.
+#: ``link:delete_own`` is use; ``link:delete_any`` is authority.
+REACHES_ANOTHERS_SUFFIX = "_any"
+
+
+def is_privileged(permission: str) -> bool:
+    """
+    Report whether a permission is authority rather than use.
+
+    A rule and not a list, for the reason ``tests/conftest.py`` gives about
+    its own allowlist: an enumeration covers what existed when it was
+    written, and the next permission added is the one it misses. Here the
+    miss would be silent and in the direction that matters -- a new
+    administrative permission nobody classified would leave the accounts
+    holding it reachable by anyone who may manage users.
+
+    Two shapes count, and between them they cover every permission this
+    service defines. Everything under ``admin``, ``audit`` and ``logs`` is
+    authority by the resource it names. Everything ending in ``_any`` is
+    authority by reaching past its holder's own rows --
+    ``link:delete_own`` is use, ``link:delete_any`` is not.
+
+    What is deliberately *not* privileged: ``link:create``,
+    ``link:view_own``, ``link:delete_own``, ``stats:view_basic`` and
+    ``stats:view_full``. The first four are what an account that merely
+    signed up holds, and the last is a service-wide aggregate rather than
+    a reach into anybody's account.
+
+    Args:
+        permission: A permission name in ``resource:action`` form.
+
+    Returns:
+        ``True`` if holding it makes an account somebody's superior.
+    """
+    resource, _, action = permission.partition(":")
+
+    return resource in PRIVILEGED_RESOURCES or action.endswith(
+        REACHES_ANOTHERS_SUFFIX
+    )
+
+
+def require_may_act_on(actor: Optional[User], target: Optional[User]) -> None:
+    """
+    Check that an actor may act on an account at all.
+
+    The mirror of ``require_may_confer``. That one asks whether the actor
+    may hand a permission out; this one asks whether they may reach an
+    account that already holds one they do not. Deleting, deactivating and
+    re-roling all take privileges away rather than give them, so none of
+    them passed through the conferring check -- and taking ``audit:view``
+    off the only account that has it is as much an act of privilege as
+    granting it.
+
+    Only privileged permissions are compared -- see ``is_privileged``. The
+    ordinary ones an account gets by signing up are not authority, and
+    counting them would make every account a superior of every purely
+    administrative role.
+
+    Self is always allowed: the difference between what the target holds
+    and what the actor holds is empty when they are the same account, so
+    an administrator may still deactivate themselves and meet the
+    last-administrator rule rather than this one.
+
+    Args:
+        actor: The user performing the operation.
+        target: The account being acted upon, or ``None`` when there is
+            none -- an id that names nobody is the use case's answer to
+            give, not this rule's.
+
+    Raises:
+        PermissionDeniedError: If the target holds any permission the
+            actor does not. It carries them in ``exceeded``, the same
+            field ``require_may_confer`` uses, because the journal reads
+            them as one kind of event: an authority reached past.
+    """
+    if is_superuser(actor):
+        return
+
+    if target is None:
+        return
+
+    held_by_actor = permissions_held_by(actor)
+    exceeded = sorted(
+        permission
+        for permission in permissions_held_by(target)
+        if is_privileged(permission) and permission not in held_by_actor
+    )
+    if exceeded:
+        raise PermissionDeniedError(
+            "You cannot act on an account holding permissions you do not "
+            "hold yourself: " + ", ".join(exceeded),
+            exceeded=exceeded,
+            template=N_(
+                "You cannot act on an account holding permissions you do "
+                "not hold yourself: %(permissions)s"
             ),
             params={"permissions": ", ".join(exceeded)},
         )

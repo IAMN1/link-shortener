@@ -9,6 +9,7 @@ from link_shortener.application.services.user_management_service import UserMana
 from link_shortener.application.use_cases.admin.privilege_guard import (
     is_administrator,
     require_administrator_remains,
+    require_may_act_on_user,
 )
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
@@ -52,6 +53,11 @@ class DeactivateUserUseCase(BaseUseCase):
         audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
+            # Before the count, for the reason ``DeleteUserUseCase`` gives:
+            # the refusal a caller is entitled to is the one about their own
+            # authority, not the one about the system's last administrator.
+            require_may_act_on_user(context, uow, user_id)
+
             # Blocking the last administrator locks the admin surface for
             # everyone; recovery would need a shell.
             if is_administrator(uow, user_id):
