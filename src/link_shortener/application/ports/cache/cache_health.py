@@ -9,7 +9,7 @@ class CacheHealth(ABC):
     check reaching into a client of its own cannot tell the two failures
     apart: a ``ping`` that fails leaves the cache's own state untouched,
     and a client dropped by some other request reads as "no cache is
-    configured" rather than as an outage. The two methods below are the
+    configured" rather than as an outage. The methods below are the
     component's own answers.
     """
 
@@ -25,6 +25,30 @@ class CacheHealth(ABC):
 
         Returns:
             ``True`` if a real backend is configured.
+        """
+        ...
+
+    @abstractmethod
+    def stores_entries(self) -> bool:
+        """
+        Report whether anything is actually being cached.
+
+        The other half of ``is_configured``, and apart from it because the
+        two were read as one question and are not one. A cache with no
+        server can still be keeping entries: ``InMemoryLinkCache`` holds
+        them in this process, serves them, and goes on serving a link
+        another process deleted until its TTL runs out.
+
+        Answering only ``is_configured`` made every report say the same
+        thing about two situations that behave differently. Measured on a
+        live run: ``/health`` said ``"cache": "disabled"`` while the same
+        process logged four ``Redirect cache hit`` lines in the same
+        seconds, and the guide's own troubleshooting entry for a stale
+        redirect points at a cache the reports called absent.
+
+        Returns:
+            ``True`` if entries are kept anywhere -- in a server or in
+            this process.
         """
         ...
 

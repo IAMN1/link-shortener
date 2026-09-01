@@ -448,6 +448,13 @@ def script_strings() -> Dict[str, str]:
         # the service answers 500 to everything. Measured on a Docker
         # stack whose migration ran against a different file.
         "no_schema": gettext("answering, no schema"),
+        # The state "not configured" was standing in for. A cache with no
+        # server can still be keeping entries -- in this one process, seen
+        # by no other worker -- and the row said the same thing about that
+        # as about a cache doing nothing at all. Measured: four redirects
+        # served out of memory while every report called the cache
+        # disabled.
+        "in_this_process": gettext("in this process only"),
         "unknown": gettext("unknown"),
         # The counters below it belong to one worker process out of
         # several, and the number is the only thing that says so.

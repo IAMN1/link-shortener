@@ -807,40 +807,38 @@ def maintenance_health():
     """
     state = _container().health_check.snapshot()
 
-    # A cache that is switched off is not a broken cache. The documented
+    # The judgement comes from the snapshot; these are this command's
+    # words for it. Written out here, the same three rules -- timed out,
+    # nothing configured, answers but holds no schema -- stood in four
+    # places in four spellings.
+    #
+    # A cache that is switched off is not a broken cache: the documented
     # local setup runs with REDIS_ENABLED=false, and reporting FAILED
     # there made a healthy install look broken -- and any exit-code based
-    # monitoring go red.
-    if state.cache_configured:
-        cache_line = "OK" if state.cache else "FAILED"
-    else:
-        cache_line = "not configured"
-
-    # Three answers rather than two, matching what `/health` renders. A
-    # database that answers and holds none of this application's tables is
-    # not "OK" and is not "FAILED" either -- FAILED sends an operator to
-    # look at connectivity, which is the one thing that is fine.
-    if not state.database:
-        database_line = "FAILED"
-    elif not state.database_schema:
-        database_line = "no schema -- run `flask alembic upgrade head`"
-    else:
-        database_line = "OK"
-
-    # The queue gets the cache's three answers for the same reason: with
-    # `CELERY_ENABLED=false` there is no queue to be up or down, and "OK"
-    # said the same thing for a working broker and for no broker at all --
-    # beside a cache in the same position that said "not configured".
-    if state.task_queue_configured:
-        queue_line = "OK" if state.task_queue else "FAILED"
-    else:
-        queue_line = "not configured"
+    # monitoring go red. "in this process only" is the answer that was
+    # missing: entries are kept and no other worker sees them, which is
+    # why a link deleted elsewhere goes on redirecting here.
+    said = {
+        "ok": "OK",
+        "unavailable": "FAILED",
+        "timeout": "no answer within the budget",
+        "no_schema": "no schema -- run `flask alembic upgrade head`",
+        "in_process": "in this process only, not shared",
+        "disabled": "not configured",
+        "inline": "not configured",
+        "enforcing": "OK",
+        "not_enforcing": "FAILED",
+    }
+    verdicts = state.component_states()
+    database_line = said[verdicts["database"]]
+    cache_line = said[verdicts["cache"]]
+    queue_line = said[verdicts["task_queue"]]
 
     lines = [
         ("Database", database_line),
         ("Cache", cache_line),
         ("Task queue", queue_line),
-        ("Rate limiter", "OK" if state.rate_limiter else "FAILED"),
+        ("Rate limiter", said[verdicts["rate_limiter"]]),
     ]
     width = max(len(name) for name, _ in lines) + 1
     for name, verdict in lines:

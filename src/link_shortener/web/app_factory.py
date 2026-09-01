@@ -385,58 +385,13 @@ def create_app(config=None) -> Flask:
         """
         state = container.health_check.snapshot()
 
-        def describe(name: str, ok: bool) -> str:
-            """Render one component's state."""
-            if name in state.timed_out:
-                return "timeout"
-            return "ok" if ok else "unavailable"
-
-        def describe_database() -> str:
-            """Render the database's state, schema included.
-
-            Three answers rather than two, because a reachable database
-            with none of this application's tables is neither "ok" nor
-            "unavailable": every network measure of it is fine, and it
-            serves nothing. It used to render as "ok" -- measured on a
-            Docker stack whose migration ran against a different file,
-            where this endpoint said healthy and the landing page said
-            500 no such table: roles.
-            """
-            if "database" in state.timed_out:
-                return "timeout"
-            if not state.database:
-                return "unavailable"
-            if not state.database_schema:
-                return "no_schema"
-            return "ok"
-
-        components = {
-            "database": describe_database(),
-            # "ok" would claim a working cache on a deployment that runs
-            # without one.
-            "cache": (
-                describe("cache", state.cache)
-                if state.cache_configured
-                else "disabled"
-            ),
-            # The same distinction the cache gets, and it was missing:
-            # with `CELERY_ENABLED=false` the work is done in the request
-            # and there is no queue to be up or down, but this said "ok" --
-            # so a deployment with neither cache nor broker answered
-            # `"cache": "disabled"` and `"task_queue": "ok"` for two
-            # dependencies in the same state. Measured on the arrangement
-            # that puts both in the process.
-            "task_queue": (
-                describe("task_queue", state.task_queue)
-                if state.task_queue_configured
-                else "inline"
-            ),
-            # Not "ok"/"unavailable": the limiter is reachable or not, but
-            # what matters to an operator is whether limits are on.
-            "rate_limiter": (
-                "enforcing" if state.rate_limiter else "not_enforcing"
-            ),
-        }
+        # Rendered by the snapshot rather than here. Four surfaces
+        # reported the same per-component verdict in their own words --
+        # this endpoint, `flask maintenance health`, the admin API and the
+        # health page's JavaScript -- and the two facts added most
+        # recently had to be written into all four by hand. The words
+        # below are this endpoint's; the judgement is the snapshot's.
+        components = state.component_states()
 
         # Three states, two response codes, on purpose. The code answers the
         # container's question -- "should this be restarted?" -- and for a

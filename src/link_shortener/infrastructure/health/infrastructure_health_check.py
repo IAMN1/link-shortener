@@ -241,6 +241,7 @@ class InfrastructureHealthCheck(HealthCheck):
             database_schema=schema_whole,
             cache=results["cache"],
             cache_configured=self.is_cache_configured(),
+            cache_stores=self.does_cache_store(),
             task_queue_configured=self.is_task_queue_configured(),
             task_queue=results["task_queue"],
             rate_limiter=results["rate_limiter"],
@@ -360,6 +361,21 @@ class InfrastructureHealthCheck(HealthCheck):
             ``True`` if the cache talks to a server.
         """
         return bool(self.cache and self.cache.is_configured())
+
+    def does_cache_store(self) -> bool:
+        """
+        Report whether anything is being cached at all.
+
+        The companion of ``is_cache_configured``, asked of the cache for
+        the same reason: a health check working it out from the outside
+        cannot tell a cache with no server from a cache keeping entries in
+        this process, and those two behave differently -- one of them goes
+        on serving a link another process deleted.
+
+        Returns:
+            ``True`` if entries are kept anywhere.
+        """
+        return bool(self.cache and self.cache.stores_entries())
 
     def is_task_queue_configured(self) -> bool:
         """

@@ -27,53 +27,44 @@
     // screen exactly when the page was reporting a failure. `null && x`
     // is `null`, which is the "unknown" value `render` already takes.
     function paint(data) {
-        render('db', databaseState(data));
-        render('redis', state(data, 'cache', data && data.cache));
-        render('celery', state(data, 'task_queue', data && data.task_queue));
+        var verdicts = (data && data.components) || {};
+        render('db', verdicts.database);
+        render('redis', verdicts.cache);
+        render('celery', verdicts.task_queue);
         // The limiter fails open: with its backend gone it enforces
         // nothing and the service answers normally, so this row is the
         // only place the failure appears.
-        render('limiter', state(data, 'rate_limiter', data && data.rate_limiter));
+        render('limiter', verdicts.rate_limiter);
         renderLogging(data && data.logging);
     }
 
-    // Four states, not two. A dependency that ran out of the check's
-    // budget and one that answered no are both unusable, but only the
-    // first says which dependency is hanging -- and a cache nobody
-    // configured is not a broken cache at all. The endpoint reported one
-    // boolean per row, so this page drew "Redis: answering" over a
-    // deployment with no Redis, and "not answering" over a broker that
-    // was merely slow. `/health` and `flask maintenance health` had told
-    // all three apart from the same snapshot all along.
-    // The database row alone has a fifth state, because the endpoint
-    // reports two booleans for it. "Answered" and "holds our tables" are
-    // separate questions, and the second one failing looks like nothing:
-    // the connection is perfect and every request answers 500. It is not
-    // a row of its own -- an operator reading "Database" wants one verdict
-    // about the database, and two rows that can disagree is the shape this
-    // page already avoided for the cache.
-    function databaseState(data) {
-        var verdict = state(data, 'database', data && data.database);
-        if (verdict === 'ok' && data && data.database_schema === false) {
-            return 'no_schema';
-        }
-        return verdict;
-    }
+    // The verdict is read, not worked out. This page used to decide it
+    // from the booleans the endpoint published -- the fourth place the
+    // same three rules were spelled, after `/health`, the CLI and the
+    // snapshot -- and it is the place they were spelled wrong: a queue
+    // that does not exist was called "ok" until the rule for it was added
+    // here too, and a cache keeping entries in the process reads "absent"
+    // wherever the decision is made from `cache_configured` alone.
+    //
+    // `components` carries the snapshot's own vocabulary, and what is
+    // left here is this page's words for it.
+    var SAID = {
+        ok: 'answering',
+        unavailable: 'not_answering',
+        timeout: 'timed_out',
+        no_schema: 'no_schema',
+        in_process: 'in_this_process',
+        disabled: 'not_configured',
+        inline: 'not_configured',
+        enforcing: 'answering',
+        not_enforcing: 'not_answering'
+    };
 
-    function state(data, key, ok) {
-        if (!data || ok === null || ok === undefined) return 'unknown';
-        if ((data.timed_out || []).indexOf(key) !== -1) return 'timeout';
-        if (key === 'cache' && data.cache_configured === false) {
-            return 'absent';
-        }
-        // The queue gets the same answer for the same state. Without it
-        // this page called a queue that does not exist "ok", beside a
-        // cache in exactly the same position marked absent.
-        if (key === 'task_queue' && data.task_queue_configured === false) {
-            return 'absent';
-        }
-        return ok ? 'ok' : 'down';
-    }
+    // Which verdicts are not a fault. A cache with no server and a queue
+    // with no broker are deployments, not outages, and neither is a
+    // cache keeping its entries in this process -- it works, it is just
+    // not shared.
+    var CALM = ['unknown', 'disabled', 'inline', 'in_process'];
 
     // State is written as a class rather than as a colour in a style
     // attribute. A literal colour cannot follow the theme, and it said
@@ -87,19 +78,27 @@
         // scripts against the catalogue reads these calls out of the
         // file, and a key it cannot see is a key it reports as unused --
         // which would train the next reader to ignore it.
+        // Each key sits as a literal directly inside its own `t(...)`
+        // for the reason below, so the branches stay written out even
+        // though `SAID` names the same keys: the test that reads the
+        // scripts against the catalogue takes these calls out of the
+        // file, and a key it cannot see is a key it reports as unused.
         if (word) {
-            if (verdict === 'unknown') {
-                word.textContent = t('unknown');
-            } else if (verdict === 'timeout') {
+            var said = SAID[verdict];
+            if (said === 'timed_out') {
                 word.textContent = t('timed_out');
-            } else if (verdict === 'absent') {
+            } else if (said === 'not_configured') {
                 word.textContent = t('not_configured');
-            } else if (verdict === 'no_schema') {
+            } else if (said === 'no_schema') {
                 word.textContent = t('no_schema');
-            } else if (verdict === 'ok') {
+            } else if (said === 'in_this_process') {
+                word.textContent = t('in_this_process');
+            } else if (said === 'answering') {
                 word.textContent = t('answering');
-            } else {
+            } else if (said === 'not_answering') {
                 word.textContent = t('not_answering');
+            } else {
+                word.textContent = t('unknown');
             }
         }
         if (!dot) return;
@@ -107,9 +106,10 @@
         // red one: nothing is wrong with it. A timeout gets the red one,
         // because the dependency is unusable either way -- the word beside
         // it is what says which kind of unusable.
+        var calm = CALM.indexOf(verdict || 'unknown') !== -1;
+        var well = verdict === 'ok' || verdict === 'enforcing';
         dot.className = 'dot' + (
-            verdict === 'unknown' || verdict === 'absent'
-                ? '' : (verdict === 'ok' ? ' dot--ok' : ' dot--danger')
+            calm ? '' : (well ? ' dot--ok' : ' dot--danger')
         );
     }
 

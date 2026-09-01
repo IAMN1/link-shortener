@@ -666,6 +666,26 @@ HEALTH_SCHEMA = {
             ),
         },
         "rate_limiter": _DEPENDENCY,
+        "components": {
+            "type": "object",
+            "description": (
+                "What each dependency is doing, judged once by the "
+                "snapshot rather than worked out again by every reader. "
+                "The booleans above are what was measured; this is what "
+                "they mean, in the same words `/health` publishes -- and "
+                "it says two things they cannot: a database that answers "
+                "and holds no schema, and a cache keeping entries in the "
+                "process with no server behind it."
+            ),
+            "additionalProperties": {
+                "type": "string",
+                "enum": [
+                    "ok", "unavailable", "timeout", "no_schema",
+                    "in_process", "disabled", "inline",
+                    "enforcing", "not_enforcing",
+                ],
+            },
+        },
         "timed_out": {
             "type": "array",
             "items": {"type": "string"},
@@ -748,7 +768,7 @@ HEALTH_SCHEMA = {
     "required": [
         "database", "database_schema", "cache", "cache_configured",
         "task_queue_configured",
-        "task_queue", "rate_limiter", "timed_out",
+        "task_queue", "rate_limiter", "components", "timed_out",
     ],
 }
 """

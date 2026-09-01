@@ -150,7 +150,7 @@ class TestEachCounterIsPublishedUnderItsOwnName:
         assert set(body) == {
             "database", "database_schema", "cache", "cache_configured",
             "task_queue", "task_queue_configured", "rate_limiter",
-            "timed_out", "logging"
+            "components", "timed_out", "logging"
         }
 
 

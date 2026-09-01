@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-01 20:36+0300\n"
+"POT-Creation-Date: 2026-09-01 20:49+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -714,37 +714,41 @@ msgstr "не настроен"
 msgid "answering, no schema"
 msgstr "отвечает, схемы нет"
 
-#: src/link_shortener/web/i18n.py:451
+#: src/link_shortener/web/i18n.py:457
+msgid "in this process only"
+msgstr "только в этом процессе"
+
+#: src/link_shortener/web/i18n.py:458
 msgid "unknown"
 msgstr "неизвестно"
 
-#: src/link_shortener/web/i18n.py:454
+#: src/link_shortener/web/i18n.py:461
 #, python-format
 msgid "Worker process %(pid)s"
 msgstr "Рабочий процесс %(pid)s"
 
-#: src/link_shortener/web/i18n.py:459
+#: src/link_shortener/web/i18n.py:466
 msgid "well at the last check"
 msgstr "здорова на последней проверке"
 
-#: src/link_shortener/web/i18n.py:460
+#: src/link_shortener/web/i18n.py:467
 msgid "reports itself unwell"
 msgstr "сообщает, что нездорова"
 
-#: src/link_shortener/web/i18n.py:463
+#: src/link_shortener/web/i18n.py:470
 msgid "the check itself failed"
 msgstr "сама проверка не удалась"
 
-#: src/link_shortener/web/i18n.py:464
+#: src/link_shortener/web/i18n.py:471
 msgid "not checked yet"
 msgstr "ещё не проверялась"
 
-#: src/link_shortener/web/i18n.py:467
+#: src/link_shortener/web/i18n.py:474
 #, python-format
 msgid "%(active)s · %(finding)s"
 msgstr "%(active)s · %(finding)s"
 
-#: src/link_shortener/web/i18n.py:476
+#: src/link_shortener/web/i18n.py:483
 #, python-format
 msgid "%(journal)s (%(reason)s)"
 msgstr "%(journal)s (%(reason)s)"

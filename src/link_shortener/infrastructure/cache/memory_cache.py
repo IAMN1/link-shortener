@@ -69,16 +69,32 @@ class InMemoryLinkCache(ServiceCache):
         same minutes, and a link deleted in another process went on
         redirecting for six of them.
 
-        Left answering ``False`` rather than quietly changed: the
-        distinction belongs in what the reports say, and one of them --
-        ``/health`` -- has ``"cache": "disabled"`` written into the guide
-        as the local answer. ``ping`` below is the same shape of question
-        and the same answer.
+        The second question is asked separately now, by
+        ``stores_entries`` below, and the reports tell the two apart: this
+        one keeps entries and has no server, which is neither of the
+        answers a single boolean could give. ``ping`` is the same shape of
+        question as this one and has the same answer.
 
         Returns:
             ``False``.
         """
         return False
+
+    def stores_entries(self) -> bool:
+        """
+        Entries are kept -- in this process, and only in this one.
+
+        What ``is_configured`` could not say, and the difference an
+        operator pays for. Measured on a live run: ``/health`` said
+        ``"cache": "disabled"`` while this cache served four redirects
+        out of memory in the same seconds; under more than one worker each
+        holds its own entries, and a link deleted through one goes on
+        redirecting through the others until the TTL runs out.
+
+        Returns:
+            ``True``.
+        """
+        return True
 
     def ping(self) -> bool:
         """A cache with nothing to connect to cannot be unreachable."""

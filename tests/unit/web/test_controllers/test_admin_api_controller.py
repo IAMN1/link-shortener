@@ -228,6 +228,15 @@ class TestAdminApiController:
         mock_health.cache_configured = True
         mock_health.task_queue_configured = True
         mock_health.timed_out = ()
+        # The verdict the page draws. A MagicMock attribute is not a dict
+        # and does not survive jsonify either, for the reason written
+        # above about `database_schema`.
+        mock_health.components = {
+            "database": "ok",
+            "cache": "ok",
+            "task_queue": "ok",
+            "rate_limiter": "enforcing",
+        }
         mock_health.logging = LoggingStatus(
             worker=4242,
             logger=ChainStatus("structlog", 0, 0, 4, "healthy"),
@@ -247,7 +256,7 @@ class TestAdminApiController:
         assert set(data) == {
             "database", "database_schema", "cache", "cache_configured",
             "task_queue", "task_queue_configured", "rate_limiter",
-            "timed_out", "logging"
+            "components", "timed_out", "logging"
         }
         assert data["logging"]["audit"]["dropped_calls"] == 2
         assert data["logging"]["audit"]["failed_checks"] == 1
@@ -276,6 +285,15 @@ class TestAdminApiController:
         mock_health.cache_configured = True
         mock_health.task_queue_configured = True
         mock_health.timed_out = ()
+        # The verdict the page draws. A MagicMock attribute is not a dict
+        # and does not survive jsonify either, for the reason written
+        # above about `database_schema`.
+        mock_health.components = {
+            "database": "ok",
+            "cache": "ok",
+            "task_queue": "ok",
+            "rate_limiter": "enforcing",
+        }
         mock_health.logging = None
         ctrl.admin_service.get_service_health.return_value = mock_health
 

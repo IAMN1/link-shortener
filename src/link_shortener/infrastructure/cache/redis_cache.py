@@ -270,6 +270,10 @@ class RedisLinkCache(ServiceCache):
         """
         return True
 
+    def stores_entries(self) -> bool:
+        """Entries are kept, in a server every worker shares."""
+        return True
+
     def ping(self) -> bool:
         """
         Probe Redis, reconnecting first if the client was dropped earlier.

@@ -15,6 +15,7 @@ import pytest
 from link_shortener.application.ports.logging_status import (
     ChainStatus, LoggingStatus,
 )
+from link_shortener.application.ports.health_check import HealthSnapshot
 from link_shortener.application.use_cases.stats.get_service_health import (
     ServiceHealthStatus,
 )
@@ -123,6 +124,22 @@ def health_of(admin_controller):
             "logging": LOGGING,
         }
         fields.update(overrides)
+        # The verdict is derived from the same fields rather than typed
+        # beside them. Written by hand here, this fixture would hold a
+        # second account of what those booleans mean -- which is the
+        # arrangement the snapshot was given `component_states` to end,
+        # and a fixture stating it twice can agree with a page that
+        # disagrees with the service.
+        fields.setdefault("components", HealthSnapshot(
+            database=fields["database"],
+            database_schema=fields["database_schema"],
+            cache=fields["redis"],
+            cache_configured=fields["cache_configured"],
+            task_queue=fields["task_queue"],
+            task_queue_configured=fields.get("task_queue_configured", True),
+            rate_limiter=fields["rate_limiter"],
+            timed_out=tuple(fields["timed_out"]),
+        ).component_states())
         status = ServiceHealthStatus(**fields)
         admin_controller.admin_service.get_service_health.return_value = status
         return status

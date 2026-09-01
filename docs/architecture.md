@@ -570,9 +570,11 @@ answers `is_healthy() == False` and accepts calls in silence.
 
 ### Health
 
-`GET /api/v1/admin/health` reports what each dependency answered, and — where
-a failover logger is configured — the counters that say whether the audit
-trail is still being written. Those counters are reported nowhere else: an
+`GET /api/v1/admin/health` reports what each dependency answered, what that
+means (`components`, judged once by `HealthSnapshot` so that the endpoint,
+`/health`, `flask maintenance health` and the health page cannot each decide
+it differently), and — where a failover logger is configured — the counters
+that say whether the audit trail is still being written. Those counters are reported nowhere else: an
 audit trail that had quietly stopped looked, from every surface an operator
 has, exactly like one that was fine.
 

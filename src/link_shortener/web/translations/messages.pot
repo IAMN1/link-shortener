@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-01 20:36+0300\n"
+"POT-Creation-Date: 2026-09-01 20:49+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -702,37 +702,41 @@ msgstr ""
 msgid "answering, no schema"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:451
+#: src/link_shortener/web/i18n.py:457
+msgid "in this process only"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:458
 msgid "unknown"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:454
+#: src/link_shortener/web/i18n.py:461
 #, python-format
 msgid "Worker process %(pid)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:459
+#: src/link_shortener/web/i18n.py:466
 msgid "well at the last check"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:460
+#: src/link_shortener/web/i18n.py:467
 msgid "reports itself unwell"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:463
+#: src/link_shortener/web/i18n.py:470
 msgid "the check itself failed"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:464
+#: src/link_shortener/web/i18n.py:471
 msgid "not checked yet"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:467
+#: src/link_shortener/web/i18n.py:474
 #, python-format
 msgid "%(active)s · %(finding)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:476
+#: src/link_shortener/web/i18n.py:483
 #, python-format
 msgid "%(journal)s (%(reason)s)"
 msgstr ""

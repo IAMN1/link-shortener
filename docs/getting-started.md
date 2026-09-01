@@ -243,9 +243,14 @@ curl -s http://localhost:5000/health
 }
 ```
 
-Locally the same call answers `"cache": "disabled"` and `"task_queue":
-"inline"`: the development
-profile keeps its cache in the process rather than in Redis.
+Locally the same call answers `"cache": "in_process"` and `"task_queue":
+"inline"`: the development profile keeps its cache in this process rather
+than in Redis, and does the background work on the request. Neither is a
+fault, and `in_process` is not `disabled` — that one is the answer when
+nothing is cached at all (`CACHE_ENABLED=false`). The difference is worth
+the word: entries kept in a process are seen by no other worker, which is
+why a link deleted through one goes on redirecting through the rest until
+its lifetime in the cache runs out.
 
 > [!WARNING]
 > `--env-file` is not optional. Without it compose reads `.env`, which is

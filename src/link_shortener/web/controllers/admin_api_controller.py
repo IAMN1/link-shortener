@@ -378,6 +378,13 @@ class AdminApiController:
             "task_queue_configured": health.task_queue_configured,
             "task_queue": health.task_queue,
             "rate_limiter": health.rate_limiter,
+            # The verdict itself, which is what this page draws. The
+            # booleans above stay: they are what was measured, and a
+            # caller reading them keeps reading them. What was wrong is
+            # that deciding what they mean was left to the page, a fourth
+            # place spelling the same three rules -- and the one that
+            # called a cache keeping entries "absent".
+            "components": health.components,
             # "Did not answer in time" is not the finding "answered no"
             # is, and it names the dependency that is hanging. It reached
             # the other two surfaces and stopped here, at the one an

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-01 20:36+0300\n"
+"POT-Creation-Date: 2026-09-01 20:49+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -703,37 +703,41 @@ msgstr "未配置"
 msgid "answering, no schema"
 msgstr "正常响应，但无表结构"
 
-#: src/link_shortener/web/i18n.py:451
+#: src/link_shortener/web/i18n.py:457
+msgid "in this process only"
+msgstr "仅在此进程中"
+
+#: src/link_shortener/web/i18n.py:458
 msgid "unknown"
 msgstr "未知"
 
-#: src/link_shortener/web/i18n.py:454
+#: src/link_shortener/web/i18n.py:461
 #, python-format
 msgid "Worker process %(pid)s"
 msgstr "工作进程 %(pid)s"
 
-#: src/link_shortener/web/i18n.py:459
+#: src/link_shortener/web/i18n.py:466
 msgid "well at the last check"
 msgstr "上次检查时正常"
 
-#: src/link_shortener/web/i18n.py:460
+#: src/link_shortener/web/i18n.py:467
 msgid "reports itself unwell"
 msgstr "自报异常"
 
-#: src/link_shortener/web/i18n.py:463
+#: src/link_shortener/web/i18n.py:470
 msgid "the check itself failed"
 msgstr "检查本身失败"
 
-#: src/link_shortener/web/i18n.py:464
+#: src/link_shortener/web/i18n.py:471
 msgid "not checked yet"
 msgstr "尚未检查"
 
-#: src/link_shortener/web/i18n.py:467
+#: src/link_shortener/web/i18n.py:474
 #, python-format
 msgid "%(active)s · %(finding)s"
 msgstr "%(active)s · %(finding)s"
 
-#: src/link_shortener/web/i18n.py:476
+#: src/link_shortener/web/i18n.py:483
 #, python-format
 msgid "%(journal)s (%(reason)s)"
 msgstr "%(journal)s (%(reason)s)"

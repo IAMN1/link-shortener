@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.health_check import HealthCheck
@@ -46,6 +46,16 @@ class ServiceHealthStatus:
     """
     rate_limiter: bool = True
     """Whether request limits are currently being enforced."""
+    components: Dict[str, str] = field(default_factory=dict)
+    """The per-component verdict, in the snapshot's vocabulary.
+
+    Beside the booleans rather than instead of them, and it is the field
+    the health page reads. The booleans say what was measured; deciding
+    what they mean was being done a fourth time in JavaScript, which is
+    how that page came to call a queue that does not exist "ok" and a
+    cache keeping entries "absent". The judgement is the snapshot's, and
+    every surface now renders the same one.
+    """
     timed_out: Tuple[str, ...] = field(default=())
     """Components that did not answer within the snapshot's budget.
 
@@ -114,6 +124,7 @@ class GetServiceHealthUseCase(BaseUseCase):
             task_queue_configured=state.task_queue_configured,
             task_queue=state.task_queue,
             rate_limiter=state.rate_limiter,
+            components=state.component_states(),
             timed_out=state.timed_out,
             logging=(
                 self.logging_status.read() if self.logging_status else None

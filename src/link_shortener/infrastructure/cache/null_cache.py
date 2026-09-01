@@ -21,6 +21,10 @@ class NullCache(ServiceCache):
         """No backend is involved; there is nothing to be up or down."""
         return False
 
+    def stores_entries(self) -> bool:
+        """Nothing is kept: every read misses and every write is dropped."""
+        return False
+
     def ping(self) -> bool:
         """A cache with nothing to connect to cannot be unreachable."""
         return True
