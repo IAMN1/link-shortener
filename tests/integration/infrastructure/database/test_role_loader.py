@@ -480,12 +480,20 @@ class TestAFileThatNamesSomethingTwiceIsRefusedByName:
         """
         The message has to carry the name, because the file ships with
         dozens of entries and the operator has to find the one.
+
+        A ``ValidationError`` and not a bare ``ValueError``: the refusal
+        travels to an operator through ``ReportingGroup``, whose
+        ``REFUSALS`` names the domain's errors and not Python's. Raised as
+        a ``ValueError`` it went past that door -- measured, ``flask db
+        load-custom-roles`` on such a file printed a fourteen-frame
+        traceback and the sentence composed here never reached the
+        terminal.
         """
         path = self._file_with_a_repeated(section, tmp_path)
         repeated = __import__("yaml").safe_load(path.read_text())[section][0]
 
         with fresh_db.session() as session:
-            with pytest.raises(ValueError) as refusal:
+            with pytest.raises(ValidationError) as refusal:
                 RoleLoader(session).load_from_yaml(path)
 
         assert repeated["name"] in str(refusal.value)
@@ -503,7 +511,7 @@ class TestAFileThatNamesSomethingTwiceIsRefusedByName:
         path = self._file_with_a_repeated(section, tmp_path)
 
         with fresh_db.session() as session:
-            with pytest.raises(ValueError) as refusal:
+            with pytest.raises(ValidationError) as refusal:
                 RoleLoader(session).load_from_yaml(path)
 
         assert not isinstance(refusal.value, IntegrityError)

@@ -11,6 +11,7 @@ import uuid
 import yaml
 from sqlalchemy.orm import Session
 
+from link_shortener.domain.exceptions import ValidationError
 from link_shortener.domain.policies.role_policy import (
     require_valid_role_description, require_valid_role_name
 )
@@ -215,10 +216,19 @@ class RoleLoader:
             for entry in config.get(section) or []:
                 name = entry.get(key)
                 if name in seen:
-                    raise ValueError(
+                    # A domain refusal rather than a bare ValueError, so
+                    # that `ReportingGroup` words it: the file is the
+                    # operator's input, and being wrong about it is their
+                    # business rather than a defect in this service.
+                    # Measured before this: `flask db load-custom-roles`
+                    # on a file naming a permission twice answered with a
+                    # fourteen-frame traceback, which is the very thing
+                    # that class was added to stop.
+                    raise ValidationError(
                         f"{file_path} names the {section[:-1]} {name!r} "
                         "more than once; each name is unique in the "
-                        "database, so the second one cannot be stored"
+                        "database, so the second one cannot be stored",
+                        field=section,
                     )
                 seen.add(name)
 

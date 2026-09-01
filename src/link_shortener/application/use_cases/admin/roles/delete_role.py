@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.logger.audit import AuditLogger
+from link_shortener.domain.exceptions import DomainError
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.services.role_management_service import RoleManagementService
@@ -109,7 +110,9 @@ class DeleteRoleUseCase(BaseUseCase):
 
             self.role_service.delete_role(uow, role_name)
 
-            rerolled = self._put_the_bare_ones_back(uow, wearers, log)
+            rerolled = self._put_the_bare_ones_back(
+                uow, wearers, log, audit, role_name
+            )
             uow.commit()
 
         log.info(
@@ -120,7 +123,9 @@ class DeleteRoleUseCase(BaseUseCase):
         )
         audit.log_role_deleted(role=role_name, holders=holders)
 
-    def _put_the_bare_ones_back(self, uow, wearers, log) -> int:
+    def _put_the_bare_ones_back(
+        self, uow, wearers, log, audit, role_name: str
+    ) -> int:
         """
         Give the default role to accounts this deletion left with none.
 
@@ -173,7 +178,34 @@ class DeleteRoleUseCase(BaseUseCase):
             # the assignability policy is asked at both. A deployment that
             # has pointed `DEFAULT_ROLE_NAME` at something unassignable is
             # refused here exactly as registration refuses it.
-            self.user_service.update_roles(uow, user_id, [fallback])
+            #
+            # Caught rather than let out, for the reason the branch above
+            # gives about the missing fallback: the role is already gone
+            # and the transaction is worth keeping. Let out, this refusal
+            # rolled back the deletion itself -- so a deployment with an
+            # unassignable default answered "cannot delete this role" and
+            # named the wrong reason.
+            try:
+                self.user_service.update_roles(uow, user_id, [fallback])
+            except DomainError as refusal:
+                log.warning(
+                    "An account could not be put back on the default role",
+                    default_role_name=self.default_role_name,
+                    user_id=user_id,
+                    reason=str(refusal),
+                )
+                continue
+
+            # On the record, because it is a change to what that account
+            # may do -- the rule this vocabulary is built on. It arrives
+            # through a deletion rather than through the roles endpoint,
+            # and an investigator asking "why does this account hold the
+            # default role" has nothing else to read.
+            audit.log_roles_changed(
+                target_user_id=user_id,
+                roles_before=[role_name],
+                roles_after=[fallback.name],
+            )
             rerolled += 1
 
         if rerolled:

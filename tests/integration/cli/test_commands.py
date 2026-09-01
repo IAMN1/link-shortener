@@ -2186,6 +2186,40 @@ class TestARefusalArrivesAsASentence:
         assert result.stderr.strip()
         assert "Traceback" not in result.output
 
+    def test_a_file_naming_something_twice_is_a_sentence(self, runner, app, tmp_path):
+        """
+        The refusal the loader raises has to be one this door recognises.
+
+        ``RoleLoader`` refuses a file that names a permission or a role
+        twice, and it raised a bare ``ValueError`` -- which ``REFUSALS``
+        does not name, so the operator met a fourteen-frame traceback for
+        the very kind of mistake this class was added to word. Measured:
+        ``flask db load-custom-roles`` on such a file printed the stack and
+        the sentence it had already composed never reached the terminal.
+        """
+        twice = tmp_path / "roles.yaml"
+        twice.write_text(
+            "permissions:\n"
+            "  - name: \"probe:one\"\n"
+            "    resource: \"probe\"\n"
+            "    action: \"one\"\n"
+            "    description: \"first\"\n"
+            "  - name: \"probe:one\"\n"
+            "    resource: \"probe\"\n"
+            "    action: \"one\"\n"
+            "    description: \"the same name again\"\n"
+            "roles: []\n"
+        )
+
+        with app.app_context():
+            result = runner.invoke(
+                app.cli, ["db", "load-custom-roles", str(twice)]
+            )
+
+        assert result.exit_code == 1
+        assert "more than once" in result.stderr
+        assert "Traceback" not in result.output
+
     def test_a_defect_is_still_a_traceback(self, runner, app, monkeypatch):
         """
         The half that keeps the door narrow.
