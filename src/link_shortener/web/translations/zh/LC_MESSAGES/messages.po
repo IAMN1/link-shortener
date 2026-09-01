@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-01 21:09+0300\n"
+"POT-Creation-Date: 2026-09-02 00:58+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -47,9 +47,10 @@ msgstr "当前密码不正确"
 msgid "The new password must differ from the current one"
 msgstr "新密码必须与当前密码不同"
 
-#: src/link_shortener/application/use_cases/auth/login.py:77
-#: src/link_shortener/application/use_cases/auth/login.py:93
-#: src/link_shortener/application/use_cases/auth/login.py:133
+#: src/link_shortener/application/use_cases/auth/login.py:163
+#: src/link_shortener/application/use_cases/auth/login.py:180
+#: src/link_shortener/application/use_cases/auth/login.py:196
+#: src/link_shortener/application/use_cases/auth/login.py:236
 msgid "Invalid email or password"
 msgstr "邮箱地址或密码不正确"
 
@@ -81,7 +82,7 @@ msgstr "无法保存该链接"
 
 #: src/link_shortener/application/use_cases/journals/read_journal.py:310
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:183
-#: src/link_shortener/web/controllers/api_controller.py:270
+#: src/link_shortener/web/controllers/api_controller.py:325
 #: src/link_shortener/web/security/decorators.py:55
 #: src/link_shortener/web/security/decorators.py:121
 msgid "Not authorized"
@@ -207,12 +208,19 @@ msgstr "密码不得超过 %(count)s 个字符；每字符占用更多空间的�
 msgid "Password is too common -- choose one that is not on every attacker's list"
 msgstr "此密码过于常见——请换一个不在攻击者常用列表里的"
 
-#: src/link_shortener/domain/policies/privilege_policy.py:105
+#: src/link_shortener/domain/policies/privilege_policy.py:121
 #, python-format
 msgid "You cannot grant permissions you do not hold yourself: %(permissions)s"
 msgstr "不能授予您自己没有的权限：%(permissions)s"
 
-#: src/link_shortener/domain/policies/privilege_policy.py:125
+#: src/link_shortener/domain/policies/privilege_policy.py:225
+#, python-format
+msgid ""
+"You cannot act on an account holding permissions you do not hold "
+"yourself: %(permissions)s"
+msgstr "不能操作拥有您自己没有的权限的账户：%(permissions)s"
+
+#: src/link_shortener/domain/policies/privilege_policy.py:245
 msgid "This would leave the system without an administrator"
 msgstr "这样做会让系统失去管理员"
 
@@ -234,7 +242,11 @@ msgstr "角色描述必须是文本"
 msgid "A role description must be at most %(most)s characters long"
 msgstr "角色描述长度不得超过 %(most)s 个字符"
 
-#: src/link_shortener/domain/value_objects/email.py:104
+#: src/link_shortener/domain/value_objects/email.py:136
+msgid "Email address is too long"
+msgstr "邮箱地址过长"
+
+#: src/link_shortener/domain/value_objects/email.py:144
 msgid "Invalid email format"
 msgstr "邮箱地址格式无效"
 
@@ -381,7 +393,7 @@ msgstr "发送失败"
 msgid "Not found"
 msgstr "未找到"
 
-#: src/link_shortener/web/i18n.py:270 src/link_shortener/web/i18n.py:423
+#: src/link_shortener/web/i18n.py:270 src/link_shortener/web/i18n.py:426
 msgid "Refused"
 msgstr "已拒绝"
 
@@ -519,7 +531,7 @@ msgstr "访问次数"
 
 #: src/link_shortener/web/i18n.py:347
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/link_stats.html:36
+#: src/link_shortener/web/templates/dashboard/link_stats.html:57
 #: src/link_shortener/web/templates/dashboard/my_links.html:28
 #: src/link_shortener/web/templates/dashboard/my_stats.html:40
 #: src/link_shortener/web/templates/dashboard/service_stats.html:37
@@ -528,7 +540,7 @@ msgid "Created"
 msgstr "创建时间"
 
 #: src/link_shortener/web/i18n.py:348
-#: src/link_shortener/web/templates/dashboard/link_stats.html:40
+#: src/link_shortener/web/templates/dashboard/link_stats.html:61
 msgid "Last Access"
 msgstr "最近访问"
 
@@ -541,7 +553,7 @@ msgid "Days Old"
 msgstr "存在天数"
 
 #: src/link_shortener/web/i18n.py:351
-#: src/link_shortener/web/templates/dashboard/link_stats.html:32
+#: src/link_shortener/web/templates/dashboard/link_stats.html:53
 msgid "Clicks/Day"
 msgstr "每日访问"
 
@@ -619,129 +631,133 @@ msgstr "自动刷新已关闭"
 msgid "Stats"
 msgstr "统计"
 
-#: src/link_shortener/web/i18n.py:387
+#: src/link_shortener/web/i18n.py:385
+msgid "QR"
+msgstr "二维码"
+
+#: src/link_shortener/web/i18n.py:390
 msgid "Nothing has been written to this journal"
 msgstr "这个日志中还没有写入任何内容"
 
-#: src/link_shortener/web/i18n.py:388
+#: src/link_shortener/web/i18n.py:391
 msgid "The journal could not be read"
 msgstr "无法读取该日志"
 
-#: src/link_shortener/web/i18n.py:392
+#: src/link_shortener/web/i18n.py:395
 msgid "not a record"
 msgstr "不是一条记录"
 
-#: src/link_shortener/web/i18n.py:399
+#: src/link_shortener/web/i18n.py:402
 #, python-format
 msgid "Lines: %(count)s · %(files)s"
 msgstr "行数：%(count)s · %(files)s"
 
-#: src/link_shortener/web/i18n.py:403
+#: src/link_shortener/web/i18n.py:406
 msgid "Nothing here matched that search"
 msgstr "没有符合该搜索的记录"
 
-#: src/link_shortener/web/i18n.py:407
+#: src/link_shortener/web/i18n.py:410
 #, python-format
 msgid "Found: %(found)s · scanned: %(scanned)s"
 msgstr "找到：%(found)s · 已扫描：%(scanned)s"
 
-#: src/link_shortener/web/i18n.py:412
+#: src/link_shortener/web/i18n.py:415
 msgid "Not searched further back than this."
 msgstr "搜索未再往前追溯。"
 
-#: src/link_shortener/web/i18n.py:414
+#: src/link_shortener/web/i18n.py:417
 msgid "This is the start of the journal."
 msgstr "这是日志的开头。"
 
-#: src/link_shortener/web/i18n.py:415
+#: src/link_shortener/web/i18n.py:418
 msgid "Older lines exist."
 msgstr "还有更早的行。"
 
-#: src/link_shortener/web/i18n.py:417
+#: src/link_shortener/web/i18n.py:420
 #, python-format
 msgid "Archives reach back to %(name)s."
 msgstr "归档可回溯到 %(name)s。"
 
-#: src/link_shortener/web/i18n.py:422
+#: src/link_shortener/web/i18n.py:425
 msgid "Signed in"
 msgstr "成功登录"
 
-#: src/link_shortener/web/i18n.py:424
+#: src/link_shortener/web/i18n.py:427
 msgid "Roles changed"
 msgstr "角色变更"
 
-#: src/link_shortener/web/i18n.py:425
+#: src/link_shortener/web/i18n.py:428
 msgid "Other events"
 msgstr "其他事件"
 
-#: src/link_shortener/web/i18n.py:430
+#: src/link_shortener/web/i18n.py:433
 #, python-format
 msgid "Counted: %(since)s — %(until)s"
 msgstr "统计范围：%(since)s — %(until)s"
 
-#: src/link_shortener/web/i18n.py:431
+#: src/link_shortener/web/i18n.py:434
 msgid "Security events over time"
 msgstr "安全事件随时间变化"
 
-#: src/link_shortener/web/i18n.py:432
+#: src/link_shortener/web/i18n.py:435
 msgid "The counters could not be read"
 msgstr "无法读取计数"
 
-#: src/link_shortener/web/i18n.py:433
+#: src/link_shortener/web/i18n.py:436
 msgid "answering"
 msgstr "正常响应"
 
-#: src/link_shortener/web/i18n.py:434
+#: src/link_shortener/web/i18n.py:437
 msgid "not answering"
 msgstr "无响应"
 
-#: src/link_shortener/web/i18n.py:439
+#: src/link_shortener/web/i18n.py:442
 msgid "timed out"
 msgstr "超时"
 
-#: src/link_shortener/web/i18n.py:443
+#: src/link_shortener/web/i18n.py:446
 msgid "not configured"
 msgstr "未配置"
 
-#: src/link_shortener/web/i18n.py:450
+#: src/link_shortener/web/i18n.py:453
 msgid "answering, no schema"
 msgstr "正常响应，但无表结构"
 
-#: src/link_shortener/web/i18n.py:457
+#: src/link_shortener/web/i18n.py:460
 msgid "in this process only"
 msgstr "仅在此进程中"
 
-#: src/link_shortener/web/i18n.py:458
+#: src/link_shortener/web/i18n.py:461
 msgid "unknown"
 msgstr "未知"
 
-#: src/link_shortener/web/i18n.py:461
+#: src/link_shortener/web/i18n.py:464
 #, python-format
 msgid "Worker process %(pid)s"
 msgstr "工作进程 %(pid)s"
 
-#: src/link_shortener/web/i18n.py:466
+#: src/link_shortener/web/i18n.py:469
 msgid "well at the last check"
 msgstr "上次检查时正常"
 
-#: src/link_shortener/web/i18n.py:467
+#: src/link_shortener/web/i18n.py:470
 msgid "reports itself unwell"
 msgstr "自报异常"
 
-#: src/link_shortener/web/i18n.py:470
+#: src/link_shortener/web/i18n.py:473
 msgid "the check itself failed"
 msgstr "检查本身失败"
 
-#: src/link_shortener/web/i18n.py:471
+#: src/link_shortener/web/i18n.py:474
 msgid "not checked yet"
 msgstr "尚未检查"
 
-#: src/link_shortener/web/i18n.py:474
+#: src/link_shortener/web/i18n.py:477
 #, python-format
 msgid "%(active)s · %(finding)s"
 msgstr "%(active)s · %(finding)s"
 
-#: src/link_shortener/web/i18n.py:483
+#: src/link_shortener/web/i18n.py:486
 #, python-format
 msgid "%(journal)s (%(reason)s)"
 msgstr "%(journal)s (%(reason)s)"
@@ -759,12 +775,12 @@ msgstr "请求体必须是 JSON 对象"
 msgid "Confirmation for %(email)s could not be queued"
 msgstr "无法将发往 %(email)s 的确认邮件加入队列"
 
-#: src/link_shortener/web/controllers/api_controller.py:375
-#: src/link_shortener/web/controllers/api_controller.py:439
+#: src/link_shortener/web/controllers/api_controller.py:430
+#: src/link_shortener/web/controllers/api_controller.py:494
 msgid "Sign in to see your own statistics"
 msgstr "登录后可查看自己的统计"
 
-#: src/link_shortener/web/controllers/api_controller.py:428
+#: src/link_shortener/web/controllers/api_controller.py:483
 msgid "days must be a whole number"
 msgstr "days 必须是整数"
 
@@ -1331,7 +1347,7 @@ msgid "Dashboard — MaizLink"
 msgstr "控制台 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/home.html:16
-#: src/link_shortener/web/templates/dashboard/link_stats.html:28
+#: src/link_shortener/web/templates/dashboard/link_stats.html:49
 #: src/link_shortener/web/templates/dashboard/my_stats.html:15
 #: src/link_shortener/web/templates/dashboard/service_stats.html:15
 #: src/link_shortener/web/templates/dashboard/user_stats.html:17
@@ -1505,6 +1521,19 @@ msgstr "链接 %(code)s — MaizLink"
 #: src/link_shortener/web/templates/dashboard/link_stats.html:10
 msgid "All links"
 msgstr "全部链接"
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:37
+msgid "QR code"
+msgstr "二维码"
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:40
+msgid "Open"
+msgstr "打开"
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:43
+#, python-format
+msgid "QR code for %(code)s"
+msgstr "%(code)s 的二维码"
 
 #: src/link_shortener/web/templates/dashboard/my_links.html:2
 msgid "My Links — MaizLink"

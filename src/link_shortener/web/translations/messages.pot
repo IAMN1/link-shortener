@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-01 21:09+0300\n"
+"POT-Creation-Date: 2026-09-02 00:58+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -46,9 +46,10 @@ msgstr ""
 msgid "The new password must differ from the current one"
 msgstr ""
 
-#: src/link_shortener/application/use_cases/auth/login.py:77
-#: src/link_shortener/application/use_cases/auth/login.py:93
-#: src/link_shortener/application/use_cases/auth/login.py:133
+#: src/link_shortener/application/use_cases/auth/login.py:163
+#: src/link_shortener/application/use_cases/auth/login.py:180
+#: src/link_shortener/application/use_cases/auth/login.py:196
+#: src/link_shortener/application/use_cases/auth/login.py:236
 msgid "Invalid email or password"
 msgstr ""
 
@@ -80,7 +81,7 @@ msgstr ""
 
 #: src/link_shortener/application/use_cases/journals/read_journal.py:310
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:183
-#: src/link_shortener/web/controllers/api_controller.py:270
+#: src/link_shortener/web/controllers/api_controller.py:325
 #: src/link_shortener/web/security/decorators.py:55
 #: src/link_shortener/web/security/decorators.py:121
 msgid "Not authorized"
@@ -206,12 +207,19 @@ msgstr ""
 msgid "Password is too common -- choose one that is not on every attacker's list"
 msgstr ""
 
-#: src/link_shortener/domain/policies/privilege_policy.py:105
+#: src/link_shortener/domain/policies/privilege_policy.py:121
 #, python-format
 msgid "You cannot grant permissions you do not hold yourself: %(permissions)s"
 msgstr ""
 
-#: src/link_shortener/domain/policies/privilege_policy.py:125
+#: src/link_shortener/domain/policies/privilege_policy.py:225
+#, python-format
+msgid ""
+"You cannot act on an account holding permissions you do not hold "
+"yourself: %(permissions)s"
+msgstr ""
+
+#: src/link_shortener/domain/policies/privilege_policy.py:245
 msgid "This would leave the system without an administrator"
 msgstr ""
 
@@ -233,7 +241,11 @@ msgstr ""
 msgid "A role description must be at most %(most)s characters long"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/email.py:104
+#: src/link_shortener/domain/value_objects/email.py:136
+msgid "Email address is too long"
+msgstr ""
+
+#: src/link_shortener/domain/value_objects/email.py:144
 msgid "Invalid email format"
 msgstr ""
 
@@ -380,7 +392,7 @@ msgstr ""
 msgid "Not found"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:270 src/link_shortener/web/i18n.py:423
+#: src/link_shortener/web/i18n.py:270 src/link_shortener/web/i18n.py:426
 msgid "Refused"
 msgstr ""
 
@@ -518,7 +530,7 @@ msgstr ""
 
 #: src/link_shortener/web/i18n.py:347
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/link_stats.html:36
+#: src/link_shortener/web/templates/dashboard/link_stats.html:57
 #: src/link_shortener/web/templates/dashboard/my_links.html:28
 #: src/link_shortener/web/templates/dashboard/my_stats.html:40
 #: src/link_shortener/web/templates/dashboard/service_stats.html:37
@@ -527,7 +539,7 @@ msgid "Created"
 msgstr ""
 
 #: src/link_shortener/web/i18n.py:348
-#: src/link_shortener/web/templates/dashboard/link_stats.html:40
+#: src/link_shortener/web/templates/dashboard/link_stats.html:61
 msgid "Last Access"
 msgstr ""
 
@@ -540,7 +552,7 @@ msgid "Days Old"
 msgstr ""
 
 #: src/link_shortener/web/i18n.py:351
-#: src/link_shortener/web/templates/dashboard/link_stats.html:32
+#: src/link_shortener/web/templates/dashboard/link_stats.html:53
 msgid "Clicks/Day"
 msgstr ""
 
@@ -618,129 +630,133 @@ msgstr ""
 msgid "Stats"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:387
+#: src/link_shortener/web/i18n.py:385
+msgid "QR"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:390
 msgid "Nothing has been written to this journal"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:388
+#: src/link_shortener/web/i18n.py:391
 msgid "The journal could not be read"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:392
+#: src/link_shortener/web/i18n.py:395
 msgid "not a record"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:399
+#: src/link_shortener/web/i18n.py:402
 #, python-format
 msgid "Lines: %(count)s · %(files)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:403
+#: src/link_shortener/web/i18n.py:406
 msgid "Nothing here matched that search"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:407
+#: src/link_shortener/web/i18n.py:410
 #, python-format
 msgid "Found: %(found)s · scanned: %(scanned)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:412
+#: src/link_shortener/web/i18n.py:415
 msgid "Not searched further back than this."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:414
+#: src/link_shortener/web/i18n.py:417
 msgid "This is the start of the journal."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:415
+#: src/link_shortener/web/i18n.py:418
 msgid "Older lines exist."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:417
+#: src/link_shortener/web/i18n.py:420
 #, python-format
 msgid "Archives reach back to %(name)s."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:422
+#: src/link_shortener/web/i18n.py:425
 msgid "Signed in"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:424
+#: src/link_shortener/web/i18n.py:427
 msgid "Roles changed"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:425
+#: src/link_shortener/web/i18n.py:428
 msgid "Other events"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:430
+#: src/link_shortener/web/i18n.py:433
 #, python-format
 msgid "Counted: %(since)s — %(until)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:431
+#: src/link_shortener/web/i18n.py:434
 msgid "Security events over time"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:432
+#: src/link_shortener/web/i18n.py:435
 msgid "The counters could not be read"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:433
+#: src/link_shortener/web/i18n.py:436
 msgid "answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:434
+#: src/link_shortener/web/i18n.py:437
 msgid "not answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:439
+#: src/link_shortener/web/i18n.py:442
 msgid "timed out"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:443
+#: src/link_shortener/web/i18n.py:446
 msgid "not configured"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:450
+#: src/link_shortener/web/i18n.py:453
 msgid "answering, no schema"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:457
+#: src/link_shortener/web/i18n.py:460
 msgid "in this process only"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:458
+#: src/link_shortener/web/i18n.py:461
 msgid "unknown"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:461
+#: src/link_shortener/web/i18n.py:464
 #, python-format
 msgid "Worker process %(pid)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:466
+#: src/link_shortener/web/i18n.py:469
 msgid "well at the last check"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:467
+#: src/link_shortener/web/i18n.py:470
 msgid "reports itself unwell"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:470
+#: src/link_shortener/web/i18n.py:473
 msgid "the check itself failed"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:471
+#: src/link_shortener/web/i18n.py:474
 msgid "not checked yet"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:474
+#: src/link_shortener/web/i18n.py:477
 #, python-format
 msgid "%(active)s · %(finding)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:483
+#: src/link_shortener/web/i18n.py:486
 #, python-format
 msgid "%(journal)s (%(reason)s)"
 msgstr ""
@@ -758,12 +774,12 @@ msgstr ""
 msgid "Confirmation for %(email)s could not be queued"
 msgstr ""
 
-#: src/link_shortener/web/controllers/api_controller.py:375
-#: src/link_shortener/web/controllers/api_controller.py:439
+#: src/link_shortener/web/controllers/api_controller.py:430
+#: src/link_shortener/web/controllers/api_controller.py:494
 msgid "Sign in to see your own statistics"
 msgstr ""
 
-#: src/link_shortener/web/controllers/api_controller.py:428
+#: src/link_shortener/web/controllers/api_controller.py:483
 msgid "days must be a whole number"
 msgstr ""
 
@@ -1331,7 +1347,7 @@ msgid "Dashboard — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:16
-#: src/link_shortener/web/templates/dashboard/link_stats.html:28
+#: src/link_shortener/web/templates/dashboard/link_stats.html:49
 #: src/link_shortener/web/templates/dashboard/my_stats.html:15
 #: src/link_shortener/web/templates/dashboard/service_stats.html:15
 #: src/link_shortener/web/templates/dashboard/user_stats.html:17
@@ -1504,6 +1520,19 @@ msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/link_stats.html:10
 msgid "All links"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:37
+msgid "QR code"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:40
+msgid "Open"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:43
+#, python-format
+msgid "QR code for %(code)s"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/my_links.html:2
