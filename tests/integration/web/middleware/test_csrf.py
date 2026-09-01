@@ -358,6 +358,14 @@ class TestCsrfExemptions:
         so a header credential must not excuse it from CSRF. Otherwise a
         throwaway Authorization value turns the victim's refresh cookie into
         a fresh access token for their account.
+
+        Loose about which refusal, for the reason the sweep above gives:
+        the two shapes are refused by different doors. ``Bearer `` with
+        nothing after it is no credential at all, falls back to the cookie
+        and owes a CSRF token -- 403. ``Bearer nonsense.not.a.token`` is a
+        credential the caller chose to present and the service now refuses
+        it outright -- 401, before CSRF is reached. The invariant is the
+        line below: neither shape comes back with a token.
         """
         victim = app.test_client()
         _login(victim, f"csrfrefresh-{label}@example.com")
@@ -365,7 +373,7 @@ class TestCsrfExemptions:
         r = victim.post(
             "/api/v1/auth/refresh", headers={"Authorization": header_value}
         )
-        assert r.status_code == 403
+        assert r.status_code in (401, 403)
         assert "access_token" not in (r.get_json() or {})
 
     def test_refresh_with_a_valid_foreign_token_is_still_checked(self, app):
@@ -416,8 +424,14 @@ class TestCsrfExemptions:
         """
         The exemption belongs to the credential that actually authenticated
         the request. A Bearer token that fails validation authenticates
-        nothing, so a request still holding session cookies stays a
-        cookie-authenticated one and owes a CSRF token.
+        nothing, so it buys no exemption -- and since the service began
+        refusing a presented credential it cannot verify, it does not even
+        reach CSRF: the refusal is 401 rather than 403.
+
+        Which of the two is not the property. The property is that the
+        write does not happen, and that is asserted below rather than left
+        to a status code, so a later change of door cannot quietly turn
+        this into a test of nothing.
         """
         client = app.test_client()
         _login(client, "csrfbadbearer@example.com")
@@ -427,7 +441,12 @@ class TestCsrfExemptions:
             json={"url": "https://example.com/csrf-9"},
             headers={"Authorization": "Bearer not.a.valid.token"},
         )
-        assert r.status_code == 403
+        assert r.status_code in (401, 403)
+
+        made = client.get("/api/v1/links/mine", headers=csrf_headers(client))
+        assert "https://example.com/csrf-9" not in [
+            link["original_url"] for link in made.get_json()
+        ]
 
     def test_token_resolving_to_nobody_grants_no_exemption(self, app, db):
         """
@@ -451,7 +470,16 @@ class TestCsrfExemptions:
             json={"url": "https://example.com/csrf-10"},
             headers=auth_headers(holder_token),
         )
-        assert r.status_code == 403
+        # 401 now: a token whose account is gone is a credential the caller
+        # presented and the service cannot honour, so it is refused before
+        # CSRF is asked about. It used to fall through to the cookie and be
+        # refused there instead. Neither writes, which is the property.
+        assert r.status_code in (401, 403)
+
+        made = victim.get("/api/v1/links/mine", headers=csrf_headers(victim))
+        assert "https://example.com/csrf-10" not in [
+            link["original_url"] for link in made.get_json()
+        ]
 
     def test_non_ascii_token_is_refused_not_crashed(self, app):
         client = app.test_client()

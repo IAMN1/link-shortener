@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 from flask_babel import gettext
 from pydantic import ValidationError as PydanticValidationError
 from werkzeug.exceptions import BadRequest, HTTPException
@@ -26,15 +26,21 @@ STATUS_BY_CODE = {
     # named a resource, and there is no such resource.
     "JOURNAL_NOT_FOUND": 404,
     "INVALID_CREDENTIALS": 401,
-    # The only code the application raised that this table did not name.
-    # It never showed, because the one route that raises it answers 401
-    # itself -- and it was answered 401 with the right sentence only
-    # because nothing consulted the table on the way. Named here so the
-    # table is the whole list: a code missing from it defaults to 500, and
-    # anything reading it -- `client_message` does now -- would take the
-    # sentence for one written about the service's own state and replace
-    # it with "An internal error occurred", which is what happened.
-    "EMAIL_NOT_VERIFIED": 401,
+    # Raised deep in the token service when a spent refresh token comes
+    # back, and caught by `RefreshSessionUseCase`, which records the act
+    # and answers the caller the way any unusable token is answered. Named
+    # here anyway: the one thing worse than the wrong status for it would
+    # be a 500, which is what an uncaught path would produce, and 401 is
+    # what the caught path already returns.
+    "REFRESH_TOKEN_REPLAYED": 401,
+    # `EMAIL_NOT_VERIFIED` stood here and no longer does. Nothing raises
+    # it: signing in with an unconfirmed address answers
+    # `INVALID_CREDENTIALS`, the same as a wrong password, so that the
+    # pair cannot be used to tell whether a password landed. An entry for
+    # a code nothing raises is a line that cannot be measured -- removing
+    # it changes no answer, which is the definition of dead -- and the
+    # sweep below (`test_every_code_raised_is_named_in_the_table`) puts it
+    # back the moment anything raises it again.
     "ACCOUNT_INACTIVE": 403,
     "VALIDATION_ERROR": 400,
     # A role that exists and that no account may wear -- ``guest``. The
@@ -328,12 +334,47 @@ class ErrorHandlerMiddleware:
 
         @self.app.errorhandler(405)
         def handle_method_not_allowed(error):
-            """Handle 405 Method Not Allowed errors."""
+            """Handle 405 Method Not Allowed errors.
+
+            The answer carries ``Allow``. RFC 9110 15.5.6 is not soft
+            about it -- "The origin server MUST generate an Allow header
+            field in a 405 response containing a list of the target
+            resource's currently supported methods" -- and it is the only
+            thing that makes the refusal actionable: a client told "not
+            allowed" and nothing else has to guess which verb to try.
+
+            Werkzeug puts the list on the exception it raises, and this
+            handler replaced its response with a JSON body of its own,
+            which left the header behind. Measured before this: every
+            route answered 405 with no ``Allow`` at all -- `TRACE
+            /api/v1/stats`, `DELETE /api/v1/stats`, `PUT /health`, `POST
+            /api/v1/links/mine`. Found by the contract run, which
+            generates a request per method and reads the answer against
+            the standard.
+
+            Args:
+                error: The Werkzeug exception, which knows the methods.
+
+            Returns:
+                The refusal, with the header on both the page and the
+                JSON form.
+            """
+            # `valid_methods` is what Werkzeug's MethodNotAllowed carries;
+            # anything else reaching this handler leaves the header off
+            # rather than inventing a list.
+            allowed = sorted(getattr(error, "valid_methods", None) or [])
 
             if self._should_return_html():
-                return error_page(
+                # `error_page` answers (body, status); the header belongs
+                # on a real response, so one is built from it either way
+                # rather than in a branch mypy has to reconcile.
+                body, status = error_page(
                     "METHOD_NOT_ALLOWED", gettext("Method not allowed"), 405
                 )
+                page = make_response(body, status)
+                if allowed:
+                    page.headers["Allow"] = ", ".join(allowed)
+                return page
 
             response = ErrorResponse(
                 error="METHOD_NOT_ALLOWED",
@@ -345,7 +386,10 @@ class ErrorHandlerMiddleware:
                 )
             )
 
-            return jsonify(response.model_dump()), 405
+            answer = make_response(jsonify(response.model_dump()), 405)
+            if allowed:
+                answer.headers["Allow"] = ", ".join(allowed)
+            return answer
 
         @self.app.errorhandler(PydanticValidationError)
         def handle_pydantic_validation(error: PydanticValidationError):

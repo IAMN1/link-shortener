@@ -31,6 +31,25 @@ Not a rule about what may be read -- a caller entitled to the table can
 still walk it -- but about how much of it arrives at once.
 """
 
+MAX_OFFSET = 2 ** 31 - 1
+"""How far into a listing a caller may skip.
+
+The other half of the clamp above, and it was missing. ``offset`` was
+floored at zero and left unbounded upward, so a number larger than the
+column type left the database to refuse it: measured by the contract run,
+``?offset=1318762989985418969088`` answered **500** on both
+``GET /api/v1/links/mine`` and ``GET /api/v1/admin/users`` -- the same
+shape of failure this module's own docstring describes for ``?offset=-1``,
+at the other end of the range.
+
+Two thousand million rows is past any listing this service will hold, and
+it is the largest value every database it supports takes without
+complaint. Clamped rather than refused, because that is what the line
+below already does with a limit of a million: a window past the end of a
+table is an empty page, which is a truthful answer to "show me row two
+billion".
+"""
+
 
 def window_from_query(default_limit: int) -> Tuple[int, int]:
     """
@@ -53,4 +72,7 @@ def window_from_query(default_limit: int) -> Tuple[int, int]:
     """
     limit = request.args.get("limit", default_limit, type=int)
     offset = request.args.get("offset", 0, type=int)
-    return max(1, min(limit, MAX_PAGE_SIZE)), max(0, offset)
+    return (
+        max(1, min(limit, MAX_PAGE_SIZE)),
+        min(max(0, offset), MAX_OFFSET),
+    )

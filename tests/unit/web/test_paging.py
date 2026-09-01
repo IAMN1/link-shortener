@@ -15,7 +15,7 @@ come back, which buys nothing the direct question does not.
 import pytest
 from flask import Flask
 
-from link_shortener.web.paging import MAX_PAGE_SIZE, window_from_query
+from link_shortener.web.paging import MAX_OFFSET, MAX_PAGE_SIZE, window_from_query
 
 
 @pytest.fixture()
@@ -64,3 +64,33 @@ class TestWhatTheCallerDoesNotGetToAskFor:
         limit, _ = asking("limit=100000000")
 
         assert limit == MAX_PAGE_SIZE
+
+    def test_an_offset_past_the_ceiling_is_brought_down_to_it(self, asking):
+        """
+        The other end of the same clamp, and it was missing.
+
+        ``offset`` was floored at zero and left unbounded upward, so a
+        number wider than the column type reached the database and the
+        database refused it -- a 500 the caller can do nothing about,
+        which is the exact fault this module's docstring describes for
+        ``?offset=-1``.
+
+        Measured by the contract run, which generates values at the edges
+        of every declared type: ``?offset=1318762989985418969088``
+        answered **500** on both ``GET /api/v1/links/mine`` and
+        ``GET /api/v1/admin/users``.
+        """
+        _, offset = asking("offset=1318762989985418969088")
+
+        assert offset == MAX_OFFSET
+
+    def test_an_offset_inside_the_range_is_left_alone(self, asking):
+        """
+        The half that keeps the clamp from being a cap on paging.
+
+        A caller walking a large table asks for a real offset, and it has
+        to arrive as asked.
+        """
+        _, offset = asking("offset=100000")
+
+        assert offset == 100000
