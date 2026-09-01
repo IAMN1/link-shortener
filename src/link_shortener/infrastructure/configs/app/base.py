@@ -669,6 +669,36 @@ class BaseConfig:
     Maximum number of URLs allowed in a single batch creation request.
     """
 
+    MAX_CONTENT_LENGTH: int = env_int("MAX_CONTENT_LENGTH", 1048576)
+    """
+    Largest request body the service will read, in bytes. One mebibyte.
+
+    Read by Flask itself, which refuses a longer body with ``413`` before
+    the application sees it. Without the setting Flask leaves it unset,
+    and ``request.get_json()`` reads whatever arrives into memory
+    **before** any validation -- so the size of an anonymous request was
+    bounded by nothing at all.
+
+    Measured on the production profile with no limit in place: a single
+    anonymous ``POST /api/v1/shorten`` carrying 60 MB was accepted whole
+    (62 914 590 bytes uploaded) and only then answered ``400``; four
+    concurrent 200 MB bodies took the container from 342 MiB to
+    **1.598 GiB** and 356 % CPU. Four ``curl`` commands, no account. The
+    per-endpoint throttle does not help -- it counts requests, and four
+    are enough to hold four synchronous gunicorn workers.
+
+    One mebibyte because the largest legitimate body is a maximum batch:
+    ``BATCH_CREATE_LIMIT`` addresses of ``MAX_URL_LENGTH`` each, which at
+    the defaults is 100 x 2048 = 204 800 characters. The rest is headroom
+    for the JSON around them and for escaping. ``validate()`` holds the
+    relation, so raising ``BATCH_CREATE_LIMIT`` without raising this is a
+    refusal at startup rather than a ``413`` on a documented request.
+
+    Flask's own ``MAX_FORM_MEMORY_SIZE`` (500 kB by default since 3.1)
+    still applies to form bodies underneath this and is left alone: the
+    dashboard's forms are small, and the API is JSON.
+    """
+
     GUEST_LINK_LIMIT: int = env_int("GUEST_LINK_LIMIT", 10)
     """
     Maximum number of short links a guest (unauthenticated user) can create
@@ -846,7 +876,6 @@ class BaseConfig:
     X-Forwarded-For header is only honored when request.remote_addr is in this list.
     Set via TRUSTED_PROXIES env var, comma-separated (e.g. "10.0.0.1,10.0.0.2").
     """
-
 
     # ==========================================================================
     # Alembic Integration
@@ -1557,6 +1586,25 @@ class BaseConfig:
             errors.append(
                 f"BATCH_CREATE_LIMIT must not exceed {MAX_BATCH_ITEMS} -- "
                 "the request schema refuses a longer list first"
+            )
+
+        if self.MAX_CONTENT_LENGTH < 1:
+            errors.append("MAX_CONTENT_LENGTH must be positive")
+
+        # The two limits have to agree or one of them is a lie. A batch of
+        # BATCH_CREATE_LIMIT addresses at MAX_URL_LENGTH each is a request
+        # the document says is allowed; if the body limit cannot hold it,
+        # that request answers 413 and neither setting says why. Checked
+        # against the addresses alone -- the JSON around them is what the
+        # default's remaining headroom is for.
+        largest_batch = self.BATCH_CREATE_LIMIT * self.MAX_URL_LENGTH
+        if 0 < self.MAX_CONTENT_LENGTH < largest_batch:
+            errors.append(
+                f"MAX_CONTENT_LENGTH ({self.MAX_CONTENT_LENGTH}) is smaller "
+                f"than the largest batch the service admits "
+                f"({self.BATCH_CREATE_LIMIT} x {self.MAX_URL_LENGTH} = "
+                f"{largest_batch} bytes of addresses) -- raise it, or lower "
+                "BATCH_CREATE_LIMIT"
             )
 
         if not (
