@@ -23,7 +23,7 @@ The frontend is at the same level. What a page shows is decided by a
 | No HTTPS in development | And none in the shipped production form either: gunicorn is exposed directly, with no proxy in the stack. TLS is expected to terminate at one a deployment puts in front, which is what `TRUSTED_PROXIES`, `USE_HTTPS` and `HSTS_MAX_AGE` are for — nothing here has been run behind one |
 | No link previews or OG tags | — |
 | No API version above v1 | — |
-| Pool values reach SQLAlchemy as given | A negative `DATABASE_MAX_OVERFLOW` breaks engine construction with an unhelpful error |
+| Pool values reach SQLAlchemy as given | Nothing validates them, so a value SQLAlchemy refuses is refused where the engine is built. `-1` is not such a value: measured against the PostgreSQL dialect, `max_overflow=-1` builds a `QueuePool` and means "no limit", which is what `.env.example` says it means. The pool settings reach the engine on PostgreSQL only — on SQLite the block is skipped, and SQLAlchemy's `SingletonThreadPool` would refuse `max_overflow` at any value |
 | The load profile was measured on one machine | What transfers is the conclusions, not the numbers |
 | pytest does not collect the live runs | `python_files = "test_*.py"` does not match their names |
 
