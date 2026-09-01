@@ -380,6 +380,9 @@ def script_strings() -> Dict[str, str]:
         # The way from the table of links to one link's own page. Drawn by
         # `my_links.js` per row, so it cannot come from the template.
         "chart_link_stats": gettext("Stats"),
+        # The way from the same table to the link's square. Drawn per row
+        # for the same reason as the one above it.
+        "qr_code": gettext("QR"),
         # The journal viewer. It reuses the freshness sentences above
         # rather than starting a second set: "updated 40 s ago" is the same
         # sentence about the same kind of reading, and two entries would be

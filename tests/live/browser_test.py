@@ -437,7 +437,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 68
+    expected = 69
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -1380,6 +1380,40 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         assert after == before, (
             f"{after - before} poll(s) arrived after leaving the page"
         )
+
+    @check("the link's page draws its QR code, and the policy admits it")
+    def _():
+        # The endpoint is held by the HTTP run; what only a browser can
+        # say is whether the picture arrives. Two things could stop it and
+        # neither shows on the server: `img-src` refusing a same-origin
+        # image, and an SVG with no intrinsic size, which renders as an
+        # empty box rather than an error.
+        page = page_for("/login")
+        sign_in(page, base)
+        page.goto(f"{base}/dashboard/links/charted01/stats")
+
+        image = page.wait_for_selector(
+            "img[src$='/qr']", state="attached", timeout=8000
+        )
+
+        image.scroll_into_view_if_needed()
+        page.wait_for_function(
+            "() => { const n = document.querySelector(\"img[src$='/qr']\");"
+            " return n && n.complete; }",
+            timeout=8000,
+        )
+        loaded = page.eval_on_selector(
+            "img[src$='/qr']",
+            "node => node.complete && node.naturalWidth > 0",
+        )
+        assert loaded, (
+            "the QR image did not load -- a policy refusal or a document "
+            "with no intrinsic size both look like this"
+        )
+
+        # The square is of the short link, so the page must not be asking
+        # for somebody else's code.
+        assert "charted01" in image.get_attribute("src")
 
     @check("a link's own page charts that link and says where it goes")
     def _():

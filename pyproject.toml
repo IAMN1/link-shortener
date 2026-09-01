@@ -46,6 +46,13 @@ dependencies = [
     # (psycopg for PostgreSQL, the standard library for SQLite) are
     # synchronous. The extra only pinned `greenlet` on every platform,
     # which SQLAlchemy already asks for on the ones that need it.
+    # Rendering QR codes. Pure Python with no dependencies of its own, and
+    # it writes SVG directly -- so a code is a vector the reader can print
+    # at any size, and nothing has to draw pixels or pull in an imaging
+    # library. The alternative in wide use, `qrcode`, renders through
+    # Pillow: a C extension and a wheel per platform, to produce a raster
+    # of a shape that is not raster.
+    "segno>=1.6.6",
     "sqlalchemy>=2.0.45",
     "structlog>=25.5.0",
 ]

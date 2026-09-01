@@ -40,6 +40,13 @@
                 // means something else: that one opens the link.
                 + '<td class="table-actions"><a class="btn btn--ghost btn--sm js-link-stats" href="/dashboard/links/'
                 + encodeURIComponent(l.short_code) + '/stats">' + escapeHtml(t('chart_link_stats')) + '</a>'
+                // Straight to the image rather than through a dialogue of
+                // its own: the endpoint is public and cacheable, so the
+                // browser's own tab is a viewer, a save dialogue and a
+                // print preview already written.
+                + ' <a class="btn btn--ghost btn--sm" href="/api/v1/links/'
+                + encodeURIComponent(l.short_code) + '/qr" target="_blank" rel="noopener noreferrer">'
+                + escapeHtml(t('qr_code')) + '</a>'
                 + (mayDelete
                     ? ' <button class="btn btn--ghost btn--sm del-btn" data-code="' + escapeHtml(l.short_code) + '">' + escapeHtml(t('delete')) + '</button>'
                     : '')

@@ -973,6 +973,37 @@ PATHS: Dict[str, Any] = {
             },
         }
     },
+    "/api/v1/links/{short_code}/qr": {
+        "get": {
+            "summary": "Draw the short link as a QR code",
+            "description": (
+                "The image encodes the **short** address, never the "
+                "destination: a square carrying the destination would "
+                "scan correctly and bypass the counters, the expiry and "
+                "the deletion the link exists to provide.\n\n"
+                "Withholds nothing, because there is nothing to withhold "
+                "-- the caller had to know the code to ask. The code is "
+                "still resolved first, so an address that leads nowhere "
+                "is a 404 rather than a square that leads to one.\n\n"
+                "SVG, with both a `viewBox` and a default `width`, so it "
+                "scales in a page and still has a size on its own."
+            ),
+            "tags": ["links"],
+            "parameters": [CODE_PARAMETER],
+            "responses": {
+                "200": {
+                    "description": "The code, as an SVG document",
+                    "content": {
+                        "image/svg+xml": {
+                            "schema": {"type": "string", "format": "binary"}
+                        }
+                    },
+                },
+                "404": _error("No link carries that code"),
+                "410": _error("The link has expired"),
+            },
+        }
+    },
     "/api/v1/links/mine": {
         "get": {
             "summary": "List the caller's links",

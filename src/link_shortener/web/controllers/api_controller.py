@@ -12,6 +12,9 @@ Access rules:
   - GET /api/v1/links/<code>/extended – the same four. Every field it adds
     is computed from the counters above, so the two endpoints withhold from
     the same people or neither withholds anything.
+  - GET /api/v1/links/<code>/qr – everyone, and it withholds nothing,
+    because there is nothing to withhold: the image encodes the short
+    address, which is what the caller already typed to ask for it.
   - GET /api/v1/stats – roles with 'stats:view_basic'; the popular-links
     breakdown additionally needs 'stats:view_full'.
   - GET /api/v1/stats/visits and /stats/visits/daily – 'stats:view_basic'
@@ -25,12 +28,13 @@ Access rules:
     against the stored row.
 """
 
-from flask import Blueprint, current_app, g, jsonify, request
+from flask import Blueprint, Response, current_app, g, jsonify, request
 
 from link_shortener.domain import (
     DomainError, LinkNotFoundError, PermissionDeniedError, SystemPermissions
 )
 from link_shortener.application import LinkService, AdminService, AuthorizationService
+from link_shortener.web.qr import render_svg
 from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.link import ExtendedLinkInfoResponse, ShortLinkResponse
 from link_shortener.web.schemas.requests import BatchCreateLinkRequest, CreateShortLinkRequest
@@ -67,6 +71,7 @@ class ApiController:
         self.bp.add_url_rule('/shorten', view_func=self.create_short_link, methods=['POST'])
         self.bp.add_url_rule('/links/<short_code>', view_func=self.get_link_info, methods=['GET'])
         self.bp.add_url_rule('/links/<short_code>/extended', view_func=self.get_extended_link_info, methods=['GET'])
+        self.bp.add_url_rule('/links/<short_code>/qr', view_func=self.get_link_qr, methods=['GET'])
         self.bp.add_url_rule('/batch/shorten', view_func=self.batch_create, methods=['POST'])
         self.bp.add_url_rule('/stats', view_func=self.get_stats, methods=['GET'])
         self.bp.add_url_rule('/links/mine', view_func=self.get_my_links, methods=['GET'])
@@ -161,6 +166,56 @@ class ApiController:
         # two lines and its `/extended` neighbour, reading the same header
         # for the same decision, did not.
         return jsonify(response_data.model_dump())
+
+    # ------------------------------------------------------------------
+    # GET /api/v1/links/<short_code>/qr
+    # ------------------------------------------------------------------
+    def get_link_qr(self, short_code: str):
+        """
+        Serve the short link as a QR code. Public endpoint.
+
+        Public in the strongest sense the service has: unlike its two
+        neighbours, this one withholds nothing, because the image carries
+        only the short address -- which the caller had to know in order to
+        ask for it. There is no owner, no counter and no destination in
+        it.
+
+        The address encoded is the **short** one. Putting the destination
+        in the square would produce a code that works and a link that does
+        not: no click recorded, no expiry honoured, and deleting the link
+        would leave every printed copy pointing at the target for good.
+
+        The link is resolved first, through the same use case the basic
+        endpoint uses, so an unknown or expired code answers the same
+        ``404`` here as there rather than handing back a square that
+        leads to one.
+
+        Args:
+            short_code: The code to draw.
+
+        Returns:
+            An ``image/svg+xml`` response.
+        """
+        context = create_request_context()
+        result_dto = self.link_service.get_link_info(short_code, context)
+
+        # `short_url` from the DTO rather than assembled here: it is built
+        # from `BASE_URL` by the same helper that fills the creation
+        # response, so the address in the square and the address the API
+        # hands out cannot come to differ.
+        document = render_svg(result_dto.short_url, title=result_dto.short_code)
+
+        answer = Response(document, mimetype="image/svg+xml")
+
+        # The square is a function of the code and `BASE_URL`, and neither
+        # moves. Nothing about the caller is in it -- which is what makes
+        # a shared cache correct here and wrong on the endpoints beside
+        # it. Kept short all the same: `BASE_URL` does move when a
+        # deployment is renamed, and an hour is how long the old address
+        # would go on being handed out afterwards.
+        answer.headers["Cache-Control"] = "public, max-age=3600"
+
+        return answer
 
     # ------------------------------------------------------------------
     # GET /api/v1/links/<short_code>/extended

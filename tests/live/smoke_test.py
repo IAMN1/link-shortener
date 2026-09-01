@@ -2170,6 +2170,14 @@ def _():
 # ─── 21. Derived metrics on a link old enough to have any ──────────────
 print("\n=== DERIVED METRICS ===")
 
+AGED_CODE = "AGEDLNK"
+"""The planted link three checks below share.
+
+At module level rather than inside the first of them: the QR checks read
+the same row, and a second literal is how the two come to name different
+links while both keep passing.
+"""
+
 @test("GET /api/v1/links/<code>/extended (an aged, busy link)")
 def _():
     # Planted rather than created, because the four fields this endpoint
@@ -2183,7 +2191,7 @@ def _():
     # Asked after the totals in section 12 for the obvious reason: this row
     # and its 150 clicks would move every one of them.
     from datetime import timedelta, timezone
-    aged_code = "AGEDLNK"
+    aged_code = AGED_CODE
     with app.app_context():
         with db.session() as db_session:
             from sqlalchemy import text
@@ -2215,6 +2223,40 @@ def _():
     assert data["is_popular"] is True
     assert data["is_recent"] is False
     assert data["last_access_days_ago"] == 2
+
+
+@test("GET /api/v1/links/<code>/qr (the square is of the short address)")
+def _():
+    # The one property worth a live check: both squares scan, so a
+    # renderer quietly handed the destination would produce a perfectly
+    # valid image and no assertion about "is this a QR code" would fail.
+    # Held by rendering the alternative and demanding they differ.
+    from link_shortener.web.qr import render_svg
+
+    r = guest.get(f"/api/v1/links/{AGED_CODE}/qr")
+
+    assert r.status_code == 200, r.status_code
+    assert r.mimetype == "image/svg+xml", r.mimetype
+    # Public, unlike the two endpoints beside it: nothing about the caller
+    # is in the image, so a shared cache is correct here and wrong there.
+    assert "public" in r.headers.get("Cache-Control", "")
+
+    body = r.get_data()
+    assert body == render_svg(
+        f"{app.config['BASE_URL'].rstrip('/')}/{AGED_CODE}", title=AGED_CODE
+    ), "the square is not the one for this link's short address"
+    assert body != render_svg(
+        "https://aged.example", title=AGED_CODE
+    ), "the square carries the destination"
+
+@test("GET /api/v1/links/<code>/qr (a code that leads nowhere)")
+def _():
+    # Resolved before anything is drawn. Otherwise a printed square would
+    # lead to a 404 and nobody would find out until it was on paper.
+    r = guest.get("/api/v1/links/nosuchcode/qr")
+
+    assert r.status_code == 404, r.status_code
+    assert r.get_json()["error"] == "LINK_NOT_FOUND"
 
 
 # ─── 22. Ceilings on what a caller may ask for ─────────────────────────
@@ -2280,7 +2322,7 @@ success = result.summary()
 # and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 157
+EXPECTED_CHECKS = 159
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")
