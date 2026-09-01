@@ -54,7 +54,9 @@ from pydantic import BaseModel, ConfigDict
 from link_shortener.domain.policies.password_policy import (
     MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH,
 )
-from link_shortener.domain.value_objects.email import EMAIL_PATTERN
+from link_shortener.domain.value_objects.email import (
+    EMAIL_PATTERN, MAX_EMAIL_LENGTH,
+)
 
 
 class StrictRequest(BaseModel):
@@ -68,7 +70,11 @@ class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-AN_ADDRESS: Dict[str, Any] = {"format": "email", "pattern": EMAIL_PATTERN}
+AN_ADDRESS: Dict[str, Any] = {
+    "format": "email",
+    "pattern": EMAIL_PATTERN,
+    "maxLength": MAX_EMAIL_LENGTH,
+}
 """What the service means by an address, in the document's own words.
 
 Put in the **schema** and not in the field's validation, and the
@@ -86,7 +92,11 @@ registration, the reset request and the resend, and got ``400`` from all
 four. The service was right and the document was silent.
 
 The pattern is the one ``Email`` matches with, imported rather than
-copied: two spellings of one rule is how they start to disagree.
+copied: two spellings of one rule is how they start to disagree. So is
+``maxLength``: the number is ``Email.MAX_EMAIL_LENGTH``, and it is here
+for the same reason ``A_PASSWORD`` carries its bounds -- a client
+generated from this document should know what it may send, while the
+refusal itself stays the domain's.
 
 Here beside ``StrictRequest`` rather than in ``auth_requests``, because
 the admin bodies say the same thing about the same fields and said it in
