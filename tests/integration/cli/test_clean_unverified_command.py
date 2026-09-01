@@ -76,6 +76,30 @@ def _register(app, email, verified, age_hours):
     return user
 
 
+def _expired_confirmation(app, user_id):
+    """One confirmation token that expired unused.
+
+    The sweep counts these separately from the accounts: a confirmation
+    belonging to an unconfirmed account leaves with the account through the
+    foreign key, so a token that shows up in the second number is one
+    belonging to an account that is staying.
+    """
+    from link_shortener.domain.entities.email_verification import (
+        EmailVerification,
+    )
+
+    with app.app_context():
+        with app.container.get_uow_factory()() as uow:
+            uow.email_verifications.save(
+                EmailVerification.issue(
+                    user_id=user_id,
+                    token_hash="expired".ljust(64, "e"),
+                    ttl_hours=-1,
+                )
+            )
+            uow.commit()
+
+
 def _exists(app, email):
     """Whether an account with this address is still there."""
     with app.app_context():
@@ -114,7 +138,49 @@ class TestWhatItSweeps:
 
         result = runner.invoke(app.cli, ["maintenance", "clean-unverified"])
 
-        assert "Deleted 1 unconfirmed account." in result.output
+        assert "Deleted 1 unconfirmed account" in result.output
+
+    def test_it_reports_the_tokens_as_well(self, runner, app):
+        """
+        The command announces two kinds of thing and reported one.
+
+        Its own help says "registrations nobody confirmed, and dead tokens
+        with them", and the use case counted both -- but returned only the
+        accounts, so a run that cleared seven spent confirmations and no
+        account said "Deleted 0 unconfirmed accounts", which reads as a run
+        that did nothing.
+
+        The **number** is what is asserted, not the word. Written as
+        ``"confirmation token" in output`` this passed while the use case
+        returned a hard-coded zero: measured, replacing ``return deleted,
+        tokens`` with ``return deleted, 0`` left 753 tests green across
+        ``tests/integration/cli/``, ``tests/unit/application/`` and
+        ``tests/integration/application/``. A sentence that always says
+        "0 dead confirmation tokens" is the defect this test is named
+        after, wearing the words of its fix.
+        """
+        settled = _register(
+            app, "cli-token-holder@example.test", verified=True, age_hours=1
+        )
+        _expired_confirmation(app, settled.id)
+        _register(app, "cli-tokens@example.test", verified=False, age_hours=100)
+
+        result = runner.invoke(app.cli, ["maintenance", "clean-unverified"])
+
+        assert "1 dead confirmation token." in result.output, result.output
+
+    def test_a_run_with_no_dead_tokens_says_none(self, runner, app):
+        """
+        The other side of the number, so the assertion above is a measure.
+
+        Without this, "reports the tokens" could be satisfied by a command
+        that prints whatever it swept as though it were tokens.
+        """
+        _register(app, "cli-no-tokens@example.test", verified=False, age_hours=100)
+
+        result = runner.invoke(app.cli, ["maintenance", "clean-unverified"])
+
+        assert "0 dead confirmation tokens." in result.output, result.output
 
     def test_it_spares_an_account_still_within_the_window(self, runner, app):
         """48 hours is this profile's window; two hours old is waiting,

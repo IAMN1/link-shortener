@@ -593,3 +593,138 @@ class TestAPostgresqlDatabaseNobodyNamed:
         monkeypatch.delenv("DATABASE_NAME", raising=False)
 
         assert "localhost" in resolve_database_url()
+
+
+class TestTheRefusalsReachThePathThisProjectDocuments:
+    """
+    ``resolve_database_url`` is the door a bare ``alembic`` comes through,
+    and it was the only one the refusals stood at.
+
+    ``flask alembic`` -- the command both guides tell the reader to use,
+    and the one the other guide row calls the fix for "No 'script_location'
+    key found" -- resolves the URL from the running application and hands
+    it to the subprocess in ``ALEMBIC_DATABASE_URL``. That handover is read
+    by the first line of ``resolve_database_url``, which returns it
+    unexamined, so neither refusal was ever asked on the documented path.
+
+    Measured on a clean checkout with no ``.env`` and no ``FLASK_ENV``::
+
+        flask alembic upgrade head
+        Database: sqlite:////.../datas/databases/db_shortener
+        INFO  [alembic.runtime.migration] Running upgrade  -> 0001
+
+    -- while the troubleshooting tables of both guides say the reader will
+    meet "nothing names a profile" in exactly that situation.
+
+    Two things are held. That the refusal is reachable without going
+    through the resolver, and that the CLI asks it. The second is the one
+    that was missing, and no test of the first could have found it.
+    """
+
+    def test_the_refusal_can_be_asked_of_a_target_somebody_else_resolved(
+        self, monkeypatch
+    ):
+        from link_shortener.infrastructure.configs.app.migration_url import (
+            refuse_a_target_a_migration_should_not_touch,
+        )
+
+        monkeypatch.setattr(ConfigFactory, "named_env", classmethod(
+            lambda cls, env=None: None
+        ))
+        config = ConfigFactory.create_config_unvalidated("development")
+
+        with pytest.raises(ValueError, match="nothing names a profile"):
+            refuse_a_target_a_migration_should_not_touch(
+                config, config.get_database_url()
+            )
+
+    def test_a_named_profile_is_not_refused(self, monkeypatch):
+        """
+        The quick start names the profile in ``.env`` and must still work.
+
+        Without this, "make the refusal reachable" could be satisfied by a
+        refusal that fires for everybody.
+        """
+        from link_shortener.infrastructure.configs.app.migration_url import (
+            refuse_a_target_a_migration_should_not_touch,
+        )
+
+        monkeypatch.setattr(ConfigFactory, "named_env", classmethod(
+            lambda cls, env=None: "development"
+        ))
+        config = ConfigFactory.create_config_unvalidated("development")
+
+        refuse_a_target_a_migration_should_not_touch(
+            config, config.get_database_url()
+        )
+
+    def test_the_cli_asks_it_before_handing_the_url_over(self, monkeypatch):
+        """
+        The property that was missing, held at the seam.
+
+        What went wrong was not the refusal but who asked it, so this
+        checks the asking. A test of the refusal alone passed throughout.
+        """
+        from link_shortener.infrastructure.cli.adapters import flask as adapter
+
+        asked = []
+        monkeypatch.setattr(
+            adapter,
+            "refuse_a_target_a_migration_should_not_touch",
+            lambda config, url, env=None: asked.append(url),
+        )
+
+        class _Config:
+            def get_database_url(self):
+                return "sqlite:///handed-over.db"
+
+        class _Container:
+            config = _Config()
+
+        monkeypatch.setattr(adapter, "_container", lambda: _Container())
+
+        assert adapter._configured_database_url() == "sqlite:///handed-over.db"
+        assert asked == ["sqlite:///handed-over.db"]
+
+    def test_a_profile_detached_from_the_environment_is_not_refused(
+        self, monkeypatch
+    ):
+        """
+        The refusal reads the environment; ``testing`` does not live there.
+
+        ``IGNORE_ENV`` means the profile was named in code by whoever built
+        the configuration, so "did anybody name a profile" is not a
+        question about it. Asked anyway, the refusal answered about a
+        profile the process is not running: *the 'development' profile
+        would migrate sqlite:///:memory:* -- ``development`` resolved from
+        an empty environment, ``:memory:`` taken from the ``testing``
+        configuration in hand.
+
+        Measured on a checkout with no ``.env``, which is what the clean
+        half of CI checks out -- the file is git-ignored and only the
+        hostile half writes one: the refusal failed **15** tests of this
+        CLI, every one of them ``alembic`` or ``db migrate``. The same
+        tests pass in a tree that happens to have a ``.env``, where a named
+        ``development`` returns from the refusal early, so the failure was
+        invisible to anybody running the suite on a working copy.
+
+        The guard is unweakened, and the test above it says so: a profile
+        resolved *from* the environment is still refused.
+        """
+        from link_shortener.infrastructure.cli.adapters import flask as adapter
+        from link_shortener.infrastructure.configs.app.testing import (
+            TestingConfig,
+        )
+
+        monkeypatch.setattr(ConfigFactory, "named_env", classmethod(
+            lambda cls, env=None: None
+        ))
+
+        class _Container:
+            config = TestingConfig()
+
+        monkeypatch.setattr(adapter, "_container", lambda: _Container())
+
+        assert adapter._configured_database_url() == (
+            _Container.config.get_database_url()
+        )

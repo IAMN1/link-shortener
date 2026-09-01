@@ -9,6 +9,9 @@ from flask.cli import with_appcontext
 from link_shortener.application import RequestContext
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.domain import Email, LinkExpiredError
+from link_shortener.infrastructure.cli.adapters.reporting import (
+    ReportingGroup,
+)
 from link_shortener.infrastructure.cli.commands.database import init_db as init_db_logic
 from link_shortener.infrastructure.cli.commands.database import drop_db as drop_db_logic
 from link_shortener.infrastructure.cli.commands.database import seed_db as seed_db_logic
@@ -42,6 +45,7 @@ from link_shortener.infrastructure.logging.bootstrap import (
     journals_unavailable, journals_written,
 )
 from link_shortener.infrastructure.cli.commands.security import (
+    SECRET_FLOOR_BYTES,
     check_secrets as check_secrets_logic,
     generate_secrets as gen_secrets_logic,
     list_roles as list_roles_logic,
@@ -49,6 +53,9 @@ from link_shortener.infrastructure.cli.commands.security import (
     reset_password as reset_password_logic,
     validate_token as validate_token_logic,
     write_secrets as write_secrets_logic,
+)
+from link_shortener.infrastructure.configs.app.migration_url import (
+    refuse_a_target_a_migration_should_not_touch,
 )
 from link_shortener.infrastructure.di.container import Container
 from link_shortener.infrastructure.logging.utils import UTC_SECONDS
@@ -292,7 +299,7 @@ def _asked_for_or_refused(
 # ------------------------------------------------------------------
 # Database commands group
 # ------------------------------------------------------------------
-@click.group(name="db")
+@click.group(name="db", cls=ReportingGroup)
 def db_group():
     """Database management commands (init, drop, seed, roles, check, status, migrate)"""
     pass
@@ -449,7 +456,7 @@ def migrate_db():
 # ------------------------------------------------------------------
 # Stats commands group
 # ------------------------------------------------------------------
-@click.group(name="stats")
+@click.group(name="stats", cls=ReportingGroup)
 def stats_group():
     """Statistics management commands."""
     pass
@@ -502,7 +509,7 @@ def stats_refresh():
 # ------------------------------------------------------------------
 # Maintenance commands group
 # ------------------------------------------------------------------
-@click.group(name="maintenance")
+@click.group(name="maintenance", cls=ReportingGroup)
 def maintenance_group():
     """Maintenance and health check commands."""
     pass
@@ -670,6 +677,14 @@ def normalize_emails(apply_changes):
     # the table: read twice, the report and the counts would describe
     # different moments.
     result = normalise_logic(db_manager, rows)
+    # An address is how an account is identified and how it recovers a
+    # password, so rewriting one changes who may act as that account --
+    # the rule the audit vocabulary is built on, read plainly. Only a run
+    # that changed something, the way the sweeps beside it put it.
+    if result["changed"]:
+        _audit_for("cli-normalize-emails").log_addresses_normalised(
+            addresses_changed=result["changed"]
+        )
     click.echo(f"Lowered {_counted(result['changed'], 'address')}.")
     if result["skipped"]:
         click.echo(
@@ -737,8 +752,11 @@ def clean_unverified():
     container = _container()
     context = RequestContext(request_id="cli-clean-unverified")
     use_case = container.get_clean_unverified_accounts_use_case()
-    deleted = clean_unverified_logic(use_case, context)
-    click.echo(f"Deleted {_counted(deleted, 'unconfirmed account')}.")
+    deleted, tokens = clean_unverified_logic(use_case, context)
+    click.echo(
+        f"Deleted {_counted(deleted, 'unconfirmed account')} and "
+        f"{_counted(tokens, 'dead confirmation token')}."
+    )
 
 @maintenance_group.command("check-redis")
 @with_appcontext
@@ -904,7 +922,7 @@ def maintenance_health():
 # ------------------------------------------------------------------
 # Cache commands group
 # ------------------------------------------------------------------
-@click.group(name="cache")
+@click.group(name="cache", cls=ReportingGroup)
 def cache_group():
     """Cache management commands."""
     pass
@@ -953,13 +971,24 @@ def cache_stats():
 # ------------------------------------------------------------------
 # Link commands group
 # ------------------------------------------------------------------
-@click.group(name="link")
+@click.group(name="link", cls=ReportingGroup)
 def link_group():
     """Manage individual short links."""
     pass
 
 
-@link_group.command("delete")
+# A short code is 6 to 10 characters of `[a-zA-Z0-9_-]`, so one in
+# sixty-four generated codes begins with a dash -- measured, 328 of 20 000.
+# Click reads that as an option and refuses before the body runs: `flask
+# link delete -12uRdu` answered `Error: No such option: -1` with exit 2, so
+# a link an operator could see in `link list` could not be inspected or
+# removed from the command line at all. The same setting is on `alembic
+# downgrade`, and for the same reason: its revisions look like `-1` too.
+CODE_MAY_LOOK_LIKE_AN_OPTION = {"ignore_unknown_options": True}
+
+@link_group.command(
+    "delete", context_settings=CODE_MAY_LOOK_LIKE_AN_OPTION
+)
 @click.argument("short_code")
 @with_appcontext
 def link_delete(short_code):
@@ -982,7 +1011,7 @@ def link_delete(short_code):
     click.echo(f"\t\t\tLink '{short_code}' has been deleted")
     click.echo("=" * 80)
 
-@link_group.command("info")
+@link_group.command("info", context_settings=CODE_MAY_LOOK_LIKE_AN_OPTION)
 @click.argument("short_code")
 @with_appcontext
 def link_info(short_code):
@@ -1059,17 +1088,26 @@ def link_list(limit):
         click.echo("No links found.")
         return
 
+    # The destination is on the line. Without it the listing answered
+    # "which codes exist" and not "which link is which", so choosing one
+    # to look at or remove meant a `link info` per row -- and a shortener
+    # whose listing does not say where a link leads is a listing of
+    # nothing in particular. Clipped, because a URL is as long as it likes
+    # and the column after it would be pushed off the terminal.
     click.echo(f"\n\t\t\tRecent {_counted(len(links), 'link')}:")
     click.echo("=" * 80)
     for link in links:
         created = link.created_at.date().isoformat()
         click.echo(
             f"\t\t\t{link.short_code.value} - "
-            f"{_counted(link.clicks, 'click')} - {created}"
+            f"{_counted(link.clicks, 'click')} - {created} - "
+            f"{_within(link.original_url.value, 40)}"
         )
     click.echo("=" * 80)
 
-@link_group.command("create")
+@link_group.command(
+    "create", context_settings=CODE_MAY_LOOK_LIKE_AN_OPTION
+)
 @click.option("--url", required=True, help="Original URL to shorten")
 @click.option(
     "--code",
@@ -1165,7 +1203,7 @@ def link_create(url, code):
 # ------------------------------------------------------------------
 # Security commands group
 # ------------------------------------------------------------------
-@click.group(name="security")
+@click.group(name="security", cls=ReportingGroup)
 def security_group():
     """Security management commands (secrets, users, roles, tokens)"""
     pass
@@ -1181,6 +1219,20 @@ def security_group():
                    "start without.")
 def security_generate_secrets(target, force, with_service_passwords):
     """Generate new SECRET_KEY and SHORT_CODE_PEPPER."""
+
+    # `--force` alone did nothing and said nothing. Its help says "with
+    # --write", and without one it printed the secrets exactly as a bare
+    # invocation does and exited 0 -- so a script that meant to replace
+    # the values in a file and mistyped the other flag was told it had
+    # succeeded. The same reasoning as `--code ""` and `--count 0` a few
+    # commands along: a flag that cannot mean anything is refused rather
+    # than ignored, because ignoring it is indistinguishable from doing
+    # what was asked.
+    if force and target is None:
+        raise click.UsageError(
+            "--force replaces values in a file, so it needs --write. "
+            "Without it there is no file to replace anything in."
+        )
 
     if target is not None:
         # Written rather than printed: this is the one step of the setup
@@ -1232,12 +1284,22 @@ def security_check_secrets():
     status = check_secrets_logic()
     click.echo("\nSecret Configuration Status:")
     click.echo("=" * 40)
-    for secret, configured in status.items():
-        status_text = "OK" if configured else "MISSING"
-        click.echo(f"{secret}: {status_text}")
+    for secret, state in status.items():
+        click.echo(f"{secret}: {state}")
     click.echo("=" * 40)
 
-    missing = [name for name, configured in status.items() if not configured]
+    weak = [name for name, state in status.items() if state == "WEAK"]
+    if weak:
+        click.echo(
+            f"{', '.join(weak)} shorter than {SECRET_FLOOR_BYTES} bytes. "
+            "RFC 7518 asks for a key at least as long as the hash for "
+            "HS256. Run 'flask security generate-secrets' to replace "
+            "them.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    missing = [name for name, state in status.items() if state == "MISSING"]
     if missing:
         # The report is the command's output and stays on stdout; the
         # complaint goes to stderr, like every other refusal here. This
@@ -1262,11 +1324,20 @@ def security_list_users():
         click.echo("No users found.")
         return
 
-    click.echo(f"\n{'ID':<36} {'Email':<30} {'Active':<8} {'Roles'}")
-    click.echo("=" * 100)
+    # `Confirmed` beside `Active`, because one without the other reads as
+    # "this account works" and the two say different things: an account
+    # active and unconfirmed is refused at sign-in.
+    click.echo(
+        f"\n{'ID':<36} {'Email':<30} {'Active':<8} {'Confirmed':<10} {'Roles'}"
+    )
+    click.echo("=" * 110)
     for user in users:
         roles_str = ", ".join(user["roles"]) if user["roles"] else "none"
-        click.echo(f"{user['id']:<36} {_within(user['email'], 30)} {str(user['is_active']):<8} {roles_str}")
+        click.echo(
+            f"{user['id']:<36} {_within(user['email'], 30)} "
+            f"{str(user['is_active']):<8} "
+            f"{str(user['email_verified']):<10} {roles_str}"
+        )
 
 @security_group.command("list-roles")
 @with_appcontext
@@ -1330,6 +1401,65 @@ def security_reset_password(email, password, non_interactive):
         f"sessions closed: {revoked}"
     )
 
+def _would_the_service_accept(claims: dict) -> Tuple[bool, str]:
+    """
+    Whether a token that stands up on its own would open a request.
+
+    A signature and an expiry are not the whole of it. An access token
+    names the login it came from, and ``AuthenticationMiddleware`` asks
+    whether that login is still open before believing the token -- "the
+    session check is what makes an access token revocable", in its own
+    words. It also refuses a token whose account has been deactivated.
+
+    Neither question is in the claims, so a command that read only the
+    claims answered "VALID" about a token the service had stopped
+    accepting. Measured: after ``POST /api/v1/auth/logout``,
+    ``/api/v1/links/mine`` answered ``401`` for a token this command
+    called ``VALID`` with exit code 0.
+
+    Args:
+        claims: What the token carries, as ``validate_token`` returned it.
+
+    Returns:
+        ``(accepted, why_not)``. ``why_not`` is empty when accepted.
+    """
+    token_type = claims.get("type")
+    user_id = claims.get("user_id")
+
+    with _container().get_uow_factory()(read_only=True) as uow:
+        # The account first, and the login after it. Deleting an account
+        # takes its sessions with it, so asked the other way round a token
+        # of a deleted account was refused as "the login it came from has
+        # ended" -- true, and not the thing the operator needs to hear.
+        user = uow.users.find_by_id(user_id) if user_id else None
+        if user is None:
+            return False, "the account it names no longer exists"
+        if not user.is_active:
+            return False, "the account it names is deactivated"
+
+        # A token kind, not a password -- the same comparison, and the
+        # same reason, as the one further down.
+        if token_type == "refresh":  # nosec B105
+            # A refresh token names its own row rather than a chain, and
+            # the row is what rotation retires.
+            token_id = claims.get("jti")
+            if not token_id:
+                return False, "it names no session, so nothing can retire it"
+            session = uow.refresh_sessions.find_by_token_id(token_id)
+            if session is None:
+                return False, "the session it names is not on record"
+            if not session.is_usable():
+                return False, "the session it names has ended"
+        else:
+            session_id = claims.get("sid")
+            if not session_id:
+                return False, "it names no login, so nothing can revoke it"
+            if not uow.refresh_sessions.chain_is_live(session_id):
+                return False, "the login it came from has ended"
+
+    return True, ""
+
+
 @security_group.command("validate-token")
 @click.argument("token")
 @with_appcontext
@@ -1361,6 +1491,13 @@ def security_validate_token(token):
                 f"\nNote: this is a {token_type} token -- it authenticates "
                 "no request. Only an access token does."
             )
+
+        accepted, why_not = _would_the_service_accept(result)
+        if accepted:
+            click.echo("\nThe service would accept it.")
+        else:
+            click.echo(f"\nThe service would REFUSE it: {why_not}.", err=True)
+            raise SystemExit(1)
     else:
         click.echo(f"\nToken is INVALID: {result.get('error')}", err=True)
         raise SystemExit(1)
@@ -1458,7 +1595,7 @@ def create_user(email, password, role, non_interactive):
 # ------------------------------------------------------------------
 # Alembic commands group
 # ------------------------------------------------------------------
-@click.group(name="alembic")
+@click.group(name="alembic", cls=ReportingGroup)
 def alembic_group():
     """Alembic migration management (status, history, upgrade, downgrade, migrate)"""
     pass
@@ -1473,10 +1610,54 @@ def _configured_database_url() -> str:
     agreement; without it a command issued under one profile could report on,
     or migrate, the database of another.
 
+    The handover is also what took this path around the refusals in
+    ``migration_url``: they live at the top of ``resolve_database_url``,
+    which a handed-over URL never reaches. So they are asked here, of the
+    URL about to be handed over -- measured, ``flask alembic upgrade head``
+    on a checkout with no ``.env`` and no ``FLASK_ENV`` created and
+    migrated a new empty SQLite file without a word, which is the outcome
+    those refusals are named after.
+
+    Not asked of a configuration detached from the environment. Those
+    refusals resolve the profile from ``FLASK_ENV`` and ``.env`` while the
+    URL comes from the configuration in hand, and where the two disagree
+    the refusal describes a profile this process is not running: under
+    ``testing`` it read *the 'development' profile would migrate
+    sqlite:///:memory:*. ``IGNORE_ENV`` is exactly the case where they can
+    disagree -- such a profile was named in code by whoever built it, and
+    the question "did anybody name a profile" has no bearing on it.
+
+    Measured, and this is what the line is for: on a checkout with no
+    ``.env`` -- which is what the clean half of CI checks out, since
+    ``.env`` is git-ignored and only the hostile half writes one -- the
+    refusal failed **15** tests of this CLI, all of them ``alembic`` and
+    ``db migrate``. The same tests pass with a ``.env`` present, because a
+    named ``development`` returns from the refusal early. The guard itself
+    is unweakened: on that same checkout ``flask alembic upgrade head``
+    still refuses with "nothing names a profile" and exit 1, since the
+    profile there is resolved *from* the environment.
+
     Returns:
         SQLAlchemy-compatible database URL.
+
+    Raises:
+        SystemExit: With code 1 when the target is one a migration should
+            not touch. Raised as an exit rather than let out as a
+            ``ValueError``, because this is a command line and the
+            traceback of a refusal is not a message.
     """
-    return _container().config.get_database_url()
+    config = _container().config
+    url = config.get_database_url()
+    # ``getattr`` rather than an attribute: what arrives here is whatever
+    # the container was built with, and a configuration written in a test
+    # need not carry every flag ``BaseConfig`` declares.
+    if not getattr(config, "IGNORE_ENV", False):
+        try:
+            refuse_a_target_a_migration_should_not_touch(config, url)
+        except ValueError as refusal:
+            click.echo(f"\n{refusal}", err=True)
+            raise SystemExit(1) from refusal
+    return url
 
 
 def _echo_target() -> str:
@@ -1590,10 +1771,33 @@ def alembic_upgrade(revision):
     "downgrade", context_settings={"ignore_unknown_options": True}
 )
 @click.argument("revision", default="-1")
+@click.option("--yes", is_flag=True, help="Confirm rolling the schema back")
 @with_appcontext
-def alembic_downgrade(revision):
+def alembic_downgrade(revision, yes):
     """Rollback migrations to target revision."""
-    success, output = AlembicCommands.downgrade(revision, _require_alembic_enabled())
+    # The same confirmation `db drop` has, and for a stronger reason. This
+    # repository keeps one revision, so the default argument `-1` resolves
+    # to `base`: typing `flask alembic downgrade` with nothing after it
+    # takes every table with it, which is what `db drop` asks about --
+    # while `db drop` also refuses outright under `USE_ALEMBIC`, leaving
+    # this the unlocked door of the two, and the one that opens on a typo.
+    #
+    # Asked only when the target is `base`. A downgrade to a named
+    # revision is an operator who has read the revision list and knows
+    # what they are undoing; a prompt on every one of those is a prompt
+    # that gets answered without reading.
+    # The flag first, the question second. `USE_ALEMBIC` off means this
+    # command cannot run here at all, and asking "are you sure?" about
+    # something that is going to be refused anyway teaches an operator to
+    # answer the prompt without reading it.
+    target = _require_alembic_enabled()
+    if not yes and revision in ("base", "-1"):
+        click.confirm(
+            f"Rolling back to {revision!r} drops every table in this "
+            "database. Continue?",
+            abort=True,
+        )
+    success, output = AlembicCommands.downgrade(revision, target)
     click.echo(output, err=not success)
     if not success:
         raise SystemExit(1)

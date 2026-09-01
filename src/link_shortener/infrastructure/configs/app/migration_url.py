@@ -142,10 +142,51 @@ def resolve_database_url(env: Optional[str] = None) -> str:
         config.validate_database()
 
     url = config.get_database_url()
-    _refuse_a_database_a_migration_should_not_touch(profile, named, config, url)
-    _refuse_a_database_nobody_named(profile, config)
+    refuse_a_target_a_migration_should_not_touch(config, url, env)
 
     return url
+
+
+def refuse_a_target_a_migration_should_not_touch(
+    config: BaseConfig, url: str, env: Optional[str] = None
+) -> None:
+    """
+    Apply both refusals to a target somebody else resolved.
+
+    ``resolve_database_url`` above is only reached when nothing handed a
+    URL over -- a bare ``alembic`` from a shell. The path this project
+    documents, ``flask alembic``, resolves the URL from the running
+    application and hands it to the subprocess through
+    ``ALEMBIC_DATABASE_URL``, so it returned at the first line of that
+    function and neither refusal was ever asked.
+
+    Measured on a clean checkout with no ``.env`` and no ``FLASK_ENV``::
+
+        flask alembic upgrade head
+        Database: sqlite:////.../datas/databases/db_shortener
+        INFO  [alembic.runtime.migration] Running upgrade  -> 0001
+
+    A new empty file, created in silence -- the outcome "nothing names a
+    profile" exists to prevent -- while the troubleshooting tables of both
+    guides tell the reader that message is what they will meet. The guard
+    stood on the path the guides tell people not to use.
+
+    The quick start is unaffected: ``cp .env.example .env`` names the
+    profile, and the refusal only fires when nothing does.
+
+    Args:
+        config: The configuration the URL came from.
+        url: The URL about to be migrated.
+        env: Explicit profile name, or ``None`` to resolve it the way the
+            application does.
+
+    Raises:
+        ValueError: If the target is one a migration should not touch.
+    """
+    named = ConfigFactory.named_env(env)
+    profile = ConfigFactory.resolve_env(named)
+    _refuse_a_database_a_migration_should_not_touch(profile, named, config, url)
+    _refuse_a_database_nobody_named(profile, config)
 
 
 def migration_connect_args(url: str) -> dict:

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Tuple
 from datetime import datetime, timedelta, timezone
 
 from link_shortener.application.context import RequestContext
@@ -35,7 +36,7 @@ class CleanUnverifiedAccountsUseCase(BaseUseCase):
     audit_logger: AuditLogger
     unverified_ttl_hours: int
 
-    def execute(self, context: RequestContext) -> int:
+    def execute(self, context: RequestContext) -> Tuple[int, int]:
         """
         Sweep expired registrations and spent confirmations.
 
@@ -43,7 +44,8 @@ class CleanUnverifiedAccountsUseCase(BaseUseCase):
             context: Request context.
 
         Returns:
-            Number of accounts deleted.
+            The accounts deleted and the confirmation tokens deleted with
+            them, in that order.
         """
         log = self._get_logger(self.logger, context)
         audit = self._get_audit_logger(self.audit_logger, context)
@@ -73,4 +75,9 @@ class CleanUnverifiedAccountsUseCase(BaseUseCase):
             audit.log_unverified_accounts_swept(
                 accounts_deleted=deleted, tokens_deleted=tokens
             )
-        return deleted
+        # Both, because the sweep removes both and the command that runs
+        # it announces both -- "registrations nobody confirmed, and dead
+        # tokens with them". Returning the accounts alone left a run that
+        # cleared seven tokens and no account reporting "Deleted 0
+        # unconfirmed accounts", which reads as a run that did nothing.
+        return deleted, tokens

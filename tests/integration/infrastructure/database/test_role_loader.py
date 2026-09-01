@@ -190,6 +190,49 @@ class TestThePassReportsWhatItDid:
         assert summary.roles_left_alone
         assert "left as they are" in summary.describe()
 
+    def test_a_pass_that_replaced_permissions_names_the_roles(self, fresh_db):
+        """
+        The one thing ``--update-existing`` is run for, and the one the
+        report did not carry.
+
+        ``roles_regranted`` was collected and never rendered, so a pass
+        that put a permission back on a role said "permissions created: 0;
+        roles created: 0" and nothing else -- indistinguishable from a pass
+        that did nothing at all. The troubleshooting table sends an
+        operator here to restore ``link:create`` on ``guest``, and this is
+        the line that tells them it worked.
+        """
+        with fresh_db.session() as session:
+            seed_base_roles(session)
+
+        with fresh_db.session() as session:
+            guest = session.query(RoleModel).filter_by(name="guest").one()
+            guest.permissions = guest.permissions[1:]
+
+        with fresh_db.session() as session:
+            summary = RoleLoader(session).load_from_yaml(
+                DEFAULT_RBAC_CONFIG_PATH, update_existing=True
+            )
+
+        assert [role.name for role in summary.roles_regranted] == ["guest"]
+        assert "permissions replaced on: guest" in summary.describe()
+
+    def test_a_pass_that_replaced_nothing_says_nothing_about_it(self, fresh_db):
+        """
+        Running the same file twice rewrites the same associations, and a
+        line saying so would say something happened when nothing did --
+        which is the reason ``roles_regranted`` records only real changes.
+        """
+        with fresh_db.session() as session:
+            seed_base_roles(session)
+
+        with fresh_db.session() as session:
+            summary = RoleLoader(session).load_from_yaml(
+                DEFAULT_RBAC_CONFIG_PATH, update_existing=True
+            )
+
+        assert "permissions replaced on" not in summary.describe()
+
 
 class TestASystemRoleCanBeMadeSystemAgain:
     """

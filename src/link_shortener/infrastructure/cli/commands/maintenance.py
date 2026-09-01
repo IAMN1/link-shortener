@@ -1,5 +1,5 @@
 from collections import Counter
-from typing import Any, Dict, List, cast as as_type
+from typing import Any, Dict, List, Tuple, cast as as_type
 
 from sqlalchemy import CursorResult, text
 from sqlalchemy.exc import IntegrityError
@@ -99,7 +99,7 @@ def clean_expired_password_resets(uow_factory: UnitOfWorkFactory) -> int:
 
 def clean_unverified_accounts(
     use_case: CleanUnverifiedAccountsUseCase, context: RequestContext
-) -> int:
+) -> Tuple[int, int]:
     """
     Delete registrations nobody confirmed within the configured window.
 

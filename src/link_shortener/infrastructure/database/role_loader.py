@@ -87,6 +87,18 @@ class LoadSummary:
                 "system flag restored: "
                 + ", ".join(sorted(self.roles_reprotected))
             )
+        if self.roles_regranted:
+            # The one thing `--update-existing` is run for, and the one
+            # the report did not carry: the field was collected and never
+            # rendered, so a pass that replaced a role's permissions said
+            # "permissions created: 0; roles created: 0" and nothing else.
+            # An operator putting `link:create` back on `guest` -- which
+            # the troubleshooting table sends them here to do -- could not
+            # tell that from a pass that did nothing at all.
+            parts.append(
+                "permissions replaced on: "
+                + ", ".join(sorted(role.name for role in self.roles_regranted))
+            )
         if self.roles_left_alone:
             parts.append(
                 "left as they are: " + ", ".join(sorted(self.roles_left_alone))

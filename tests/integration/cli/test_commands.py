@@ -4,12 +4,12 @@ import re
 
 import pytest
 from unittest.mock import MagicMock
-from datetime import timedelta
 from flask.testing import FlaskCliRunner
+from datetime import timedelta
+
+from sqlalchemy import text
 from link_shortener.application.context import RequestContext
-from link_shortener.domain.entities.user import User
 from link_shortener.domain.value_objects.email import Email
-from link_shortener.domain.value_objects.password_hash import PasswordHash
 from link_shortener.application.ports.cache.service_cache import ServiceCache
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.infrastructure.database.manager import DatabaseManager
@@ -183,6 +183,61 @@ class TestDatabaseCommands:
         assert "Database management" in result.output
 
 
+
+def signed_in_tokens(app, email, password="CliCheck123!"):
+    """
+    A real account with a real login, and the pair of tokens it was given.
+
+    ``validate-token`` now asks whether the service would accept the token
+    -- the login still open, the account still there and still active --
+    because it used to answer "VALID" about a token that had been logged
+    out, which is the one question an operator runs it to settle. A token
+    minted straight from ``_create_token`` names a session that was never
+    opened, so it is refused for a reason that has nothing to do with what
+    these tests are about.
+
+    Built through the container rather than over HTTP: registration is
+    throttled at three an hour and sign-in at five a minute, and a helper
+    that spends that budget makes every later test in the file depend on
+    how many ran before it. The use case is the same one the route calls,
+    and it opens the same session row.
+
+    Args:
+        app: The application under test.
+        email: Address to register.
+        password: Password for it.
+
+    Returns:
+        A mapping with ``access_token`` and ``refresh_token``.
+    """
+    made = app.test_cli_runner().invoke(
+        app.cli,
+        [
+            "create-user", "--email", email, "--password", password,
+            "--role", "user", "--non-interactive",
+        ],
+    )
+    assert made.exit_code == 0, made.output
+
+    with app.app_context():
+        container = app.container
+        with container.get_db_manager().session() as session:
+            session.execute(
+                text("UPDATE users SET email_verified = true WHERE email = :e"),
+                {"e": email},
+            )
+            session.commit()
+
+        signed_in = container.get_login_use_case().execute(
+            email, password, RequestContext(request_id="cli-test-setup")
+        )
+
+    return {
+        "access_token": signed_in.access_token,
+        "refresh_token": signed_in.refresh_token,
+    }
+
+
 class TestSecurityCommands:
     """Test security CLI commands."""
 
@@ -234,14 +289,23 @@ class TestSecurityCommands:
     def test_security_check_secrets_passes_when_configured(
         self, runner, app, monkeypatch
     ):
-        """Should exit zero once both secrets are present."""
-        monkeypatch.setenv("SECRET_KEY", "configured-secret")
-        monkeypatch.setenv("SHORT_CODE_PEPPER", "configured-pepper")
+        """
+        Should exit zero once both secrets are present and long enough.
+
+        The values used to be ``configured-secret`` and
+        ``configured-pepper``, seventeen and eighteen bytes. The command
+        called those OK, which is what this test was checking; it now
+        measures them against RFC 7518's floor for ``HS256``, so the
+        fixture uses keys of the length ``generate-secrets`` writes.
+        """
+        monkeypatch.setenv("SECRET_KEY", "0" * 64)
+        monkeypatch.setenv("SHORT_CODE_PEPPER", "1" * 64)
 
         result = runner.invoke(app.cli, ["security", "check-secrets"])
 
         assert result.exit_code == 0
         assert "MISSING" not in result.output
+        assert "WEAK" not in result.output
 
     def test_generate_secrets_writes_the_file_without_echoing_it(
         self, runner, app, tmp_path
@@ -289,21 +353,10 @@ class TestSecurityCommands:
         authenticates no request -- so an operator checking one and reading
         "VALID" was being told the opposite of what holds.
         """
-        with app.app_context():
-            auth_service = app.container.get_authentication_service()
-            user = User(
-                id="cli-token-user",
-                email=Email("token-check@example.com"),
-                password_hash=PasswordHash(auth_service.hash_password("CliCheck123!")),
-                roles=[],
-            )
-            refresh = auth_service._create_token(
-                user, timedelta(days=1), "refresh", token_id="cli-jti"
-            )
-            access = auth_service._create_token(
-                user, timedelta(minutes=5), "access", session_id="cli-sid"
-            )
+        tokens = signed_in_tokens(app, "token-check@example.com")
+        refresh, access = tokens["refresh_token"], tokens["access_token"]
 
+        with app.app_context():
             refresh_result = runner.invoke(
                 app.cli, ["security", "validate-token", refresh]
             )
@@ -329,20 +382,9 @@ class TestSecurityCommands:
         checking a token had to convert an epoch by hand to answer the one
         question they asked it: how long is this good for.
         """
-        with app.app_context():
-            auth_service = app.container.get_authentication_service()
-            user = User(
-                id="cli-expiry-user",
-                email=Email("expiry-check@example.com"),
-                password_hash=PasswordHash(
-                    auth_service.hash_password("CliCheck123!")
-                ),
-                roles=[],
-            )
-            token = auth_service._create_token(
-                user, timedelta(minutes=5), "access", session_id="cli-exp"
-            )
+        token = signed_in_tokens(app, "expiry-check@example.com")["access_token"]
 
+        with app.app_context():
             result = runner.invoke(app.cli, ["security", "validate-token", token])
 
         assert result.exit_code == 0, result.output
@@ -650,7 +692,11 @@ class TestTheAlembicCommandsRefuseOnTheRightStream:
         (["alembic", "status"], "status"),
         (["alembic", "history"], "history"),
         (["alembic", "upgrade", "head"], "upgrade"),
-        (["alembic", "downgrade", "-1"], "downgrade"),
+        # `--yes` because this file is about which stream a reason lands
+        # on, and `downgrade` now asks before rolling back to `base`. The
+        # prompt aborts with no stdin, which would make every case here
+        # pass for the wrong reason.
+        (["alembic", "downgrade", "-1", "--yes"], "downgrade"),
         (["alembic", "migrate", "a message"], "migrate"),
     ]
 
@@ -1005,12 +1051,14 @@ class TestTheReportsWithSomethingInThem:
                 "id": "11111111-1111-1111-1111-111111111111",
                 "email": long_address,
                 "is_active": True,
+                "email_verified": True,
                 "roles": ["admin", "user"],
             },
             {
                 "id": "22222222-2222-2222-2222-222222222222",
                 "email": "short@example.test",
                 "is_active": False,
+                "email_verified": False,
                 "roles": [],
             },
         ]
@@ -1651,3 +1699,760 @@ class TestAFailureToReportIsNotAFailureToCreate:
         # And what was already printed stays printed: the code reached
         # the operator.
         assert "halfway" in result.stdout, result.stdout
+
+
+class TestValidateTokenAnswersWhatTheServiceWouldDo:
+    """
+    "VALID" has to mean the service would accept it.
+
+    The command read the claims and nothing else, so a token that had been
+    logged out came back ``Token is VALID (type: access)`` with exit code
+    0 -- measured on a live stack, where the same token answered ``401`` on
+    ``/api/v1/links/mine`` in the same minute. An operator runs this
+    command to settle exactly that question, and was told the opposite.
+
+    The service's own rule is written at ``AuthenticationMiddleware``: "the
+    session check is what makes an access token revocable: on its own the
+    token is a signed claim that nothing but its own expiry can stop". A
+    command that stops at the signature stops one check short.
+
+    The claims are still printed for a token the service would refuse --
+    who it names and when it expires is what makes the refusal legible --
+    and the exit code is what carries the verdict.
+    """
+
+    def test_a_live_token_is_accepted(self, runner, app):
+        token = signed_in_tokens(app, "still-signed-in@example.com")["access_token"]
+
+        with app.app_context():
+            result = runner.invoke(app.cli, ["security", "validate-token", token])
+
+        assert result.exit_code == 0, result.output
+        assert "The service would accept it." in result.output
+
+    def test_a_logged_out_token_is_refused(self, runner, app):
+        """The case this was written for."""
+        tokens = signed_in_tokens(app, "signed-out@example.com")
+        with app.app_context():
+            ended = app.container.get_auth_service().sign_out(
+                RequestContext(request_id="cli-test-signout"),
+                refresh_token=tokens["refresh_token"],
+            )
+        assert ended, "the session was not revoked, so nothing is being tested"
+
+        with app.app_context():
+            result = runner.invoke(
+                app.cli, ["security", "validate-token", tokens["access_token"]]
+            )
+
+        assert result.exit_code == 1
+        assert "would REFUSE" in result.output
+        assert "login it came from has ended" in result.output
+
+    def test_the_refusal_still_says_who_the_token_names(self, runner, app):
+        """
+        A refusal with no claims is a refusal an operator cannot act on.
+
+        The question behind "is this token good" is usually "whose is it
+        and when does it die", and both survive the verdict.
+        """
+        tokens = signed_in_tokens(app, "still-legible@example.com")
+        with app.app_context():
+            app.container.get_auth_service().sign_out(
+                RequestContext(request_id="cli-test-signout"),
+                refresh_token=tokens["refresh_token"],
+            )
+
+        with app.app_context():
+            result = runner.invoke(
+                app.cli, ["security", "validate-token", tokens["access_token"]]
+            )
+
+        assert "still-legible@example.com" in result.output
+        assert "Expires:" in result.output
+
+    def test_a_deactivated_accounts_token_is_refused(self, runner, app):
+        """
+        The other half of what the middleware checks.
+
+        Deactivation is the one revocation that does not go through the
+        session table, so a check that asked only about the login would
+        pass this token.
+        """
+        from sqlalchemy import text
+
+        email = "switched-off@example.com"
+        token = signed_in_tokens(app, email)["access_token"]
+        with app.app_context():
+            with app.container.get_db_manager().session() as session:
+                session.execute(
+                    text("UPDATE users SET is_active = false WHERE email = :e"),
+                    {"e": email},
+                )
+                session.commit()
+
+            result = runner.invoke(app.cli, ["security", "validate-token", token])
+
+        assert result.exit_code == 1
+        assert "deactivated" in result.output
+
+
+class TestEachReasonTheServiceWouldRefuseIsSaidOutLoud:
+    """
+    Every branch of the acceptance check, and the sentence it prints.
+
+    An operator running ``validate-token`` on a token that does not work
+    is asking *why*. "REFUSE" alone sends them to read the source; the
+    reason is the whole value of the command. Each one is reachable and
+    each says something different, so each is asked for here rather than
+    left to the one branch a happy path walks.
+    """
+
+    def _user_and_service(self, app, email):
+        """A persisted account, and the service that mints tokens for it."""
+        signed_in_tokens(app, email)
+        with app.app_context():
+            container = app.container
+            with container.get_uow_factory()(read_only=True) as uow:
+                user = uow.users.find_by_email(Email(email))
+            return user, container.get_authentication_service()
+
+    def test_an_access_token_naming_no_login(self, runner, app):
+        """
+        ``sid`` is what makes an access token revocable.
+
+        One without it cannot be ended by signing out, so the service
+        refuses it rather than trusting a claim nothing can withdraw.
+        """
+        user, auth = self._user_and_service(app, "no-sid@example.com")
+        token = auth._create_token(user, timedelta(minutes=5), "access")
+
+        with app.app_context():
+            result = runner.invoke(app.cli, ["security", "validate-token", token])
+
+        assert result.exit_code == 1
+        assert "names no login" in result.output
+
+    def test_a_refresh_token_naming_no_session(self, runner, app):
+        user, auth = self._user_and_service(app, "no-jti@example.com")
+        token = auth._create_token(user, timedelta(days=1), "refresh")
+
+        with app.app_context():
+            result = runner.invoke(app.cli, ["security", "validate-token", token])
+
+        assert result.exit_code == 1
+        assert "names no session" in result.output
+
+    def test_a_refresh_token_whose_row_was_never_written(self, runner, app):
+        """A well-formed token for a login that never happened."""
+        user, auth = self._user_and_service(app, "no-row@example.com")
+        token = auth._create_token(
+            user, timedelta(days=1), "refresh", token_id="never-opened"
+        )
+
+        with app.app_context():
+            result = runner.invoke(app.cli, ["security", "validate-token", token])
+
+        assert result.exit_code == 1
+        assert "not on record" in result.output
+
+    def test_a_refresh_token_that_was_already_spent(self, runner, app):
+        """
+        Rotation retires the token it was given.
+
+        The row is still there, which is how a replay is recognised, and
+        the command has to tell the two apart.
+        """
+        tokens = signed_in_tokens(app, "already-spent@example.com")
+        with app.app_context():
+            rotated = app.container.get_auth_service().refresh(
+                tokens["refresh_token"],
+                RequestContext(request_id="cli-test-refresh"),
+            )
+            assert rotated is not None, "the rotation itself failed"
+
+            result = runner.invoke(
+                app.cli, ["security", "validate-token", tokens["refresh_token"]]
+            )
+
+        assert result.exit_code == 1
+        assert "has ended" in result.output
+
+    def test_a_token_of_an_account_that_is_gone(self, runner, app):
+        """
+        The account can be deleted while a signed token is still in hand.
+
+        Its expiry says nothing about that, and the session row goes with
+        the account -- so the reason has to be read from the account being
+        missing rather than from the login.
+        """
+        email = "deleted-since@example.com"
+        token = signed_in_tokens(app, email)["access_token"]
+        with app.app_context():
+            with app.container.get_db_manager().session() as session:
+                session.execute(
+                    text("DELETE FROM users WHERE email = :e"), {"e": email}
+                )
+                session.commit()
+
+            result = runner.invoke(app.cli, ["security", "validate-token", token])
+
+        assert result.exit_code == 1
+        assert "no longer exists" in result.output
+
+
+class TestAShortCodeThatBeginsWithADash:
+    """
+    One generated code in sixty-four starts with a dash, and Click read it
+    as an option.
+
+    The alphabet is Base64URL -- ``[A-Za-z0-9_-]`` -- so ``-`` leads about
+    one code in sixty-four: measured, 328 of 20 000 generated at the
+    shipped length. For every one of them ``flask link delete <code>``
+    answered ``Error: No such option: -1`` and exited 2 before the command
+    body ran, so a link an operator could see in ``link list`` could not be
+    inspected or removed from the command line at all.
+
+    ``alembic downgrade`` already carried ``ignore_unknown_options`` for
+    the same reason, its revisions looking like ``-1``. The three ``link``
+    commands that take a code now carry it too.
+
+    A custom code is used rather than waiting for a generated one to start
+    with a dash: the generator is a hash of the URL, so "make one that
+    starts with a dash" means searching, and a test that searches is a test
+    that sometimes takes a long time.
+    """
+
+    DASHED = "-abc123"
+
+    def test_the_code_is_one_the_service_accepts(self, runner, app):
+        """Otherwise the refusals below would be about the code, not Click."""
+        with app.app_context():
+            made = runner.invoke(
+                app.cli,
+                ["link", "create", "--url", "https://example.com/dashed",
+                 "--code", self.DASHED],
+            )
+
+        assert made.exit_code == 0, made.output
+        assert self.DASHED in made.output
+
+    def test_info_reaches_the_command_body(self, runner, app):
+        with app.app_context():
+            runner.invoke(
+                app.cli,
+                ["link", "create", "--url", "https://example.com/dashed-info",
+                 "--code", "-info12"],
+            )
+            shown = runner.invoke(app.cli, ["link", "info", "-info12"])
+
+        assert shown.exit_code == 0, shown.output
+        assert "No such option" not in shown.output
+        assert "-info12" in shown.output
+
+    def test_delete_reaches_the_command_body(self, runner, app):
+        with app.app_context():
+            runner.invoke(
+                app.cli,
+                ["link", "create", "--url", "https://example.com/dashed-del",
+                 "--code", "-del123"],
+            )
+            removed = runner.invoke(app.cli, ["link", "delete", "-del123"])
+            after = runner.invoke(app.cli, ["link", "info", "-del123"])
+
+        assert removed.exit_code == 0, removed.output
+        assert "No such option" not in removed.output
+        assert "not found" in after.output.lower()
+
+
+class TestRollingTheSchemaBackIsAsked:
+    """
+    ``alembic downgrade`` took the whole schema on a typo, in silence.
+
+    ``@click.argument("revision", default="-1")``, and this repository
+    keeps one revision -- ``<base> -> 0001 (head)`` -- so ``-1`` resolves
+    to ``base`` and ``flask alembic downgrade`` with nothing after it
+    drops every table. ``db drop`` beside it asks (``Are you sure you want
+    to drop all tables?``) *and* refuses outright while ``USE_ALEMBIC`` is
+    on, so the guarded door was the one that needs an argument and the
+    unguarded one was the one that opens on a typo.
+
+    Asked only for ``base``. A downgrade to a named revision is somebody
+    who has read the revision list, and a prompt on every one of those is
+    a prompt that gets answered without reading -- which is the state
+    ``db drop`` would be in if it asked about anything other than dropping
+    everything.
+    """
+
+    def _refusing(self, app, monkeypatch):
+        """Alembic that answers a failure, so nothing real is rolled back."""
+        from link_shortener.infrastructure.cli.commands.alembic import (
+            AlembicCommands,
+        )
+
+        called = []
+
+        def answer(revision, url):
+            called.append(revision)
+            return False, "Error: FAILED: refused by the test"
+
+        monkeypatch.setattr(AlembicCommands, "downgrade", staticmethod(answer))
+        monkeypatch.setitem(app.config, "USE_ALEMBIC", True)
+        return called
+
+    def test_the_default_argument_asks_before_it_runs(
+        self, runner, app, monkeypatch
+    ):
+        called = self._refusing(app, monkeypatch)
+
+        result = runner.invoke(app.cli, ["alembic", "downgrade"], input="n\n")
+
+        assert "drops every table" in result.output
+        assert called == [], "alembic was reached without an answer"
+
+    def test_answering_no_stops_it(self, runner, app, monkeypatch):
+        called = self._refusing(app, monkeypatch)
+
+        result = runner.invoke(app.cli, ["alembic", "downgrade"], input="n\n")
+
+        assert result.exit_code == 1
+        assert called == []
+
+    def test_answering_yes_lets_it_through(self, runner, app, monkeypatch):
+        called = self._refusing(app, monkeypatch)
+
+        runner.invoke(app.cli, ["alembic", "downgrade"], input="y\n")
+
+        assert called == ["-1"]
+
+    def test_the_flag_skips_the_question(self, runner, app, monkeypatch):
+        """For a script, which has nobody to answer it."""
+        called = self._refusing(app, monkeypatch)
+
+        runner.invoke(app.cli, ["alembic", "downgrade", "--yes"])
+
+        assert called == ["-1"]
+
+    def test_a_named_revision_is_not_asked_about(self, runner, app, monkeypatch):
+        """
+        The half that keeps the prompt worth reading.
+
+        Without this, "the command asks" could be satisfied by a command
+        that asks about everything.
+        """
+        called = self._refusing(app, monkeypatch)
+
+        runner.invoke(app.cli, ["alembic", "downgrade", "0001"])
+
+        assert called == ["0001"]
+
+
+class TestCheckSecretsMeasuresTheKeyItFinds:
+    """
+    ``SECRET_KEY=abc`` used to pass the deployment gate.
+
+    The command answered "is anything set" and printed ``OK``, exit 0 --
+    measured on a live stack with three characters. It is the command a
+    deployment runs before it starts, and the key it approves is what
+    signs every token the service issues, so "present" and "worth having"
+    are not two questions here.
+
+    The floor is RFC 7518 section 3.2: for ``HS256``, a key at least as
+    long as the hash output, which is 32 bytes. PyJWT says the same in a
+    warning that goes to a log nobody reads at deployment time.
+    ``generate-secrets`` already writes exactly that.
+    """
+
+    LONG_ENOUGH = "0" * 64
+
+    def test_a_short_key_is_refused(self, runner, app, monkeypatch):
+        monkeypatch.setenv("SECRET_KEY", "abc")
+        monkeypatch.setenv("SHORT_CODE_PEPPER", self.LONG_ENOUGH)
+
+        result = runner.invoke(app.cli, ["security", "check-secrets"])
+
+        assert result.exit_code == 1
+        assert "WEAK" in result.output
+        assert "SECRET_KEY" in result.stderr
+
+    def test_the_reason_names_the_standard(self, runner, app, monkeypatch):
+        """An operator told "WEAK" and nothing else has to guess a length."""
+        monkeypatch.setenv("SECRET_KEY", "abc")
+        monkeypatch.setenv("SHORT_CODE_PEPPER", self.LONG_ENOUGH)
+
+        result = runner.invoke(app.cli, ["security", "check-secrets"])
+
+        assert "RFC 7518" in result.stderr
+        assert "32 bytes" in result.stderr
+
+    def test_a_key_one_byte_short_is_still_short(self, runner, app, monkeypatch):
+        """The boundary, from below."""
+        monkeypatch.setenv("SECRET_KEY", "x" * 31)
+        monkeypatch.setenv("SHORT_CODE_PEPPER", self.LONG_ENOUGH)
+
+        assert runner.invoke(
+            app.cli, ["security", "check-secrets"]
+        ).exit_code == 1
+
+    def test_a_key_exactly_at_the_floor_passes(self, runner, app, monkeypatch):
+        """And from above, so the floor is a floor and not a wall."""
+        monkeypatch.setenv("SECRET_KEY", "x" * 32)
+        monkeypatch.setenv("SHORT_CODE_PEPPER", self.LONG_ENOUGH)
+
+        assert runner.invoke(
+            app.cli, ["security", "check-secrets"]
+        ).exit_code == 0
+
+    def test_length_is_counted_in_bytes(self, runner, app, monkeypatch):
+        """
+        A key is encoded before it is signed with.
+
+        Thirty-two Cyrillic characters are sixty-four bytes, and thirty-two
+        of them would pass a check that counted characters while being
+        exactly as strong as the standard asks. The other direction is what
+        matters and cannot be shown as cheaply: the count must not be of
+        characters.
+        """
+        monkeypatch.setenv("SECRET_KEY", "я" * 16)
+        monkeypatch.setenv("SHORT_CODE_PEPPER", self.LONG_ENOUGH)
+
+        assert runner.invoke(
+            app.cli, ["security", "check-secrets"]
+        ).exit_code == 0
+
+    def test_missing_is_still_missing(self, runner, app, monkeypatch):
+        """Absent and short are different sentences to an operator."""
+        monkeypatch.delenv("SECRET_KEY", raising=False)
+        monkeypatch.setenv("SHORT_CODE_PEPPER", self.LONG_ENOUGH)
+
+        result = runner.invoke(app.cli, ["security", "check-secrets"])
+
+        assert result.exit_code == 1
+        assert "MISSING" in result.output
+        assert "WEAK" not in result.output
+
+
+class TestARefusalArrivesAsASentence:
+    """
+    A command that refuses says why, in one line, on stderr.
+
+    Most commands here already did. Two did not, and an operator met a
+    Python traceback for the same class of mistake the command beside them
+    words as a sentence::
+
+        flask security reset-password --password 12
+          ... fourteen frames ...
+          ValidationError: Password must be at least 8 characters
+
+    while ``create-user`` on the same password answered ``Failed to create
+    user: Password must be at least 8 characters``.
+
+    Held over the group class rather than over the two commands that were
+    found: a decorator is a thing to remember, and the next command that
+    raises a domain error would arrive without it. What must *not* be
+    swallowed is held below too -- a defect in this service is still a
+    traceback, because that traceback is the report.
+    """
+
+    def test_a_password_below_the_floor_is_a_sentence(self, runner, app):
+        with app.app_context():
+            runner.invoke(
+                app.cli,
+                ["create-user", "--email", "sentence@example.com",
+                 "--password", "StrongPass1!", "--role", "user",
+                 "--non-interactive"],
+            )
+            result = runner.invoke(
+                app.cli,
+                ["security", "reset-password", "--email",
+                 "sentence@example.com", "--password", "12",
+                 "--non-interactive"],
+            )
+
+        assert result.exit_code == 1
+        assert "Password must be at least 8 characters" in result.stderr
+        assert "Traceback" not in result.output
+
+    def test_a_malformed_file_is_a_sentence(self, runner, app, tmp_path):
+        bad = tmp_path / "roles.yaml"
+        bad.write_text("roles:\n  - name: x\n    description here: bad\n")
+
+        with app.app_context():
+            result = runner.invoke(
+                app.cli, ["db", "load-custom-roles", str(bad)]
+            )
+
+        assert result.exit_code == 1
+        assert result.stderr.strip()
+        assert "Traceback" not in result.output
+
+    def test_a_defect_is_still_a_traceback(self, runner, app, monkeypatch):
+        """
+        The half that keeps the door narrow.
+
+        Wording every exception would hide the ones worth seeing: a
+        ``KeyError`` here is this service being wrong, not the operator.
+        """
+        from link_shortener.infrastructure.cli.adapters import flask as adapter
+
+        def boom(*args, **kwargs):
+            raise KeyError("a defect, not a refusal")
+
+        monkeypatch.setattr(adapter, "_container", boom)
+
+        with app.app_context():
+            result = runner.invoke(app.cli, ["cache", "stats"])
+
+        assert isinstance(result.exception, KeyError), result.output
+
+
+class TestTheListingsSayWhatAnOperatorCameFor:
+    """
+    Two tables answered a narrower question than the one being asked.
+
+    ``security list-users`` printed ``ID Email Active Roles``, and
+    ``Active`` reads as "this account works". It does not: measured, an
+    account with ``is_active=t, email_verified=f`` was printed ``True``
+    and answered ``401`` at sign-in. The command next to it,
+    ``maintenance clean-unverified``, deletes accounts by exactly the
+    column the listing did not show.
+
+    ``link list`` printed the code, the clicks and the date -- everything
+    except where the link goes. In a link shortener that is the listing
+    answering "which codes exist" instead of "which link is which", and
+    choosing one to inspect or remove meant a ``link info`` per row.
+    """
+
+    def test_the_account_listing_shows_whether_the_address_is_confirmed(
+        self, runner, app
+    ):
+        with app.app_context():
+            runner.invoke(
+                app.cli,
+                ["create-user", "--email", "listing-shown@example.com",
+                 "--password", "StrongPass1!", "--role", "user",
+                 "--non-interactive"],
+            )
+            listed = runner.invoke(app.cli, ["security", "list-users"])
+
+        assert "Confirmed" in listed.output
+        assert "listing-shown@example.com" in listed.output
+
+    def test_an_unconfirmed_account_is_not_shown_as_ready(self, runner, app, db):
+        """
+        The case the column exists for.
+
+        ``Active`` and ``Confirmed`` disagreeing is exactly the state an
+        operator is trying to see, and one column cannot show it.
+        """
+        from sqlalchemy import text
+
+        with app.app_context():
+            runner.invoke(
+                app.cli,
+                ["create-user", "--email", "listing-unconfirmed@example.com",
+                 "--password", "StrongPass1!", "--role", "user",
+                 "--non-interactive"],
+            )
+            with app.container.get_db_manager().session() as session:
+                session.execute(
+                    text(
+                        "UPDATE users SET email_verified = false "
+                        "WHERE email = :e"
+                    ),
+                    {"e": "listing-unconfirmed@example.com"},
+                )
+                session.commit()
+
+            listed = runner.invoke(app.cli, ["security", "list-users"])
+
+        # Matched on a prefix: the column is clipped at thirty characters
+        # with an ellipsis, so the whole address is not on the line.
+        row = [
+            line for line in listed.output.splitlines()
+            if "listing-unconfirmed@example" in line
+        ]
+        assert row, listed.output
+        assert "True" in row[0] and "False" in row[0]
+
+    def test_the_link_listing_shows_where_a_link_goes(self, runner, app):
+        destination = "https://example.com/listed-destination"
+
+        with app.app_context():
+            runner.invoke(
+                app.cli, ["link", "create", "--url", destination]
+            )
+            listed = runner.invoke(app.cli, ["link", "list", "--limit", "10"])
+
+        assert destination[:40] in listed.output
+
+
+class TestAFlagThatCannotMeanAnythingIsRefused:
+    """
+    ``--force`` without ``--write`` was accepted and did nothing.
+
+    Its own help says "with --write". Alone it printed the secrets exactly
+    as a bare invocation does and exited 0, so a script that meant to
+    replace the values in a file and mistyped the other flag was told it
+    had succeeded. ``--code ""`` and ``--count 0`` a few commands along
+    are refused for the same reason, written there: a value that cannot
+    mean anything is not a request to do nothing.
+    """
+
+    def test_force_without_write_is_refused(self, runner, app):
+        with app.app_context():
+            result = runner.invoke(
+                app.cli, ["security", "generate-secrets", "--force"]
+            )
+
+        assert result.exit_code == 2
+        assert "--write" in result.output
+
+    def test_the_bare_command_still_prints(self, runner, app):
+        """So the refusal is about the flag and not about the command."""
+        with app.app_context():
+            result = runner.invoke(app.cli, ["security", "generate-secrets"])
+
+        assert result.exit_code == 0
+        assert "SECRET_KEY=" in result.output
+
+    def test_force_with_write_still_works(self, runner, app, tmp_path):
+        target = tmp_path / ".env"
+        target.write_text("SECRET_KEY=already\nSHORT_CODE_PEPPER=already\n")
+
+        with app.app_context():
+            result = runner.invoke(
+                app.cli,
+                ["security", "generate-secrets", "--write", str(target),
+                 "--force"],
+            )
+
+        assert result.exit_code == 0
+        assert "already" not in target.read_text()
+
+
+class TestAlembicStatusSaysWhetherItIsCurrent:
+    """
+    "Up to date" and "one revision behind" differed by a parenthesis.
+
+    ``alembic current`` appends ``(head)`` when nothing is pending, and
+    that was the whole of the answer. Measured on a database at ``0001``
+    with ``0002`` on disk, the command printed::
+
+        0001
+
+    and with nothing pending::
+
+        0001 (head)
+
+    An operator, or a deployment log, asking "is the schema current" had
+    to notice a missing word -- and a script could not ask at all.
+
+    The exit code stays zero either way. Being behind is the answer this
+    command exists to give rather than a failure of it: it is run *before*
+    an upgrade, and a non-zero exit would make the ordinary case look
+    broken to everything that runs it.
+    """
+
+    def _alembic_answering(self, monkeypatch, current: str, heads: str):
+        """Drive the wrapper without a database or a subprocess."""
+        import subprocess
+
+        from link_shortener.infrastructure.cli.commands.alembic import (
+            AlembicCommands,
+        )
+
+        def fake(*args, **kwargs):
+            asked = args[0]
+            out = current if asked == "current" else heads
+            return subprocess.CompletedProcess(
+                args=["alembic", asked], returncode=0, stdout=out, stderr=""
+            )
+
+        monkeypatch.setattr(AlembicCommands, "_run_alembic", staticmethod(fake))
+        return AlembicCommands
+
+    def test_it_says_so_when_nothing_is_pending(self, monkeypatch):
+        alembic = self._alembic_answering(
+            monkeypatch, current="0001 (head)\n", heads="0001 (head)\n"
+        )
+
+        ok, text = alembic.status()
+
+        assert ok
+        assert "Up to date." in text
+
+    def test_it_names_what_is_waiting(self, monkeypatch):
+        alembic = self._alembic_answering(
+            monkeypatch, current="0001\n", heads="0002 (head)\n"
+        )
+
+        ok, text = alembic.status()
+
+        assert ok, text
+        assert "Behind: 0002" in text
+        assert "upgrade head" in text
+
+    def test_the_revision_itself_is_still_printed(self, monkeypatch):
+        """The report did not lose what it used to say."""
+        alembic = self._alembic_answering(
+            monkeypatch, current="0001\n", heads="0002 (head)\n"
+        )
+
+        assert "0001" in alembic.status()[1]
+
+    def test_being_behind_is_not_a_failure(self, monkeypatch):
+        """
+        The half a deployment script depends on.
+
+        Exit 1 here would make every ordinary "what is the state" call
+        look like a broken command.
+        """
+        alembic = self._alembic_answering(
+            monkeypatch, current="0001\n", heads="0002 (head)\n"
+        )
+
+        assert alembic.status()[0] is True
+
+    def test_an_empty_database_is_not_called_up_to_date(self, monkeypatch):
+        """
+        The two sentences would have contradicted each other.
+
+        A database carrying no revision at all is the state a fresh clone
+        is in before the first migration, and "No migrations applied. Up
+        to date." is the one report that must not come out of it.
+        """
+        alembic = self._alembic_answering(monkeypatch, current="", heads="")
+
+        ok, text = alembic.status()
+
+        assert ok
+        assert text == "No migrations applied."
+
+    def test_an_unreadable_head_says_so_rather_than_guessing(self, monkeypatch):
+        """
+        Silence here would read as "up to date", which is the one answer
+        that must not be given by accident.
+        """
+        import subprocess
+
+        from link_shortener.infrastructure.cli.commands.alembic import (
+            AlembicCommands,
+        )
+
+        def fake(*args, **kwargs):
+            if args[0] == "current":
+                return subprocess.CompletedProcess(
+                    args=["alembic"], returncode=0, stdout="0001\n", stderr=""
+                )
+            return subprocess.CompletedProcess(
+                args=["alembic"], returncode=1, stdout="", stderr="broken"
+            )
+
+        monkeypatch.setattr(AlembicCommands, "_run_alembic", staticmethod(fake))
+
+        ok, text = AlembicCommands.status()
+
+        assert ok
+        assert "unknown" in text
+        assert "Up to date." not in text

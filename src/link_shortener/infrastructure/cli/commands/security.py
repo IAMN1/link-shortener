@@ -53,6 +53,13 @@ def validate_token(
             "email": claims.get("email"),
             "type": claims.get("type"),
             "exp": claims.get("exp"),
+            # The two claims that say which login this token belongs to.
+            # Not printed -- they are opaque ids and answer no question an
+            # operator asks -- but the caller needs them to ask whether the
+            # service would still accept the token, which is a different
+            # question from whether it stands up on its own.
+            "sid": claims.get("sid"),
+            "jti": claims.get("jti"),
         }
     except Exception as e:
         return {
@@ -62,12 +69,26 @@ def validate_token(
 
 
 # What a rewrite of each name costs the deployment. Used to word the
-# refusal, because the four are not alike: replacing an application secret
+# refusal, because the four are not alike: replacing SECRET_KEY
 # invalidates what was handed out, while replacing a service password
 # leaves the service itself still expecting the old one.
+#
+# SHORT_CODE_PEPPER used to be listed with SECRET_KEY, as stopping "the
+# codes already handed out from resolving". It does not. The pepper is
+# read in one place -- Base64UrlCodeGenerator.generate -- and a link is
+# resolved by looking its stored code up in the table, with no code
+# recomputed anywhere. Measured: a code made under one pepper answered
+# 302 to the right destination from a process running another, and the
+# same URL offered again under the second pepper still deduplicated to
+# the first link, because deduplication reads the URL and not the code.
+# The sentence mattered because it read as "rotating this revokes the
+# links you handed out", which is a thing this service cannot do.
 _COST_OF_REPLACING = {
     "SECRET_KEY": "signs out every session and voids every issued token",
-    "SHORT_CODE_PEPPER": "stops the codes already handed out from resolving",
+    "SHORT_CODE_PEPPER": (
+        "changes the code a URL not yet shortened will get; links already "
+        "made keep theirs and go on resolving"
+    ),
     "DATABASE_PASSWORD": (
         "leaves the database still expecting the old one -- the volume "
         "keeps the password it was initialised with"
@@ -202,18 +223,68 @@ def write_secrets(
     return fresh
 
 
-def check_secrets() -> dict[str, bool]:
-    """Check if required secrets are configured in environment.
+SECRET_FLOOR_BYTES = 32
+"""The shortest key this service will call configured.
+
+RFC 7518 section 3.2, on ``HS256``: "A key of the same size as the hash
+output (for instance, 256 bits for ``HS256``) or larger MUST be used with
+this algorithm." PyJWT says the same thing out loud -- it warns
+``InsecureKeyLengthWarning: The HMAC key is 16 bytes long, which is below
+the minimum recommended length of 32 bytes for SHA256`` -- and that
+warning goes to a log nobody reads at deployment time.
+
+``generate-secrets`` already writes 64 hex characters, which is exactly
+this. The floor is here so that a key typed by hand is measured against
+the same standard.
+"""
+
+
+def _state_of(value: Optional[str]) -> str:
+    """
+    Whether one secret is missing, too short, or fit to use.
+
+    Takes the value rather than the name it is read under, so that the
+    two reads below stay literal: ``test_every_setting_has_its_line``
+    sweeps the source for ``os.environ.get("NAME")`` and holds each key
+    against the template, and a read whose key comes from a variable is
+    one it cannot answer for.
+
+    Length in bytes rather than characters: the key is encoded before it
+    is signed with, and a 32-character key of two-byte characters is not
+    a 32-byte key.
+
+    Args:
+        value: What the environment holds, or ``None``.
 
     Returns:
-        Whether each required variable holds anything, keyed by name.
+        ``"MISSING"``, ``"WEAK"`` or ``"OK"``.
+    """
+    if not value:
+        return "MISSING"
+    if len(value.encode("utf-8")) < SECRET_FLOOR_BYTES:
+        return "WEAK"
+    return "OK"
+
+
+def check_secrets() -> dict[str, str]:
+    """Check that the required secrets are configured, and worth having.
+
+    It used to answer ``bool`` -- set or unset -- so ``SECRET_KEY=abc``
+    came back ``OK`` with exit 0. Measured on a live stack: three
+    characters passed a command whose whole purpose is to be the gate a
+    deployment runs before it starts. What the key is worth is not a
+    separate question from whether it is there: an attacker who can guess
+    it forges every token this service issues.
+
+    Returns:
+        ``"MISSING"``, ``"WEAK"`` or ``"OK"`` for each required variable.
         Read from the environment rather than from the configuration,
         because that is where a deployment sets them and where this
         command is asked whether it did.
     """
     return {
-        "SECRET_KEY": bool(os.environ.get("SECRET_KEY")),
-        "SHORT_CODE_PEPPER": bool(os.environ.get("SHORT_CODE_PEPPER")),
+        "SECRET_KEY": _state_of(os.environ.get("SECRET_KEY")),
+        "SHORT_CODE_PEPPER": _state_of(os.environ.get("SHORT_CODE_PEPPER")),
     }
 
 
@@ -224,10 +295,18 @@ def list_users(uow_factory: UnitOfWorkFactory) -> list[dict]:
         uow_factory: Factory for Unit of Work instances.
 
     Returns:
-        One dict per account, with ``id``, ``email``, ``is_active`` and
-        ``roles``. Flattened here rather than handed over as entities,
-        because the caller prints a fixed table of exactly these four and
-        the value objects would each need unwrapping at the format string.
+        One dict per account, with ``id``, ``email``, ``is_active``,
+        ``email_verified`` and ``roles``. Flattened here rather than
+        handed over as entities, because the caller prints a fixed table
+        of exactly these and the value objects would each need unwrapping
+        at the format string.
+
+        ``email_verified`` is here because the table read as though
+        ``Active`` answered "can this account be used", and it does not:
+        measured, an account with ``is_active=t, email_verified=f`` was
+        printed ``True`` and answered ``401`` at sign-in. The command
+        beside this one, ``maintenance clean-unverified``, deletes
+        accounts by exactly the column the listing did not show.
     """
     with uow_factory() as uow:
         users = uow.users.list_all()
@@ -236,6 +315,7 @@ def list_users(uow_factory: UnitOfWorkFactory) -> list[dict]:
                 "id": str(user.id),
                 "email": user.email.value,
                 "is_active": user.is_active,
+                "email_verified": user.email_verified,
                 "roles": [role.name for role in user.roles],
             }
             for user in users
