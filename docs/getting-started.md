@@ -119,12 +119,16 @@ uv run flask security list-roles     # what each role now holds
 <summary>Mail, and why nothing arrives</summary>
 
 `MAIL_ENABLED=true` is in the template, and `MAIL_HOST` is left empty
-beside it — so mail is on and there is no server to send it to.
-Registration still answers `202`, no message leaves, and the log says
-`Verification email not delivered`. To catch messages locally, bring up
-the Mailpit of the Docker stack and set `MAIL_HOST=localhost` and
-`MAIL_PORT=1025`; without a port of its own the profile's default is
-`587`, which is not what a catcher listens on.
+beside it — so the address comes from the profile, and `development`
+defaults to `localhost:1025`, which is where the Mailpit of the Docker
+stack listens. With no catcher running, registration still answers `202`,
+no message leaves, and the log says `could not deliver mail via
+localhost:1025: [Errno 61] Connection refused`, then `Verification email
+not delivered`.
+
+So bringing that Mailpit up is enough to catch messages locally: nothing
+to set. The `587` in the template is the default of the deployed profiles,
+where a real mail server is named.
 
 So on a local run there is nothing to confirm an address with — which is
 why the block above makes an administrator through the CLI rather than
@@ -459,12 +463,14 @@ curl "http://localhost:5000/api/v1/links/mine?offset=0&limit=20" \
 
 > [!NOTE]
 > Under `/api/v1` this service refuses what it does not understand rather
-> than ignoring it: a body field or a query parameter no operation
-> declares is answered `400 VALIDATION_ERROR` with the name of the
-> offender — `'bogus' is not a parameter of this endpoint`. It is why a
-> mistyped `?short_code=` cannot come back as service-wide figures. Pages
-> are not held to it: navigation carries whatever the address bar was
-> given.
+> than ignoring it. Both answers are `400 VALIDATION_ERROR` and both name
+> the offender in `details[0].field`, and they are worded by the layer
+> that caught it: a body field no model declares comes back `Extra inputs
+> are not permitted` with `"code": "extra_forbidden"`, and a query
+> parameter no operation declares comes back `'bogus' is not a parameter
+> of this endpoint`. It is why a mistyped `?short_code=` cannot come back
+> as service-wide figures. Pages are not held to it: navigation carries
+> whatever the address bar was given.
 
 | Dashboard section | Opened by |
 |---|---|
