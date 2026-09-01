@@ -7,11 +7,22 @@ asked, which is why the decorators in ``decorators.py`` are not enough on
 their own.
 """
 
-from flask import g
+from typing import Optional
+
+from flask import current_app, g, request
 
 from link_shortener.application.ports.auth.authorization_service import AuthorizationService
 from link_shortener.domain import DomainError, PermissionDeniedError, SystemPermissions
 from link_shortener.domain.i18n import N_
+from link_shortener.web.security.deletion_token import link_id_from
+
+
+DELETION_TOKEN_HEADER = "X-Deletion-Token"
+"""The header a creator returns their proof in.
+
+Named once. Three routes read it, and a name spelled at each of them is a
+name that gets changed at two of them.
+"""
 
 
 def can_view_link_details(
@@ -72,3 +83,53 @@ def require_can_view_link_details(
 
     if not can_view_link_details(owner_id, authorization_service):
         raise PermissionDeniedError(N_("You are not allowed to view this link"))
+
+
+def presented_link_id() -> Optional[str]:
+    """
+    The link a caller's deletion token names, if they presented one.
+
+    The single door onto the header, and it does one thing besides read
+    it: it records on ``g`` that this request's answer depends on the
+    header. ``PrivateCacheMiddleware`` reads that mark and adds ``Vary``,
+    which is the part that kept getting forgotten -- the basic link
+    endpoint carried it, its ``/extended`` neighbour read the same header,
+    answered two different bodies from it and said nothing, so a shared
+    cache was free to store the fuller answer and hand it to a caller with
+    no token.
+
+    Returns:
+        The identifier the token names, or ``None`` when the header is
+        absent, forged, or signed with another key.
+    """
+    g.deletion_token_was_read = True
+    return link_id_from(
+        current_app.config["SECRET_KEY"],
+        request.headers.get(DELETION_TOKEN_HEADER),
+    )
+
+
+def made_this_link(link_id: Optional[str]) -> bool:
+    """
+    Whether the caller proved they created this particular link.
+
+    The identifier is compared, not the short code: codes are freed by
+    deletion and issued again, so a token naming one would go on proving
+    something about whatever link took it next.
+
+    A match means the answer about to be built carries figures that belong
+    to one caller, so this marks the request for ``no-store`` as well --
+    ``Vary`` alone leans on every cache in the path implementing it
+    correctly.
+
+    Args:
+        link_id: Identifier of the link being answered about, or ``None``
+            when the row carries none.
+
+    Returns:
+        ``True`` when the presented token names exactly this link.
+    """
+    matched = link_id is not None and link_id == presented_link_id()
+    if matched:
+        g.deletion_token_matched = True
+    return matched

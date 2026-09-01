@@ -40,13 +40,12 @@ from link_shortener.web.schemas.visit_stats import (
 )
 from link_shortener.web.security.authorization import (
     can_view_link_details,
+    made_this_link,
+    presented_link_id,
     require_can_view_link_details,
 )
 from link_shortener.web.security.context import create_request_context
-from link_shortener.web.security.deletion_token import (
-    issue as issue_deletion_token,
-    link_id_from,
-)
+from link_shortener.web.security.deletion_token import issue as issue_deletion_token
 from link_shortener.web.paging import window_from_query
 from link_shortener.web.request_body import json_object
 from link_shortener.web.security.decorators import (
@@ -148,10 +147,7 @@ class ApiController:
         # names the row rather than the code, so it proves this caller
         # made *this* link and stops proving anything the moment the link
         # is deleted and its code handed out again.
-        made_it = result_dto.link_id is not None and result_dto.link_id == link_id_from(
-            current_app.config["SECRET_KEY"],
-            request.headers.get("X-Deletion-Token"),
-        )
+        made_it = made_this_link(result_dto.link_id)
         if not made_it and not can_view_link_details(
             result_dto.owner_id, self.authorization_service
         ):
@@ -159,29 +155,12 @@ class ApiController:
             response_data.clicks = None
             response_data.last_accessed = None
 
-        answer = jsonify(response_data.model_dump())
-        # Two different bodies now come back from one URL, and what tells
-        # them apart is a request header -- so the answer has to say so.
-        # Measured before this line existed: both the answer carrying
-        # `clicks` and the answer carrying `clicks: null` came back
-        # `Vary: Cookie, Accept-Language, Accept-Encoding` with no
-        # `Cache-Control` at all, because the caller is a guest and
-        # `PrivateCacheMiddleware` returns above its `no-store` branch for
-        # anybody anonymous. A shared cache was free to store the one with
-        # the counters and hand it to the next caller of the same URL.
-        #
-        # That middleware makes exactly this argument for `Cookie` and
-        # `Accept-Language` -- "a shared cache had every right to hand one
-        # visitor's page to the next" -- and this header joined the answer
-        # after the list was written.
-        answer.vary.add("X-Deletion-Token")
-        if made_it:
-            # The counters belong to whoever made the link, which is the
-            # same thing `no-store` is for on an account's own pages.
-            # `Vary` alone leans on every cache in the path implementing it
-            # correctly; this leans on none of them.
-            answer.headers["Cache-Control"] = "no-store"
-        return answer
+        # `Vary: X-Deletion-Token` and, when the token matched, `no-store`
+        # are not set here: `presented_link_id` marked the request and
+        # `PrivateCacheMiddleware` marks the answer. This route had those
+        # two lines and its `/extended` neighbour, reading the same header
+        # for the same decision, did not.
+        return jsonify(response_data.model_dump())
 
     # ------------------------------------------------------------------
     # GET /api/v1/links/<short_code>/extended
@@ -212,10 +191,7 @@ class ApiController:
         # is already shown there. Refusing them the derived figures while
         # handing them the inputs is the "formality" this docstring
         # objects to, arriving from the other side.
-        if result_dto.link_id is None or result_dto.link_id != link_id_from(
-            current_app.config["SECRET_KEY"],
-            request.headers.get("X-Deletion-Token"),
-        ):
+        if not made_this_link(result_dto.link_id):
             require_can_view_link_details(
                 result_dto.owner_id, self.authorization_service
             )
@@ -504,10 +480,7 @@ class ApiController:
         # the row, not the code: codes are freed by deletion and issued
         # again, so a token naming one would go on deleting whatever link
         # took it next.
-        authorized_link_id = link_id_from(
-            current_app.config["SECRET_KEY"],
-            request.headers.get("X-Deletion-Token"),
-        )
+        authorized_link_id = presented_link_id()
         deleted = self.link_service.delete_link(
             short_code,
             context,

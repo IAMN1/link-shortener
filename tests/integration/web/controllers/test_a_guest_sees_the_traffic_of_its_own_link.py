@@ -24,18 +24,25 @@ import itertools
 
 import pytest
 
-
-def a_guest(app, address: str):
-    """A client the service counts as a guest of its own."""
-    client = app.test_client()
-    client.environ_base["REMOTE_ADDR"] = address
-    return client
+from tests.integration.conftest import a_guest
 
 
 def make(client, url: str):
     """One guest link, and the whole answer."""
     return client.post("/api/v1/shorten", json={"url": url})
 
+
+ROUTES_THAT_READ_THE_TOKEN = [
+    "/api/v1/links/{code}",
+    "/api/v1/links/{code}/extended",
+]
+"""Every route whose answer depends on the deletion token header.
+
+A list, because a parametrised test needs one, but not a list the fix
+depends on: the header is read in one place and the answer marked in one
+place, so a fourth route reading it is marked without a line of its own.
+This is here to catch the arrangement coming back.
+"""
 
 _urls = itertools.count()
 
@@ -209,14 +216,25 @@ class TestTheAnswerSaysWhatItVariesBy:
     above its ``no-store`` branch — while one of them carried the counters.
     """
 
-    def test_the_header_is_named_in_vary(self, app, made):
-        """Named on both answers, since a cache stores whichever it saw."""
+    @pytest.mark.parametrize("route", ROUTES_THAT_READ_THE_TOKEN)
+    def test_the_header_is_named_in_vary(self, app, made, route):
+        """
+        Named on both answers, since a cache stores whichever it saw.
+
+        Asked of every route that reads the header rather than of the one
+        that had the fault. ``/extended`` reads it for the same decision
+        and answers two different bodies from it, and while each route set
+        its own headers only the first of them said so: a shared cache was
+        free to store the answer carrying the derived figures and hand it
+        to a caller holding no token. Both are marked in one place now,
+        and this is the shape of test that would have caught it.
+        """
         guest, code, token, _ = made
 
         with_token = guest.get(
-            f"/api/v1/links/{code}", headers={"X-Deletion-Token": token}
+            route.format(code=code), headers={"X-Deletion-Token": token}
         )
-        without = guest.get(f"/api/v1/links/{code}")
+        without = guest.get(route.format(code=code))
 
         assert "X-Deletion-Token" in with_token.headers.get("Vary", "")
         assert "X-Deletion-Token" in without.headers.get("Vary", "")
@@ -236,7 +254,10 @@ class TestTheAnswerSaysWhatItVariesBy:
         assert "Cookie" in varies
         assert "Accept-Language" in varies
 
-    def test_the_answer_carrying_the_counters_is_not_stored(self, app, made):
+    @pytest.mark.parametrize("route", ROUTES_THAT_READ_THE_TOKEN)
+    def test_the_answer_carrying_the_counters_is_not_stored(
+        self, app, made, route
+    ):
         """
         The half that does not depend on a cache implementing ``Vary``.
 
@@ -246,10 +267,10 @@ class TestTheAnswerSaysWhatItVariesBy:
         guest, code, token, _ = made
 
         answered = guest.get(
-            f"/api/v1/links/{code}", headers={"X-Deletion-Token": token}
+            route.format(code=code), headers={"X-Deletion-Token": token}
         )
 
-        assert answered.get_json()["clicks"] is not None
+        assert answered.status_code == 200, answered.get_data(as_text=True)[:200]
         assert answered.headers.get("Cache-Control") == "no-store"
 
     def test_the_public_answer_is_still_cacheable(self, app, made):

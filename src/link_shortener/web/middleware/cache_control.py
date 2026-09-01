@@ -21,6 +21,8 @@ case where it does not revalidate. ``no-store`` says do not keep it at all.
 
 from flask import Flask, Response, g, request
 
+from link_shortener.web.security.authorization import DELETION_TOKEN_HEADER
+
 
 class PrivateCacheMiddleware:
     """
@@ -104,6 +106,22 @@ class PrivateCacheMiddleware:
             if drawn_a_page or speaks_a_language:
                 response.vary.add("Cookie")
                 response.vary.add("Accept-Language")
+            # Said here, above the anonymous return, because the caller
+            # whose answer depends on this header is a guest: nobody who
+            # signed in needs a deletion token to see their own link's
+            # counters. Marked by `presented_link_id`, which is the one
+            # place the header is read -- three routes read it, and when
+            # each set its own headers only one of them did.
+            #
+            # `Vary` whenever it was read, since that is when the answer
+            # could have been either; `no-store` when it matched, because
+            # that is when the body carries figures belonging to one
+            # caller and `Vary` alone leans on every cache in the path
+            # implementing it correctly.
+            if getattr(g, "deletion_token_was_read", False):
+                response.vary.add(DELETION_TOKEN_HEADER)
+                if getattr(g, "deletion_token_matched", False):
+                    response.headers["Cache-Control"] = "no-store"
             # `g.current_user` is put there by the authentication
             # middleware on every request, so its absence means the caller
             # was anonymous -- or that this ran before authentication did,
