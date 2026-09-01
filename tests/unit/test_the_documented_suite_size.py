@@ -14,7 +14,9 @@ run -- collecting the suite from inside itself is a recursion this file will
 not start -- so what is held here is that the copies agree with each other
 and sit above the floor CI enforces. A release that measures a new number
 changes them together or fails here; a number that is stale in all nine at
-once is a release-time concern, and `RELEASE-CHECKLIST.md` carries it.
+once is a release-time concern: the number is remeasured with a run of
+the whole suite and written into all nine together, which is a step of
+the release procedure and not of this file.
 
 The same for the coverage figure, which lives in two of the same files.
 """
