@@ -369,6 +369,32 @@ WRAPPERS = [
         "LOGIN_SUCCEEDED",
     ),
     (lambda log: log.log_login_failed("ivanov@example.com", "bad"), "LOGIN_FAILED"),
+    (
+        lambda log: log.log_session_ended("u-1", session_id="chain-1"),
+        "SESSION_ENDED",
+    ),
+    (
+        lambda log: log.log_refresh_token_replayed("u-1", session_id="chain-1"),
+        "REFRESH_TOKEN_REPLAYED",
+    ),
+    (
+        lambda log: log.log_registered("u-1", "ivanov@example.com"),
+        "REGISTERED",
+    ),
+    (
+        lambda log: log.log_expired_links_swept(links_deleted=4),
+        "EXPIRED_LINKS_SWEPT",
+    ),
+    (
+        lambda log: log.log_security_history_swept(
+            days_folded=2, events_deleted=9
+        ),
+        "SECURITY_HISTORY_SWEPT",
+    ),
+    (
+        lambda log: log.log_addresses_normalised(addresses_changed=3),
+        "ADDRESSES_NORMALISED",
+    ),
     (lambda log: log.log_user_created("u-1", "a@b.com", ["admin"]), "USER_CREATED"),
     (lambda log: log.log_user_deleted("u-1", 3), "USER_DELETED"),
     (lambda log: log.log_user_activated("u-1"), "USER_ACTIVATED"),

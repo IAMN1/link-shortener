@@ -544,10 +544,11 @@ class AuthController:
         its session, so no refresh token is needed to end it.
         """
         refresh_token = _read_refresh_token()
-        if refresh_token:
-            self.auth_service.logout(refresh_token)
-        elif g.get("auth_session_id"):
-            self.auth_service.logout_session(g.get("auth_session_id"))
+        self.auth_service.sign_out(
+            create_request_context(),
+            refresh_token=refresh_token,
+            session_id=g.get("auth_session_id"),
+        )
 
         resp = jsonify(MessageResponse(message="Logged out").model_dump())
         resp.delete_cookie('refresh_token', path='/')
@@ -578,7 +579,7 @@ class AuthController:
                 "UNAUTHENTICATED", gettext("No refresh token"), 401
             )
 
-        tokens = self.auth_service.refresh(refresh_token)
+        tokens = self.auth_service.refresh(refresh_token, create_request_context())
         if not tokens:
             resp, status = error_response(
                 "UNAUTHENTICATED", gettext("Invalid or expired refresh token"), 401

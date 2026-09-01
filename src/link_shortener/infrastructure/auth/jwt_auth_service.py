@@ -8,6 +8,7 @@ import jwt
 from link_shortener.application import UnitOfWorkFactory, AuthenticationService
 from link_shortener.application.dtos.auth import RefreshedTokens
 from link_shortener.domain import User, Email, RefreshSession
+from link_shortener.domain.exceptions import RefreshTokenReplayedError
 from link_shortener.domain.policies.password_policy import validate_password
 
 
@@ -332,8 +333,12 @@ class JwtAuthenticationService(AuthenticationService):
 
         The presented token is retired and replaced. Presenting one that was
         already spent is treated as a replay -- the honest holder and the
-        copy are indistinguishable at that point, so every session of the
-        user is revoked and both have to log in again.
+        copy are indistinguishable at that point, so the chain that token
+        belongs to is revoked and both have to sign in again. That chain
+        and no more: the account's other sessions, on its other devices,
+        are left alone, or holding one dead token would be a way to sign
+        the victim out everywhere. The reason is written again at the
+        branch that does it.
 
         Args:
             refresh_token: The refresh token.
@@ -370,6 +375,16 @@ class JwtAuthenticationService(AuthenticationService):
                 if session.replaced_by is not None:
                     uow.refresh_sessions.revoke_chain(session.chain_id)
                     uow.commit()
+                    # Raised rather than returned, so the layer that can
+                    # write a record hears about it. Returning "no" here
+                    # made a leaked credential indistinguishable from an
+                    # expiry to everything above, and the detection went
+                    # into no journal at all. What the caller is told does
+                    # not change: `RefreshSessionUseCase` catches this and
+                    # answers None.
+                    raise RefreshTokenReplayedError(
+                        user_id=user_id, chain_id=session.chain_id
+                    )
                 return None
 
             user = uow.users.find_by_id(user_id)

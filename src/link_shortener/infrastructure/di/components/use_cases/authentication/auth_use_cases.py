@@ -3,10 +3,11 @@ from dataclasses import dataclass
 from link_shortener.application import (
     UnitOfWorkFactory, AuditLogger, ChangePasswordUseCase,
     CleanUnverifiedAccountsUseCase,
-    LoginUseCase, RegisterUseCase, RequestPasswordResetUseCase,
+    LoginUseCase, RefreshSessionUseCase, RegisterUseCase,
+    RequestPasswordResetUseCase,
     ResendVerificationUseCase, ResetPasswordUseCase,
     SendAccountExistsEmailUseCase, SendPasswordResetEmailUseCase,
-    SendVerificationEmailUseCase,
+    SendVerificationEmailUseCase, SignOutUseCase,
     VerifyEmailUseCase, AuthenticationService, Logger, Mailer,
     MailTemplates, TaskQueue, UserManagementService
 )
@@ -69,6 +70,31 @@ class AuthUseCasesComponent:
             audit_logger=self.audit_logger,
         )
 
+    def get_sign_out_use_case(self) -> SignOutUseCase:
+        """Return a configured ``SignOutUseCase``.
+
+        Returns:
+            The use case that retires one session and records it.
+        """
+        return SignOutUseCase(
+            authentication_service=self.authentication_service,
+            uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
+            logger=self.logger,
+        )
+
+    def get_refresh_session_use_case(self) -> RefreshSessionUseCase:
+        """Return a configured ``RefreshSessionUseCase``.
+
+        Returns:
+            The use case that rotates a refresh token and records a replay.
+        """
+        return RefreshSessionUseCase(
+            authentication_service=self.authentication_service,
+            audit_logger=self.audit_logger,
+            logger=self.logger,
+        )
+
     def get_register_use_case(self) -> RegisterUseCase:
         """
         Return a configured ``RegisterUseCase``.
@@ -80,6 +106,7 @@ class AuthUseCasesComponent:
             uow_factory=self.uow_factory,
             authentication_service=self.authentication_service,
             logger=self.logger,
+            audit_logger=self.audit_logger,
             default_role_name=self.default_role_name,
             task_queue=self.task_queue,
             verification_ttl_hours=self.verification_ttl_hours,

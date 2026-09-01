@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from link_shortener.application import (
+    AuditLogger,
     RollUpVisitsUseCase,
     ServiceCache,
     UnitOfWorkFactory, CleanExpiredLinksUseCase,
@@ -25,6 +26,9 @@ class AdminLinkUseCasesComponent:
     logger: Logger
     """Application logger injected into the use cases."""
 
+    audit_logger: AuditLogger
+    """Security journal, for the sweep that removes links."""
+
     create_short_link_use_case: CreateShortLinkUseCase
     visit_retention_days: int = 90
     """Use case needed by ``SeedDatabaseUseCase`` to create test links."""
@@ -41,6 +45,7 @@ class AdminLinkUseCasesComponent:
             cache=self.cache,
             stats_cache=self.cache,
             logger=self.logger,
+            audit_logger=self.audit_logger,
         )
 
     def get_roll_up_visits_use_case(self) -> RollUpVisitsUseCase:

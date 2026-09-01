@@ -450,11 +450,18 @@ def _():
     # assertions below would be measuring nothing. "cache: disabled" names
     # the absence of a cache server, not the absence of a cache -- an
     # in-memory one is running, which is what section 12 invalidates.
+    #
+    # "task_queue: inline" is the same distinction on the other side, and
+    # this line asked for "ok" until it was measured: `/health` stopped
+    # answering "ok" for a queue with no broker in `cc13cf5`, this file was
+    # last touched before it, and nothing ran the two together -- so the
+    # committed tree failed its own live check, 156 of 157, on this
+    # assertion alone.
     assert data["components"] == {
         "cache": "disabled",
         "database": "ok",
         "rate_limiter": "enforcing",
-        "task_queue": "ok",
+        "task_queue": "inline",
     }
 
 @test("GET /health (never throttled)")
@@ -487,17 +494,26 @@ def _():
     # answerable for one of the two.
     assert set(r.get_json()) == {"message"}
 
-@test("A fresh registration cannot sign in yet")
+@test("A fresh registration cannot sign in yet, and is told nothing extra")
 def _():
     # The account exists and the password is right; what it lacks is a
-    # confirmed address. Named apart from a wrong password on purpose --
-    # this is the one refusal the holder can act on, and only somebody who
-    # already knows the password ever sees it.
-    r = new_client("10.0.0.30").post("/api/v1/auth/login", json={
+    # confirmed address. It used to be named apart from a wrong password,
+    # on the argument that only somebody who already knows the password
+    # ever sees it -- true, and beside the point: what it told them is
+    # that the guess *landed*, which is worth having away from this
+    # service because people reuse passwords. Both answers are asked for
+    # here, because the property is that they are the same one.
+    unconfirmed = new_client("10.0.0.30").post("/api/v1/auth/login", json={
         "email": "test@example.com", "password": "Test1234!"
     })
-    assert r.status_code == 401, r.get_json()
-    assert r.get_json()["error"] == "EMAIL_NOT_VERIFIED", r.get_json()
+    wrong = new_client("10.0.0.30").post("/api/v1/auth/login", json={
+        "email": "test@example.com", "password": "NotThePassword9!"
+    })
+    assert unconfirmed.status_code == 401, unconfirmed.get_json()
+    assert unconfirmed.get_json()["error"] == "INVALID_CREDENTIALS", unconfirmed.get_json()
+    assert unconfirmed.get_json() | {"timestamp": None} == wrong.get_json() | {
+        "timestamp": None
+    }, (unconfirmed.get_json(), wrong.get_json())
 
 @test("GET /api/v1/auth/verify (a link that was never issued)")
 def _():

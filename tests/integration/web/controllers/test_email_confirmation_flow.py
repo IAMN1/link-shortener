@@ -134,17 +134,68 @@ class TestRegistrationLeavesAnAccountWaiting:
         response = _sign_in(client, email)
 
         assert response.status_code == 401
-        assert response.get_json()["error"] == "EMAIL_NOT_VERIFIED"
 
-    def test_the_refusal_names_what_to_do(self, client, email):
-        """Unlike a wrong password, this one is the holder's own business
-        and they can act on it -- and only somebody who already has the
-        password ever sees it."""
+    def test_the_refusal_is_the_one_a_wrong_password_gets(self, client, email):
+        """
+        Named until it was measured as an oracle.
+
+        The refusal used to be ``EMAIL_NOT_VERIFIED``, on the argument that
+        only a caller who already knows the password ever sees it, so it
+        reveals no account they had not found. True, and beside the point:
+        what it reveals is that the guess *landed*, and a password is worth
+        having away from this service because people reuse them. Measured
+        on a live stack, the pair ``EMAIL_NOT_VERIFIED`` for the right
+        password and ``INVALID_CREDENTIALS`` for a wrong one answers "is
+        this the password" to anybody who asks.
+
+        The holder is not stranded: the sign-in page carries "Didn't get
+        the confirmation email?" at all times, and that route answers 202
+        for any address.
+        """
         _register(client, email)
 
-        message = _sign_in(client, email).get_json()["message"]
+        unconfirmed = _sign_in(client, email)
+        wrong_password = client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "NotThePassword9!"},
+        )
 
-        assert "onfirm" in message
+        assert unconfirmed.status_code == wrong_password.status_code
+        assert (
+            unconfirmed.get_json()["error"]
+            == wrong_password.get_json()["error"]
+            == "INVALID_CREDENTIALS"
+        )
+        assert (
+            unconfirmed.get_json()["message"]
+            == wrong_password.get_json()["message"]
+        )
+
+    def test_the_journal_still_knows_which_it_was(self, client, app, email):
+        """
+        The wire drops the distinction; the journal keeps it.
+
+        That is what ``log_login_failed`` takes a reason for, and it is
+        the arrangement the deactivated-account branch beside it already
+        used: an operator has to tell "somebody is guessing" from "a real
+        user never confirmed", and ``audit:view`` separates that reader
+        from the caller.
+        """
+        from sqlalchemy import text
+
+        _register(client, email)
+        _sign_in(client, email)
+
+        with app.app_context():
+            with app.container.get_db_manager().session() as session:
+                reasons = session.execute(
+                    text(
+                        "SELECT count(*) FROM security_events "
+                        "WHERE event_type = 'LOGIN_FAILED'"
+                    )
+                ).scalar_one()
+
+        assert reasons >= 1
 
 
 class TestFollowingTheLink:

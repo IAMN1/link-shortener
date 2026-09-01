@@ -263,6 +263,7 @@ class TestInvalidationHappensAfterTheCommit:
                 cache=RecordingCache(),
                 stats_cache=RecordingCache(),
                 logger=app.container.logger_component.get_logger(__name__),
+                audit_logger=app.container.get_audit_logger(),
             )
             use_case.execute(RequestContext(request_id="cli-test"))
 
@@ -305,6 +306,7 @@ class TestInvalidationHappensAfterTheCommit:
                 cache=SilentlyFailingCache(),
                 stats_cache=SilentlyFailingCache(),
                 logger=RecordingLogger(),
+                audit_logger=app.container.get_audit_logger(),
             )
             use_case.execute(RequestContext(request_id="cli-test"))
 

@@ -94,8 +94,12 @@ class TestConfirmingOnTheOperatorsWord:
         refused = app.test_client().post(
             "/api/v1/auth/login", json={"email": email, "password": PASSWORD}
         )
+        # 401 and no more: an unconfirmed account is refused with the same
+        # answer a wrong password gets, so the code no longer says which.
+        # What is being measured here is that the refusal turns into a
+        # sign-in once an operator confirms the address, and that does not
+        # need the refusal to name itself.
         assert refused.status_code == 401
-        assert refused.get_json()["error"] == "EMAIL_NOT_VERIFIED"
 
         client.post(
             f"/api/v1/admin/users/{user_id}/verify-email",

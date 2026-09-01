@@ -158,6 +158,19 @@ class SQLAlchemyRefreshSessionRepository(RefreshSessionRepository):
     def delete_expired(self) -> int:
         """Delete sessions whose tokens have already expired.
 
+        Expiry only, and a revoked session that has not expired stays --
+        which reads like an oversight and is the opposite. A replay is
+        recognised by finding the row the presented token names and seeing
+        that it was already spent: with the row gone, the same token is
+        merely one that names nothing, which is what an expired or forged
+        token looks like. Sweeping revoked rows early would turn every
+        detectable theft inside the refresh lifetime into an ordinary
+        refusal and take ``REFRESH_TOKEN_REPLAYED`` out of the journal
+        with it.
+
+        The row stops being useful at the moment the token it names could
+        no longer be presented at all, and that moment is its expiry.
+
         Returns:
             Number of sessions deleted.
         """

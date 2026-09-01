@@ -117,6 +117,8 @@ from .use_cases.admin.users.delete_user import DeleteUserUseCase
 
 from .use_cases.auth.change_password import ChangePasswordUseCase
 from .use_cases.auth.login import LoginUseCase
+from .use_cases.auth.refresh_session import RefreshSessionUseCase
+from .use_cases.auth.sign_out import SignOutUseCase
 from .use_cases.auth.register import RegisterUseCase
 from .use_cases.auth.request_password_reset import (
     PasswordResetOutcome, RequestPasswordResetUseCase,
@@ -233,6 +235,8 @@ __all__ = [
 
     "ChangePasswordUseCase",
     "LoginUseCase",
+    "RefreshSessionUseCase",
+    "SignOutUseCase",
     "PasswordResetOutcome",
     "RegisterUseCase",
     "RequestPasswordResetUseCase",

@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 from link_shortener.application.context import RequestContext
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
@@ -34,6 +35,11 @@ class RollUpSecurityEventsUseCase(BaseUseCase):
     Attributes:
         uow_factory: Opens the transaction each step runs in.
         logger: Where the outcome is recorded.
+        audit_logger: Where the sweep of this journal's own rows is
+            recorded -- in the journal being swept. NIST SP 800-53 AU-9
+            asks for exactly that: a trail that can be pruned without the
+            pruning appearing in it protects nothing from the people who
+            can prune it.
         retention_days: How long a raw event row is kept. Zero disables
             the sweep, and the table then grows without limit -- the fold
             still runs, so the charts stay correct either way.
@@ -47,6 +53,7 @@ class RollUpSecurityEventsUseCase(BaseUseCase):
 
     uow_factory: UnitOfWorkFactory
     logger: Logger
+    audit_logger: AuditLogger
     retention_days: int = 365
 
     def execute(
@@ -83,4 +90,13 @@ class RollUpSecurityEventsUseCase(BaseUseCase):
             rows_deleted=swept,
             retention_days=self.retention_days,
         )
+        # Only a run that moved something, for the reason
+        # `clean_unverified_accounts` gives -- and here it matters twice
+        # over: a record on every scheduled run would be a record among
+        # which the one run that removed a year of evidence is invisible.
+        if folded or swept:
+            audit = self._get_audit_logger(self.audit_logger, context)
+            audit.log_security_history_swept(
+                days_folded=folded, events_deleted=swept
+            )
         return folded, swept

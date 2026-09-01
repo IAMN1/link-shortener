@@ -36,6 +36,45 @@ class AuditEvent(Enum):
 
     LOGIN_SUCCEEDED = "LOGIN_SUCCEEDED"
     LOGIN_FAILED = "LOGIN_FAILED"
+    # The end of one session, by the account that opened it. Not
+    # ``LOGIN_ENDED``: the pair above is one act with two outcomes, and
+    # this is a different act -- it is also what an operator reads to tell
+    # a session that was closed from one that is still open, which the
+    # sign-in alone cannot say.
+    #
+    # It belongs by the rule above read plainly: a session ceasing is a
+    # change to who may do what. Until this existed the journal recorded
+    # eleven sessions revoked and named none of them -- measured by
+    # grepping the three journals for LOGOUT and SESSION after a run that
+    # closed eleven.
+    SESSION_ENDED = "SESSION_ENDED"
+
+    # A refresh token that had already been spent came back.
+    #
+    # The single most security-relevant thing this service can notice: the
+    # honest holder and a copy are indistinguishable at that moment, which
+    # is why the chain is retired. It was retired in silence -- the code
+    # revoked the chain, returned nothing, and wrote no line anywhere, so
+    # the one signal that says "a credential of this account is loose"
+    # reached nobody. Recorded whichever of the two presented it, because
+    # that is the fact: this token was presented twice.
+    REFRESH_TOKEN_REPLAYED = "REFRESH_TOKEN_REPLAYED"  # nosec B105
+
+    # An account created by whoever will own it, at the public route.
+    # ``USER_CREATED`` below is the operator's version and the two are not
+    # one event with a field, by the convention this vocabulary already
+    # follows for PASSWORD_CHANGED against USER_PASSWORD_RESET: an
+    # investigator asking "did this account let itself in" reads a
+    # different fact in each.
+    #
+    # Its absence was the plainest hole in the journal. Measured:
+    # ``audit.log`` stood at 335 lines, ``POST /api/v1/auth/register``
+    # answered 202, and it stood at 335 after -- while the same account
+    # made at a shell wrote ``USER_CREATED``. The sweep that deletes
+    # unconfirmed accounts writes ``UNVERIFIED_ACCOUNTS_SWEPT``, so the
+    # journal could record an account's removal without ever having
+    # recorded its arrival.
+    REGISTERED = "REGISTERED"
 
     USER_CREATED = "USER_CREATED"
     USER_DELETED = "USER_DELETED"
@@ -52,6 +91,31 @@ class AuditEvent(Enum):
     # deleted an account -- so the same fact was on the record through
     # one door and off it through the other.
     UNVERIFIED_ACCOUNTS_SWEPT = "UNVERIFIED_ACCOUNTS_SWEPT"
+
+    # Links removed by the schedule, for the reason above it read about
+    # links instead of accounts: ``URL_DELETED`` records an operator
+    # removing one, and the sweep removed many in silence. Measured, the
+    # journal did not move across ``maintenance clean-expired``.
+    EXPIRED_LINKS_SWEPT = "EXPIRED_LINKS_SWEPT"
+
+    # The security history itself, folded into day totals and then swept
+    # past ``SECURITY_EVENT_RETENTION_DAYS``.
+    #
+    # The one act in this service that removes records from this journal,
+    # and it left none in it -- measured, ``maintenance
+    # roll-up-security-events`` moved ``audit.log`` by zero lines while
+    # deleting rows from ``security_events``. NIST SP 800-53 AU-9 is about
+    # exactly this: the audit trail has to be protected from the people
+    # who can act on it, and a trail that can be pruned without the
+    # pruning appearing in it protects nothing. It is also the reason
+    # ``BEYOND_ADMIN_ALL`` exists twenty lines from here.
+    SECURITY_HISTORY_SWEPT = "SECURITY_HISTORY_SWEPT"
+
+    # Stored addresses lowered to the form the service now looks accounts
+    # up by. An address is how an account is identified and how it
+    # recovers a password, so rewriting one is a change to who may act as
+    # that account -- the rule this vocabulary is built on, read plainly.
+    ADDRESSES_NORMALISED = "ADDRESSES_NORMALISED"
     ROLES_CHANGED = "ROLES_CHANGED"
 
     # The address proved itself, from the link that was mailed to it.
@@ -216,6 +280,112 @@ class AuditLogger(ABC):
             AuditEvent.LOGIN_SUCCEEDED,
             target_user_id=target_user_id,
             email=email,
+            **fields,
+        )
+
+    def log_expired_links_swept(self, links_deleted: int, **fields) -> None:
+        """
+        Record a sweep that removed links.
+
+        Args:
+            links_deleted: How many rows went.
+            **fields: Additional context.
+        """
+        self.log_security_event(
+            AuditEvent.EXPIRED_LINKS_SWEPT,
+            links_deleted=links_deleted,
+            **fields,
+        )
+
+    def log_security_history_swept(
+        self, days_folded: int, events_deleted: int, **fields
+    ) -> None:
+        """
+        Record a sweep of the security journal's own rows.
+
+        Both numbers, because they answer different questions: folding
+        loses nothing, sweeping is what removes evidence, and a record
+        carrying only their sum could not tell an investigator which had
+        happened.
+
+        Args:
+            days_folded: Finished days folded into totals.
+            events_deleted: Raw rows removed past retention.
+            **fields: Additional context.
+        """
+        self.log_security_event(
+            AuditEvent.SECURITY_HISTORY_SWEPT,
+            days_folded=days_folded,
+            events_deleted=events_deleted,
+            **fields,
+        )
+
+    def log_addresses_normalised(self, addresses_changed: int, **fields) -> None:
+        """
+        Record addresses rewritten in place.
+
+        Args:
+            addresses_changed: How many accounts now answer to a different
+                spelling of their address.
+            **fields: Additional context.
+        """
+        self.log_security_event(
+            AuditEvent.ADDRESSES_NORMALISED,
+            addresses_changed=addresses_changed,
+            **fields,
+        )
+
+    def log_registered(self, target_user_id: str, email: str, **fields) -> None:
+        """
+        Record an account that registered itself.
+
+        The account goes in under ``target_user_id`` for the reason
+        ``log_login_succeeded`` gives: at a registration the caller is
+        anonymous, and the new account is what the event is about.
+
+        Args:
+            target_user_id: The account that came into existence.
+            email: Its address, masked by the implementation.
+            **fields: Additional context.
+        """
+        self.log_security_event(
+            AuditEvent.REGISTERED,
+            target_user_id=target_user_id,
+            email=email,
+            **fields,
+        )
+
+    def log_session_ended(self, target_user_id: Optional[str], **fields) -> None:
+        """
+        Record one session closing.
+
+        Args:
+            target_user_id: The account whose session ended, when the
+                request knew it. A client may sign out holding only a
+                refresh token, which names the session rather than the
+                account; the session is the fact either way, and this is
+                left ``None`` rather than guessed.
+            **fields: Additional context, ``session_id`` among them.
+        """
+        self.log_security_event(
+            AuditEvent.SESSION_ENDED,
+            target_user_id=target_user_id,
+            **fields,
+        )
+
+    def log_refresh_token_replayed(
+        self, target_user_id: str, **fields
+    ) -> None:
+        """
+        Record a refresh token presented after it had been spent.
+
+        Args:
+            target_user_id: The account whose chain was retired.
+            **fields: Additional context, the chain among them.
+        """
+        self.log_security_event(
+            AuditEvent.REFRESH_TOKEN_REPLAYED,
+            target_user_id=target_user_id,
             **fields,
         )
 

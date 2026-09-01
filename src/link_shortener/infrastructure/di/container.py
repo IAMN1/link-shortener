@@ -28,6 +28,7 @@ from link_shortener.application import (
     GetServiceStatsUseCase, GetVisitStatsUseCase,
     GetUserActivityStatsUseCase, GetUserLinksUseCase,
     GetUserUseCase, ListRolesUseCase, ListUsersUseCase, Logger, LoginUseCase,
+    RefreshSessionUseCase, SignOutUseCase,
     Mailer, RateLimiter, ReadJournalUseCase, RedirectLinkUseCase, RegisterUseCase,
     RequestPasswordResetUseCase,
     ResendVerificationUseCase, ResetPasswordUseCase, RollUpSecurityEventsUseCase,
@@ -317,6 +318,8 @@ class Container:
                 self.get_request_password_reset_use_case()
             ),
             reset_password_use_case=self.get_reset_password_use_case(),
+            sign_out_use_case=self.get_sign_out_use_case(),
+            refresh_session_use_case=self.get_refresh_session_use_case(),
         )
 
     # ------------------------------------------------------------------
@@ -395,6 +398,7 @@ class Container:
                 uow_factory=self._uow_factory,
                 cache=self.cache_component.get_cache(),
                 logger=self.logger_component.get_logger(__name__),
+                audit_logger=self.get_audit_logger(),
                 create_short_link_use_case=self.get_create_short_link_use_case(),
                 visit_retention_days=self.config.VISIT_RETENTION_DAYS,
             )
@@ -608,6 +612,7 @@ class Container:
         return RollUpSecurityEventsUseCase(
             uow_factory=self._uow_factory,
             logger=self.logger_component.get_logger(__name__),
+            audit_logger=self.get_audit_logger(),
             retention_days=self.config.SECURITY_EVENT_RETENTION_DAYS,
         )
 
@@ -685,6 +690,14 @@ class Container:
     def get_login_use_case(self) -> LoginUseCase:
         """Return fully configured ``LoginUseCase``."""
         return self._init_auth_use_cases().get_login_use_case()
+
+    def get_sign_out_use_case(self) -> SignOutUseCase:
+        """Return fully configured ``SignOutUseCase``."""
+        return self._init_auth_use_cases().get_sign_out_use_case()
+
+    def get_refresh_session_use_case(self) -> RefreshSessionUseCase:
+        """Return fully configured ``RefreshSessionUseCase``."""
+        return self._init_auth_use_cases().get_refresh_session_use_case()
 
     def get_request_password_reset_use_case(self) -> RequestPasswordResetUseCase:
         """Return fully configured ``RequestPasswordResetUseCase``."""

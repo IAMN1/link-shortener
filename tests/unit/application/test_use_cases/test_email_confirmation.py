@@ -176,6 +176,7 @@ class TestRegistration:
             uow_factory=uow_factory,
             authentication_service=auth,
             logger=Mock(),
+            audit_logger=Mock(),
             default_role_name="user",
             task_queue=queue,
             verification_ttl_hours=24,
@@ -270,6 +271,7 @@ class TestRegistration:
             uow_factory=uow_factory,
             authentication_service=auth,
             logger=Mock(),
+            audit_logger=Mock(),
             default_role_name="user",
             task_queue=queue,
             verification_ttl_hours=24,
@@ -293,6 +295,7 @@ class TestRegistration:
             uow_factory=uow_factory,
             authentication_service=auth,
             logger=logger,
+            audit_logger=Mock(),
             default_role_name="user",
             task_queue=queue,
             verification_ttl_hours=24,
@@ -312,6 +315,7 @@ class TestRegistration:
             uow_factory=uow_factory,
             authentication_service=auth,
             logger=logger,
+            audit_logger=Mock(),
             default_role_name="user",
             task_queue=queue,
             verification_ttl_hours=24,
@@ -685,7 +689,8 @@ class TestTheSweep:
         stale.created_at = datetime.now(timezone.utc) - timedelta(hours=100)
         uow.users.save(stale)
 
-        assert self._use_case(uow_factory).execute(context()) == 1
+        accounts, _ = self._use_case(uow_factory).execute(context())
+        assert accounts == 1
 
     def test_it_leaves_confirmed_accounts_alone(self, uow_factory, uow):
         settled = User.create(
@@ -694,7 +699,8 @@ class TestTheSweep:
         settled.created_at = datetime.now(timezone.utc) - timedelta(days=400)
         uow.users.save(settled)
 
-        assert self._use_case(uow_factory).execute(context()) == 0
+        accounts, _ = self._use_case(uow_factory).execute(context())
+        assert accounts == 0
         assert uow.users.users == [settled]
 
     def test_a_sweep_that_removed_accounts_reaches_the_audit_trail(

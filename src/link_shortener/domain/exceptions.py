@@ -130,6 +130,37 @@ class ValidationError(DomainError):
         self.field = field
 
 
+class RefreshTokenReplayedError(DomainError):
+    """
+    Raised when a refresh token is presented after it was already spent.
+
+    Rotation retires the token it was given, so a second presentation of
+    the same one means two holders have it and there is no telling which
+    of them is the owner. The chain is retired before this is raised; what
+    the exception carries is what a record of the act needs.
+
+    It exists so the detection can be recorded. The branch used to return
+    "no" like any other unusable token, which left the one signal meaning
+    "a credential of this account is loose" indistinguishable from an
+    expiry -- to the code above it and therefore to every journal.
+
+    The caller is still answered the same way an expired token is: this is
+    caught where the record is written and turned back into "no".
+
+    Attributes:
+        user_id: The account whose chain was retired.
+        chain_id: The chain that was retired.
+    """
+
+    def __init__(self, user_id: str, chain_id: str):
+        super().__init__(
+            "This refresh token has already been spent",
+            code="REFRESH_TOKEN_REPLAYED",
+        )
+        self.user_id = user_id
+        self.chain_id = chain_id
+
+
 class LinkNotFoundError(DomainError):
     """
     Exception raised when a link cannot be found by its short code.

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.auth.auth_service import AuthenticationService
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
 from link_shortener.application.ports.uow import UnitOfWorkFactory
@@ -62,6 +63,7 @@ class RegisterUseCase(BaseUseCase):
     uow_factory: UnitOfWorkFactory
     authentication_service: AuthenticationService
     logger: Logger
+    audit_logger: AuditLogger
     default_role_name: str  # Role assigned to new users by default.
     task_queue: TaskQueue
     verification_ttl_hours: int
@@ -249,6 +251,17 @@ class RegisterUseCase(BaseUseCase):
             return None
 
         log.info("User registered", user_id=saved_user.id, email=email_vo.value)
+        # The security journal too, and not only this one. `application.log`
+        # keeps the whole address and is read under `logs:view`; the audit
+        # journal masks it and is read under `audit:view`, and it is the one
+        # an investigator opens to ask when an account appeared. It had no
+        # answer for an account that registered itself -- measured, 335
+        # lines before a registration and 335 after -- while the same
+        # account made by an operator wrote `USER_CREATED`.
+        audit = self._get_audit_logger(self.audit_logger, context)
+        audit.log_registered(
+            target_user_id=saved_user.id, email=email_vo.value
+        )
 
         # The token is issued in the same branch that saves the user, so
         # past the check above it is a string. mypy follows the two

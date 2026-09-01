@@ -6,6 +6,7 @@ from link_shortener.application.ports.cache.link_cache import LinkCache
 from link_shortener.application.ports.cache.link_service_stats_cache import (
     StatsCache,
 )
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
@@ -30,12 +31,14 @@ class CleanExpiredLinksUseCase(BaseUseCase):
         cache: Link cache to invalidate alongside the rows.
         stats_cache: Cache of service-wide totals, dropped when rows go.
         logger: Application logger.
+        audit_logger: Where the sweep is recorded.
     """
 
     uow_factory: UnitOfWorkFactory
     cache: LinkCache
     stats_cache: StatsCache
     logger: Logger
+    audit_logger: AuditLogger
 
     def execute(self, context: RequestContext) -> int:
         """
@@ -83,4 +86,12 @@ class CleanExpiredLinksUseCase(BaseUseCase):
             self.stats_cache.delete_stats()
 
         log.info("Cleaned expired links", deleted=len(deleted_links))
+        # Only a sweep that removed something, the way
+        # `clean_unverified_accounts` puts it: a schedule running over a
+        # service with nothing to clean would otherwise write a record
+        # every run saying it did nothing, and the records that matter
+        # would sit among them.
+        if deleted_links:
+            audit = self._get_audit_logger(self.audit_logger, context)
+            audit.log_expired_links_swept(links_deleted=len(deleted_links))
         return len(deleted_links)

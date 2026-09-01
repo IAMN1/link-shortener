@@ -93,24 +93,44 @@ class LoginUseCase(BaseUseCase):
             raise DomainError(N_("Invalid email or password"), code="INVALID_CREDENTIALS")
 
         if not user.email_verified:
-            # Named, unlike the case above, and the difference is who the
-            # answer is for. Deactivation is an administrator's decision
-            # that the account holder has no part in and cannot undo, so
-            # naming it only tells a guesser their guess landed. An
-            # unconfirmed address is the holder's own unfinished business:
-            # they are told what to do about it, and the only person who
-            # gets that answer is one who already knows the password --
-            # who has therefore learned nothing new about whether the
-            # account exists.
+            # Answered exactly like a wrong password, as the two branches
+            # above are.
+            #
+            # It used to be named, and the argument for naming it was
+            # about account *existence*: the only caller who reaches this
+            # line already knows the password, so telling them the address
+            # is unconfirmed reveals no account they had not already
+            # found. That much is true, and it is not what the answer
+            # costs. What it reveals is that the guess **landed** -- and a
+            # password is worth having away from this service, because
+            # people use the same one in several places. Measured on a
+            # live stack: `EMAIL_NOT_VERIFIED` came back for the right
+            # password and `INVALID_CREDENTIALS` for a wrong one, so the
+            # pair is an oracle that answers "is this the password" to
+            # anybody willing to try. Every other refusal this service
+            # makes is deliberately uniform -- registration does not say
+            # whether an address is taken, a reset answers the same for an
+            # address it has never seen -- and this was the one place that
+            # was not.
+            #
+            # The holder is not stranded by the change: the sign-in page
+            # carries "Didn't get the confirmation email?" at all times,
+            # not only after a refusal, and `resend-verification` answers
+            # 202 whatever address it is given. So the way back exists,
+            # is visible without being told, and reveals nothing either.
             log.warning("Login attempt on unverified user", user_id=user.id)
+            # The journal keeps the distinction the wire drops, which is
+            # the arrangement `log_login_failed` was written for: an
+            # operator has to tell "somebody is guessing" from "a real
+            # user never confirmed", and `audit:view` is what separates
+            # that reader from the caller.
             audit.log_login_failed(
                 email=email,
                 reason="email_not_verified",
                 target_user_id=user.id,
             )
             raise DomainError(
-                N_("Confirm your email address before signing in"),
-                code="EMAIL_NOT_VERIFIED",
+                N_("Invalid email or password"), code="INVALID_CREDENTIALS"
             )
 
         # One column, by a conditional update, rather than saving the

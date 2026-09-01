@@ -60,7 +60,7 @@ class TestFoldingComesFirst:
 
     def test_both_steps_run(self, uow_factory, uow, context):
         use_case = RollUpSecurityEventsUseCase(
-            uow_factory=uow_factory, logger=Mock(), retention_days=90
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock(), retention_days=90
         )
 
         folded, swept = use_case.execute(context, now=NOON)
@@ -80,7 +80,7 @@ class TestFoldingComesFirst:
             lambda *a, **kw: order.append("sweep") or 17
         )
         use_case = RollUpSecurityEventsUseCase(
-            uow_factory=uow_factory, logger=Mock(), retention_days=90
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock(), retention_days=90
         )
 
         use_case.execute(context, now=NOON)
@@ -91,7 +91,7 @@ class TestFoldingComesFirst:
         """Everything before midnight, so the day still receiving events
         is left alone."""
         use_case = RollUpSecurityEventsUseCase(
-            uow_factory=uow_factory, logger=Mock(), retention_days=90
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock(), retention_days=90
         )
 
         use_case.execute(context, now=NOON)
@@ -106,7 +106,7 @@ class TestTheRetentionWindow:
         self, uow_factory, uow, context
     ):
         use_case = RollUpSecurityEventsUseCase(
-            uow_factory=uow_factory, logger=Mock(), retention_days=365
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock(), retention_days=365
         )
 
         use_case.execute(context, now=NOON)
@@ -120,7 +120,7 @@ class TestTheRetentionWindow:
         """Keeping everything is a choice an operator may make, and the
         charts must go on being correct when they make it."""
         use_case = RollUpSecurityEventsUseCase(
-            uow_factory=uow_factory, logger=Mock(), retention_days=0
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock(), retention_days=0
         )
 
         folded, swept = use_case.execute(context, now=NOON)
@@ -134,7 +134,7 @@ class TestTheRetentionWindow:
         """Evidence outlives traffic: the question asked of a sign-in is
         usually asked long after the fact."""
         use_case = RollUpSecurityEventsUseCase(
-            uow_factory=Mock(), logger=Mock()
+            uow_factory=Mock(), logger=Mock(), audit_logger=Mock()
         )
 
         assert use_case.retention_days == 365

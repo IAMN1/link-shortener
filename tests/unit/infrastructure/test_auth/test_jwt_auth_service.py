@@ -11,6 +11,7 @@ import jwt
 import pytest
 
 from link_shortener.domain.entities.refresh_session import RefreshSession
+from link_shortener.domain.exceptions import RefreshTokenReplayedError
 from link_shortener.domain.entities.role import Role
 from link_shortener.domain.entities.user import User
 from link_shortener.domain.value_objects.email import Email
@@ -355,3 +356,98 @@ class TestASessionBelongsToOneAccount:
 
         assert pair is None
         uow_factory.uow.refresh_sessions.claim_for_rotation.assert_not_called()
+
+
+class TestAReplayedRefreshTokenRetiresItsChainAndNoMore:
+    """
+    How far a replay reaches, held against the sentence that describes it.
+
+    Presenting a refresh token that was already spent means one of two
+    things and there is no telling which: the honest holder replayed it,
+    or a copy did. Either way the chain it belongs to is retired. What
+    the code has always done is retire *that chain* -- the comment at the
+    branch says so, and gives the reason: revoking the account's every
+    session would let anyone holding one dead token sign the victim out
+    of every other device they use.
+
+    The summary line of the same method said the opposite -- "every
+    session of the user is revoked" -- and nothing compared the two. A
+    reader deciding whether a leaked token is a whole-account incident
+    would have read the summary, which is the line an editor sees first.
+
+    Held on the seam rather than through the repository: ``revoke_chain``
+    and ``revoke_all_for_user`` are two different methods, and which one
+    is called is the whole of the difference.
+    """
+
+    def _spent_session(self, user_id: str, token_id: str, chain_id: str):
+        """A session row that has already been rotated once."""
+        session = RefreshSession.create(
+            user_id=user_id,
+            token_id=token_id,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+            chain_id=chain_id,
+        )
+        session.replaced_by = "the-successor"
+        return session
+
+    def _replay(self, service, uow_factory):
+        """Present a spent token and hand back what the service raised."""
+        uow_factory.uow.refresh_sessions.find_by_token_id.return_value = (
+            self._spent_session("the-owner", "spent-token", "chain-one")
+        )
+        with pytest.raises(RefreshTokenReplayedError) as raised:
+            service.refresh_access_token(mint(
+                sub="the-owner",
+                jti="spent-token",
+                type="refresh",
+                exp=datetime.now(timezone.utc) + timedelta(days=1),
+            ))
+        return raised.value
+
+    def test_the_replay_is_refused(self, service, uow_factory):
+        """
+        And says so out loud, rather than answering "no" like an expiry.
+
+        It used to return ``None``, which is what an expired or forged
+        token gets, so the one event meaning "this credential is loose"
+        was indistinguishable from the ordinary end of a session to
+        everything above -- and went into no journal.
+        """
+        replay = self._replay(service, uow_factory)
+
+        assert replay.user_id == "the-owner"
+        assert replay.chain_id == "chain-one"
+
+    def test_the_chain_the_token_belongs_to_is_retired(
+        self, service, uow_factory
+    ):
+        self._replay(service, uow_factory)
+
+        uow_factory.uow.refresh_sessions.revoke_chain.assert_called_once_with(
+            "chain-one"
+        )
+
+    def test_the_accounts_other_sessions_are_left_alone(
+        self, service, uow_factory
+    ):
+        """
+        The half the summary line got wrong.
+
+        ``revoke_all_for_user`` exists and is what deactivating an account
+        and resetting a password both call. A replay must not reach it.
+        """
+        self._replay(service, uow_factory)
+
+        uow_factory.uow.refresh_sessions.revoke_all_for_user.assert_not_called()
+
+    def test_the_sentence_describing_it_does_not_promise_more(self):
+        """
+        The summary must not claim a reach the branch does not have.
+
+        Read off the method's own docstring, because that is the sentence
+        a reader meets and the one that was wrong.
+        """
+        described = JwtAuthenticationService.refresh_access_token.__doc__ or ""
+
+        assert "every session of the" not in described, described

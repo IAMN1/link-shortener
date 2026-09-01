@@ -17,9 +17,13 @@ from link_shortener.application.use_cases.auth.request_password_reset import (
 from link_shortener.application.use_cases.auth.resend_verification import (
     ResendVerificationUseCase,
 )
+from link_shortener.application.use_cases.auth.refresh_session import (
+    RefreshSessionUseCase,
+)
 from link_shortener.application.use_cases.auth.reset_password import (
     ResetPasswordUseCase,
 )
+from link_shortener.application.use_cases.auth.sign_out import SignOutUseCase
 from link_shortener.application.use_cases.auth.verify_email import (
     VerifyEmailUseCase,
 )
@@ -49,10 +53,11 @@ class AuthService:
     gains.
 
     Attributes:
-        authentication_service: The port. Reached directly for signing out
-            and for refreshing, which are token operations with no use
-            case of their own: there is no policy in either beyond
-            retiring a session and issuing a pair.
+        authentication_service: The port, held for the callers that ask
+            this facade to validate a token. Signing out and refreshing
+            went through it directly while neither had a use case; both
+            have one now, because recording what happened is policy and
+            the journal was empty for both.
         login_use_case: Checks credentials and opens a session.
         register_use_case: Creates an account and mails its confirmation.
         verify_email_use_case: Spends a confirmation token.
@@ -60,6 +65,9 @@ class AuthService:
         change_password_use_case: Replaces the caller's own password.
         request_password_reset_use_case: Mails a reset link.
         reset_password_use_case: Spends a reset token.
+        sign_out_use_case: Retires one session and records it.
+        refresh_session_use_case: Rotates a refresh token, and records a
+            replay of one.
     """
 
     authentication_service: AuthenticationService
@@ -68,6 +76,8 @@ class AuthService:
     verify_email_use_case: VerifyEmailUseCase
     resend_verification_use_case: ResendVerificationUseCase
     change_password_use_case: ChangePasswordUseCase
+    sign_out_use_case: SignOutUseCase
+    refresh_session_use_case: RefreshSessionUseCase
     request_password_reset_use_case: RequestPasswordResetUseCase
     reset_password_use_case: ResetPasswordUseCase
 
@@ -89,39 +99,42 @@ class AuthService:
         """
         return self.login_use_case.execute(email, password, context)
 
-    def logout(self, refresh_token: str) -> bool:
-        """End the session a refresh token belongs to.
+    def sign_out(
+        self,
+        context: RequestContext,
+        refresh_token: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> bool:
+        """End one session, by whichever token the client holds.
 
         Args:
-            refresh_token: The token naming the session.
+            context: Request context, for the journals.
+            refresh_token: The token naming the session, when there is one.
+            session_id: The ``sid`` of the access token, for a client
+                holding no refresh token.
 
         Returns:
-            True if a live session was found and revoked.
+            True if a live session was found and retired.
         """
-        return self.authentication_service.revoke_refresh_token(refresh_token)
+        return self.sign_out_use_case.execute(
+            context, refresh_token=refresh_token, session_id=session_id
+        )
 
-    def logout_session(self, chain_id: str) -> int:
-        """End a session named by its chain, for a client holding no
-        refresh token.
-
-        Args:
-            chain_id: The ``sid`` claim of the access token.
-
-        Returns:
-            Number of sessions revoked.
-        """
-        return self.authentication_service.revoke_session_chain(chain_id)
-
-    def refresh(self, refresh_token: str) -> Optional[RefreshedTokens]:
+    def refresh(
+        self, refresh_token: str, context: Optional[RequestContext] = None
+    ) -> Optional[RefreshedTokens]:
         """Exchange a refresh token for a fresh pair, rotating it.
 
         Args:
             refresh_token: The token to spend.
+            context: Request context. Optional so that callers with no
+                request behind them -- a test, a shell -- can still spend
+                a token; with one, a replay is recorded.
 
         Returns:
             The new pair, or None if the token cannot be spent.
         """
-        return self.authentication_service.refresh_access_token(refresh_token)
+        return self.refresh_session_use_case.execute(refresh_token, context)
 
     # ------------------------------------------------------------------
     # Registering and confirming
