@@ -267,6 +267,11 @@ NUMBER_WORDS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
     "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
     "twelve": 12,
+    # The Russian front page states the same count, and a count nobody
+    # reads is a count that goes stale: it said "восемь" while the
+    # templates differed by nine.
+    "одна": 1, "две": 2, "три": 3, "четыре": 4, "пять": 5, "шесть": 6,
+    "семь": 7, "восемь": 8, "девять": 9, "десять": 10,
 }
 """Enough to count the settings that differ, spelled as the prose spells them."""
 
@@ -278,6 +283,14 @@ COUNTED_IN_PROSE = [
     (GUIDE := DOCKER.parent / "docs" / "getting-started.md",
      r"same catalogue as `\.env\.example` with (\w+)\s*\n?>? ?lines set"),
     (GUIDE, r"header lists all (\w+) with the"),
+    # The three that were not on this list, and were wrong because of it:
+    # both front pages and the template that describes itself. The list is
+    # what decides where the count is checked, so a sentence outside it is
+    # a sentence nothing reads -- measured, all three said eight while the
+    # templates differed by nine, in two languages.
+    (DOCKER.parent / "README.md", r"(\w+) lines differ between"),
+    (DOCKER.parent / "README.ru.md", r"Различаются (\w+) строк"),
+    (DOCKER.parent / ".env.example", r"the same catalogue with (\w+) lines"),
 ]
 """Every sentence that states how many settings the templates differ by."""
 

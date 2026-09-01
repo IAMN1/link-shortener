@@ -136,7 +136,7 @@ delivered`.
 «Invalid email or password» — тем же, чем отвечает неверный пароль, и это
 сделано намеренно: различие подсказывало бы «этот ли пароль» любому, кто
 пробует. Дело не в пароле, а в неподтверждённом адресе. Что именно
-случилось, видно в журнале безопасности, под правом `audit:view`.
+случилось, видно в журнале аудита, под правом `audit:view`.
 
 Подтвердить чужой адрес без письма администратор может со страницы
 пользователей или так:
@@ -259,7 +259,7 @@ curl -s http://localhost:5000/health
 
 ```mermaid
 flowchart LR
-    P["Сервисы включённых профилей<br/>db · redis · redis_broker · mailpit"] --> H{healthy}
+    P["Сервисы, которых ждёт миграция<br/>db · redis · redis_broker"] --> H{healthy}
     H --> M["migrations<br/>alembic upgrade head"]
     M --> E{вышел с 0}
     E --> APP[app]
@@ -400,8 +400,8 @@ docker compose --env-file .env.docker up -d db
 | `FLASK_ENV` | База | Кэш | Заметно |
 |---|---|---|---|
 | `development` | SQLite или PostgreSQL | в процессе или Redis | отладка включена, роли засеваются при старте, куки без `Secure` |
-| `staging` | **только PostgreSQL** | Redis | тот же список обязательных настроек, что у production, вместе с `DOMAIN` |
-| `production` | **только PostgreSQL** | Redis | `Secure`-куки, gunicorn, `AUTO_SEED_ROLES=false`, почта без TLS отвергается |
+| `staging` | **только PostgreSQL** | Redis | тот же список обязательных настроек, что у production, вместе с `DOMAIN`, те же `Secure`-куки и тот же отказ слать почту без TLS |
+| `production` | **только PostgreSQL** | Redis | всё то же, что у staging, плюс gunicorn и `AUTO_SEED_ROLES=false` |
 | `testing` | не читает окружение вовсе | — | чтобы тест давал один ответ на любой машине |
 
 Развёрнутые профили отказываются стартовать на чём-либо, кроме PostgreSQL,

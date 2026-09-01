@@ -443,7 +443,14 @@ stateDiagram-v2
 | `user` | A registered account | `link:create`, `link:view_own`, `link:delete_own` |
 | `analyst` | An analyst | `stats:view_full`, `stats:view_any`, `link:view_own` |
 | `auditor` | Whoever reads the journals | `audit:view`, `logs:view`, `admin:view_system_health`, `stats:view_basic`, `stats:view_full` |
-| `admin` | An administrator | `admin:all` |
+| `admin` | An administrator | `admin:all` — every check but `audit:view` |
+
+`admin:all` is a bypass with one hole in it, and the hole is named:
+`BEYOND_ADMIN_ALL` in `rbac_authorization_service.py` holds `audit:view`,
+so the journal that records what administrators do is not readable by
+holding the administrator role. It is granted, not inherited — `auditor`
+is the role that carries it — and an administrator can still grant it to
+themselves, which is why doing so is itself an audited event.
 
 Roles are seeded from [`configs/rbac/roles.yaml`](../src/link_shortener/infrastructure/configs/rbac/roles.yaml)
 and edited afterwards in the panel — the five above are system roles the

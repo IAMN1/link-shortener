@@ -59,19 +59,23 @@ it — without a log pipeline for the traffic journals.
 ## Let the administrator role stop passing every check
 
 **Now.** The `admin` role holds one permission, `admin:all`, and the
-authorization service treats it as passing every check — see
-`infrastructure/configs/rbac/roles.yaml` and
-`rbac_authorization_service.py`.
+authorization service treats it as passing every check but one. The
+exception is named: `BEYOND_ADMIN_ALL` in `rbac_authorization_service.py`
+holds `audit:view`, so reading the audit journal has to be granted rather
+than inherited — an administrator who has not been given it is refused,
+and `auditor` is the role that carries it. That much is built; this entry
+is what is left.
 
-**Why.** It is the shortest description of an administrator and the reason
-no permission can ever be withheld from one. Every control this project
-adds around the audit journal is subject to it.
+**Why.** One permission is the shortest description of an administrator,
+and it is also the reason no *other* permission can be withheld from one.
+Every control this project adds is subject to it, except the one already
+outside.
 
-**What it would take.** A named set of permissions that `admin:all` does
-not cover, and a decision about who grants them. It does not remove the
-bypass — an administrator can still assign themselves the role — so it is
-worth doing together with `ROLES_CHANGED`, which is what turns a silent
-bypass into a recorded one -- and which now exists: see
+**What it would take.** Deciding which further permissions belong outside
+the bypass, and who grants them. It does not close the bypass either way —
+an administrator can still assign themselves any role — which is why it
+was worth doing together with `ROLES_CHANGED`, the record that turns a
+silent self-grant into a recorded one, and which now exists: see
 [Decisions → The audit journal records what the service does about accounts, and who read it](decisions.md).
 
 ---

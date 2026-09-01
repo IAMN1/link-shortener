@@ -43,7 +43,7 @@ is declared any more; running one is not formatting a change, it is
 reformatting the project.
 
 ```bash
-uv run pytest tests/                      # 4921 tests, 88% coverage floor
+uv run pytest tests/                      # 4941 tests, 88% coverage floor
 uv run flake8 src tests
 uv run pylint src                         # floor 9.0
 uv run bandit -r src -q

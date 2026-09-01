@@ -11,7 +11,7 @@
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![тестов: 4921](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-4921-0b5d3b)](docs/testing.md)
+[![тестов: 4941](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-4941-0b5d3b)](docs/testing.md)
 [![покрытие: 98%](https://img.shields.io/badge/%D0%BF%D0%BE%D0%BA%D1%80%D1%8B%D1%82%D0%B8%D0%B5-98%25-0b5d3b)](docs/testing.md)
 [![mypy: 0](https://img.shields.io/badge/mypy-0%20%D0%BE%D1%88%D0%B8%D0%B1%D0%BE%D0%BA-0b5d3b)](docs/testing.md)
 [![лицензия: Apache 2.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-Apache%202.0-blue)](LICENSE)
@@ -93,7 +93,7 @@ docker compose --env-file .env.docker \
 > Шаблона два, а не один, потому что один файл не отвечает на два вопроса
 > сразу: `.env.example` описывает запуск слева — SQLite и кэш в процессе,
 > `.env.docker.example` описывает запуск справа, где все зависимости в
-> контейнерах. Различаются восемь строк, остальное держит одинаковым тест.
+> контейнерах. Различаются девять строк, остальное держит одинаковым тест.
 >
 > `--write` вписывает секреты прямо в файл; без них развёрнутые профили не
 > стартуют. `--with-service-passwords` добавляет ещё два — те, с которыми
@@ -201,7 +201,7 @@ flowchart LR
 ## Тестирование
 
 ```bash
-uv run pytest tests/                      # 4921 тестов
+uv run pytest tests/                      # 4941 тестов
 uv run python tests/live/smoke_test.py    # 157 проверок по HTTP
 uv run python tests/live/browser_test.py  # 68 проверок настоящим браузером
 ```

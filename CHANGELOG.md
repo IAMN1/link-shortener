@@ -70,7 +70,7 @@ frozen" is the honest one.
   `/api/openapi.json` and generated from the same Pydantic models the
   endpoints validate against, so the document cannot describe a service
   that is not there.
-- **Command-line interface** — 38 commands in seven groups, plus
+- **Command-line interface** — 36 commands in seven groups, plus
   `create-admin` and `create-user` outside them: migrations, seeding,
   maintenance sweeps, cache, statistics, secrets, users, roles and tokens.
 - **Two-level cache** — redirects and link objects in Redis, invalidated on
@@ -87,7 +87,7 @@ frozen" is the honest one.
   pages.
 - **Docker Compose stack** — application, PostgreSQL, two Redis instances,
   a Celery worker and log rotation, with a development overlay.
-- **Test suite** — 4921 tests, 98.68% statement coverage against a floor of
+- **Test suite** — 4941 tests, 98.66% statement coverage against a floor of
   88%, plus two live runs against a real stack: 157 HTTP checks and 68
   browser checks. CI runs the suite twice, in a clean environment and a
   polluted one.

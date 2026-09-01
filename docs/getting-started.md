@@ -175,7 +175,8 @@ Stop the `flask run` from the first block before you start: this stack
 publishes the same port, and leaving it up costs twice — `up` fails with
 `bind: address already in use`, and if it does not, the `curl` at the end
 is answered by the local server rather than by the stack. Its `"cache":
-"disabled"` is the tell.
+"in_process"` is the tell — the stack answers `"ok"`, because it has Redis
+behind it.
 
 This block is written for a first run. If you already have a `.env.docker`,
 move it aside rather than letting the first line copy over it — the
@@ -202,10 +203,11 @@ curl -s http://localhost:5000/health
 
 > [!NOTE]
 > `.env.docker.example` is the same catalogue as `.env.example` with nine
-> lines set for containers — the backend, the service name of the
-> database, the two switches for Redis and Celery, the domain short links
-> are built from, and journals written to file, because this stack ships
-> the rotator that moves them. Its own header lists all nine with the
+> lines set for containers — the backend, the database's service name,
+> its name and its user, the two switches for Redis and Celery, the domain
+> short links are built from, the env file the stack reads, and journals
+> written to file, because this stack ships the rotator that moves them.
+> Its own header lists all nine with the
 > reason for each, and `test_the_two_templates_do_not_drift.py` holds every other
 > line identical between the two files.
 >
@@ -267,7 +269,7 @@ There is no separate step for migrations: `migrations` runs
 
 ```mermaid
 flowchart LR
-    P["Services of the enabled profiles<br/>db · redis · redis_broker · mailpit"] --> H{healthy}
+    P["Services the migration waits for<br/>db · redis · redis_broker"] --> H{healthy}
     H --> M["migrations<br/>alembic upgrade head"]
     M --> E{exited 0}
     E --> APP[app]
@@ -408,8 +410,8 @@ overrides.
 | `FLASK_ENV` | Database | Cache | Notably |
 |---|---|---|---|
 | `development` | SQLite or PostgreSQL | in-process or Redis | debug on, roles seeded at startup, cookies without `Secure` |
-| `staging` | **PostgreSQL only** | Redis | the same mandatory settings production has, `DOMAIN` included |
-| `production` | **PostgreSQL only** | Redis | `Secure` cookies, gunicorn, `AUTO_SEED_ROLES=false`, mail refused without TLS |
+| `staging` | **PostgreSQL only** | Redis | the same mandatory settings production has, `DOMAIN` included, and the same `Secure` cookies and refusal to send mail without TLS |
+| `production` | **PostgreSQL only** | Redis | all of staging's, plus gunicorn and `AUTO_SEED_ROLES=false` |
 | `testing` | ignores the environment entirely | — | so a test gives the same answer on every machine |
 
 The deployed profiles refuse to start on anything but PostgreSQL, and that

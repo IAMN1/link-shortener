@@ -1,6 +1,6 @@
 # Testing
 
-**4921 tests**, 98.68% coverage against a floor of 88%, plus two live runs
+**4941 tests**, 98.66% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -147,8 +147,11 @@ What it holds:
   turns four checks red on the property itself — the page shows
   `VALIDATION_ERROR`, `VALIDATION_ERROR`, `EMAIL_NOT_VERIFIED` and
   `INVALID_CREDENTIALS` where it should show a sentence — and the run ends
-  20/67, because a scenario that cannot read its own refusal never reaches
-  its next step. The suite and the HTTP run stay green throughout. (The
+  with twenty of its checks passing, because a scenario that cannot read
+  its own refusal never reaches its next step. (The fraction is not
+  written out here: the denominator moves whenever a check is added, and a
+  stale one is a number no run carries — which is what the guard below
+  refuses.) The suite and the HTTP run stay green throughout. (The
   same reversal in `main.js`, which is not a page script, adds nothing to
   either number.)
 - **A refusal is shown rather than swallowed.** The page scripts used to

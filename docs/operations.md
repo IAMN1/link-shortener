@@ -34,7 +34,8 @@ flask alembic upgrade head        # apply
 flask alembic status              # where the database stands
 flask alembic history             # the chain of revisions
 flask alembic migrate "what changed"   # autogenerate — see the rule above before keeping it
-flask alembic downgrade -1        # step back one
+flask alembic downgrade -1 --yes  # step back one; it asks first, and this repository
+                                  # keeps one revision, so -1 is every table
 ```
 
 In Docker there is no separate step: the `migrations` service runs
@@ -129,8 +130,6 @@ explained.
 | `db check` · `db status` | Can the database be reached |
 | `db migrate` | Apply Alembic migrations |
 | `db load-base-roles` | Seed or update the system roles from YAML |
-| `maintenance roll-up-visits` | Fold finished days of visits into day totals, then delete raw rows past `VISIT_RETENTION_DAYS`. Run daily |
-| `maintenance roll-up-security-events` | Fold finished days of security events into day totals, then delete raw rows past `SECURITY_EVENT_RETENTION_DAYS`. Run daily. A command of its own rather than a step in the line above: the two tables fill at different rates and keep their history for different lengths, and a cron line saying "roll up visits" should not delete the security history under a name that does not mention it |
 | `db load-custom-roles <file>` | The same from a file of your own |
 | `db seed --count N` | Fill the database with test links. They belong to nobody and are counted against nobody: the quota is measured against the caller's address, and a CLI call has none, so `GUEST_LINK_LIMIT` does not apply and there is nothing to raise. They also never expire — a guest's link made over HTTP lives seven days, these live until deleted |
 | `db init` · `db drop --yes` | Only meaningful with `USE_ALEMBIC=false` |
@@ -161,6 +160,8 @@ explained.
 | `maintenance clean-unverified` | Remove accounts nobody confirmed within `UNVERIFIED_ACCOUNT_TTL_HOURS`, and their dead tokens |
 | `maintenance clean-reset-tokens` | Remove `password_resets` rows that are spent or expired |
 | `maintenance normalize-emails --apply` | One-off, on an existing database |
+| `maintenance roll-up-visits` | Fold finished days of visits into day totals, then delete raw rows past `VISIT_RETENTION_DAYS`. Run daily |
+| `maintenance roll-up-security-events` | Fold finished days of security events into day totals, then delete raw rows past `SECURITY_EVENT_RETENTION_DAYS`. Run daily. A command of its own rather than a step in the line above: the two tables fill at different rates and keep their history for different lengths, and a cron line saying "roll up visits" should not delete the security history under a name that does not mention it |
 | `maintenance health` | A dependency report on the terminal, plus which journals this process could open |
 | `stats show` | Print the statistics as they stand, without recomputing them |
 | `stats refresh` | Rebuild the statistics cache |
@@ -292,7 +293,10 @@ The separate `migrations run` is belt and braces: `up -d` would apply them
 anyway, but running the step alone shows the schema change on its own before
 any application container restarts.
 
-Rolling back a revision is `flask alembic downgrade -1`. Rolling back the
+Rolling back a revision is `flask alembic downgrade -1`, which asks before
+it acts — this repository keeps one revision, so `-1` resolves to `base` and
+takes every table with it. Add `--yes` where nothing can answer the prompt:
+in a script, or in `docker compose exec` without `-it`. Rolling back the
 *application* below a revision it does not know is not supported — take a
 backup first.
 

@@ -162,8 +162,8 @@ the same endpoint sends its own cookie and gets the language on screen.
 |---|---|---|
 | `SECRET_KEY` | random per process | Signs JWTs, sessions, cache entries |
 | `SHORT_CODE_PEPPER` | random per process | Salts code generation |
-| `COOKIE_SECURE` | `false`, `true` in production | The `Secure` flag on auth cookies |
-| `SESSION_COOKIE_SECURE` | `false`, `true` in production | The same for Flask's session cookie |
+| `COOKIE_SECURE` | `false`, `true` on staging and production | The `Secure` flag on auth cookies |
+| `SESSION_COOKIE_SECURE` | `false`, `true` on staging and production | The same for Flask's session cookie |
 | `SESSION_COOKIE_SAMESITE` | `Lax` | |
 | `SESSION_COOKIE_HTTPONLY` | `true` | |
 | `HSTS_MAX_AGE` | `31536000` (a year) | Seconds a browser remembers to reach this service over TLS only. Sent as `Strict-Transport-Security` and read **only where `USE_HTTPS` is on**, so a plain-HTTP run never sends it. `0` switches it off — the setting for a deployment whose reverse proxy sends the header itself, since two of them are not additive and the browser reads the first. Without `includeSubDomains` and without `preload`: the first speaks for every sibling on the domain, the second is recorded in the browsers and takes months to undo |
@@ -319,8 +319,8 @@ guessing is gone while the configuration says it is there.
 | `CACHE_ENABLED` | `true` | `false` turns every cache call into a no-op |
 | `REDIS_ENABLED` | `false` in development, `true` in deployed profiles | Redis or the in-memory implementation |
 | `REDIS_URL` | `redis://localhost:6379/0` | The deployed profiles refuse to start without it when Redis is on |
-| `CACHE_LINK_TTL` | 3600 | Seconds a link object is kept |
-| `CACHE_STATS_TTL` | 300 | Seconds service statistics are kept — and how far the click counter can lag |
+| `CACHE_LINK_TTL` | 3600, 20 on development | Seconds a link object is kept |
+| `CACHE_STATS_TTL` | 300, 20 on development | Seconds service statistics are kept — and how far the click counter can lag. The short development default is why a counter there catches up in seconds |
 
 ## Mail
 
@@ -329,7 +329,7 @@ guessing is gone while the configuration says it is there.
 | `MAIL_ENABLED` | `false`; `true` in the template | With it off, registration still answers `202` and no message leaves — and the account it created cannot sign in, because nothing confirms the address. The sign-in is refused as `401 INVALID_CREDENTIALS` — the same answer a wrong password gets, so the refusal cannot be read as "that password was right" — and the only way past it is an administrator: `POST /api/v1/admin/users/{id}/verify-email`. Which of the two it was is in the audit journal, under `audit:view`. A deployment that means to take registrations has to turn mail on |
 | `MAIL_HOST`, `MAIL_PORT` | `localhost`, 1025 in development | Aimed at the Mailpit catcher |
 | `MAIL_USE_TLS` / `MAIL_USE_SSL` | `false` in development | `production` and `staging` each require one of them |
-| `MAIL_FROM` | — | Mandatory when mail is on |
+| `MAIL_FROM` | —, `no-reply@link-shortener.local` on development | Mandatory when mail is on |
 | `EMAIL_VERIFICATION_TTL_HOURS` | 24 | Hours a confirmation link stays usable |
 | `PASSWORD_RESET_TTL_MINUTES` | 60 | Minutes a password reset link stays usable. Minutes, and shorter than the line above, because this link is a way into the account rather than proof of a mailbox |
 | `UNVERIFIED_ACCOUNT_TTL_HOURS` | 72 | How long an unconfirmed account is kept before `maintenance clean-unverified` removes it. Must not be shorter than `EMAIL_VERIFICATION_TTL_HOURS` |
