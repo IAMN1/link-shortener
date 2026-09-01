@@ -21,11 +21,13 @@
         <div class="form-group">
             <label class="form-label" for="new-password">{{ _('New password') }}</label>
             <input type="password" id="new-password" class="form-input"
+                   minlength="{{ min_password_length }}"
                    autocomplete="new-password" required>
         </div>
         <div class="form-group">
             <label class="form-label" for="repeat-password">{{ _('Repeat the new password') }}</label>
             <input type="password" id="repeat-password" class="form-input"
+                   minlength="{{ min_password_length }}"
                    autocomplete="new-password" required>
         </div>
         <div id="password-error" class="form-error hidden"></div>

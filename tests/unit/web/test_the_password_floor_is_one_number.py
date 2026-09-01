@@ -66,6 +66,36 @@ def rendering_app():
     return create_app(config=TestConfig())
 
 
+MINLENGTH_FROM_SERVER = re.compile(
+    r'minlength="\{\{\s*min_password_length\s*\}\}"'
+)
+"""The floor as a template reads it: from the one name the server sets."""
+
+
+def _password_fields():
+    """Every password input in every template, with the file it is in."""
+    from pathlib import Path
+
+    templates = (
+        Path(__file__).resolve().parents[3]
+        / "src/link_shortener/web/templates"
+    )
+    return [
+        (str(path.relative_to(templates)), field)
+        for path in sorted(templates.rglob("*.html"))
+        for field in PASSWORD_FIELD.findall(path.read_text(encoding="utf-8"))
+    ]
+
+
+def _new_password_fields():
+    """Only the ones that set a password, as the browsers mark them."""
+    return [
+        (name, field)
+        for name, field in _password_fields()
+        if 'autocomplete="new-password"' in field
+    ]
+
+
 class TestTheFormTheBrowserIsSent:
     """Read off the wire, because that is what makes the promise."""
 
@@ -107,40 +137,50 @@ class TestTheNumberHasOneHome:
             f"these templates write the password floor as a literal: {written}"
         )
 
-    def test_the_forms_were_actually_found(self):
+    def test_every_field_that_sets_a_new_password_promises_the_floor(self):
         """
-        The scan above passes trivially if the pattern stops matching.
-        Both password forms have to be in what it looked at.
+        Asked of the rule rather than of the pages that had the fault.
+
+        Named pages was what this check did first, and it named the two
+        whose ``minlength`` was wrong -- ``6`` against a policy of ``8``.
+        The two pages that set a new password and promised *nothing*
+        (``public/reset_password.html`` and ``dashboard/security.html``,
+        four fields between them) were not on the list and were not
+        looked at: a floor absent is the same undelivered promise as a
+        floor too low, arriving quietly.
+
+        ``autocomplete="new-password"`` is what the browsers themselves
+        use to mean "this field sets a password", so a form added later
+        is held to this without a line here.
         """
-        from pathlib import Path
+        for name, field in _new_password_fields():
+            assert MINLENGTH_FROM_SERVER.search(field), f"{name}: {field}"
 
-        root = Path(__file__).resolve().parents[3]
-        templates = root / "src/link_shortener/web/templates"
-        carrying = {
-            str(path.relative_to(templates))
-            for path in templates.rglob("*.html")
-            if PASSWORD_FIELD.search(path.read_text(encoding="utf-8"))
-        }
+    def test_the_scan_found_the_fields(self):
+        """The check above passes trivially if the pattern stops matching."""
+        found = {name for name, _ in _new_password_fields()}
 
-        assert "public/register.html" in carrying, carrying
-        assert "dashboard/create_user.html" in carrying, carrying
+        assert found >= {
+            "public/register.html",
+            "dashboard/create_user.html",
+            "public/reset_password.html",
+            "dashboard/security.html",
+        }, found
 
-    def test_every_form_reads_the_value_the_server_supplies(self):
+    def test_signing_in_promises_nothing(self):
         """
-        And reads it from the one name the context processor publishes,
-        rather than from a second variable nobody sets -- which renders
-        as an empty attribute and promises nothing at all.
+        The other side, and the reason the rule reads ``new-password``.
+
+        A sign-in field carrying the floor would refuse to submit the
+        password of an account made before the policy was raised -- a
+        page locking somebody out of their own account over a rule that
+        applies to setting a password, not to typing an existing one.
         """
-        from pathlib import Path
+        for name, field in _password_fields():
+            if 'autocomplete="current-password"' not in field:
+                continue
 
-        root = Path(__file__).resolve().parents[3]
-        templates = root / "src/link_shortener/web/templates"
-        for name in ("public/register.html", "dashboard/create_user.html"):
-            field = PASSWORD_FIELD.search(
-                (templates / name).read_text(encoding="utf-8")
-            ).group(0)
-
-            assert "min_password_length" in field, f"{name}: {field}"
+            assert not MINLENGTH.search(field), f"{name}: {field}"
 
     def test_the_server_supplies_it(self, rendering_app):
         """The other end of the same wire."""
