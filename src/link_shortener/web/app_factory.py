@@ -26,6 +26,7 @@ from link_shortener.web.middleware.cache_control import PrivateCacheMiddleware
 from link_shortener.web.middleware.compression import CompressionMiddleware
 from link_shortener.web.middleware.csrf import CsrfProtectionMiddleware
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
+from link_shortener.web.middleware.query_strictness import QueryStrictnessMiddleware
 from link_shortener.web.middleware.rate_limit import (
     RateLimitMiddleware,
     check_rate_limit_targets,
@@ -290,13 +291,22 @@ def create_app(config=None) -> Flask:
         container.get_logger(CsrfProtectionMiddleware.__module__),
         container.get_authentication_service()
     )
-    ## 5. Error handling
+    ## 5. The query string against the published document
+    #
+    # After the limiter, for the reason written above it: a hook that
+    # refuses a request before the limiter has counted it is a way to be
+    # refused for free, and "send a parameter that does not exist" is as
+    # cheap a way as sending no CSRF token. After CSRF as well -- a
+    # forged write is a worse thing than a misspelt parameter, and the
+    # worse one should be the answer the caller gets.
+    QueryStrictnessMiddleware(app)
+    ## 6. Error handling
     ErrorHandlerMiddleware(
         app,
         container.get_logger(ErrorHandlerMiddleware.__module__),
         container.get_audit_logger(),
     )
-    ## 6. Cache-Control on responses belonging to an account
+    ## 7. Cache-Control on responses belonging to an account
     #
     # Position matters only in that it is after authentication, which is
     # what puts the identity in `g` -- `after_request` order does not,

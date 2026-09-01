@@ -257,6 +257,13 @@ class TestPersonalStatsAnswerAboutTheCaller:
         Asked with one anyway, the answer has to stay the caller's own --
         which is the check that fails the day the id starts coming from
         the query instead of from the session.
+
+        Since the service began refusing a query parameter no operation
+        declares, "does not exist" is answered rather than ignored: the
+        call with ``?user_id=`` comes back ``400``. Both halves are held
+        below, because the refusal is not the property -- a route that
+        refused the parameter and *also* read it would pass a check that
+        stopped at the status.
         """
         import jwt
 
@@ -290,9 +297,16 @@ class TestPersonalStatsAnswerAboutTheCaller:
             headers=auth_headers(mine),
         )
 
-        body = my_client.get(
+        named = my_client.get(
             f"/api/v1/stats/mine?user_id={stranger_id}",
             headers=auth_headers(mine),
+        )
+        assert named.status_code == 400, (
+            "a parameter this operation does not declare was accepted"
+        )
+
+        body = my_client.get(
+            "/api/v1/stats/mine", headers=auth_headers(mine)
         ).get_json()
 
         assert body["total_links"] == 1, (

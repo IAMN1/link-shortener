@@ -20,6 +20,8 @@ an empty document -- so this sweeps whatever the routes actually answer
 and lets the merge cover what it covers.
 """
 
+import re
+
 import pytest
 
 from link_shortener.web.schemas.openapi import build_openapi
@@ -43,9 +45,28 @@ BODIES = {
 }
 
 
+def as_documented_path(rule: str) -> str:
+    """
+    A Flask rule written the way the OpenAPI document writes it.
+
+    Flask spells a path parameter ``<user_id>`` and OpenAPI spells it
+    ``{user_id}``. This sweep used the rule verbatim as the document key,
+    so every parametrised operation missed, fell into the "not documented,
+    skip" branch, and was never asked -- every admin route that takes an id
+    among them. Measured by running the sweep both ways: **23** operations
+    were reached before this line existed and **38** after, so fifteen were
+    being dropped in silence.
+
+    The floor below said ``>= 20``, which the 23 that worked met on their
+    own. A floor under the number that already passes cannot notice
+    anything, and this one did not for as long as it stood there.
+    """
+    return re.sub(r"<(?:[^:<>]+:)?([^<>]+)>", r"{\1}", rule)
+
+
 def _documented(document, path, verb):
     """Return the status codes the document declares for one operation."""
-    operations = document["paths"].get(path, {})
+    operations = document["paths"].get(as_documented_path(path), {})
     operation = operations.get(verb.lower())
     return set(operation["responses"]) if operation else None
 
@@ -91,5 +112,9 @@ class TestEveryAnswerAnAnonymousCallerGets:
                         f"declared {sorted(declared)}"
                     )
 
-        assert checked >= 20, f"only {checked} operations were reached"
+        # 38 is what the sweep reaches now; it reached 23 while the paths
+        # did not match, and the floor stood at 20. Set at the real number
+        # rather than under it: a floor with slack in it is a floor that
+        # cannot report the loss it exists to report.
+        assert checked >= 38, f"only {checked} operations were reached"
         assert undeclared == []
