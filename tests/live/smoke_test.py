@@ -457,8 +457,17 @@ def _():
     # last touched before it, and nothing ran the two together -- so the
     # committed tree failed its own live check, 156 of 157, on this
     # assertion alone.
+    #
+    # And then it happened again, on the other half of the same sentence.
+    # `0ef8070` split "disabled" into `in_process` and `disabled` for
+    # exactly the reason written three paragraphs above -- a cache in this
+    # process is not a cache that is off -- and this line went on asking
+    # for the old word. 156 of 157 again, on this assertion again, and for
+    # months: the run is not in CI's default path, so nothing said so.
+    # Corrected by the run that added the QR endpoint, which is when the
+    # two were next run together.
     assert data["components"] == {
-        "cache": "disabled",
+        "cache": "in_process",
         "database": "ok",
         "rate_limiter": "enforcing",
         "task_queue": "inline",
