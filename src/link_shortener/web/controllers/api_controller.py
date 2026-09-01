@@ -7,8 +7,9 @@ Access rules:
   - POST /api/v1/batch/shorten – same as above.
   - GET /api/v1/links/<code> – everyone. The owner's identifier and the
     click counters are included only for those entitled to them: the link's
-    owner, an admin, or a holder of 'stats:view_any'.
-  - GET /api/v1/links/<code>/extended – the same three. Every field it adds
+    owner, an admin, a holder of 'stats:view_any', or whoever presents that
+    link's deletion token, which is what a guest holds in place of an owner.
+  - GET /api/v1/links/<code>/extended – the same four. Every field it adds
     is computed from the counters above, so the two endpoints withhold from
     the same people or neither withholds anything.
   - GET /api/v1/stats – roles with 'stats:view_basic'; the popular-links
@@ -189,9 +190,10 @@ class ApiController:
         """
         Get extended information about a link.
 
-        Restricted to the link's owner, an admin, or a holder of
-        ``stats:view_any`` -- the same three the basic endpoint shows
-        counters to, and not by coincidence. Every field here is a pure
+        Restricted to the link's owner, an admin, a holder of
+        ``stats:view_any``, or whoever presents the deletion token of this
+        link -- the same four the basic endpoint shows counters to, and
+        not by coincidence. Every field here is a pure
         function of ``clicks``, ``created_at`` and ``last_accessed`` plus
         two configuration constants, so while those were public this
         restriction was a formality: an anonymous caller could recompute
@@ -203,7 +205,20 @@ class ApiController:
         """
         context = create_request_context()
         result_dto = self.link_service.get_extended_link_info(short_code, context)
-        require_can_view_link_details(result_dto.owner_id, self.authorization_service)
+
+        # The same proof the basic endpoint takes, and for the same
+        # reason: every field here is arithmetic on `clicks`,
+        # `created_at` and `last_accessed`, which the holder of this token
+        # is already shown there. Refusing them the derived figures while
+        # handing them the inputs is the "formality" this docstring
+        # objects to, arriving from the other side.
+        if result_dto.link_id is None or result_dto.link_id != link_id_from(
+            current_app.config["SECRET_KEY"],
+            request.headers.get("X-Deletion-Token"),
+        ):
+            require_can_view_link_details(
+                result_dto.owner_id, self.authorization_service
+            )
         response_data = ExtendedLinkInfoResponse.from_dto(result_dto)
         return jsonify(response_data.model_dump())
 

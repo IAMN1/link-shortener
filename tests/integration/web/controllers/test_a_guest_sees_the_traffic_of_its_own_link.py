@@ -147,6 +147,50 @@ class TestEverybodyElseIsToldWhatTheyWereBefore:
         assert seen.get_json()["clicks"] is None
 
 
+class TestTheDerivedFiguresFollowTheSameProof:
+    """
+    Both endpoints withhold from the same people, or neither does.
+
+    That sentence is at the top of ``api_controller`` and it stopped being
+    true when the basic endpoint began honouring the deletion token: the
+    maker of a guest link was handed ``clicks``, ``created_at`` and
+    ``last_accessed`` there and refused ``clicks_per_day`` next door --
+    which is arithmetic on the three they already had. The extended
+    endpoint takes the same proof now.
+    """
+
+    def test_the_maker_is_shown_the_derived_figures(self, app, made):
+        guest, code, token, _ = made
+
+        seen = guest.get(
+            f"/api/v1/links/{code}/extended",
+            headers={"X-Deletion-Token": token},
+        )
+
+        assert seen.status_code == 200, seen.get_data(as_text=True)[:200]
+        assert seen.get_json()["clicks_per_day"] is not None
+
+    def test_a_stranger_is_still_refused(self, app, made):
+        """The half that keeps the proof worth presenting."""
+        _, code, _, _ = made
+        stranger = a_guest(app, "192.0.2.217")
+
+        seen = stranger.get(f"/api/v1/links/{code}/extended")
+
+        assert seen.status_code in (401, 403)
+
+    def test_a_forged_token_is_refused(self, app, made):
+        _, code, _, _ = made
+        stranger = a_guest(app, "192.0.2.218")
+
+        seen = stranger.get(
+            f"/api/v1/links/{code}/extended",
+            headers={"X-Deletion-Token": "not-a-token"},
+        )
+
+        assert seen.status_code in (401, 403)
+
+
 class TestTheAnswerSaysWhatItVariesBy:
     """
     One URL, two bodies, and a header deciding which — so it must say so.

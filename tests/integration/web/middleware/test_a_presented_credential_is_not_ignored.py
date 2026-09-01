@@ -285,6 +285,53 @@ class TestTheWayOutOfAnExpiredTokenStaysOpen:
         assert answered.status_code in (200, 503)
         assert "components" in answered.get_json()
 
+    @pytest.mark.parametrize("path, body", [
+        ("/api/v1/auth/register", {"email": "way-in-1@example.com",
+                                   "password": "StrongPass1!"}),
+        ("/api/v1/auth/forgot-password", {"email": "way-in-1@example.com"}),
+        ("/api/v1/auth/resend-verification", {"email": "way-in-1@example.com"}),
+    ])
+    def test_no_way_in_is_closed_by_a_token(self, app, signed_in, path, body):
+        """
+        Every route under `auth` is a way in, and none runs on this header.
+
+        The first version of this exemption named three endpoints --
+        refresh, logout, health -- and left the rest shut. Measured with a
+        stale header on routes that had never seen it: register, the reset
+        request and the resend all answered 401 instead of 202, and signing
+        in with the right password answered 401 instead of issuing a pair.
+        A client that puts Authorization on every request had no way back
+        at all.
+        """
+        _, expired = signed_in
+        caller = a_guest_client(app, "192.0.2.202")
+
+        answered = caller.post(
+            path, json=body,
+            headers=csrf_headers(
+                caller, {"Authorization": f"Bearer {expired}"}
+            ),
+        )
+
+        assert answered.status_code != 401, answered.get_data(as_text=True)[:200]
+
+    def test_signing_in_works_while_holding_one(self, app, signed_in):
+        """The case that matters most: the way back to a working token."""
+        email = an_address("way-back")
+        opener = a_guest_client(app, "192.0.2.203")
+        _register_and_get_tokens(opener, email)
+        _, expired = signed_in
+
+        caller = app.test_client()
+        answered = caller.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "StrongPass1!"},
+            headers={"Authorization": f"Bearer {expired}"},
+        )
+
+        assert answered.status_code == 200, answered.get_data(as_text=True)[:200]
+        assert "access_token" in answered.get_json()
+
     def test_every_other_route_still_refuses_it(self, app, signed_in):
         """
         The half that keeps the exception narrow.

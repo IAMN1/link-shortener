@@ -15,11 +15,10 @@ AUTH_SOURCE_HEADER = "header"
 AUTH_SOURCE_COOKIE = "cookie"
 """Marker for a request authenticated by the access token cookie."""
 
-A_FAILED_HEADER_IS_IGNORED_ON = frozenset({
-    "auth.refresh_token",
-    "auth.logout",
-    "health",
-})
+AUTHENTICATION_BLUEPRINT = "auth"
+"""Every route under it is a way *in*, so none of them runs on this header."""
+
+A_FAILED_HEADER_IS_IGNORED_ON = frozenset({"health"})
 """Endpoints where a presented token that fails is ignored, not refused.
 
 Everywhere else a credential offered in an ``Authorization`` header and
@@ -27,22 +26,30 @@ found wanting is answered ``401``, for the reasons the class docstring
 gives. These three are the exceptions, and each is one because the token
 is not what the endpoint runs on.
 
-``auth.refresh_token`` and ``auth.logout`` exist **for** the client whose
-access token has expired: they identify the caller by the refresh token in
-the cookie and never read this header. Refusing them on the strength of it
-closes the only two doors out of that state -- measured on a live session
-holding a valid refresh cookie and its own expired access token, with the
-CSRF header correct::
+The whole ``auth`` blueprint is outside the rule, and the first version of
+this exemption named three endpoints instead -- which left the doors that
+matter most shut. Measured with a stale header on a service that had never
+seen it before::
 
-    POST /auth/refresh   no header              -> 200, tokens issued
-    POST /auth/refresh   + the expired token    -> 401 UNAUTHENTICATED
-    POST /auth/logout    + the expired token    -> 401 UNAUTHENTICATED
+    POST /auth/register          no header -> 202   + header -> 401
+    POST /auth/login             (right password, confirmed account)
+                                 no header -> 200   + header -> 401
+    POST /auth/forgot-password   no header -> 202   + header -> 401
+    POST /auth/resend-verification            202             401
 
-and the same two calls answered ``200`` before the refusal existed. A
-client that sends its ``Authorization`` on every request -- which is how
-most of them are written -- could then neither refresh nor sign out.
-RFC 6750 asks for ``invalid_token`` on a *protected resource*; these two
-are not protected by this token.
+A client that puts ``Authorization`` on every request -- the ordinary way
+to write one -- could not sign in, register, or ask for a reset once it
+held a token this service no longer accepts. There is no way back from
+that except clearing storage by hand.
+
+None of these nine runs on this header: they authenticate by body or by
+the refresh cookie, and ``change-password`` authorises by being signed in,
+which ``login_required`` answers for. RFC 6750 asks for ``invalid_token``
+on a *protected resource*; a way in is not one. The service's own
+published document says the same thing in
+``openapi.CREDENTIALS_ARE_NOT_THE_QUESTION``, which lists exactly these
+operations as the ones whose ``401`` is about the request rather than
+about a missing token.
 
 ``health`` is the observation route. It is already exempt from the rate
 limiter for the same reason -- "``/health`` and everything under
@@ -169,9 +176,11 @@ class AuthenticationMiddleware:
             # module, where a presented token is treated like a stale
             # cookie: they do not run on it, and two of them are the way
             # out of holding one that has expired.
+            endpoint = request.endpoint or ""
             presented = (
                 token_source == AUTH_SOURCE_HEADER
-                and request.endpoint not in A_FAILED_HEADER_IS_IGNORED_ON
+                and endpoint not in A_FAILED_HEADER_IS_IGNORED_ON
+                and endpoint.split(".")[0] != AUTHENTICATION_BLUEPRINT
                 # And only where there is an endpoint at all. With no rule
                 # matched -- an address this service does not serve, or a
                 # method this address does not take -- the answer is about

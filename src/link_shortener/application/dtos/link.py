@@ -22,6 +22,10 @@ class ShortLinkResponse:
         is_new: True if the link was just created.
         from_cache: True if data came from cache.
         owner_id: Account the link belongs to, or ``None`` for a guest's.
+        link_id: Identifier of the stored row, for the same reason
+            ``ShortLinkResponse`` carries one: the web layer signs it into
+            a deletion token, and that token is what a guest has in place
+            of an owner. Internal -- no response schema publishes it.
             Internal: it is what the web layer reads to decide whether a
             deletion token is issued, and never goes into a response.
         link_id: Identifier of the stored row. Internal: the web layer signs
@@ -128,6 +132,7 @@ class ExtendedLinkInfoResponse:
     clicks_per_day: float
     last_access_days_ago: Optional[int]
     owner_id: Optional[str] = None
+    link_id: Optional[str] = None
 
     @classmethod
     def from_link(
@@ -167,5 +172,6 @@ class ExtendedLinkInfoResponse:
             age_days=age_days,
             clicks_per_day=clicks_per_day,
             last_access_days_ago=last_access_days_ago,
-            owner_id=link.owner.value if link.owner else None
+            owner_id=link.owner.value if link.owner else None,
+            link_id=link.id,
         )
