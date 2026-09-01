@@ -61,7 +61,11 @@ down.
 
 <img src="media/dashboard.png" alt="The dashboard: recent links, click totals and the account's own statistics" width="820">
 
-That is a real screenshot of the stack these commands start, not a mock-up.
+That is a real screenshot of this application, not a mock-up — taken on a
+demonstration account with data seeded into it (`flask db seed`), which is
+why it has links and counters. A dashboard opened straight after the eight
+commands above is empty, and an administrator sees more sections than the
+`user` in the picture: Users, Roles, Health Check and Journals as well.
 The theme is the dark one — the control for it sits in the header, and the
 choice is kept in a cookie and applied by the server before the page is
 painted, so nothing flashes on the way in.
@@ -114,15 +118,27 @@ uv run flask security list-roles     # what each role now holds
 <details>
 <summary>Mail, and why nothing arrives</summary>
 
-`MAIL_ENABLED=true` is in the template and points at `localhost:1025`,
-where Mailpit from the Docker stack would catch it. With no catcher
-running, registration still answers `202`, no message leaves, and the log
-says `Verification email not delivered`.
+`MAIL_ENABLED=true` is in the template, and `MAIL_HOST` is left empty
+beside it — so mail is on and there is no server to send it to.
+Registration still answers `202`, no message leaves, and the log says
+`Verification email not delivered`. To catch messages locally, bring up
+the Mailpit of the Docker stack and set `MAIL_HOST=localhost` and
+`MAIL_PORT=1025`; without a port of its own the profile's default is
+`587`, which is not what a catcher listens on.
 
 So on a local run there is nothing to confirm an address with — which is
 why the block above makes an administrator through the CLI rather than
-registering one. To confirm somebody else's address without mail, an
-administrator can do it from the users page, or:
+registering one.
+
+Signing in as that unconfirmed account answers `401 INVALID_CREDENTIALS`,
+"Invalid email or password" — the same answer a wrong password gets, and
+deliberately so: telling the two apart would answer "is this the password"
+to anybody willing to try. The password is not the problem; the address is
+unconfirmed. Which of the two it was is in the audit journal, under
+`audit:view`.
+
+To confirm somebody else's address without mail, an administrator can do
+it from the users page, or:
 
 ```bash
 curl -X POST http://127.0.0.1:5000/api/v1/admin/users/<id>/verify-email \
@@ -223,7 +239,8 @@ curl -s http://localhost:5000/health
 }
 ```
 
-Locally the same call answers `"cache": "disabled"`: the development
+Locally the same call answers `"cache": "disabled"` and `"task_queue":
+"inline"`: the development
 profile keeps its cache in the process rather than in Redis.
 
 > [!WARNING]
@@ -430,14 +447,24 @@ curl -X POST http://localhost:5000/api/v1/shorten \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com/an-hour", "ttl_seconds": 3600}'
 
-# Sign in, then use the token
+# Sign in. The answer carries two tokens: `access_token`, which is the one
+# below, and `refresh_token`, which buys a new pair when it expires
 curl -X POST http://localhost:5000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "admin@example.com", "password": "ChangeMe1!"}'
 
 curl "http://localhost:5000/api/v1/links/mine?offset=0&limit=20" \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer <access_token>"
 ```
+
+> [!NOTE]
+> Under `/api/v1` this service refuses what it does not understand rather
+> than ignoring it: a body field or a query parameter no operation
+> declares is answered `400 VALIDATION_ERROR` with the name of the
+> offender — `'bogus' is not a parameter of this endpoint`. It is why a
+> mistyped `?short_code=` cannot come back as service-wide figures. Pages
+> are not held to it: navigation carries whatever the address bar was
+> given.
 
 | Dashboard section | Opened by |
 |---|---|

@@ -12,10 +12,35 @@ throttled would also not notice a throttle that stopped working, and
 ``tests/integration/web/middleware`` is where that is held.
 """
 
+import importlib.util
+
 import pytest
 
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.web.app_factory import create_app
+
+
+if importlib.util.find_spec("schemathesis") is None:  # pragma: no cover
+    collect_ignore_glob = ["*.py"]
+"""Not collected at all when Schemathesis is not installed.
+
+The tool lives in the ``contract`` dependency group so that it stays out
+of the runtime image, and a plain ``uv sync`` -- which is what the quick
+start tells a reader to run -- does not install a group. Left collectable,
+the import in the test module ended the whole run before a single test of
+the 4865 executed: ``ModuleNotFoundError: No module named 'schemathesis'``,
+``Interrupted: 1 error during collection``. Measured on a fresh clone by
+walking the quick start exactly as written.
+
+A skip would have been the obvious answer and is wrong twice over:
+``pytest.importorskip`` here runs after the test module has already been
+imported, so it does not prevent the error, and this suite is run with
+``--error-for-skips``, which is a rule worth keeping.
+
+Silence is the cost, and the workflow pays it: CI installs the group and
+runs ``tests/contract`` as a step of its own, where an empty collection is
+exit code 5 -- so a run that lost this directory says so.
+"""
 
 
 class ContractConfig(TestingConfig):

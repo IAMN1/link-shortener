@@ -180,6 +180,15 @@ jobs:
           uv run pytest tests/ -q --no-cov -o addopts="" --tb=short
           --error-for-skips
 
+      - name: Guard the contract run against a missing tool
+        # `tests/contract` is not collected when Schemathesis is absent --
+        # otherwise a plain `uv sync`, which is what the quick start tells a
+        # reader to run, ends the whole suite at collection. That silence is
+        # paid for here: run on its own, an empty collection is exit code 5,
+        # so a workflow that stopped installing the group says so instead of
+        # quietly testing less.
+        run: uv run pytest tests/contract -q --no-cov
+
       - name: Run the live surface check
         # 157 checks over HTTP, and the only thing that walks every routing
         # rule: the run records which rule answered each request and turns
