@@ -9,7 +9,7 @@ suite that fails when the documentation starts lying.
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests: 4941](https://img.shields.io/badge/tests-4941-0b5d3b)](docs/testing.md)
+[![tests: 5051](https://img.shields.io/badge/tests-5051-0b5d3b)](docs/testing.md)
 [![coverage: 98%](https://img.shields.io/badge/coverage-98%25-0b5d3b)](docs/testing.md)
 [![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
 [![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -101,6 +101,16 @@ docker compose --env-file .env.docker \
 > rather than come up open. Roles seed themselves on startup in
 > `development`, which is why neither block runs `db load-base-roles`.
 >
+> **To watch somebody sign up, take the block on the right.** It brings up
+> Mailpit, and the confirmation message lands in its inbox at
+> <http://127.0.0.1:8025> rather than being delivered. The block on the
+> left has no catcher: mail there goes to `localhost:1025` and nothing is
+> listening, so a visitor who registers is left with an address they
+> cannot confirm and an account they cannot sign in to. The admin the
+> block creates is confirmed already, so the rest of it works. To have
+> both, run `docker compose --env-file .env.docker up -d mailpit` beside
+> the local application.
+>
 > Something else — the application on the host against containerised
 > services, your own PostgreSQL, a different profile: the whole matrix,
 > with the values for each combination, is in
@@ -126,6 +136,7 @@ flowchart LR
 | **Guest links** | Shortened without an account, seven-day life, quota per address |
 | **Accounts** | Permanent links, personal statistics, a dashboard |
 | **Batch** | Several URLs per request; what fails comes back per item |
+| **QR codes** | Every link as an SVG square, on its page and at its own address. It encodes the *short* URL, so the counters, the expiry and the deletion still apply |
 | **Deduplication** | Within one owner: shortening your own URL again returns your own live link |
 | **RBAC** | `guest`, `user`, `analyst`, `auditor`, `admin` — roles seeded from YAML, editable through the panel |
 | **Email confirmation** | Registration never says whether an address is taken |
@@ -145,6 +156,7 @@ Thirty-nine operations. Full description: `/api/openapi.json`, rendered at
 | `POST` | `/api/v1/batch/shorten` | `link:create` | Several at once |
 | `GET` | `/api/v1/links/{code}` | — | Where it points. Owner and traffic withheld from everyone else |
 | `GET` | `/api/v1/links/{code}/extended` | ownership, `admin:all` or `stats:view_any` | Derived analytics |
+| `GET` | `/api/v1/links/{code}/qr` | — | The short link as an SVG QR code |
 | `DELETE` | `/api/v1/links/{code}` | `link:delete_own` / `link:delete_any` / deletion token | Remove it |
 | `GET` | `/api/v1/stats` | `stats:view_basic` — held by `guest` | Service totals |
 | `GET` | `/api/v1/stats/visits` | `stats:view_basic` / `link:view_own` | When links were opened, bucketed; `scope=mine` for your own; `?code=` needs the link's owner or `stats:view_any` |
@@ -201,9 +213,9 @@ Thirty-nine operations. Full description: `/api/openapi.json`, rendered at
 ## Testing
 
 ```bash
-uv run pytest tests/                      # 4941 tests
-uv run python tests/live/smoke_test.py    # 157 checks over HTTP
-uv run python tests/live/browser_test.py  # 68 checks in a real browser
+uv run pytest tests/                      # 5051 tests
+uv run python tests/live/smoke_test.py    # 159 checks over HTTP
+uv run python tests/live/browser_test.py  # 69 checks in a real browser
 ```
 
 Four levels — unit, integration on SQLite, integration on real PostgreSQL and
@@ -223,7 +235,7 @@ Full breakdown: [Testing](docs/testing.md).
 | [Operations](docs/operations.md) | Migrations, CLI, backups, upgrades, health |
 | [Testing](docs/testing.md) | The four levels, the live runs, and what CI enforces |
 | [Development](docs/development.md) | Patterns, the frontend, the load profile |
-| [Decisions](docs/decisions.md) | Ninety-six write-ups of why something is the way it is |
+| [Decisions](docs/decisions.md) | One hundred write-ups of why something is the way it is |
 | [Roadmap](docs/roadmap.md) | What was considered and never built, and what each idea would cost |
 
 ## Requirements

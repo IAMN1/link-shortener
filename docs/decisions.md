@@ -369,6 +369,114 @@ backend.
 
 ## Security
 
+### A spent sign-in budget is refused, not delayed
+
+**Decided** (2026-09-02): after `LOGIN_ACCOUNT_FAILURE_LIMIT` wrong guesses
+against one address, `/api/v1/auth/login` refuses without looking at the
+password, for `LOGIN_ACCOUNT_FAILURE_PERIOD`.
+
+**Why a budget at all.** `RATE_LIMITS["auth.login"]` counts by address and
+endpoint, which bounds one guesser and nobody else. A hundred addresses
+trying one account are a hundred separate budgets, and no counter anywhere
+carried the account's name — so a spray was limited by nothing.
+
+**Why refused rather than delayed.** A growing response delay is the
+textbook answer and it cannot be had here. gunicorn runs synchronous
+workers, so a sleeping request holds one, and four held workers are the
+whole service — the exhaustion `MAX_CONTENT_LENGTH` exists to stop,
+invited in through the front door. Refusing costs nothing and slows a
+guesser by the same amount.
+
+**Why the answer is `INVALID_CREDENTIALS`.** Saying "too many attempts"
+names an address somebody is interested in, and the budget is spent by
+addresses that name no account at all — so the two must not be told apart.
+The journal is told which it was, under `audit:view`, as it is for every
+other refusal on this route.
+
+**What it costs.** Somebody who has locked themselves out with typos waits
+rather than being told why. Fifteen minutes is the window; the sign-in page
+carries the way back at all times.
+
+**What it does not do.** A third party who knows an address can spend that
+address's budget. Every per-account mechanism can be triggered that way,
+delay and lockout alike; what differs is for how long. Fifteen minutes, and
+only while they keep spending it, is the price of bounding a spray at all.
+
+### Only privileged permissions decide who may act on whom
+
+**Decided** (2026-09-02): `require_may_act_on` compares the target's
+**privileged** permissions with the actor's, where privileged means a
+resource of `admin`, `audit` or `logs`, or an action ending in `_any`.
+
+**Why the rule exists.** `require_may_confer` guards handing a permission
+out. Nothing guarded taking one away, and deleting, deactivating and
+re-roling all take — so a role carrying `admin:manage_users` could remove
+the only `auditor`, and with it the only account able to read the audit
+journal.
+
+**Why not a plain set difference.** That was written first and it refused
+the work the role exists for: an account that merely signed up holds
+`link:view_own` and `link:delete_own`, which an administrative role has no
+reason to carry, so every account looked like a superior. The suite caught
+it in one test.
+
+**Why a rule and not a list.** An enumeration covers what existed when it
+was written, and the next permission added is the one it misses — silently,
+and in the direction that matters: accounts holding a new administrative
+permission nobody classified would be reachable by anyone who may manage
+users. A test pins what the rule decides about each of the fifteen
+permissions today, so adding one is a visible decision.
+
+### The service answers only to the names a deployment claims
+
+**Decided** (2026-09-02): `ALLOWED_HOSTS`, empty by default, and empty
+means answer to anything.
+
+**Why empty.** That is what the service has always done, and today it costs
+nothing: `request.host` is not read anywhere, and `short_url` is built from
+`BASE_URL`. Turning the check on by default would risk a total outage in
+the arrangements this repository cannot test — behind a load balancer, or
+under a probe that asks by IP address — to close a door that leads nowhere.
+A deployed profile that leaves it empty says so at startup instead, the way
+an empty `TRUSTED_PROXIES` does.
+
+**Why close it at all, then.** It stops being free the first time something
+builds an address from the request. A password-reset link or a cache key
+made from an attacker's `Host` is one ordinary-looking commit away, in a
+file that will know nothing about this one.
+
+**Exact names only.** A leading-dot pattern is how `evilexample.com` gets
+matched by `.example.com` in somebody's implementation of it, and a service
+on one domain has nothing to spend that risk on. The port is dropped before
+comparing, because the port is a fact about the deployment rather than
+about the name — the stack's own health check asks `localhost:${PORT}`.
+
+### The QR code carries the short address
+
+**Decided** (2026-09-02): `GET /api/v1/links/{code}/qr` encodes the short
+URL, in SVG, and resolves the code before drawing anything.
+
+**Why not the destination.** A square carrying the destination scans
+perfectly and defeats the link: no click recorded, no expiry honoured, and
+deleting the link leaves every printed copy pointing at the target for
+good. Both squares work, which is what makes the mistake worth writing
+down — no test that only asks "is this a QR code" would find it.
+
+**Why resolve first.** Drawing and asking afterwards would answer a valid,
+scannable square for a code that leads nowhere.
+
+**Why SVG and no size parameter.** A QR code is a grid of squares, which is
+what vector graphics are for: one document prints on a poster and renders
+in a table cell, and the page decides which by the width it gives the
+element. A raster would need a size on the way in, an imaging library to
+produce it, and a rule about which sizes to allow. The document carries
+both a `viewBox` and a default `width`, because a browser opening the file
+on its own has no page to take a size from.
+
+**Why it may be cached publicly.** Nothing about the caller is in it. The
+two endpoints beside it withhold fields depending on who is asking, which
+is what makes their answers private and this one's not.
+
 ### Registration does not say whether an address is taken
 
 **Decided** (2026-08-12): the same `202`, the same timing and a message

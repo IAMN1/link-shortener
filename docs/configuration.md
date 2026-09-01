@@ -168,6 +168,8 @@ the same endpoint sends its own cookie and gets the language on screen.
 | `SESSION_COOKIE_HTTPONLY` | `true` | |
 | `HSTS_MAX_AGE` | `31536000` (a year) | Seconds a browser remembers to reach this service over TLS only. Sent as `Strict-Transport-Security` and read **only where `USE_HTTPS` is on**, so a plain-HTTP run never sends it. `0` switches it off — the setting for a deployment whose reverse proxy sends the header itself, since two of them are not additive and the browser reads the first. Without `includeSubDomains` and without `preload`: the first speaks for every sibling on the domain, the second is recorded in the browsers and takes months to undo |
 | `CORS_ORIGINS` | `http://localhost:5000`; the template adds `http://127.0.0.1:5000`; **empty in `staging` and `production`** | Origins allowed to send credentials. Empty is not closed: the CSRF layer admits `BASE_URL` on its own, so the service's own pages keep working with nothing named here. What is empty is the list of *other* origins |
+| `ALLOWED_HOSTS` | empty | Host names this service answers to, without scheme or port. Empty means it answers to any, which is what it has always done — nothing here reads `request.host`, and `short_url` is built from `BASE_URL`. Name your own domain (and `localhost`, which the stack's health check asks for) and any other `Host` is refused with `400` before the request reaches the database. The port is ignored in the comparison, so moving the port does not break the list. Exact names only: a leading dot is read as a name, not as a wildcard |
+| `MAX_CONTENT_LENGTH` | `1048576` (1 MiB) | The largest request body Flask will read, refused with `413` before the application sees it. Without it a body of any size is read into memory ahead of every check — measured, four concurrent anonymous 200 MB requests took the container from 342 MiB to 1.6 GiB. One mebibyte holds the largest batch the service admits (`BATCH_CREATE_LIMIT` × `MAX_URL_LENGTH`) with room for the JSON around it, and startup refuses a value too small to hold one |
 | `TRUSTED_PROXIES` | empty | Only from these is `X-Forwarded-For` believed, and then the **last** entry, which is the only one the caller could not write. Empty behind a proxy is the mistake that costs most — see the warning below |
 | `VISIT_TRACKING_ENABLED` | `true` | Record each redirect as an event, not only count it. Off, `urls.clicks` still counts and every chart with time on an axis stays empty |
 | `VISIT_RETENTION_DAYS` | `90` | How long a raw visit row is kept. Finished days are folded into one row per link per day first, so the long-range charts keep their shape after the rows behind them go. `0` disables the sweep and the table grows without limit |
@@ -243,6 +245,17 @@ the same endpoint sends its own cookie and gets the language on screen.
 > of you. Nothing leaks in that exchange; what is lost is the visit.
 
 ## Rate limits
+
+Two counters, and they answer different questions. The table below counts
+by **address** and endpoint: it bounds one caller. `LOGIN_ACCOUNT_FAILURE_LIMIT`
+counts by **account**, and bounds a spray — a hundred addresses guessing at
+one account are a hundred separate budgets in the table, and one budget
+here.
+
+| Variable | Default | |
+|---|---|---|
+| `LOGIN_ACCOUNT_FAILURE_LIMIT` | `10` | Wrong sign-in guesses one address tolerates per window before `/api/v1/auth/login` refuses without looking at the password. `0` switches it off. Only a **wrong password** spends it: a right password against a deactivated or unconfirmed account is not a guess, and counting it would let anyone holding a valid credential lock its owner out. The refusal is the same `INVALID_CREDENTIALS` every other one on that route is, so it names no address anybody is interested in |
+| `LOGIN_ACCOUNT_FAILURE_PERIOD` | `900` (15 min) | The window that budget is counted over |
 
 | Endpoint | Limit | Period | For |
 |---|---|---|---|

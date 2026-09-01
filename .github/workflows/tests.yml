@@ -120,8 +120,8 @@ jobs:
           # A floor, not an equality. Adding tests requires no edit here;
           # losing them does, and that is deliberate.
           #
-          # It follows the suite in both directions: 4941 are collected.
-          # The gap is 441. Written as a figure rather than in words,
+          # It follows the suite in both directions: 5051 are collected.
+          # The gap is 251. Written as a figure rather than in words,
           # because past a hundred the words stop being read and this one
           # is checked by a test that would have to spell every number.
           #
@@ -133,6 +133,14 @@ jobs:
           # added the documentation tests, not before it: a floor left
           # above the suite fails the build for no reason at all.
           #
+          # The 4500 was moved to 4800 by the run that closed the findings
+          # of the evaluation -- the body limit, the address bound, the
+          # per-account sign-in budget, the authority guard and the QR
+          # endpoint, with their tests. The suite went from 4941 to 5051
+          # and the old floor was 550 behind it, eleven per cent of the
+          # run: further than the 311 that prompted the move before this
+          # one, and for the same reason.
+          #
           # The 4200 was placed when the suite stood at 4227, a hundred and
           # sixty-one more than the run before it. The dead-code pass closed
           # the holes a mutation probe found in domain, in parsing cache
@@ -143,7 +151,7 @@ jobs:
           # infrastructure being parametrised by file and having picked the
           # new one up; three hold the address the application journal
           # writes behind a proxy; and two hold the build context clean.
-          MINIMUM_TESTS: 4500
+          MINIMUM_TESTS: 4800
         # `--error-for-skips` closes the door marked "skipped". This closes
         # the one beside it: a test that was never collected gives "N passed"
         # and exit code 0 with a smaller N. The mechanisms are quiet -- a
@@ -190,7 +198,7 @@ jobs:
         run: uv run pytest tests/contract -q --no-cov
 
       - name: Run the live surface check
-        # 157 checks over HTTP, and the only thing that walks every routing
+        # 159 checks over HTTP, and the only thing that walks every routing
         # rule: the run records which rule answered each request and turns
         # red if one was never reached. It also walks the address
         # confirmation chain through an SMTP receiver of its own.
@@ -209,7 +217,7 @@ jobs:
           uv run playwright install --with-deps chromium
 
       - name: Run the browser check
-        # 68 checks in a real browser. The only thing that executes
+        # 69 checks in a real browser. The only thing that executes
         # web/static/js at all: the rest of the suite drives the Flask test
         # client, which has no engine in it, so the page scripts could be
         # broken outright and the suite would stay green.

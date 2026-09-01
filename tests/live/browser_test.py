@@ -7,7 +7,7 @@ drives the Flask test client, which has no browser in it -- so the twelve
 files that turn an API answer into something a person reads are, as far as
 any other run can tell, empty. Reversing ``data.message || data.error`` in
 all twelve -- putting the machine-readable code back in front of the
-sentence on every form -- leaves the suite green at 4941 and the HTTP run
+sentence on every form -- leaves the suite green at 5051 and the HTTP run
 green at 157/157, and takes this one down to twenty of the sixty-seven
 checks it held when that was measured.
 

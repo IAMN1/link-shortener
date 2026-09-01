@@ -73,7 +73,7 @@ def test_both_languages_carry_the_same(en, ru, kind):
 
 EXPECTED = {
     "README.md": {
-        "setting": 5, "route": 31, "permission": 14, "image": 2, "number": 12,
+        "setting": 5, "route": 32, "permission": 14, "image": 2, "number": 14,
     },
     "docs/getting-started.md": {
         "setting": 22, "command": 10, "route": 4, "permission": 8,
