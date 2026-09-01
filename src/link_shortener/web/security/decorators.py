@@ -146,12 +146,11 @@ def login_required(view_func):
             return redirect(url_for('frontend.login_page'))
         return view_func(*args, **kwargs)
 
-    # Read by `openapi.py`, for the reason written at
-    # `requires_credentials` below: the published document has to say that
-    # this operation needs a caller, and this decorator is where that is
-    # true.
-    cast(Any, wrapper).requires_credentials = True
-    return wrapper
+    # Marked by the decorator below rather than by setting its attribute
+    # here: the name `openapi.py` reads is written in one place, and the
+    # reason it is read is written there too. This route needs a caller,
+    # and this decorator is where that is true.
+    return requires_credentials(wrapper)
 
 
 def requires_credentials(view_func):

@@ -23,8 +23,9 @@ A_FAILED_HEADER_IS_IGNORED_ON = frozenset({"health"})
 
 Everywhere else a credential offered in an ``Authorization`` header and
 found wanting is answered ``401``, for the reasons the class docstring
-gives. These three are the exceptions, and each is one because the token
-is not what the endpoint runs on.
+gives. What is outside the rule is the whole ``auth`` blueprint and one
+endpoint besides, and each is outside it for the same reason: the token is
+not what the endpoint runs on.
 
 The whole ``auth`` blueprint is outside the rule, and the first version of
 this exemption named three endpoints instead -- which left the doors that
@@ -42,12 +43,12 @@ to write one -- could not sign in, register, or ask for a reset once it
 held a token this service no longer accepts. There is no way back from
 that except clearing storage by hand.
 
-None of these nine runs on this header: they authenticate by body or by
-the refresh cookie, and ``change-password`` authorises by being signed in,
-which ``login_required`` answers for. RFC 6750 asks for ``invalid_token``
+Nothing under ``/auth`` runs on this header: those routes authenticate
+by body or by the refresh cookie, and ``change-password`` authorises by
+being signed in, which ``login_required`` answers for. RFC 6750 asks for ``invalid_token``
 on a *protected resource*; a way in is not one. The service's own
 published document says the same thing in
-``openapi.CREDENTIALS_ARE_NOT_THE_QUESTION``, which lists exactly these
+``openapi.AUTHENTICATION_OPERATIONS``, which exempts exactly these
 operations as the ones whose ``401`` is about the request rather than
 about a missing token.
 
@@ -85,10 +86,11 @@ class AuthenticationMiddleware:
     silence -- "if the request included an expired access token, the
     resource server MUST include the ``invalid_token`` error code".
 
-    Three endpoints are outside that rule and are named at the top of this
-    module, with the measurement behind each: they do not run on this
-    header, and two of them are how a client gets out of holding a token
-    that has expired.
+    What is outside that rule is named at the top of this module, with
+    the measurement behind it: the ``auth`` blueprint, which does not run
+    on this header and is how a client gets out of holding a token that
+    has expired, and ``health``, which has to answer whatever the caller
+    is carrying.
 
     Silence was measured costing more than a wrong status. A deactivated
     account's token answered ``401`` on ``/api/v1/links/mine`` and ``201``
@@ -172,10 +174,11 @@ class AuthenticationMiddleware:
             # goes through `_reject`, which answers 401 for the first and
             # falls back to anonymous for the second.
             #
-            # Except on the three endpoints named at the top of this
-            # module, where a presented token is treated like a stale
-            # cookie: they do not run on it, and two of them are the way
-            # out of holding one that has expired.
+            # Except where the top of this module says otherwise --
+            # the `auth` blueprint and `health` -- and there a presented
+            # token is treated like a stale cookie: those routes do not
+            # run on it, and `auth` is the way out of holding one that
+            # has expired.
             endpoint = request.endpoint or ""
             presented = (
                 token_source == AUTH_SOURCE_HEADER

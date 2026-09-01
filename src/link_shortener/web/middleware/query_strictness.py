@@ -33,35 +33,20 @@ document into refusals on a working route. That the document describes
 every operation is somebody else's test.
 """
 
-import re
 from typing import Dict, FrozenSet, Optional, Set, Tuple
 
 from flask import Flask, request
 
 from link_shortener.domain.exceptions import ValidationError
 from link_shortener.domain.i18n import N_
-from link_shortener.web.schemas.openapi import build_openapi
+from link_shortener.web.schemas.openapi import (
+    as_documented_path,
+    documented_paths,
+)
 
 
 API_PREFIX = "/api/v1"
 """The only paths this applies to, and the reason is in the module docstring."""
-
-_PATH_PARAMETER = re.compile(r"<(?:[^:<>]+:)?([^<>]+)>")
-"""Flask's ``<name>`` and ``<converter:name>``, as OpenAPI's ``{name}``."""
-
-
-def as_documented_path(rule: str) -> str:
-    """
-    A Flask rule written the way the OpenAPI document writes it.
-
-    Args:
-        rule: The rule as Flask holds it, e.g. ``/api/v1/links/<code>``.
-
-    Returns:
-        The same path in the document's spelling, ``/api/v1/links/{code}``.
-    """
-    return _PATH_PARAMETER.sub(r"{\1}", rule)
-
 
 def declared_query_parameters(app: Flask) -> Dict[Tuple[str, str], FrozenSet[str]]:
     """
@@ -79,8 +64,13 @@ def declared_query_parameters(app: Flask) -> Dict[Tuple[str, str], FrozenSet[str
         describes. An operation missing from the document is missing from
         here, and is therefore not checked.
     """
-    document = build_openapi(base_url=app.config.get("BASE_URL", ""))
-    paths = document.get("paths", {})
+    # The table rather than the assembled document: this needs one field
+    # of it, and assembling the whole thing costs about 4 ms -- most of it
+    # generating component schemas that are thrown away here. The two
+    # passes that finish the document write `responses` and `security`, so
+    # the parameters are the same either way; measured across all 23
+    # operations that declare one.
+    paths = documented_paths()
 
     declared: Dict[Tuple[str, str], FrozenSet[str]] = {}
     for rule in app.url_map.iter_rules():

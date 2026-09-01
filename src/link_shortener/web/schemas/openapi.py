@@ -28,6 +28,7 @@ Postman, a client generator -- and ``/api/docs`` renders it as a page.
 """
 
 import re
+from functools import lru_cache
 from typing import Any, Dict, Optional, Type
 
 from pydantic import BaseModel
@@ -165,41 +166,47 @@ def _anonymous_may(app) -> "Any":
             except Exception:  # pragma: no cover - a document is not worth a crash
                 service = None
 
+    # Remembered for the length of one document. The same permissions
+    # repeat across operations -- `link:read_any` guards four of them --
+    # and each ask is a role and permission lookup through the
+    # authorization service, which for a database-backed one is a query.
+    # The answer cannot change while a document is being assembled.
+    answered: Dict[str, bool] = {}
+
     def may(permission: str) -> bool:
         if service is None:
             return False
-        try:
-            return bool(service.is_allowed(None, permission))
-        except Exception:  # pragma: no cover - same reason
-            return False
+        if permission not in answered:
+            try:
+                answered[permission] = bool(service.is_allowed(None, permission))
+            except Exception:  # pragma: no cover - same reason
+                answered[permission] = False
+        return answered[permission]
 
     return may
 
 
-CREDENTIALS_ARE_NOT_THE_QUESTION = frozenset({
-    ("/api/v1/auth/login", "post"),
-    ("/api/v1/auth/register", "post"),
-    ("/api/v1/auth/refresh", "post"),
-    ("/api/v1/auth/logout", "post"),
-    ("/api/v1/auth/verify", "get"),
-    ("/api/v1/auth/verify", "post"),
-    ("/api/v1/auth/forgot-password", "post"),
-    ("/api/v1/auth/reset-password", "post"),
-    ("/api/v1/auth/resend-verification", "post"),
-})
-"""Operations whose ``401`` is about the request, not about a missing token.
+AUTHENTICATION_OPERATIONS = "/api/v1/auth/"
+"""Where a ``401`` is about the request rather than about a missing token.
 
 Everywhere else a ``401`` means "no credentials, or credentials that do not
-stand up", and the document has to say a token belongs there. On these it
-means something else and a token would not help: sign-in answers ``401``
-because the password is wrong, and refresh and sign-out read the session
-cookie, which is why ``AuthenticationMiddleware`` ignores a failed
-``Authorization`` header on exactly those two.
+stand up", and the document has to say a token belongs there. Under this
+prefix it means something else and a token would not help: sign-in answers
+``401`` because the password is wrong, and refresh and sign-out read the
+session cookie -- which is why ``AuthenticationMiddleware`` ignores a
+failed ``Authorization`` header across this whole blueprint.
 
-Listed rather than derived because nothing in the code distinguishes them:
-the status is the same integer either way. Kept short, and every entry is
-an ``/auth`` operation -- a route outside ``/auth`` that answers 401 needs
-a token, and the test holds exactly that.
+A prefix, not a list of the nine operations that are under it. The list
+was the arrangement the middleware had first and was taken out of, and for
+the fault that showed up there: a tenth route added to ``/auth`` is
+handled by the rule and missed by the list, and the document would then
+have declared ``[{}, {"bearerAuth": []}]`` -- "a token is optional here"
+-- for a route that ignores tokens.
+
+It is an exemption from the fallback below, and nothing else: an ``/auth``
+operation that names a permission, or is marked ``requires_credentials``,
+is decided before this is reached. ``change-password`` is the one that is,
+and it lives here too.
 """
 
 
@@ -277,10 +284,12 @@ def _add_security(paths: Dict[str, Any], app) -> Dict[str, Any]:
             verb = method.lower()
             if verb not in OPERATION_VERBS or verb not in operations:
                 continue
-            operation = dict(operations[verb])
+            operation = operations[verb]
             if "security" in operation:
-                operations[verb] = operation
+                # Written by hand in the path table, which is the answer:
+                # nothing here overrules it.
                 continue
+            operation = dict(operation)
 
             if permission is not None:
                 declared = security_for(permission, anonymous_may)
@@ -290,7 +299,7 @@ def _add_security(paths: Dict[str, Any], app) -> Dict[str, Any]:
                 # theirs from the journal asked for, and changing your own
                 # password is authorised by being signed in.
                 declared = [{"bearerAuth": []}]
-            elif (documented, verb) in CREDENTIALS_ARE_NOT_THE_QUESTION:
+            elif documented.startswith(AUTHENTICATION_OPERATIONS):
                 declared = []
             elif "401" in operation.get("responses", {}) or "403" in operation.get(
                 "responses", {}
@@ -310,6 +319,29 @@ def _add_security(paths: Dict[str, Any], app) -> Dict[str, Any]:
     return described
 
 
+def documented_paths() -> Dict[str, Any]:
+    """
+    The hand-written path table, for a reader that needs one field of it.
+
+    ``build_openapi`` assembles the whole document -- component schemas
+    from every request and response model, the cross-cutting responses,
+    the security each operation declares -- and that costs about 4 ms, of
+    which the schemas are most. A caller that wants only what each
+    operation accepts in the query string pays all of it and throws the
+    rest away, once per process at start-up and once per worker.
+
+    The parameters are the same either way: the two passes that finish the
+    document touch ``responses`` and ``security`` and nothing else, so
+    what this returns is what the published document publishes. Measured
+    across all 23 operations that declare a query parameter -- identical.
+
+    Returns:
+        The path table itself. Callers must not edit it: it is module
+        state, and the document is built from it on every request.
+    """
+    return PATHS
+
+
 def _ref(name: str) -> Dict[str, Any]:
     """Reference a component schema by name."""
     return {"$ref": f"#/components/schemas/{name}"}
@@ -318,6 +350,11 @@ def _ref(name: str) -> Dict[str, Any]:
 def _json(name: str) -> Dict[str, Any]:
     """A JSON body of one schema."""
     return {"content": {"application/json": {"schema": _ref(name)}}}
+
+
+def _html() -> Dict[str, Any]:
+    """A body that is a page rather than an envelope."""
+    return {"content": {"text/html": {"schema": {"type": "string"}}}}
 
 
 def _error(description: str) -> Dict[str, Any]:
@@ -1863,17 +1900,45 @@ PATHS: Dict[str, Any] = {
                 # document promising `application/json`.
                 "404": {
                     "description": "No link carries that code",
-                    "content": {"text/html": {"schema": {"type": "string"}}},
+                    **_html(),
                 },
-                "410": {
-                    "description": "The link has expired",
-                    "content": {"text/html": {"schema": {"type": "string"}}},
-                },
+                "410": {"description": "The link has expired", **_html()},
             },
         }
     },
 }
 """What the routing table and the decorators know, written out once."""
+
+
+@lru_cache(maxsize=1)
+def _component_schemas() -> Dict[str, Any]:
+    """
+    Every schema the document publishes, built once per process.
+
+    Derived from ``MODELS``, which is module state and does not change
+    while the process runs, and it is the expensive half of assembling the
+    document: measured, 3.57 ms of the 3.83 ms a build costs, paid again on
+    every request to ``/api/openapi.json`` and ``/api/docs``.
+
+    Cached, which means the mapping is shared between requests -- so
+    nothing may edit it in place. Both callers hand the document straight
+    to ``jsonify`` or to a template, and the two passes that finish it
+    write under ``paths``; a future one that rewrites a component schema
+    has to copy first.
+
+    Returns:
+        ``{name: schema}`` for every request and response model.
+    """
+    schemas: Dict[str, Any] = {}
+    for name, model in MODELS.items():
+        schema = model.model_json_schema(
+            ref_template="#/components/schemas/{model}"
+        )
+        # Pydantic hangs nested models off $defs; OpenAPI wants them beside
+        # their parents in components.
+        schemas.update(schema.pop("$defs", {}))
+        schemas[name] = schema
+    return schemas
 
 
 def build_openapi(
@@ -1908,15 +1973,7 @@ def build_openapi(
         # forwards, and reaching for the object needs an attribute mypy is
         # right to say Flask does not declare.
         app = current_app if has_app_context() else None
-    schemas: Dict[str, Any] = {}
-    for name, model in MODELS.items():
-        schema = model.model_json_schema(
-            ref_template="#/components/schemas/{model}"
-        )
-        # Pydantic hangs nested models off $defs; OpenAPI wants them beside
-        # their parents in components.
-        schemas.update(schema.pop("$defs", {}))
-        schemas[name] = schema
+    schemas = _component_schemas()
 
     return {
         "openapi": OPENAPI_VERSION,

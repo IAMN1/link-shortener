@@ -23,13 +23,15 @@ query parameter.
 
 import ast
 import inspect
-import re
 import sys
 import textwrap
 
 import pytest
 
-from link_shortener.web.schemas.openapi import build_openapi
+from link_shortener.web.schemas.openapi import (
+    as_documented_path,
+    build_openapi,
+)
 
 
 # Every name that means "this function read the request body". The first
@@ -43,11 +45,6 @@ BODY_READERS = frozenset({
 BODY_ATTRIBUTES = frozenset({"json", "form", "data", "files"})
 
 SAFE_VERBS = frozenset({"get", "head", "options", "trace"})
-
-
-def _openapi_path(rule):
-    """Flask spells a path parameter ``<path:journal>``; OpenAPI ``{journal}``."""
-    return re.sub(r"<(?:[^:<>]+:)?([^<>]+)>", r"{\1}", rule)
 
 
 def _functions_of(module):
@@ -136,7 +133,7 @@ class TestEveryBodyTheRoutesReadIsDescribed:
         checked = 0
 
         for rule in app.url_map.iter_rules():
-            operations = document["paths"].get(_openapi_path(str(rule)), {})
+            operations = document["paths"].get(as_documented_path(str(rule)), {})
             handler = _handler_of(app, rule.endpoint)
             read = reads_body(handler)
             if not read:

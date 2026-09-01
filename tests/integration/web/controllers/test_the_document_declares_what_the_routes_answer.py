@@ -20,11 +20,13 @@ an empty document -- so this sweeps whatever the routes actually answer
 and lets the merge cover what it covers.
 """
 
-import re
 
 import pytest
 
-from link_shortener.web.schemas.openapi import build_openapi
+from link_shortener.web.schemas.openapi import (
+    as_documented_path,
+    build_openapi,
+)
 
 
 API_PREFIX = "/api/v1"
@@ -45,23 +47,14 @@ BODIES = {
 }
 
 
-def as_documented_path(rule: str) -> str:
-    """
-    A Flask rule written the way the OpenAPI document writes it.
-
-    Flask spells a path parameter ``<user_id>`` and OpenAPI spells it
-    ``{user_id}``. This sweep used the rule verbatim as the document key,
-    so every parametrised operation missed, fell into the "not documented,
-    skip" branch, and was never asked -- every admin route that takes an id
-    among them. Measured by running the sweep both ways: **23** operations
-    were reached before this line existed and **38** after, so fifteen were
-    being dropped in silence.
-
-    The floor below said ``>= 20``, which the 23 that worked met on their
-    own. A floor under the number that already passes cannot notice
-    anything, and this one did not for as long as it stood there.
-    """
-    return re.sub(r"<(?:[^:<>]+:)?([^<>]+)>", r"{\1}", rule)
+# ``as_documented_path`` is imported from the module that publishes the
+# document rather than written again here. This sweep used the Flask rule
+# verbatim as the document key at first, so every parametrised operation
+# missed, fell into the "not documented, skip" branch and was never asked
+# -- every admin route taking an id among them. Measured both ways: **23**
+# operations reached before the conversion existed, **38** after, so
+# fifteen were dropped in silence. A second spelling of the conversion is
+# how that comes back, in whichever copy is not the one that gets fixed.
 
 
 def _documented(document, path, verb):

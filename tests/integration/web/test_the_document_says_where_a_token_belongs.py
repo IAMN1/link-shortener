@@ -24,7 +24,6 @@ A list typed beside the routes is a list that stops agreeing with them.
 import pytest
 
 from link_shortener.web.schemas.openapi import (
-    CREDENTIALS_ARE_NOT_THE_QUESTION,
     OPERATION_VERBS,
     as_documented_path,
     build_openapi,
@@ -63,6 +62,22 @@ class TestTheSweepHasSomethingToSweep:
         assert schemes["bearerAuth"]["scheme"] == "bearer"
 
 
+AUTHENTICATION = "/api/v1/auth/"
+"""Where a 401 is about the request, spelled here rather than imported.
+
+``openapi.py`` exempts the same prefix, and reading its constant would
+have made this test agree with the code by construction: whatever the
+exemption grew to cover, the check would have skipped exactly that and
+reported nothing. Written out, the two are two statements, and a widened
+exemption in the code makes them disagree.
+
+This was a frozenset of nine operations on both sides, which is the same
+fault with a shorter reach: a tenth ``/auth`` route would have been
+skipped by neither, so the check would have caught it -- but only after
+somebody wrote it into both places.
+"""
+
+
 class TestEveryOperationSaysSomething:
     """
     Silence is not "no credentials" by accident -- it says exactly that.
@@ -92,7 +107,7 @@ class TestARefusalACredentialCanChangeSaysSo:
     def test_every_401_outside_auth_admits_a_token(self, document):
         mute = []
         for path, verb, operation in operations(document):
-            if (path, verb) in CREDENTIALS_ARE_NOT_THE_QUESTION:
+            if path.startswith(AUTHENTICATION):
                 continue
             refuses = {"401", "403"} & set(operation.get("responses", {}))
             if refuses and BEARER not in operation.get("security", []):
