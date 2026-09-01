@@ -293,6 +293,41 @@ function toggleTheme() {
 // One listener on `document`, not one per control, and bound the moment
 // this file runs rather than on `DOMContentLoaded`.
 //
+
+// Selects a shown address and puts it on the clipboard.
+//
+// Lifted here from `pages/home.js`, where it was bound per rendered row.
+// The dashboard's Create Link showed the address it had just made with no
+// way to take it -- the one page where a signed-in person makes links,
+// and the affordance sat in another file ten lines long. Copying that
+// file's function into this one would have been the second copy of a
+// decision, so the decision moved instead: one delegated handler below,
+// every page, no binding to forget after a render.
+//
+// Selected first, and kept selected whatever follows: a clipboard write
+// is refused outside a secure context -- plain HTTP on anything but
+// localhost, which a first deployment without TLS is -- and
+// `navigator.clipboard` is not defined there at all. The selection is the
+// fallback that needs no permission and no new string in three
+// catalogues: the address is highlighted, and the browser's own copy is
+// one keystroke away.
+function copyShownAddress(button) {
+    var shown = button.previousElementSibling;
+    if (!shown) return;
+
+    var range = document.createRange();
+    range.selectNodeContents(shown);
+    var selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(shown.textContent).catch(
+            function() { /* the selection above is the answer */ }
+        );
+    }
+}
+
 // Turbo replaces the whole `<body>` on every navigation. Listeners bound to
 // elements inside it die with the body they were bound to, so the theme
 // switch, the account menu and the logout link would all go quiet after the
@@ -312,7 +347,12 @@ document.addEventListener('click', function(e) {
     // move to delegation these were two independent listeners, and a press
     // on the switch closed an open account menu as a side effect. A `return`
     // here left the menu hanging open, `aria-expanded` still saying "true".
-    if (pressed(e, '#theme-toggle')) {
+    if (pressed(e, '.js-copy-made')) {
+        // First, and returning: nothing else on the page wants this press,
+        // and the branches below are about the header.
+        copyShownAddress(pressed(e, '.js-copy-made'));
+        return;
+    } else if (pressed(e, '#theme-toggle')) {
         toggleTheme();
     } else if (pressed(e, '.lang-btn')) {
         // Returns, like the logout link and unlike the theme switch: the

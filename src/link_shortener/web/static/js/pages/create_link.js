@@ -25,8 +25,15 @@
             if (!resp) return;
             var data = await resp.json();
             if (!resp.ok) throw new Error(data.message || data.error || t('failed'));
+            // `js-copy-made` and nothing else: the handler is delegated on
+            // `document` in main.js, so this needs no binding of its own and
+            // survives the Turbo navigation that replaces the body. The
+            // button must follow the element holding the address, which is
+            // what `copyShownAddress` reads.
             resultEl.innerHTML = '<div class="alert alert--success">'
                 + '<strong>' + escapeHtml(data.short_url) + '</strong>'
+                + ' <button class="result-copy js-copy-made" type="button">'
+                + escapeHtml(t('copy')) + '</button>'
                 + '<br><span class="text-sm text-muted">' + escapeHtml(data.original_url) + '</span>'
                 + '</div>';
             resultEl.classList.remove('hidden');
