@@ -1,11 +1,13 @@
 from typing import List, Optional
 from pydantic import ConfigDict, Field
 
-from link_shortener.web.schemas.strict import StrictRequest
-
-from link_shortener.domain.policies.password_policy import (
-    MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH,
+from link_shortener.web.schemas.strict import (
+    A_PASSWORD,
+    AN_ADDRESS,
+    StrictRequest,
 )
+
+from link_shortener.domain.policies.password_policy import MIN_PASSWORD_LENGTH
 from link_shortener.domain.policies.role_policy import (
     ROLE_DESCRIPTION_MAX_LENGTH, ROLE_NAME_MAX_LENGTH, ROLE_NAME_MIN_LENGTH,
     ROLE_NAME_PATTERN,
@@ -19,11 +21,12 @@ class CreateUserRequest(StrictRequest):
         ...,
         pattern=EMAIL_PATTERN,
         description="User Email",
-        # `format` beside the pattern, so every address in the published
-        # document is described the same way: a reader of one operation
-        # learns what a reader of the next one does, and a client
-        # generator that understands `format` gets the hint here too.
-        json_schema_extra={"format": "email"},
+        # What the document says an address is, from the one place that
+        # says it: a reader of this operation learns what a reader of
+        # sign-in does, and a client generator that understands `format`
+        # gets the hint here too. `pattern` is in it as well, the same
+        # expression this field validates with.
+        json_schema_extra=AN_ADDRESS,
     )
     """The shape comes from the value object every path builds afterwards.
 
@@ -37,12 +40,12 @@ class CreateUserRequest(StrictRequest):
     password: str = Field(
         ...,
         min_length=MIN_PASSWORD_LENGTH,
-        # The ceiling in the document only, not as a second gate: the
-        # policy already refuses a longer one, and a schema that refused
-        # it first would answer with Pydantic's sentence where every other
-        # password rule answers with the policy's. What this fixes is a
-        # document that stated the floor and left the ceiling unsaid.
-        json_schema_extra={"maxLength": MAX_PASSWORD_LENGTH},
+        # The length the document states, from the one place that states
+        # it. The ceiling is in the document only and not as a second
+        # gate: the policy already refuses a longer password, and a schema
+        # that refused it first would answer with Pydantic's sentence
+        # where every other password rule answers with the policy's.
+        json_schema_extra=A_PASSWORD,
         description=(
             f"User password (min {MIN_PASSWORD_LENGTH} characters, and not "
             f"one attackers already have)"
