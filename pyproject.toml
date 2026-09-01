@@ -59,6 +59,9 @@ dependencies = [
 browser = [
     "playwright>=1.49",
 ]
+contract = [
+    "schemathesis>=4",
+]
 dev = [
     # The one formatter, and the only one that agrees with the tree.
     # Measured on 643 files: `autopep8 --diff` proposes nothing, `black`
@@ -177,6 +180,7 @@ markers = [
     "integration: several real layers together",
     "docker: needs the test stack running (PostgreSQL and Redis)",
     "e2e: a user's path end to end",
+    "contract: generated from the published OpenAPI document",
 ]
 
 # flake8 is configured by the .flake8 file: it does not read

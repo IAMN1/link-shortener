@@ -186,6 +186,10 @@ _MARKER_BY_DIRECTORY = (
     ("tests/integration", ("integration",)),
     ("tests/unit", ("unit",)),
     ("tests/e2e", ("e2e",)),
+    # Generated from the published document rather than written out, so it
+    # is neither a unit nor an integration test in the sense the other
+    # three mean: nobody chose the requests it makes.
+    ("tests/contract", ("contract",)),
 )
 
 

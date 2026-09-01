@@ -241,10 +241,22 @@ Playwright is declared in its own `browser` dependency group rather than in
 `dev`: `uv export` writes the default group and `dev` is that group, so
 everything in `dev` lands in `requirements.txt` and the Dockerfile installs
 exactly that, while a group of its own is written only when it is asked for.
-The export names `--no-group browser` as well, which says the same thing
-where a reader of the command can see it. Measured — with playwright
-in `dev` the runtime image grew from 540 MB to 731 MB, for a browser the
-service never launches.
+The export names `--no-group browser --no-group contract` as well, which
+says the same thing where a reader of the command can see it. Measured —
+with playwright in `dev` the runtime image grew from 540 MB to 731 MB, for a
+browser the service never launches.
+
+Schemathesis is in a `contract` group for the same reason and is installed
+the same way (`uv sync --group contract`, which CI does): it drives
+`tests/contract`, which reads the published OpenAPI document, generates a
+request per operation and holds every answer against what the document
+promises. What it found on its first run is the argument for having it —
+`405` answered without the `Allow` header RFC 9110 requires, `400` and
+`415` answered by operations that documented neither, `404` from the visit
+statistics for a code no link carries while the parameter's own description
+said so, and **`500` from `?offset=1318762989985418969088`** on both
+listings. None of those is a property somebody thought to write a test for,
+which is exactly the gap a generated run fills.
 
 <details>
 <summary>Address confirmation goes through the message, not around it</summary>
