@@ -31,6 +31,8 @@ import itertools
 
 import pytest
 
+from tests.integration.conftest import a_guest
+
 from tests.integration.conftest import auth_headers, csrf_headers
 from tests.integration.web.middleware.test_authentication import (
     _deactivate_user,
@@ -42,20 +44,6 @@ ANONYMOUS_FRIENDLY = "/api/v1/shorten"
 """A route an anonymous caller may use, which is where silence hid."""
 
 _addresses = itertools.count()
-
-
-def a_guest_client(app, address: str):
-    """
-    A client the service counts as a guest of its own.
-
-    The allowance is per address, so tests that make guest links from the
-    shared client spend an allowance later tests are counting on: the
-    deduplication tests two files away began failing in a full run and
-    passing alone, which is the shape that says a fixture leaked.
-    """
-    client = app.test_client()
-    client.environ_base["REMOTE_ADDR"] = address
-    return client
 
 
 def an_address(prefix: str) -> str:
@@ -93,7 +81,7 @@ class TestARejectedBearerTokenIsRefused:
 
     def test_on_a_route_an_anonymous_caller_may_also_use(self, app, revoked):
         """The one that answered 201."""
-        with a_guest_client(app, "192.0.2.181") as caller:
+        with a_guest(app, "192.0.2.181") as caller:
             r = caller.post(
                 ANONYMOUS_FRIENDLY,
                 json={"url": "https://example.com/revoked-presented"},
@@ -111,14 +99,14 @@ class TestARejectedBearerTokenIsRefused:
         somebody else's hands and the caller told it failed.
         """
         url = "https://example.com/revoked-created-nothing"
-        with a_guest_client(app, "192.0.2.182") as caller:
+        with a_guest(app, "192.0.2.182") as caller:
             caller.post(
                 ANONYMOUS_FRIENDLY,
                 json={"url": url},
                 headers=auth_headers(revoked["access_token"]),
             )
 
-        with a_guest_client(app, "192.0.2.183") as anyone:
+        with a_guest(app, "192.0.2.183") as anyone:
             made = anyone.post(ANONYMOUS_FRIENDLY, json={"url": url})
         # Nobody had made it, so this is a creation rather than the
         # deduplicated answer an existing row would have produced.
@@ -130,7 +118,7 @@ class TestARejectedBearerTokenIsRefused:
         "Bearer eyJhbGciOiJIUzI1NiJ9.e30.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     ])
     def test_a_token_that_was_never_valid(self, app, presented):
-        with a_guest_client(app, "192.0.2.184") as caller:
+        with a_guest(app, "192.0.2.184") as caller:
             r = caller.post(
                 ANONYMOUS_FRIENDLY,
                 json={"url": "https://example.com/garbage-bearer"},
@@ -149,7 +137,7 @@ class TestARejectedBearerTokenIsRefused:
         client = app.test_client()
         _, refresh = _register_and_get_tokens(client, an_address("presented-refresh"))
 
-        with a_guest_client(app, "192.0.2.185") as caller:
+        with a_guest(app, "192.0.2.185") as caller:
             r = caller.post(
                 ANONYMOUS_FRIENDLY,
                 json={"url": "https://example.com/refresh-as-access"},
@@ -171,7 +159,7 @@ class TestAStaleCookieStillFallsBackToAnonymous:
     @pytest.fixture
     def stale_cookie(self, app, db):
         email = an_address("presented-stale")
-        client = a_guest_client(app, "192.0.2.186")
+        client = a_guest(app, "192.0.2.186")
         _register_and_get_tokens(client, email)
         _deactivate_user(db, email)
         return client
@@ -231,7 +219,7 @@ class TestTheWayOutOfAnExpiredTokenStaysOpen:
         from link_shortener.domain.value_objects.email import Email
 
         email = an_address("expired-header")
-        client = a_guest_client(app, "192.0.2.201")
+        client = a_guest(app, "192.0.2.201")
         access, _ = _register_and_get_tokens(client, email)
 
         with app.app_context():
@@ -304,7 +292,7 @@ class TestTheWayOutOfAnExpiredTokenStaysOpen:
         at all.
         """
         _, expired = signed_in
-        caller = a_guest_client(app, "192.0.2.202")
+        caller = a_guest(app, "192.0.2.202")
 
         answered = caller.post(
             path, json=body,
@@ -318,7 +306,7 @@ class TestTheWayOutOfAnExpiredTokenStaysOpen:
     def test_signing_in_works_while_holding_one(self, app, signed_in):
         """The case that matters most: the way back to a working token."""
         email = an_address("way-back")
-        opener = a_guest_client(app, "192.0.2.203")
+        opener = a_guest(app, "192.0.2.203")
         _register_and_get_tokens(opener, email)
         _, expired = signed_in
 

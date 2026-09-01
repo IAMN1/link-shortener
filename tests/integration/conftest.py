@@ -337,3 +337,64 @@ def ensure_user(session, user_id):
         )
     )
     session.flush()
+
+
+@pytest.fixture()
+def events(app):
+    """Counts rows in the security journal, by kind.
+
+    Here rather than in each file that needs it: three copies of this
+    stood in three test modules, spelling ``security_events`` and
+    ``event_type`` three times. A rename of either would have been three
+    edits, and the one that got missed would have failed a test that says
+    nothing about the schema.
+
+    Args:
+        app: The application under test.
+
+    Returns:
+        A callable taking an event type and returning how many rows carry
+        it.
+    """
+    from sqlalchemy import text
+
+    def read(event_type: str) -> int:
+        with app.app_context():
+            with app.container.get_db_manager().session() as session:
+                return session.execute(
+                    text(
+                        "SELECT count(*) FROM security_events "
+                        "WHERE event_type = :t"
+                    ),
+                    {"t": event_type},
+                ).scalar_one()
+
+    return read
+
+
+def a_guest(app, address: str):
+    """A client the service counts as a guest of its own.
+
+    The quota is counted per address, so the shared ``client`` fixture is
+    one guest for every test that uses it, and every test that spends the
+    allowance from it spends one a later test was counting on. Both
+    failures have been measured here: deduplication tests two files away
+    began failing in a full run and passing alone, and a test written
+    without this read ``deletion_token`` off a ``429`` and got ``None``.
+    It is the same trap the live runs met, where every agent on the
+    machine reached the container as one gateway address.
+
+    Three files kept their own copy of these four lines. The address is
+    still each test's to choose -- that is the argument -- but the way to
+    become a guest of one's own is written once.
+
+    Args:
+        app: The application under test.
+        address: The address the requests appear to come from.
+
+    Returns:
+        A Flask test client bound to that address.
+    """
+    client = app.test_client()
+    client.environ_base["REMOTE_ADDR"] = address
+    return client

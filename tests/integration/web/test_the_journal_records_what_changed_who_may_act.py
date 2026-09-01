@@ -28,32 +28,11 @@ the application fixture is shared, so the journal has whatever earlier
 tests put in it.
 """
 
-import pytest
-
 from link_shortener.application.ports.logger.audit import AuditEvent
 from tests.integration.conftest import auth_headers, csrf_headers
 from tests.integration.web.middleware.test_authentication import (
     _register_and_get_tokens,
 )
-
-
-@pytest.fixture
-def events(app, db):
-    """Reads the security events table, filtered by kind."""
-    from sqlalchemy import text
-
-    def read(event_type: str) -> int:
-        with app.app_context():
-            with app.container.get_db_manager().session() as session:
-                return session.execute(
-                    text(
-                        "SELECT count(*) FROM security_events "
-                        "WHERE event_type = :t"
-                    ),
-                    {"t": event_type},
-                ).scalar_one()
-
-    return read
 
 
 class TestRegistrationIsOnTheRecord:

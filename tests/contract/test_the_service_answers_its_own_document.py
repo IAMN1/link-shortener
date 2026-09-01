@@ -93,9 +93,7 @@ schema.config.generation.with_security_parameters = False
 # `tests/integration/web/controllers/test_password_reset.py`; and the
 # document's account of all three is held by the status sweep in
 # `test_the_document_declares_what_the_routes_answer.py`.
-schema = schema.exclude(path="/api/v1/auth/logout")
-schema = schema.exclude(path="/api/v1/auth/change-password")
-schema = schema.exclude(path="/api/v1/auth/refresh")
+schema = schema.exclude(path_regex=r"^/api/v1/auth/(logout|change-password|refresh)$")
 
 # Positive data only, and the reason is worth stating rather than hiding.
 #

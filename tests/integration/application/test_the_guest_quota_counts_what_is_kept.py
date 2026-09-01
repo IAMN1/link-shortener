@@ -29,6 +29,8 @@ changed next, the other has to be looked at.
 
 import pytest
 
+from tests.integration.conftest import a_guest
+
 from tests.integration.conftest import csrf_headers
 
 
@@ -37,22 +39,6 @@ def make(client, n: int):
     return client.post(
         "/api/v1/shorten", json={"url": f"https://example.com/quota/{n}"}
     )
-
-
-def a_guest(app, address: str):
-    """
-    A client the service will count as its own guest.
-
-    The allowance is per address, so two tests sharing one are one guest
-    between them: written without this, the second test here found the
-    first had spent the allowance, read ``deletion_token`` off a ``429``
-    and got ``None``. The same shape as the trap the live runs met, where
-    every agent on the machine reached the container as one gateway
-    address.
-    """
-    client = app.test_client()
-    client.environ_base["REMOTE_ADDR"] = address
-    return client
 
 
 class TestTheAllowanceBoundsWhatIsKept:

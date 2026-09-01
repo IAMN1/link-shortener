@@ -29,29 +29,8 @@ per scheduled run would bury the runs that mattered, and a journal that
 records sweeps of dead rows records nothing an investigator asks about.
 """
 
-import pytest
-
 from link_shortener.application import RequestContext
 from link_shortener.application.ports.logger.audit import AuditEvent
-
-
-@pytest.fixture
-def events(app):
-    """Counts rows in the security events table, by kind."""
-    from sqlalchemy import text
-
-    def read(event_type: str) -> int:
-        with app.app_context():
-            with app.container.get_db_manager().session() as session:
-                return session.execute(
-                    text(
-                        "SELECT count(*) FROM security_events "
-                        "WHERE event_type = :t"
-                    ),
-                    {"t": event_type},
-                ).scalar_one()
-
-    return read
 
 
 class TestASweepThatRemovedLinks:

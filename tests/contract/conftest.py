@@ -14,10 +14,8 @@ throttled would also not notice a throttle that stopped working, and
 
 import importlib.util
 
-import pytest
-
-from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.web.app_factory import create_app
+from tests.integration.conftest import IntegrationTestConfig
 
 
 if importlib.util.find_spec("schemathesis") is None:  # pragma: no cover
@@ -43,23 +41,25 @@ exit code 5 -- so a run that lost this directory says so.
 """
 
 
-class ContractConfig(TestingConfig):
-    """What the contract run needs that a normal test does not."""
+class ContractConfig(IntegrationTestConfig):
+    """What the contract run needs that a normal integration test does not.
 
-    TESTING = True
-    DEBUG = False
+    Derived rather than declared again. The thirteen settings that make a
+    test build of this service -- in-memory database, no Redis, no cache,
+    no journals, no seeding, a fixed base URL -- were written out here a
+    second time, and a fourteenth added to the integration build would
+    have appeared in one and not the other. That is not a cosmetic
+    difference for this directory: the settings being repeated are the
+    ones that keep a run from reaching real infrastructure, so the copy
+    that fell behind would have been the one that quietly talked to it.
+
+    What is genuinely its own is here and nothing else: a key of its own,
+    and the two limits raised out of the way. Schemathesis generates
+    hundreds of requests per operation, which would spend the guest
+    allowance and trip the throttle before it had asked anything.
+    """
+
     SECRET_KEY = "contract-secret-key-of-adequate-length"
-    DATABASE_URL = "sqlite:///:memory:"
-    REDIS_ENABLED = False
-    CACHE_ENABLED = False
-    LOGGING_ENABLED = False
-    AUDIT_ENABLED = False
-    AUTO_SEED_ROLES = False
-    BASE_URL = "http://testserver/"
-    HOST = "testserver"
-    PORT = 80
-    COOKIE_SECURE = False
-    RATE_LIMIT_AUTH_DISABLED = True
     DEFAULT_RATE_LIMIT = 1_000_000
     GUEST_LINK_LIMIT = 1_000_000
 
@@ -78,11 +78,3 @@ def build_application():
             seed_base_roles(session)
 
     return application
-
-
-@pytest.fixture(scope="session")
-def contract_app():
-    """The same application the module-level schema was loaded from."""
-    from tests.contract.test_the_service_answers_its_own_document import APP
-
-    return APP

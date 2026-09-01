@@ -19,32 +19,11 @@ other's name: the sweep is a repository method, the detection is in the
 token service, and the thing that connects them is a row nobody deletes.
 """
 
-import pytest
-
 from link_shortener.application.ports.logger.audit import AuditEvent
 from tests.integration.conftest import csrf_headers
 from tests.integration.web.middleware.test_authentication import (
     _register_and_get_tokens,
 )
-
-
-@pytest.fixture
-def events(app):
-    """Counts security events of one kind."""
-    from sqlalchemy import text
-
-    def read(event_type: str) -> int:
-        with app.app_context():
-            with app.container.get_db_manager().session() as session:
-                return session.execute(
-                    text(
-                        "SELECT count(*) FROM security_events "
-                        "WHERE event_type = :t"
-                    ),
-                    {"t": event_type},
-                ).scalar_one()
-
-    return read
 
 
 class TestTheSweepLeavesARevokedSessionInPlace:
