@@ -213,7 +213,32 @@ class TestStructlogAuditLogger:
         _, kwargs = backend.info.call_args
         assert kwargs["request_id"] == "req-1"
 
-    def test_reports_unhealthy_when_the_backend_fails(self):
+    @pytest.fixture
+    def a_handler_to_reach(self):
+        """One handler on the audit logger, put there by this test.
+
+        ``is_healthy`` asks the logging hierarchy whether any handler is
+        reachable before it writes -- a write that reaches nobody raises
+        nothing, so a probe that only writes calls a chain going nowhere
+        healthy. That makes the answer depend on global logging state,
+        and these tests were reading whatever the run happened to leave
+        there: this file passes on its own, because another test in it
+        installs a handler, and fails under a selection that does not.
+        Measured with ``-k health``, where it was the only red test.
+
+        So the state is this test's own, set up and taken away again.
+        """
+        audit = logging.getLogger(StructlogAuditLogger.NAME)
+        handler = logging.NullHandler()
+        audit.addHandler(handler)
+        try:
+            yield handler
+        finally:
+            audit.removeHandler(handler)
+
+    def test_reports_unhealthy_when_the_backend_fails(
+        self, a_handler_to_reach
+    ):
         # ``log``, not ``debug``: the probe is written at the level this
         # chain passes records at, because a ``DEBUG`` one was dropped by
         # the audit handlers -- they are ``INFO`` whatever ``LOG_LEVEL``
@@ -223,10 +248,28 @@ class TestStructlogAuditLogger:
 
         assert logger.is_healthy() is False
 
-    def test_reports_healthy_otherwise(self):
+    def test_reports_healthy_otherwise(self, a_handler_to_reach):
         logger, _ = self._logger()
 
         assert logger.is_healthy() is True
+
+    def test_a_chain_reaching_no_handler_is_not_healthy(self):
+        """The other half, and the reason the fixture exists.
+
+        With nothing to reach, the probe writes into silence and the
+        chain is not working -- which is what the ``standard`` sibling
+        answers, and what the failover service moves the work on.
+        """
+        audit = logging.getLogger(StructlogAuditLogger.NAME)
+        kept, audit.handlers = audit.handlers, []
+        propagate, audit.propagate = audit.propagate, False
+        try:
+            logger, _ = self._logger()
+
+            assert logger.is_healthy() is False
+        finally:
+            audit.handlers = kept
+            audit.propagate = propagate
 
 
 class TestBoundFieldPrecedenceIsTheSameInBothImplementations:
