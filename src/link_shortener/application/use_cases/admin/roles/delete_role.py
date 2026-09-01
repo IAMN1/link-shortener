@@ -90,12 +90,6 @@ class DeleteRoleUseCase(BaseUseCase):
             if doomed is not None and not doomed.is_system:
                 require_administrator_survives_without(uow, doomed)
 
-            # Counted before the deletion, because afterwards there is
-            # nothing left wearing the role to count. It is the only
-            # measure of what this reached: the role comes off every
-            # account at once, and none of them is touched individually.
-            holders = uow.users.count_with_role(doomed.id) if doomed else 0
-
             # The two refusals -- no such role, and a role the service owns
             # -- are raised by the service as domain errors of their own.
             # They used to arrive as ``LookupError`` and ``ValueError`` and
@@ -106,7 +100,15 @@ class DeleteRoleUseCase(BaseUseCase):
             # bare have to be put back on the default role, and that
             # needs their identity. Read before the deletion, because
             # afterwards nothing wears the role.
+            #
+            # And counted from the same list rather than asked for
+            # separately. ``count_with_role`` is the identical query --
+            # same join, same ``distinct``, no filter either -- so asking
+            # both ran two SELECTs for one answer, and a filter added to
+            # one of them would have made the number in the journal
+            # disagree with the accounts actually put back.
             wearers = uow.users.ids_with_role(doomed.id) if doomed else []
+            holders = len(wearers)
 
             self.role_service.delete_role(uow, role_name)
 

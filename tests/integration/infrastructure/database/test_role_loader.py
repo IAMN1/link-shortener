@@ -2,7 +2,7 @@
 
 import pytest
 
-from link_shortener.domain import ValidationError
+from link_shortener.domain import PermissionsNotFoundError, ValidationError
 from link_shortener.domain.policies.role_policy import (
     ROLE_DESCRIPTION_MAX_LENGTH,
 )
@@ -558,9 +558,14 @@ class TestAPermissionTheServiceDoesNotDefine:
         path = self._file_asking_for(tmp_path, "nosuch:permission")
 
         with fresh_db.session() as session:
-            with pytest.raises(ValidationError) as refusal:
+            with pytest.raises(PermissionsNotFoundError) as refusal:
                 RoleLoader(session).load_from_yaml(path, update_existing=True)
 
+        # The same error the admin API raises, not a second wording of it:
+        # this docstring names ``400 PERMISSIONS_NOT_FOUND`` as the
+        # standard the file door is held to, and a refusal coded
+        # ``VALIDATION_ERROR`` met it in behaviour only.
+        assert refusal.value.code == "PERMISSIONS_NOT_FOUND"
         assert "nosuch:permission" in str(refusal.value)
 
     def test_a_permission_that_exists_is_granted(self, fresh_db, tmp_path):

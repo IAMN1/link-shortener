@@ -551,7 +551,11 @@ class TestRolesThemselvesAreRecorded:
         uow.roles.get_by_name.return_value = role_granting(
             "editor", "link:create"
         )
-        uow.users.count_with_role.return_value = 7
+        # Seven wearers, not a seven: the number in the journal is the
+        # length of the list the deletion actually works from, and asking
+        # a separate counter was the arrangement where the two could
+        # disagree.
+        uow.users.ids_with_role.return_value = [f"u{n}" for n in range(7)]
         use_case = DeleteRoleUseCase(
             uow_factory=uow_factory,
             role_service=Mock(),
@@ -578,8 +582,8 @@ class TestRolesThemselvesAreRecorded:
         uow.roles.get_by_name.return_value = role_granting(
             "editor", "link:create"
         )
-        uow.users.count_with_role.side_effect = lambda _role_id: (
-            order.append("counted") or 3
+        uow.users.ids_with_role.side_effect = lambda _role_id: (
+            order.append("counted") or ["u1", "u2", "u3"]
         )
         service = Mock()
         service.delete_role.side_effect = lambda *_args: order.append("deleted")

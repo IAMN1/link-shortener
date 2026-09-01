@@ -11,6 +11,9 @@ import uuid
 import yaml
 from sqlalchemy.orm import Session
 
+from link_shortener.application.services.role_management_service import (
+    RoleManagementService,
+)
 from link_shortener.domain.exceptions import ValidationError
 from link_shortener.domain.policies.role_policy import (
     require_valid_role_description, require_valid_role_name
@@ -228,10 +231,12 @@ class RoleLoader:
         Raises:
             ValueError: If either section repeats a name.
         """
-        for section, key in (("permissions", "name"), ("roles", "name")):
+        # Both sections key their entries by ``name``; the loop varies the
+        # section and nothing else.
+        for section in ("permissions", "roles"):
             seen = set()
             for entry in config.get(section) or []:
-                name = entry.get(key)
+                name = entry.get("name")
                 if name in seen:
                     # A domain refusal rather than a bare ValueError, so
                     # that `ReportingGroup` words it: the file is the
@@ -375,17 +380,16 @@ class RoleLoader:
             # what it did not, so a file asking for `nosuch:permission`
             # produced a role with no permissions at all and a report of
             # "roles created: 1" -- measured, and the same input over HTTP
-            # answers `400 PERMISSIONS_NOT_FOUND`. Two doors, one rule.
-            missing = sorted(set(perm_names) - {p.name for p in perms})
-            if missing:
-                raise ValidationError(
-                    f"{role_name!r} asks for "
-                    + ", ".join(repr(name) for name in missing)
-                    + ", which this service does not define. Add the "
-                    "permission to the file's `permissions:` section, or "
-                    "correct the name.",
-                    field="permissions",
-                )
+            # answers `400 PERMISSIONS_NOT_FOUND`. Two doors, one rule --
+            # and one refusal, which is why this raises the same error the
+            # admin API raises rather than a second wording of it. It said
+            # `VALIDATION_ERROR` at first: the sentence was about the file
+            # and the code was about nothing in particular, so the claim
+            # in this comment was true of the behaviour and false of the
+            # vocabulary. `ReportingGroup` words it for the operator, and
+            # the names are what they need -- which is what this error
+            # carries, and the reason it carries them.
+            RoleManagementService.refuse_unknown_permissions(perm_names, perms)
 
             role.permissions = perms
 

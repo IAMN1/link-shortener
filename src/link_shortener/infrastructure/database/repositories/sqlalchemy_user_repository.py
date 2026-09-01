@@ -410,16 +410,7 @@ class SQLAlchemyUserRepository(UserRepository):
         Returns:
             Their ids.
         """
-        # The same shape as the count below, and the same reasons: no
-        # filter on ``is_active``, and distinct because the join repeats.
-        return [
-            row[0]
-            for row in self.session.query(UserModel.id)
-            .join(UserModel.roles)
-            .filter(RoleModel.id == role_id)
-            .distinct()
-            .all()
-        ]
+        return [row[0] for row in self._wearers_of(role_id).all()]
 
     def count_with_role(self, role_id: str) -> int:
         """Count the accounts wearing a role, active or not.
@@ -430,15 +421,31 @@ class SQLAlchemyUserRepository(UserRepository):
         Returns:
             How many accounts hold it.
         """
-        # No filter on ``is_active``: a suspended account wears the role
-        # and loses it with the rest. Distinct for the reason
-        # ``count_active_with_permission`` is: the join can repeat a row.
+        return self._wearers_of(role_id).count()
+
+    def _wearers_of(self, role_id: str):
+        """The accounts wearing a role, as a query the two readers finish.
+
+        One query with two endings -- a list of ids and a count -- because
+        it is one question. Written twice, a filter added to either would
+        have left the number the journal records disagreeing with the
+        accounts a deletion actually touches.
+
+        No filter on ``is_active``: a suspended account wears the role and
+        loses it with the rest. Distinct for the reason
+        ``count_active_with_permission`` is: the join can repeat a row.
+
+        Args:
+            role_id: The role to find the wearers of.
+
+        Returns:
+            A query over their ids, not yet executed.
+        """
         return (
             self.session.query(UserModel.id)
             .join(UserModel.roles)
             .filter(RoleModel.id == role_id)
             .distinct()
-            .count()
         )
 
     def delete(self, user_id: str) -> bool:

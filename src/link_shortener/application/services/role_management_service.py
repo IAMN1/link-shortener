@@ -19,9 +19,14 @@ class RoleManagementService:
     """
 
     @staticmethod
-    def _refuse_unknown_permissions(requested: List[str], found) -> None:
+    def refuse_unknown_permissions(requested: List[str], found) -> None:
         """
         Refuse a permission name the system does not know.
+
+        Public, and called from outside this class: the YAML loader asks
+        the same question of the same table and has to answer it with the
+        same refusal, or an operator meets ``PERMISSIONS_NOT_FOUND`` over
+        HTTP and a differently worded ``VALIDATION_ERROR`` from the file.
 
         Args:
             requested: Permission names as the caller wrote them.
@@ -59,7 +64,7 @@ class RoleManagementService:
                 avoids.
         """
         permissions = uow.permissions.get_by_names(permission_names)
-        cls._refuse_unknown_permissions(permission_names, permissions)
+        cls.refuse_unknown_permissions(permission_names, permissions)
         return permissions
 
     @staticmethod
