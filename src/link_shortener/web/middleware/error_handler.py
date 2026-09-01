@@ -368,25 +368,24 @@ class ErrorHandlerMiddleware:
                 # `error_page` answers (body, status); the header belongs
                 # on a real response, so one is built from it either way
                 # rather than in a branch mypy has to reconcile.
-                body, status = error_page(
+                answer = make_response(*error_page(
                     "METHOD_NOT_ALLOWED", gettext("Method not allowed"), 405
+                ))
+            else:
+                response = ErrorResponse(
+                    error="METHOD_NOT_ALLOWED",
+                    # The method is a value, not a word to translate, and
+                    # it is named rather than positional so a translation
+                    # can put it where that language puts it.
+                    message=gettext(
+                        "Method %(method)s not allowed", method=request.method
+                    )
                 )
-                page = make_response(body, status)
-                if allowed:
-                    page.headers["Allow"] = ", ".join(allowed)
-                return page
+                answer = make_response(jsonify(response.model_dump()), 405)
 
-            response = ErrorResponse(
-                error="METHOD_NOT_ALLOWED",
-                # The method is a value, not a word to translate, and it
-                # is named rather than positional so a translation can put
-                # it where that language puts it.
-                message=gettext(
-                    "Method %(method)s not allowed", method=request.method
-                )
-            )
-
-            answer = make_response(jsonify(response.model_dump()), 405)
+            # Set once, below the branch: the header is the answer to
+            # "which methods, then", and that answer does not depend on
+            # whether a page or an envelope is carrying it.
             if allowed:
                 answer.headers["Allow"] = ", ".join(allowed)
             return answer

@@ -47,6 +47,25 @@ class SignOutUseCase(BaseUseCase):
     audit_logger: AuditLogger
     logger: Logger
 
+    def _chain_of(self, token_id: Optional[str]) -> Optional[str]:
+        """
+        The login a refresh token's row belongs to.
+
+        Args:
+            token_id: The ``jti`` claim, naming the row.
+
+        Returns:
+            The chain id, or ``None`` when nothing names a row or the row
+            is gone. Read in a transaction of its own, before the
+            revocation retires it.
+        """
+        if not token_id:
+            return None
+
+        with self.uow_factory(read_only=True) as uow:
+            row = uow.refresh_sessions.find_by_token_id(token_id)
+            return row.chain_id if row is not None else None
+
     def execute(
         self,
         context: RequestContext,
@@ -90,15 +109,10 @@ class SignOutUseCase(BaseUseCase):
             # ordinary reason to be holding only a refresh token.
             claims = self.authentication_service.validate_token(
                 refresh_token, expected_type="refresh"
-            )
-            if claims:
-                target_user_id = claims.get("sub")
-                token_id = claims.get("jti")
-                if chain is None and token_id:
-                    with self.uow_factory(read_only=True) as uow:
-                        row = uow.refresh_sessions.find_by_token_id(token_id)
-                        if row is not None:
-                            chain = row.chain_id
+            ) or {}
+            target_user_id = claims.get("sub") or target_user_id
+            if chain is None:
+                chain = self._chain_of(claims.get("jti"))
             ended = self.authentication_service.revoke_refresh_token(
                 refresh_token
             )

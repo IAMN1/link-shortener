@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-01 19:04+0300\n"
+"POT-Creation-Date: 2026-09-01 20:36+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -26,8 +26,8 @@ msgstr ""
 #: src/link_shortener/application/use_cases/journals/read_journal.py:303
 #: src/link_shortener/application/use_cases/links/delete_link.py:197
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:177
-#: src/link_shortener/web/middleware/authentication.py:223
-#: src/link_shortener/web/security/authorization.py:71
+#: src/link_shortener/web/middleware/authentication.py:226
+#: src/link_shortener/web/security/authorization.py:82
 #: src/link_shortener/web/security/decorators.py:52
 #: src/link_shortener/web/security/decorators.py:118
 #: src/link_shortener/web/security/decorators.py:144
@@ -76,7 +76,7 @@ msgstr ""
 
 #: src/link_shortener/application/use_cases/journals/read_journal.py:310
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:183
-#: src/link_shortener/web/controllers/api_controller.py:294
+#: src/link_shortener/web/controllers/api_controller.py:270
 #: src/link_shortener/web/security/decorators.py:55
 #: src/link_shortener/web/security/decorators.py:121
 msgid "Not authorized"
@@ -113,7 +113,7 @@ msgid "Link with code (%(code)s) not found"
 msgstr ""
 
 #: src/link_shortener/domain/exceptions.py:184
-#: src/link_shortener/web/middleware/error_handler.py:478
+#: src/link_shortener/web/middleware/error_handler.py:477
 msgid "Link not found"
 msgstr ""
 
@@ -750,12 +750,12 @@ msgstr ""
 msgid "Confirmation for %(email)s could not be queued"
 msgstr ""
 
-#: src/link_shortener/web/controllers/api_controller.py:399
-#: src/link_shortener/web/controllers/api_controller.py:463
+#: src/link_shortener/web/controllers/api_controller.py:375
+#: src/link_shortener/web/controllers/api_controller.py:439
 msgid "Sign in to see your own statistics"
 msgstr ""
 
-#: src/link_shortener/web/controllers/api_controller.py:452
+#: src/link_shortener/web/controllers/api_controller.py:428
 msgid "days must be a whole number"
 msgstr ""
 
@@ -805,7 +805,7 @@ msgid "This request could not be verified. Reload the page and try again."
 msgstr ""
 
 #: src/link_shortener/web/middleware/error_handler.py:177
-#: src/link_shortener/web/middleware/error_handler.py:594
+#: src/link_shortener/web/middleware/error_handler.py:593
 msgid "An internal error occurred"
 msgstr ""
 
@@ -845,28 +845,28 @@ msgstr ""
 msgid "Method not allowed"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:385
+#: src/link_shortener/web/middleware/error_handler.py:381
 #, python-format
 msgid "Method %(method)s not allowed"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:411
+#: src/link_shortener/web/middleware/error_handler.py:410
 msgid "Request validation failed"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:558
+#: src/link_shortener/web/middleware/error_handler.py:557
 msgid "Bad request"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:562
+#: src/link_shortener/web/middleware/error_handler.py:561
 msgid "Malformed request body"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:589
+#: src/link_shortener/web/middleware/error_handler.py:588
 msgid "Internal server error"
 msgstr ""
 
-#: src/link_shortener/web/middleware/query_strictness.py:177
+#: src/link_shortener/web/middleware/query_strictness.py:167
 #, python-format
 msgid "'%(name)s' is not a parameter of this endpoint"
 msgstr ""
@@ -878,7 +878,7 @@ msgid_plural "Too many requests. Limit %(limit)s per %(period)s seconds."
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/link_shortener/web/security/authorization.py:74
+#: src/link_shortener/web/security/authorization.py:85
 msgid "You are not allowed to view this link"
 msgstr ""
 
@@ -1100,7 +1100,7 @@ msgstr ""
 #: src/link_shortener/web/templates/public/login.html:8
 #: src/link_shortener/web/templates/public/login.html:21
 #: src/link_shortener/web/templates/public/register.html:26
-#: src/link_shortener/web/templates/public/reset_password.html:27
+#: src/link_shortener/web/templates/public/reset_password.html:29
 #: src/link_shortener/web/templates/public/verify.html:15
 msgid "Log in"
 msgstr ""
@@ -1576,7 +1576,7 @@ msgid "Security — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/security.html:7
-#: src/link_shortener/web/templates/dashboard/security.html:32
+#: src/link_shortener/web/templates/dashboard/security.html:34
 msgid "Change password"
 msgstr ""
 
@@ -1593,8 +1593,8 @@ msgstr ""
 msgid "New password"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/security.html:27
-#: src/link_shortener/web/templates/public/reset_password.html:18
+#: src/link_shortener/web/templates/dashboard/security.html:28
+#: src/link_shortener/web/templates/public/reset_password.html:19
 msgid "Repeat the new password"
 msgstr ""
 
@@ -2030,19 +2030,19 @@ msgid ""
 "in to this account will be signed out."
 msgstr ""
 
-#: src/link_shortener/web/templates/public/reset_password.html:23
+#: src/link_shortener/web/templates/public/reset_password.html:25
 msgid "Set the password"
 msgstr ""
 
-#: src/link_shortener/web/templates/public/reset_password.html:32
+#: src/link_shortener/web/templates/public/reset_password.html:34
 msgid "This reset link is not valid."
 msgstr ""
 
-#: src/link_shortener/web/templates/public/reset_password.html:34
+#: src/link_shortener/web/templates/public/reset_password.html:36
 msgid "ask for a new one"
 msgstr ""
 
-#: src/link_shortener/web/templates/public/reset_password.html:35
+#: src/link_shortener/web/templates/public/reset_password.html:37
 #, python-format
 msgid "You can %(link)s."
 msgstr ""
