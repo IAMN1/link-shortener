@@ -170,14 +170,17 @@ class LinkUseCasesComponent:
         """Return a configured ``UpdateLinkStatsUseCase``.
 
         Designed to be called asynchronously (e.g. by a Celery worker);
-        increments click counts. Takes no cache: writing one here brought
-        deleted links back to life.
+        increments click counts. Takes both caches to **drop** the entries
+        of a row that is gone, and never to write one: writing here brought
+        deleted links back to life, and the use case says so at length.
 
         Returns:
             A ready-to-use ``UpdateLinkStatsUseCase`` instance.
         """
         return UpdateLinkStatsUseCase(
             uow_factory=self.uow_factory,
+            cache=self.cache,
+            redirect_cache=self.redirect_cache,
             logger=self.logger,
             record_visits=self.record_visits,
         )

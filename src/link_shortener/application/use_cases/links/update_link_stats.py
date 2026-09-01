@@ -3,6 +3,10 @@ from dataclasses import dataclass
 from link_shortener.domain import (
     LinkNotFoundError, LinkVisit, ShortCode, ValidationError,
 )
+from link_shortener.application.ports.cache.link_cache import LinkCache
+from link_shortener.application.ports.cache.redirect_cache import (
+    RedirectCache,
+)
 from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.logger.logger import Logger
@@ -27,12 +31,33 @@ class UpdateLinkStatsUseCase(BaseUseCase):
     family instead of the header that named them. See
     ``domain.value_objects.visitor``.
 
-    It touches no cache: a write refreshing the cached entity would land
-    after its own transaction closed, which is how a deleted link comes
-    back to life on the redirect path.
+    It writes to no cache, and the comment at the end of ``execute`` says
+    at length why. It does **drop** one entry, in one branch: when the row
+    is not there to increment. Those are opposite acts and the difference
+    is the whole of it -- a write puts back what a delete removed, while a
+    drop can only agree with a database that has already spoken.
+
+    That branch is how a link deleted in another process stops
+    redirecting. With ``REDIS_ENABLED=false`` each process holds its own
+    cache, so a ``flask link delete`` at a shell empties the shell's copy
+    and leaves the server's untouched: measured on the arrangement the
+    local profile ships, the command reported the link deleted, the API
+    answered ``404``, and the redirect went on answering ``302`` for six
+    minutes across two ``cache clear`` runs. This runs on every redirect
+    and is the one thing that always asks the database, so it is where the
+    server finds out.
+
+    Both levels are dropped, not one. Dropping L1 alone was written first
+    and measured wrong: the next request missed L1, found the entity still
+    in L2, answered from it and warmed L1 back up, so the redirect went on
+    working with the warning printed on every one of them. The entity
+    cache is what makes L1 come back, so it has to go with it.
 
     Attributes:
         uow_factory: Opens the transaction this runs in.
+        cache: The L2 entity, dropped when the row is gone. Never written
+            here.
+        redirect_cache: The L1 entry, dropped with it. Never written here.
         logger: Where the outcome is recorded.
         record_visits: Whether to store the event as well as the counter.
             Off, the service keeps counting and every chart with time on
@@ -40,6 +65,8 @@ class UpdateLinkStatsUseCase(BaseUseCase):
             before the table existed.
     """
     uow_factory: UnitOfWorkFactory
+    cache: LinkCache
+    redirect_cache: RedirectCache
     logger: Logger
     record_visits: bool = True
 
@@ -72,7 +99,17 @@ class UpdateLinkStatsUseCase(BaseUseCase):
             try:
                 uow.links.increment_clicks(short_code)
             except LinkNotFoundError:
-                log.warning("Link not found during stats update")
+                # The database has said the row is gone, and this process
+                # may still be handing out its redirect. Dropping the entry
+                # cannot resurrect anything -- there is nothing to
+                # resurrect -- and it is the only moment a process that did
+                # not perform the deletion learns of it.
+                self.redirect_cache.delete_redirect(short_code)
+                self.cache.delete_by_code(short_code)
+                log.warning(
+                    "Link not found during stats update; both cache levels "
+                    "for it were dropped in this process"
+                )
                 return
 
             if self.record_visits:

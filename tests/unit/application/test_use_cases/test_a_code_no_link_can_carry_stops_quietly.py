@@ -35,7 +35,10 @@ class TestTheCounterTaskDoesNotRetryWhatCannotSucceed:
         """
         uow_factory = MagicMock()
         use_case = UpdateLinkStatsUseCase(
-            uow_factory=uow_factory, logger=MagicMock()
+            uow_factory=uow_factory,
+            cache=MagicMock(),
+            redirect_cache=MagicMock(),
+            logger=MagicMock(),
         )
 
         use_case.execute(IMPOSSIBLE, CONTEXT)
@@ -53,7 +56,12 @@ class TestTheCounterTaskDoesNotRetryWhatCannotSucceed:
         """
         container = Mock()
         container.get_update_link_stats_use_case.return_value = (
-            UpdateLinkStatsUseCase(uow_factory=MagicMock(), logger=MagicMock())
+            UpdateLinkStatsUseCase(
+                uow_factory=MagicMock(),
+                cache=MagicMock(),
+                redirect_cache=MagicMock(),
+                logger=MagicMock(),
+            )
         )
 
         with patch.object(tasks, "get_container", return_value=container):

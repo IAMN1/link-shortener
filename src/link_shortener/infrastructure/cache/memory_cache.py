@@ -50,7 +50,34 @@ class InMemoryLinkCache(ServiceCache):
 
     # ========== CacheHealth methods ==========
     def is_configured(self) -> bool:
-        """No backend is involved; there is nothing to be up or down."""
+        """
+        No backend to reach, so nothing here can be up or down.
+
+        The question this answers is "is there a cache service to watch",
+        and there is not: the entries are in this process's memory. What
+        it does **not** answer is "is anything being cached", and the two
+        got read as one -- ``NullCache`` returns ``False`` here as well,
+        and it stores nothing at all, so every report built on this makes
+        one answer out of two situations that behave differently.
+
+        Measured on a live stack: with this cache serving, ``/health``
+        said ``"cache": "disabled"``, ``flask cache stats`` and
+        ``maintenance check-redis`` said ``No cache backend is
+        configured`` and ``maintenance health`` said ``Cache: not
+        configured`` -- while the same process's log carried 41
+        ``Redirect cache hit`` and 65 ``Stats cache hit`` lines in the
+        same minutes, and a link deleted in another process went on
+        redirecting for six of them.
+
+        Left answering ``False`` rather than quietly changed: the
+        distinction belongs in what the reports say, and one of them --
+        ``/health`` -- has ``"cache": "disabled"`` written into the guide
+        as the local answer. ``ping`` below is the same shape of question
+        and the same answer.
+
+        Returns:
+            ``False``.
+        """
         return False
 
     def ping(self) -> bool:

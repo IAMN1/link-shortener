@@ -27,12 +27,40 @@ def clear_cache(cache: ServiceCache, stats_only: bool = False) -> str:
         talks to the terminal, and this module is the one place in it
         that used to print for itself.
     """
+    # Whose cache was cleared, when the answer is "this process's and
+    # nobody else's". With no cache service configured the entries live in
+    # the memory of whichever process holds them -- the start-up line says
+    # so, "Redis is off, using the in-memory cache; entries are not shared
+    # between workers" -- and this command is a process of its own, so it
+    # empties a cache nothing was serving from.
+    #
+    # Measured on the arrangement row 5 of the guide's table ships, against
+    # a running server: a link was warmed, its destination changed in the
+    # database directly, and the redirect went on answering the old one --
+    # three times before this command, and three times after it printed
+    # "Cache cleared." with exit 0. An operator reading that has been told
+    # the one thing they came to do is done.
+    #
+    # `is_configured` is the same question `cache stats` and
+    # `maintenance check-redis` ask, and answers False for both the
+    # in-process cache and none at all. Either way the sentence is true:
+    # nothing outside this process was reached.
+    reaches_this_process_only = not cache.is_configured()
+
     if stats_only:
         cache.delete_stats()
-        return "Statistics cache cleared."
+        cleared = "Statistics cache cleared."
+    else:
+        cache.clear_all()
+        cleared = "Cache cleared."
 
-    cache.clear_all()
-    return "Cache cleared."
+    if reaches_this_process_only:
+        cleared += (
+            " In this process only -- no cache service is configured, so a"
+            " running server holds its own entries and keeps them. Restart"
+            " it, or wait out CACHE_LINK_TTL."
+        )
+    return cleared
 
 
 def get_cache_info(cache: ServiceCache) -> dict[str, Any]:
