@@ -26,6 +26,7 @@ from link_shortener.web.middleware.cache_control import PrivateCacheMiddleware
 from link_shortener.web.middleware.compression import CompressionMiddleware
 from link_shortener.web.middleware.csrf import CsrfProtectionMiddleware
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
+from link_shortener.web.middleware.host_check import HostCheckMiddleware
 from link_shortener.web.middleware.query_strictness import QueryStrictnessMiddleware
 from link_shortener.web.middleware.rate_limit import (
     RateLimitMiddleware,
@@ -258,6 +259,20 @@ def create_app(config=None) -> Flask:
     SecurityHeadersMiddleware(app)
     ## 1. Request logging (generates request_id)
     RequestLoggingMiddleware(app, container.get_logger(RequestLoggingMiddleware.__module__))
+    ## 1.5 The names this deployment answers to
+    #
+    # After logging, so a refusal still carries a `request_id` and leaves a
+    # line; before authentication, so a request for somebody else's name
+    # costs no database query.
+    #
+    # Ahead of the limiter, unlike everything below it, and for a reason
+    # that does not apply to the rest: being refused here buys a caller
+    # nothing. The order below exists because a hook that refuses before
+    # the limiter counts is a way to probe for free -- but a caller who
+    # sends the wrong `Host` gets no service at all, whatever they were
+    # probing for. Registers no hook when `ALLOWED_HOSTS` is empty, which
+    # is the default, so it costs nothing until a deployment names one.
+    HostCheckMiddleware(app, container.get_logger(HostCheckMiddleware.__module__))
     ## 2. Authentication (loads current_user into g)
     AuthenticationMiddleware(
         app,
@@ -504,6 +519,15 @@ def create_app(config=None) -> Flask:
             "guest quota and the rate limiter count by the connecting "
             "address. Correct where this service is reached directly; "
             "behind a proxy it makes every visitor one caller",
+            profile=env,
+        )
+
+    if deployed and not app.config.get("ALLOWED_HOSTS"):
+        logger.warning(
+            "ALLOWED_HOSTS is empty: the service answers to any Host it is "
+            "given, including a name somebody else pointed at this address. "
+            "Harmless while nothing builds an address from the request, and "
+            "the wrong default the moment something does",
             profile=env,
         )
 

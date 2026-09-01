@@ -906,6 +906,39 @@ class BaseConfig:
     Set via TRUSTED_PROXIES env var, comma-separated (e.g. "10.0.0.1,10.0.0.2").
     """
 
+    ALLOWED_HOSTS: list = env_list("ALLOWED_HOSTS", [])
+    """
+    Host names this service answers to. Empty means it answers to any.
+
+    Empty is what it has always done, and the default keeps it: nothing
+    compares ``Host`` to anything, so a name pointed at this address is
+    served as readily as the configured one. That costs nothing today --
+    ``request.host`` is not read anywhere, and ``short_url`` is built from
+    ``BASE_URL`` rather than from the request -- so this closes a door
+    before there is a reason to walk through it rather than after.
+
+    Set it and the door is shut: a request whose ``Host`` names something
+    else is answered ``400`` before authentication runs, so it costs no
+    database work.
+
+    Compared by host name alone. The port is stripped, because the port a
+    request arrives on is a fact about the deployment and not about the
+    name -- the stack's own health check asks ``localhost:${PORT}``, and a
+    list that had to name the port would break the moment the port moved.
+    Case is ignored and a trailing dot is dropped, both being spellings of
+    the same name.
+
+    Exact names only, no wildcard. A leading-dot pattern is how
+    ``evilexample.com`` gets matched by ``.example.com`` in somebody's
+    implementation of it, and a service on one domain has nothing to
+    spend that risk on.
+
+    Named the way a browser sends it: ``example.com``, not
+    ``https://example.com``. A value carrying a scheme is read for its
+    host name anyway rather than never matching.
+    """
+
+
     # ==========================================================================
     # Alembic Integration
     # ==========================================================================
