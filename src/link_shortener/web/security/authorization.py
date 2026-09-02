@@ -17,11 +17,20 @@ from link_shortener.domain.i18n import N_
 from link_shortener.web.security.deletion_token import link_id_from
 
 
-DELETION_TOKEN_HEADER = "X-Deletion-Token"
+DELETION_TOKEN_HEADER = "X-Deletion-Token"  # nosec B105
 """The header a creator returns their proof in.
 
 Named once. Three routes read it, and a name spelled at each of them is a
 name that gets changed at two of them.
+
+The `nosec` is what this repository does with a finding that has been
+read, as the `AuditEvent` members spelled this way already are: bandit's
+B105 matches the *name* of a binding rather than its contents, so anything
+called `..._TOKEN` is reported as a hardcoded password. What this one holds
+is the name of a header; the value that travels in it is minted per link in
+`deletion_token.py` and is written down nowhere. Unannotated it took the
+whole lint gate with it, because bandit exits non-zero on any finding at
+all -- so an examined one has to be marked rather than merely known about.
 """
 
 
