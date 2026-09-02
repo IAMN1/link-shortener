@@ -1,6 +1,6 @@
 # Testing
 
-**5171 tests**, 98.65% coverage against a floor of 88%, plus two live runs
+**5206 tests**, 98.65% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 

@@ -93,7 +93,17 @@ schema.config.generation.with_security_parameters = False
 # `tests/integration/web/controllers/test_password_reset.py`; and the
 # document's account of all three is held by the status sweep in
 # `test_the_document_declares_what_the_routes_answer.py`.
-schema = schema.exclude(path_regex=r"^/api/v1/auth/(logout|change-password|refresh)$")
+ENDS_THE_SESSION = r"^/api/v1/auth/(logout|change-password|refresh)$"
+"""The three, as a pattern, named once.
+
+A constant rather than a literal in the call below so that
+``test_the_run_still_covers_the_document`` can hold this exact pattern
+against the document. Written out there as a copy, it agreed with itself:
+broadening this one to ``^/api/v1/auth/.*$`` took nine operations out of
+the run and left that file green.
+"""
+
+schema = schema.exclude(path_regex=ENDS_THE_SESSION)
 
 # Positive data only, and the reason is worth stating rather than hiding.
 #

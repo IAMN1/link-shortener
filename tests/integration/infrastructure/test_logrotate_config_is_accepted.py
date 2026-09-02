@@ -41,16 +41,19 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture(scope="module")
-def dry_run():
-    """
-    Build the rotator image and ask logrotate what it would do.
+def image():
+    """Build the rotator image, once for this module.
 
-    The journals are made inside the container rather than mounted from
-    the host: this asks about the configuration, and a bind mount would
-    add the host's own permissions to the question.
+    Its own fixture because four tests below run the image and only two
+    of them asked for the one that used to build it. Those two passed
+    because the building fixture happened to run first -- pytest executes
+    a file top to bottom, and `pytest-randomly` is not installed. Asked
+    for on its own, or in a different order, they met ``Unable to find
+    image 'link-shortener-logrotate:test' locally`` and a docker pull
+    against a name no registry carries.
 
     Returns:
-        The finished ``subprocess.CompletedProcess``.
+        The image tag every test here runs.
     """
     build = subprocess.run(
         [
@@ -62,7 +65,21 @@ def dry_run():
         cwd=ROOT, capture_output=True, text=True, timeout=600,
     )
     assert build.returncode == 0, build.stderr[-2000:]
+    return IMAGE
 
+
+@pytest.fixture(scope="module")
+def dry_run(image):
+    """
+    Ask logrotate what it would do with the shipped configuration.
+
+    The journals are made inside the container rather than mounted from
+    the host: this asks about the configuration, and a bind mount would
+    add the host's own permissions to the question.
+
+    Returns:
+        The finished ``subprocess.CompletedProcess``.
+    """
     make_journals = " ".join(
         f"head -c 200 /dev/urandom | base64 > /logs/{name};" for name in JOURNALS
     )
@@ -86,7 +103,7 @@ def dry_run():
 
 
 @pytest.fixture(scope="module")
-def renamed_journals():
+def renamed_journals(image):
     """The same question of a deployment that renamed its journals.
 
     The whole point of the template. Before it the names were written into
@@ -175,7 +192,7 @@ class TestTheRotatorRefusesANameThatIsAPath:
     @pytest.mark.parametrize(
         "name", ("../escape", "logs/application", "..", ".hidden")
     )
-    def test_it_refuses_and_says_so(self, name):
+    def test_it_refuses_and_says_so(self, image, name):
         result = subprocess.run(
             [
                 "docker", "run", "--rm",
@@ -189,7 +206,7 @@ class TestTheRotatorRefusesANameThatIsAPath:
         assert result.returncode != 0, result.stdout
         assert "is not a journal name" in result.stdout, result.stdout
 
-    def test_an_ordinary_name_is_still_accepted(self):
+    def test_an_ordinary_name_is_still_accepted(self, image):
         """The guard has to let the ordinary case through."""
         result = subprocess.run(
             [

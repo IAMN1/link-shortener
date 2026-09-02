@@ -49,12 +49,42 @@ def redis_client():
 
 
 @pytest.fixture(autouse=True)
-def _clean_db(pg_engine):
+def _clean_db(pg_engine, pg_session_factory):
+    """Empty the tables between tests, and put the base roles back.
+
+    The truncation takes `roles` and `permissions` with it, while `app`
+    is session-scoped and seeds them exactly once -- so the seeded state
+    that fixture promises belonged to whichever test ran first, and every
+    test after it saw an empty `roles` table. Measured: five roles in the
+    first test of a file, none in the second.
+
+    Nothing had failed of it yet, because the tests here happen to build
+    what they need. What it meant is that a test needing a role would
+    pass alone and in first position and fail anywhere else -- the kind
+    of failure that is read as flakiness and retried.
+
+    Re-seeded rather than spared by the truncation: a role edited by a
+    test would otherwise survive into the next one, which is the state
+    the cleaning exists to prevent.
+    """
     yield
     with pg_engine.connect() as conn:
         conn.execute(text("TRUNCATE urls, user_roles, role_permissions, "
                           "users, roles, permissions CASCADE"))
         conn.commit()
+
+    from link_shortener.infrastructure.database.seed import seed_base_roles
+
+    session = pg_session_factory()
+    try:
+        # `seed_base_roles` writes and does not commit -- its callers own
+        # the transaction. Without this the re-seed rolled back on close
+        # and the next test still found an empty table, which is exactly
+        # what it looked like before: measured, five roles then none.
+        seed_base_roles(session)
+        session.commit()
+    finally:
+        session.close()
 
 
 @pytest.fixture()
