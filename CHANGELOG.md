@@ -10,6 +10,45 @@ recalled — the same rule the rest of this project's documents are held to.
 
 ## [Unreleased]
 
+### Added
+
+- CI builds the runtime image. Since 1.0.0 the builder pulls `uv` from
+  ghcr.io and exports the dependency list from `uv.lock`, and nothing else
+  in the workflow exercised either: a break would have surfaced on the
+  machine doing a deployment rather than on the one running the checks.
+
+### Changed
+
+- **redis 7.1.0 → 8.1.0.** The release applies `@overload` across the
+  command surface so a synchronous client no longer shares its declared
+  return type with the asynchronous one — which removes the reason the
+  sliding-window script's return value carried a `type: ignore`. The
+  suppression is gone rather than widened, and the floor moves with it: the
+  code no longer type-checks against redis 7. Measured against the two
+  connection defaults the release also changed (`socket_timeout` and
+  `socket_connect_timeout` now five seconds, retries ten with jitter): all
+  three clients here pass both timeouts explicitly, and an unreachable
+  Redis is still refused in under a hundredth of a second.
+- Dependabot opens its pull requests against `dev` rather than the default
+  branch. Advisory-driven ones are the half GitHub does not let a
+  repository configure and still arrive on `master`.
+
+### Fixed
+
+- The `short_code` path parameter declares its shape instead of describing
+  it. The schema said `string` while the sentence beside it said 6–10 of
+  `A-Z a-z 0-9 _ -`, so a generated caller was entitled to ask for any
+  string at all — including `mine`, which is a path of its own, resolved by
+  OpenAPI to the concrete operation rather than to the template. The
+  service answered with a list where the template promises an object, and
+  the contract run reddened whenever its generator happened to produce that
+  word. Six characters is the domain's own floor, so the value was never
+  one this operation could be asked for.
+- `uv.lock` records the project's own version. The 1.0.0 bump moved
+  `pyproject.toml` and left the lock saying 0.9.0, which `uv sync --locked`
+  refuses — three of the workflow's four jobs failed at their first step
+  while the image built.
+
 ## [1.0.0] — 2026-09-02
 
 **Why 1.0.0 now.** The entry below said the major version was worth

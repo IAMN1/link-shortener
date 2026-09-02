@@ -565,8 +565,8 @@ class RedisLinkCache(ServiceCache):
         # Sealed once per key, not once per payload: the signature covers
         # the key, so the same bytes carry a different signature under each
         # of them and cannot be moved between the two.
-        pipeline.setex(hash_key, self.ttl, self._seal(hash_key, data))
-        pipeline.setex(code_key, self.ttl, self._seal(code_key, data))
+        pipeline.set(hash_key, self._seal(hash_key, data), ex=self.ttl)
+        pipeline.set(code_key, self._seal(code_key, data), ex=self.ttl)
 
         # The redirect entry is written through the same rules as
         # save_redirect: an envelope carrying the expiry, and a lifetime
@@ -574,9 +574,8 @@ class RedisLinkCache(ServiceCache):
         # here is exactly how an expired link outlived its entity.
         redirect_ttl = self._redirect_ttl(link.expires_at)
         if redirect_ttl is not None:
-            pipeline.setex(
+            pipeline.set(
                 redirect_key,
-                redirect_ttl,
                 self._seal(
                     redirect_key,
                     self._serialize_redirect(
@@ -585,6 +584,7 @@ class RedisLinkCache(ServiceCache):
                         link.expires_at,
                     ),
                 ),
+                ex=redirect_ttl,
             )
 
     def save(self, link: Link) -> None:
@@ -807,7 +807,7 @@ class RedisLinkCache(ServiceCache):
         value = self._seal(
             key, self._serialize_redirect(short_code.value, original_url, expires_at)
         )
-        self._execute_write(lambda client: client.setex(key, ttl, value))
+        self._execute_write(lambda client: client.set(key, value, ex=ttl))
 
     # ------------------------------------------------------------------
     # StatsCache methods
@@ -848,7 +848,9 @@ class RedisLinkCache(ServiceCache):
 
         data = self._seal(key, json.dumps(stats).encode("utf-8"))
 
-        self._execute_write(lambda client: client.setex(key, self.stats_ttl, data))
+        self._execute_write(
+            lambda client: client.set(key, data, ex=self.stats_ttl)
+        )
 
     def delete_stats(self) -> None:
         """Invalidate cached statistics."""

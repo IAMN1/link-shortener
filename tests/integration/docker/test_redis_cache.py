@@ -70,7 +70,9 @@ class TestRedisCacheIntegration:
             cache = app.container.get_cache()
             code = ShortCode("oldfmt1")
             key = cache.key_gen.for_redirect(code.value)
-            cache._client.setex(key, 60, "https://written-before-the-envelope.com")
+            cache._client.set(
+                key, "https://written-before-the-envelope.com", ex=60
+            )
 
             # Unusable -- it carries no expiry, so its age cannot be judged.
             assert cache.get_redirect(code) is None

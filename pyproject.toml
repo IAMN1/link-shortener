@@ -40,7 +40,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "pyjwt>=2.12.1",
     "python-dotenv>=1.2.1",
-    "redis>=7.1.0",
+    "redis>=8.1.0",
     # Without the `asyncio` extra: nothing in this project is async --
     # no coroutine, no `AsyncSession`, and both drivers it runs on
     # (psycopg for PostgreSQL, the standard library for SQLite) are

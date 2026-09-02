@@ -82,12 +82,12 @@ def _link(code=CODE, url=URL):
 
 def _payload_written_for(client, key):
     """Find what the cache stored under a key, still sealed."""
-    for call in client.setex.call_args_list:
+    for call in client.set.call_args_list:
         if call[0][0] == key:
-            return call[0][2]
-    for call in client.pipeline.return_value.setex.call_args_list:
+            return call[0][1]
+    for call in client.pipeline.return_value.set.call_args_list:
         if call[0][0] == key:
-            return call[0][2]
+            return call[0][1]
     raise AssertionError(f"nothing was written to {key}")
 
 
