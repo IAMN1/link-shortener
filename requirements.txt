@@ -228,7 +228,7 @@ typing-inspection==0.4.2
     # via
     #   pydantic
     #   pydantic-settings
-tzdata==2025.3
+tzdata==2026.3
     # via
     #   kombu
     #   psycopg
