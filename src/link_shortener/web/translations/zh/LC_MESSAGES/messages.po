@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-02 07:38+0300\n"
+"POT-Creation-Date: 2026-09-02 09:08+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -32,7 +32,7 @@ msgstr "密码不能为空"
 #: src/link_shortener/application/use_cases/links/delete_link.py:197
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:177
 #: src/link_shortener/web/middleware/authentication.py:226
-#: src/link_shortener/web/security/authorization.py:82
+#: src/link_shortener/web/security/authorization.py:91
 #: src/link_shortener/web/security/decorators.py:52
 #: src/link_shortener/web/security/decorators.py:118
 #: src/link_shortener/web/security/decorators.py:144
@@ -916,7 +916,7 @@ msgid "Too many requests. Limit %(limit)s per %(period)s second."
 msgid_plural "Too many requests. Limit %(limit)s per %(period)s seconds."
 msgstr[0] "请求过于频繁。每 %(period)s 秒限 %(limit)s 次。"
 
-#: src/link_shortener/web/security/authorization.py:85
+#: src/link_shortener/web/security/authorization.py:94
 msgid "You are not allowed to view this link"
 msgstr "您无权查看此链接"
 

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-02 07:38+0300\n"
+"POT-Creation-Date: 2026-09-02 09:08+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -33,7 +33,7 @@ msgstr "Пароль не может быть пустым"
 #: src/link_shortener/application/use_cases/links/delete_link.py:197
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:177
 #: src/link_shortener/web/middleware/authentication.py:226
-#: src/link_shortener/web/security/authorization.py:82
+#: src/link_shortener/web/security/authorization.py:91
 #: src/link_shortener/web/security/decorators.py:52
 #: src/link_shortener/web/security/decorators.py:118
 #: src/link_shortener/web/security/decorators.py:144
@@ -931,7 +931,7 @@ msgstr[0] "Слишком много запросов. Предел %(limit)s з
 msgstr[1] "Слишком много запросов. Предел %(limit)s за %(period)s секунды."
 msgstr[2] "Слишком много запросов. Предел %(limit)s за %(period)s секунд."
 
-#: src/link_shortener/web/security/authorization.py:85
+#: src/link_shortener/web/security/authorization.py:94
 msgid "You are not allowed to view this link"
 msgstr "Вам не разрешено смотреть эту ссылку"
 
