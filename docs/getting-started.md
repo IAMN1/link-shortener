@@ -70,6 +70,18 @@ The theme is the dark one — the control for it sits in the header, and the
 choice is kept in a cookie and applied by the server before the page is
 painted, so nothing flashes on the way in.
 
+Open a link from **My Links** and the page shows what that one code has
+done — where it points, how often it has been followed, and a QR square
+for the short address:
+
+<img src="media/link-qr.png" alt="A link's own page: the destination, a QR code for the short address, the click totals and a chart of its visits" width="820">
+
+The square encodes the **short** URL and never the destination, which is
+what keeps a printed code honest: the click is still counted, the expiry
+still applies, and deleting the link stops every copy of the square. It is
+an SVG, and it answers at `/api/v1/links/<code>/qr` on its own, so a poster
+or a slide can fetch it without opening the panel.
+
 ---
 
 ## What those commands did
