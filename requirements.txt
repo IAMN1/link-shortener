@@ -209,7 +209,7 @@ sqlalchemy==2.0.45
     #   link-shortener
 stevedore==5.6.0
     # via bandit
-structlog==25.5.0
+structlog==26.1.0
     # via link-shortener
 tomlkit==0.13.3
     # via pylint
