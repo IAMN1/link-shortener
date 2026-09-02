@@ -251,12 +251,31 @@ class CreateShortLinkUseCase(BaseUseCase):
         ``ValueError``, so nothing on the way out caught it and an
         unauthenticated caller got a 500 out of a one-line request body.
 
+        The lower end is bounded here too, and it is the guest ceiling that
+        needs it. ``Link.create`` gives an expiry only for ``ttl_seconds >
+        0``, so a negative number means forever -- and the ceiling a few
+        lines below is applied with ``min()``, which a negative value walks
+        straight past. A guest asking for ``-1`` got a link that never
+        expires, which is the same hole ``10**9`` opened from the other
+        side. ``CreateShortLinkRequest`` already refuses it with ``ge=0``,
+        and that is the reason the rule is stated twice rather than once:
+        the schema guards the HTTP door, and this use case is also reached
+        from ``flask link create`` and from ``flask db seed``, which never
+        meet it.
+
         Args:
             ttl_seconds: Lifetime asked for, 0 meaning forever.
 
         Raises:
-            ValidationError: If the lifetime exceeds ``MAX_TTL_SECONDS``.
+            ValidationError: If the lifetime is negative or exceeds
+                ``MAX_TTL_SECONDS``.
         """
+        if ttl_seconds < 0:
+            raise ValidationError(
+                N_("ttl_seconds must not be negative"),
+                field="ttl_seconds",
+            )
+
         if ttl_seconds > self.max_ttl_seconds:
             raise ValidationError(
                       f"ttl_seconds must not exceed {self.max_ttl_seconds}",

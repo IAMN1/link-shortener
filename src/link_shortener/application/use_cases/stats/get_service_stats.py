@@ -119,7 +119,7 @@ class GetServiceStatsUseCase(BaseUseCase):
             # An error here is not a degraded answer, because there is no
             # fallback source for these numbers. The global handler turns it
             # into a 500, which is what "I could not count" means.
-            log.exception("Error getting service stats", exc_info=str(e))
+            log.exception("Error getting service stats", error=str(e))
             raise
         finally:
             duration = time.perf_counter() - start_time

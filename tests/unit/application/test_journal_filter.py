@@ -245,3 +245,27 @@ class TestTheChainsOwnProbeIsNotWhatAReaderCameFor:
     def test_a_line_that_did_not_parse_is_still_shown(self):
         """An empty record carries no event type, so nothing hides it."""
         assert JournalFilter().matches({}) is True
+
+    def test_the_rest_of_the_search_still_applies_to_it(self):
+        """
+        Asking for the probe by name lifts the hiding and nothing else.
+
+        The branch answered ``True`` outright, so every other term of the
+        same search was skipped: an operator narrowing to one day -- which
+        is the whole way to find the gap where the chain stopped writing --
+        was handed the probes of every day in the live file and in the
+        archives, and the gap was pushed off the page by them.
+        """
+        by_name = HEALTH_PROBE_EVENT_TYPE
+
+        assert JournalFilter(
+            event_type=by_name, since="2026-08-18", until="2026-08-18"
+        ).matches(self.PROBE) is True
+
+        assert JournalFilter(
+            event_type=by_name, since="2026-09-01", until="2026-09-01"
+        ).matches(self.PROBE) is False
+
+        assert JournalFilter(
+            event_type=by_name, remote_addr="10.0.0.1"
+        ).matches(self.PROBE) is False

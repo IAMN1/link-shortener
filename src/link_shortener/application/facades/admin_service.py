@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple
 
 
 from link_shortener.application.context import RequestContext
-from link_shortener.domain import UserNotFoundError
 from link_shortener.application.dtos.admin.role import RoleResponse
 from link_shortener.application.dtos.user import UserResponse
 from link_shortener.application.dtos.user_activity import UserActivityResponse
@@ -15,8 +14,11 @@ from link_shortener.application.use_cases.admin.roles.update_role_permissions im
 from link_shortener.application.use_cases.admin.users.activate_user import ActivateUserUseCase
 from link_shortener.application.use_cases.admin.users.create_user import CreateUserUseCase
 from link_shortener.application.use_cases.admin.users.confirm_user_email import ConfirmUserEmailUseCase
+from link_shortener.application.use_cases.admin.users.resend_user_verification import (
+    ResendUserVerificationUseCase,
+)
 from link_shortener.application.use_cases.auth.resend_verification import (
-    ResendOutcome, ResendVerificationUseCase,
+    ResendOutcome,
 )
 from link_shortener.application.use_cases.admin.users.deactivate_user import DeactivateUserUseCase
 from link_shortener.application.use_cases.admin.users.delete_user import DeleteUserUseCase
@@ -61,7 +63,7 @@ class AdminService:
     create_user_uc: CreateUserUseCase
     update_user_roles_uc: UpdateUserRolesUseCase
     confirm_user_email_uc: ConfirmUserEmailUseCase
-    resend_verification_uc: ResendVerificationUseCase
+    resend_verification_uc: ResendUserVerificationUseCase
     deactivate_user_uc: DeactivateUserUseCase
     activate_user_uc: ActivateUserUseCase
     list_users_uc: ListUsersUseCase
@@ -144,7 +146,12 @@ class AdminService:
 
         Args:
             user_id: UUID of the user.
-            context: Request context (authorization is handled by the use case).
+            context: Request context. Authorization is *not* handled by
+                the use case here, unlike the journal and security-count
+                ones: ``GetUserActivityStatsUseCase`` says so itself and
+                checks nothing, so the permission is the route's and only
+                the route's -- a caller reaching this facade from anywhere
+                but a guarded route reads any account's statistics.
 
         Returns:
             UserActivityResponse containing total links, clicks, and recent links.
@@ -216,16 +223,12 @@ class AdminService:
             message sent to ...`` with nothing sent.
 
         Raises:
+            DomainError: With code ``FORBIDDEN`` if the account holds a
+                privileged permission the caller does not.
             DomainError: With code ``USER_NOT_FOUND`` when no account
                 carries that id.
         """
-        user = self.get_user(user_id, context)
-        if user is None:
-            raise UserNotFoundError(user_id)
-
-        return user.email, self.resend_verification_uc.execute(
-            user.email, context
-        )
+        return self.resend_verification_uc.execute(user_id, context)
 
     def activate_user(self, user_id: str, context: RequestContext) -> UserResponse:
         """Reactivate a previously deactivated user account.

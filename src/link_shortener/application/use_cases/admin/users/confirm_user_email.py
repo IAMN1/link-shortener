@@ -5,6 +5,9 @@ from link_shortener.application.dtos.user import UserResponse
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWorkFactory
+from link_shortener.application.use_cases.admin.privilege_guard import (
+    require_may_act_on_user,
+)
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import UserNotFoundError
 
@@ -24,9 +27,14 @@ class ConfirmUserEmailUseCase(BaseUseCase):
     worse in every way: no permission check, no record, no answer.
 
     So the bypass is made deliberate rather than convenient. It sits
-    behind the same permission as suspension and deletion, it says who
-    did it in the log, and the interface shows an account's real state
-    beside the button rather than after it.
+    behind the same permission as suspension and deletion, behind the same
+    reach check as both -- ``require_may_act_on`` -- it says who did it in
+    the log, and the interface shows an account's real state beside the
+    button rather than after it. The reach check belongs here for the
+    reason it belongs on suspension: what this act decides is whether an
+    account can sign in at all, so on an account holding a privileged
+    permission the caller does not, it hands out exactly the authority
+    that rule exists to keep out of their hands.
 
     Outstanding confirmation tokens are spent along with it. A token that
     still works after the address is confirmed is a live credential for
@@ -55,13 +63,20 @@ class ConfirmUserEmailUseCase(BaseUseCase):
             UserResponse with the updated state.
 
         Raises:
-            DomainError: With code ``USER_NOT_FOUND`` when no account
+            DomainError: With code ``FORBIDDEN`` if the account holds a
+                privileged permission the caller does not.
+            UserNotFoundError: With code ``USER_NOT_FOUND`` when no account
                 carries that id.
         """
         log = self._get_logger(self.logger, context)
         audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
+            # Before the lookup below, so that the refusal a caller is
+            # entitled to is the one about their own authority. An id
+            # naming nobody passes it, and the lookup answers that.
+            require_may_act_on_user(context, uow, user_id)
+
             user = uow.users.find_by_id(user_id)
             if user is None:
                 raise UserNotFoundError(user_id)

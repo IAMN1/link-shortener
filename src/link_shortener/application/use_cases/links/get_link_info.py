@@ -121,7 +121,7 @@ class GetLinkInfoUseCase(BaseUseCase):
 
         except Exception as e:
             log.exception(
-                "Error getting link info", short_code=short_code_str, exc_info=str(e)
+                "Error getting link info", short_code=short_code_str, error=str(e)
             )
             raise
         finally:

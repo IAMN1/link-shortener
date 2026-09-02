@@ -108,7 +108,10 @@ class AuditEvent(Enum):
     # exactly this: the audit trail has to be protected from the people
     # who can act on it, and a trail that can be pruned without the
     # pruning appearing in it protects nothing. It is also the reason
-    # ``BEYOND_ADMIN_ALL`` exists twenty lines from here.
+    # ``BEYOND_ADMIN_ALL`` exists in
+    # ``infrastructure/auth/rbac_authorization_service.py``: it is what
+    # keeps ``admin:all`` from granting ``audit:view`` along with
+    # everything else.
     SECURITY_HISTORY_SWEPT = "SECURITY_HISTORY_SWEPT"
 
     # Stored addresses lowered to the form the service now looks accounts

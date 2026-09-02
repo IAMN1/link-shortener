@@ -151,7 +151,7 @@ class RedirectLinkUseCase(BaseUseCase):
         except Exception as e:
             log.exception(
                 "Error during redirect",
-                exc_info=str(e),
+                error=str(e),
                 short_code=short_code_str,
             )
             raise

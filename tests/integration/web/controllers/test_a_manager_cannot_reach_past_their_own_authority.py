@@ -181,7 +181,17 @@ class TestThePremise:
 
 
 class TestTheAuditorIsOutOfReach:
-    """The three routes that take rather than give."""
+    """Every route that acts on the account, in both directions.
+
+    The rule was written for the three that take authority away, and the
+    two that give it back were left out -- so a caller holding
+    ``admin:manage_users`` and nothing else could not suspend an
+    ``auditor``, could not delete it and could not strip its roles, and
+    could switch a suspended one back on or confirm its address, which is
+    what decides whether it can sign in at all. Reaching an account whose
+    privileges exceed your own is the same reach whichever way the change
+    points.
+    """
 
     @pytest.mark.parametrize(
         "method, suffix, body",
@@ -189,6 +199,9 @@ class TestTheAuditorIsOutOfReach:
             ("DELETE", "", None),
             ("POST", "/deactivate", None),
             ("PUT", "/roles", {"roles": ["user"]}),
+            ("POST", "/activate", None),
+            ("POST", "/verify-email", None),
+            ("POST", "/resend-verification", None),
         ],
     )
     def test_it_is_refused(self, client, two_accounts, method, suffix, body):
