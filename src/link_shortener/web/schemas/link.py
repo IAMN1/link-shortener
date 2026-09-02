@@ -72,7 +72,9 @@ class ShortLinkResponse(BaseModel):
                 "is_new": False,
                 "from_cache": True,
                 "owner_id": "550e8400-e29b-41d4-a716-446655440000",
-                "deletion_token": None
+                # Published example. B105 reads the key, not the value:
+                # the value here is `None`.
+                "deletion_token": None  # nosec B105
             }
         }
     )

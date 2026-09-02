@@ -83,17 +83,23 @@ def validate_token(
 # the first link, because deduplication reads the URL and not the code.
 # The sentence mattered because it read as "rotating this revokes the
 # links you handed out", which is a thing this service cannot do.
+# The `nosec` marks below are on the *sentences*, not on any secret.
+# bandit 1.9.4 widened B105 to report a string literal whose dictionary
+# key looks like a credential, so every entry of this table -- whose keys
+# are the names of settings and whose values are English explanations of
+# what rotating one costs -- is reported as a hardcoded password. There is
+# no password here at all; 1.9.2 read the same table and said nothing.
 _COST_OF_REPLACING = {
-    "SECRET_KEY": "signs out every session and voids every issued token",
+    "SECRET_KEY": "signs out every session and voids every issued token",  # nosec B105
     "SHORT_CODE_PEPPER": (
         "changes the code a URL not yet shortened will get; links already "
         "made keep theirs and go on resolving"
     ),
-    "DATABASE_PASSWORD": (
+    "DATABASE_PASSWORD": (  # nosec B105
         "leaves the database still expecting the old one -- the volume "
         "keeps the password it was initialised with"
     ),
-    "REDIS_PASSWORD": "leaves both Redis still expecting the old one",
+    "REDIS_PASSWORD": "leaves both Redis still expecting the old one",  # nosec B105
 }
 
 # The passwords the stack's own services are started with. Kept apart from

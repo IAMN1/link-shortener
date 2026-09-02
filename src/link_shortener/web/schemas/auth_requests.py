@@ -27,6 +27,13 @@ somebody looking at a form reads.
 So a field is optional to the model and required in the schema. What the
 model refuses is a type; what the route refuses is an absence; the document
 states both, because a caller needs both and neither half is the other's.
+
+The ``# nosec B105`` marks below sit on published examples. bandit 1.9.4
+widened that check to report a string literal whose key looks like a
+credential, so an OpenAPI example naming a password field is reported as a
+hardcoded password -- which is the one place a password-shaped string
+belongs, since a generated client fills the field from it. 1.9.2 read the
+same examples and said nothing. Nothing here is read at runtime.
 """
 
 from typing import Any, Callable, Dict, List, Optional
@@ -109,7 +116,7 @@ class CredentialsRequest(StrictRequest):
         required=["email", "password"],
         example={
             "email": "person@example.com",
-            "password": "a-password-of-their-own",
+            "password": "a-password-of-their-own",  # nosec B105
         },
     ))
 
@@ -149,7 +156,7 @@ class VerifyEmailRequest(StrictRequest):
 
     model_config = ConfigDict(json_schema_extra=_body(
         required=["token"],
-        example={"token": "a1b2c3d4e5f6"},
+        example={"token": "a1b2c3d4e5f6"},  # nosec B105
     ))
 
 
@@ -167,8 +174,8 @@ class ResetPasswordRequest(StrictRequest):
     model_config = ConfigDict(json_schema_extra=_body(
         required=["token", "new_password"],
         example={
-            "token": "a1b2c3d4e5f6",
-            "new_password": "a-password-of-their-own",
+            "token": "a1b2c3d4e5f6",  # nosec B105
+            "new_password": "a-password-of-their-own",  # nosec B105
         },
     ))
 
@@ -194,8 +201,8 @@ class ChangePasswordRequest(StrictRequest):
     model_config = ConfigDict(json_schema_extra=_body(
         required=["current_password", "new_password"],
         example={
-            "current_password": "the-one-they-have",
-            "new_password": "the-one-they-want",
+            "current_password": "the-one-they-have",  # nosec B105
+            "new_password": "the-one-they-want",  # nosec B105
         },
     ))
 
@@ -228,5 +235,5 @@ class RefreshTokenRequest(BaseModel):
 
     model_config = ConfigDict(json_schema_extra=_body(
         required=[],
-        example={"refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."},
+        example={"refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."},  # nosec B105
     ))
