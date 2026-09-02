@@ -98,11 +98,15 @@ class TestTheReadLimitsKeepTheirPlaceInTheOrder:
     """
     Not the numbers themselves -- the relations between them.
 
-    Only the four ``auth.*`` limits and the pair of defaults were pinned,
-    because those stand against an attacker. The consequence was honest and
-    unpleasant: ``redirect_to_original`` could go from 200 to 200000 and no
-    run would notice. Pinning all ten to literals would turn every
-    deliberate retune into a red test, which is why it was not done.
+    Four of the fifteen entries are pinned -- ``auth.login``,
+    ``auth.register``, ``auth.refresh_token`` and ``auth.logout`` -- along
+    with the pair of defaults, because those stand against an attacker.
+    The consequence was honest and unpleasant: ``redirect_to_original``
+    could go from 200 to 200000 and no run would notice. Pinning all
+    fifteen to literals would turn every deliberate retune into a red
+    test, which is why it was not done. The other five ``auth.*`` limits
+    -- the reset, verification and password-change endpoints -- are
+    unpinned as well, which is worth knowing rather than assuming.
 
     What is asserted instead is the shape an operator relies on: reading is
     not cheaper to abuse than writing, nothing is effectively unlimited,

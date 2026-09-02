@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 import uuid
 
 from link_shortener.domain.value_objects.visitor import (
@@ -154,7 +154,7 @@ class VisitSummary:
     until: datetime
     total: int = 0
     bots: int = 0
-    buckets: list = field(default_factory=list)
-    devices: list = field(default_factory=list)
-    browsers: list = field(default_factory=list)
-    top_links: list = field(default_factory=list)
+    buckets: List["VisitBucket"] = field(default_factory=list)
+    devices: List["VisitBreakdown"] = field(default_factory=list)
+    browsers: List["VisitBreakdown"] = field(default_factory=list)
+    top_links: List["VisitBreakdown"] = field(default_factory=list)

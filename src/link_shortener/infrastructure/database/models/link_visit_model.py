@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Index, Integer, String,
+    Boolean, DateTime, ForeignKey, Index, Integer, String, false,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,7 +25,12 @@ class LinkVisitModel(Base):
         id: UUID primary key.
         link_id: The link that was opened. ``CASCADE``: visits to a link
             that no longer exists are not statistics, they are litter.
-        occurred_at: When it was opened, in UTC.
+        occurred_at: When the visit was recorded, in UTC. That is when
+            the background task ran rather than when the redirect was
+            served: ``UpdateLinkStatsUseCase`` calls ``LinkVisit.record``
+            without a ``now``, so the entity stamps its own clock. Under
+            queue lag the two differ, and a visit served just before
+            midnight can land in the next day's bucket.
         visitor_network: The network the request came from, host part
             zeroed. Never a full address -- see
             ``domain.value_objects.visitor``.
@@ -70,9 +75,27 @@ class LinkVisitModel(Base):
     # column added later fills with nulls for the past, which is the one
     # thing that cannot be recovered.
     visitor_network: Mapped[str | None] = mapped_column(String(45), nullable=True)
-    device: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
-    browser: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
-    is_bot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # ``server_default`` beside ``default``, and it is the one the
+    # migration writes. A Python-side default emits no ``DEFAULT`` clause,
+    # so ``create_all`` -- which is what the suite runs on -- built these
+    # three columns without one while ``alembic upgrade head`` built them
+    # with one. An insert that names neither then succeeds on a deployed
+    # PostgreSQL and fails ``NOT NULL`` on a developer's SQLite: the
+    # mirror image of the drift ``test_schema_matches_migration`` exists
+    # to catch, and outside its reach until this table was added to it.
+    # ``false()`` rather than ``"0"`` for the reason the migration gives:
+    # PostgreSQL refuses an integer default on a boolean column.
+    device: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="unknown",
+        server_default="unknown",
+    )
+    browser: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="unknown",
+        server_default="unknown",
+    )
+    is_bot: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false(),
+    )
 
 
 class LinkVisitDayModel(Base):
@@ -116,5 +139,10 @@ class LinkVisitDayModel(Base):
     day: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), primary_key=True
     )
-    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    bots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # ``server_default`` for the reason given on ``LinkVisitModel`` above.
+    total: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0",
+    )
+    bots: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0",
+    )

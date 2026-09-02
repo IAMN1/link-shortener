@@ -11,6 +11,9 @@ from sqlalchemy.engine import make_url
 from link_shortener.infrastructure.configs.app.production import (
     ProductionConfig
 )
+from link_shortener.infrastructure.configs.app.development import (
+    DevelopmentConfig,
+)
 from link_shortener.infrastructure.configs.app.staging import StagingConfig
 
 
@@ -91,6 +94,15 @@ class TestAJournalIsNamedAndNotPathed:
         "logs/application",
         "..",
         ".hidden",
+        # A value read out of a file or a Kubernetes Secret carries the
+        # newline the file ends with. Matched with ``re.match`` against a
+        # pattern anchored ``^...$`` this passed, because "$" in Python
+        # also matches just before a trailing newline -- so the
+        # application started and wrote ``application\n.log`` while
+        # ``dockers/logrotate-entrypoint.sh``, whose check is supposed to
+        # mean the same thing, refused the name and exited 1.
+        "application\n",
+        "application\r\n",
     )
     """Shapes that reach the join and take it somewhere else.
 
@@ -1014,3 +1026,184 @@ class TestTheLifetimeHstsIsGivenIsOneABrowserReads:
         )
 
         assert "HSTS_MAX_AGE must not be negative, got -1" in errors
+
+
+class TestTheSessionCookiePolicyIsOneWerkzeugTakes:
+    """
+    ``SESSION_COOKIE_SAMESITE`` names its three values and nothing checked
+    them, unlike ``LOG_LEVEL`` beside it. Werkzeug does the checking, at
+    the moment a cookie is set -- so a typo started cleanly and then
+    raised ``ValueError: SameSite must be 'Strict', 'Lax', or 'None'`` out
+    of every response that touches the session: a 500 per request from a
+    value start-up had declared valid.
+    """
+
+    @pytest.mark.parametrize("value", ["Bogus", "lax", "STRICT", "none"])
+    def test_a_value_the_response_layer_refuses_is_refused_here(
+        self, monkeypatch, value
+    ):
+        """Case included: Werkzeug compares exactly, so ``lax`` is not
+        ``Lax``, and a check that accepted it would pass a value the
+        response layer will not take.
+
+        An empty value is not among them and cannot be: ``EnvField`` reads
+        a blank variable as unset and answers with ``Lax``, the same way
+        ``LOG_FILENAME=`` is a journal called ``application``.
+        """
+        errors = validation_errors(
+            monkeypatch, ProductionConfig, SESSION_COOKIE_SAMESITE=value
+        )
+
+        assert "SESSION_COOKIE_SAMESITE" in errors, errors
+
+    @pytest.mark.parametrize("value", ["Strict", "Lax", "None"])
+    def test_the_three_words_are_accepted(self, monkeypatch, value):
+        errors = validation_errors(
+            monkeypatch, ProductionConfig, SESSION_COOKIE_SAMESITE=value
+        )
+
+        assert "SESSION_COOKIE_SAMESITE" not in errors, errors
+
+    @pytest.mark.parametrize("value", ["Strict", "Lax", "None"])
+    def test_werkzeug_takes_exactly_what_this_accepts(self, value):
+        """The premise. Without it the list above is three strings this
+        file agrees with itself about."""
+        from werkzeug.sansio.response import Response
+
+        Response().set_cookie("probe", "v", samesite=value)
+
+
+class TestAWildcardOriginWithCredentialsIsRefused:
+    """
+    ``CORS_ORIGINS`` was the one setting beside these that nothing looked
+    at, and ``*`` is not the harmless value it reads as: ``app_factory``
+    installs CORS with ``supports_credentials=True``, so flask-cors
+    echoes the caller's own ``Origin`` and adds
+    ``Access-Control-Allow-Credentials: true``. Any page anywhere then
+    reads this service's answers as whoever is signed in.
+
+    Writing is not what this is about -- the CSRF check compares
+    ``Origin`` against these values literally, and ``*`` matches none, so
+    it stays refused either way. Reading is enough on its own: the
+    dashboard, the journals and the link lists are all reads.
+    """
+
+    @pytest.mark.parametrize(
+        "profile", [ProductionConfig, StagingConfig], ids=["production", "staging"]
+    )
+    @pytest.mark.parametrize("value", ["*", "https://app.example.com,*", " * "])
+    def test_a_deployed_profile_refuses_it(self, monkeypatch, profile, value):
+        """Both deployed profiles, and the spellings a list can carry it in.
+
+        ``env_list`` splits on commas and strips, so ``*`` can arrive
+        beside real origins or with spaces around it -- and one wildcard
+        in the list is enough, because flask-cors reads the list and not
+        its first entry.
+        """
+        errors = validation_errors(monkeypatch, profile, CORS_ORIGINS=value)
+
+        assert "CORS_ORIGINS" in errors, errors
+
+    @pytest.mark.parametrize(
+        "value",
+        ["", "https://app.example.com", "https://a.example,https://b.example"],
+    )
+    def test_named_origins_and_none_at_all_are_accepted(self, monkeypatch, value):
+        """The empty list included: it is what both deployed profiles
+        default to, and it means a service nothing calls cross-origin."""
+        errors = validation_errors(
+            monkeypatch, ProductionConfig, CORS_ORIGINS=value
+        )
+
+        assert "CORS_ORIGINS" not in errors, errors
+
+    def test_a_local_profile_still_takes_it(self, monkeypatch):
+        """The reasoning ``_deployed_backend_errors`` sets out.
+
+        A profile nobody named resolves to ``development``, so a refusal
+        there lands on a developer rather than on a deployment -- and a
+        wide origin list on a laptop opens nothing that is not already
+        open.
+        """
+        errors = validation_errors(
+            monkeypatch, DevelopmentConfig, CORS_ORIGINS="*"
+        )
+
+        assert "CORS_ORIGINS" not in errors, errors
+
+    def test_flask_cors_really_answers_a_wildcard_that_way(self):
+        """The premise, measured rather than assumed.
+
+        Without it the refusal above is a rule this file agrees with
+        itself about. What is asserted is exactly the pair that makes it
+        dangerous: the caller's own origin reflected, and credentials
+        allowed alongside it.
+        """
+        from flask import Flask
+        from flask_cors import CORS
+
+        app = Flask(__name__)
+        CORS(app, origins=["*"], supports_credentials=True)
+
+        @app.route("/probe")
+        def probe():
+            return "ok"
+
+        answer = app.test_client().get(
+            "/probe", headers={"Origin": "https://attacker.example"}
+        )
+
+        assert answer.headers.get("Access-Control-Allow-Origin") == (
+            "https://attacker.example"
+        )
+        assert answer.headers.get("Access-Control-Allow-Credentials") == "true"
+
+
+class TestTheGuestLifetimeFitsUnderTheCeiling:
+    """
+    `MAX_TTL_SECONDS` binds every caller except the ones it was written
+    for.
+
+    `_validate_ttl` compares what a caller *asked* for against the
+    ceiling, and the guest ceiling is applied after it -- so a guest that
+    asks for nothing is handed `DEFAULT_GUEST_TTL_SECONDS` with the
+    comparison already behind it. Measured with the two set against each
+    other: a guest asking for 50 seconds was refused for exceeding 10,
+    and a guest asking for nothing got 1000.
+
+    The pair is a contradiction rather than a preference, which is why it
+    is refused here rather than silently reconciled: which of the two a
+    deployment meant is not something this code can know.
+    """
+
+    def test_a_guest_default_above_the_ceiling_is_refused(self, monkeypatch):
+        errors = validation_errors(
+            monkeypatch,
+            ProductionConfig,
+            MAX_TTL_SECONDS="10",
+            DEFAULT_GUEST_TTL_SECONDS="1000",
+        )
+
+        assert "DEFAULT_GUEST_TTL_SECONDS" in errors, errors
+        assert "MAX_TTL_SECONDS" in errors, errors
+
+    def test_equal_is_allowed(self, monkeypatch):
+        """The guest ceiling may *be* the ceiling; it may not exceed it."""
+        errors = validation_errors(
+            monkeypatch,
+            ProductionConfig,
+            MAX_TTL_SECONDS="600",
+            DEFAULT_GUEST_TTL_SECONDS="600",
+        )
+
+        assert "longer than MAX_TTL_SECONDS" not in errors, errors
+
+    def test_the_shipped_defaults_are_not_a_contradiction(self, monkeypatch):
+        """
+        The premise, and the reason this check can be added at all: a
+        rule that refused the values the templates ship would fail every
+        deployment that changed nothing.
+        """
+        errors = validation_errors(monkeypatch, ProductionConfig)
+
+        assert "longer than MAX_TTL_SECONDS" not in errors, errors

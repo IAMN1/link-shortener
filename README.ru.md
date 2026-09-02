@@ -11,7 +11,7 @@
 
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![тестов: 4941](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-4941-0b5d3b)](docs/testing.md)
+[![тестов: 5209](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-5209-0b5d3b)](docs/testing.md)
 [![покрытие: 98%](https://img.shields.io/badge/%D0%BF%D0%BE%D0%BA%D1%80%D1%8B%D1%82%D0%B8%D0%B5-98%25-0b5d3b)](docs/testing.md)
 [![mypy: 0](https://img.shields.io/badge/mypy-0%20%D0%BE%D1%88%D0%B8%D0%B1%D0%BE%D0%BA-0b5d3b)](docs/testing.md)
 [![лицензия: Apache 2.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-Apache%202.0-blue)](LICENSE)
@@ -102,6 +102,16 @@ docker compose --env-file .env.docker \
 > открытыми. Роли в `development` засеваются при старте сами — поэтому
 > `db load-base-roles` нет ни в одном блоке.
 >
+> **Чтобы посмотреть, как регистрируется посетитель, берите правый блок.**
+> Он поднимает Mailpit, и письмо с подтверждением попадает в его ящик на
+> <http://127.0.0.1:8025>, а не уходит наружу. В левом блоке ловца нет:
+> почта там идёт на `localhost:1025`, где никто не слушает, — и
+> зарегистрировавшийся остаётся с неподтверждённым адресом и учётной
+> записью, в которую не войти. Администратор, которого создаёт этот блок,
+> подтверждён сразу, так что остальное работает. Чтобы было и то и другое,
+> поднимите рядом с локальным приложением
+> `docker compose --env-file .env.docker up -d mailpit`.
+>
 > Что-то другое — приложение на хосте против контейнерных сервисов, своя
 > PostgreSQL, другой профиль: вся матрица со значениями для каждого
 > сочетания лежит в
@@ -127,6 +137,7 @@ flowchart LR
 | **Гостевые ссылки** | Сокращение без регистрации, срок жизни семь дней, квота на адрес |
 | **Учётные записи** | Постоянные ссылки, личная статистика, панель управления |
 | **Пакетное создание** | Несколько URL за запрос; не прошедшее возвращается поэлементно |
+| **QR-коды** | Каждая ссылка — SVG-квадрат, на своей странице и по своему адресу. Кодируется *короткий* URL, поэтому счётчики, срок жизни и удаление продолжают действовать |
 | **Дедупликация** | В пределах владельца: повторное сокращение своего URL вернёт свою же живую ссылку |
 | **RBAC** | `guest`, `user`, `analyst`, `auditor`, `admin` — роли засеваются из YAML и правятся через панель |
 | **Подтверждение адреса** | Регистрация никогда не говорит, занят ли адрес |
@@ -146,6 +157,7 @@ flowchart LR
 | `POST` | `/api/v1/batch/shorten` | `link:create` | Несколько за раз |
 | `GET` | `/api/v1/links/{code}` | — | Куда ведёт. Владелец и трафик скрыты от остальных |
 | `GET` | `/api/v1/links/{code}/extended` | владение, `admin:all` или `stats:view_any` | Производная аналитика |
+| `GET` | `/api/v1/links/{code}/qr` | — | Короткая ссылка как QR-код в SVG |
 | `DELETE` | `/api/v1/links/{code}` | `link:delete_own` / `link:delete_any` / токен удаления | Удалить |
 | `GET` | `/api/v1/stats` | `stats:view_basic` — есть у `guest` | Итоги по сервису |
 | `GET` | `/api/v1/stats/visits` | `stats:view_basic` / `link:view_own` | Когда открывали ссылки, по интервалам; `scope=mine` — только свои; `?code=` — владелец ссылки или `stats:view_any` |
@@ -201,9 +213,9 @@ flowchart LR
 ## Тестирование
 
 ```bash
-uv run pytest tests/                      # 4941 тестов
-uv run python tests/live/smoke_test.py    # 157 проверок по HTTP
-uv run python tests/live/browser_test.py  # 68 проверок настоящим браузером
+uv run pytest tests/                      # 5209 тестов
+uv run python tests/live/smoke_test.py    # 159 проверок по HTTP
+uv run python tests/live/browser_test.py  # 71 проверки настоящим браузером
 ```
 
 Четыре уровня — unit, интеграционные на SQLite, интеграционные на настоящих
@@ -226,7 +238,7 @@ CI гоняет набор дважды, в чистом окружении и �
 | [Эксплуатация](docs/operations.md) | Миграции, CLI, резервные копии, обновление, здоровье |
 | [Тестирование](docs/testing.md) | Четыре уровня, живые прогоны и что требует CI |
 | [Разработка](docs/development.md) | Паттерны, фронтенд, нагрузочный профиль |
-| [Принятые решения](docs/decisions.md) | Девяносто шесть разборов, почему сделано так, а не иначе |
+| [Принятые решения](docs/decisions.md) | Сто разборов, почему сделано так, а не иначе |
 | [Планы](docs/roadmap.md) | Что рассматривалось и не сделано, и во что обошлась бы каждая мысль |
 
 ## Требования

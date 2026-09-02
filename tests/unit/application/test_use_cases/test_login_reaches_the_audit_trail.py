@@ -79,13 +79,32 @@ def uow_factory():
 
 
 @pytest.fixture
-def use_case(authentication_service, uow_factory, audit):
+def rate_limiter():
+    """A limiter with budget left, so these tests meet none of it.
+
+    ``Mock()`` will not do: the use case compares what ``get_remaining``
+    answers against zero, and a ``Mock`` is not orderable against an int.
+    The budget itself is held by
+    ``test_the_account_budget_bounds_a_spray.py``; here it must simply
+    stay out of the way.
+    """
+    limiter = Mock()
+    limiter.get_remaining.return_value = 10
+    limiter.is_allowed.return_value = True
+    return limiter
+
+
+@pytest.fixture
+def use_case(authentication_service, uow_factory, audit, rate_limiter):
     """The use case over mocked collaborators."""
     return LoginUseCase(
         authentication_service=authentication_service,
         logger=Mock(),
         uow_factory=uow_factory,
         audit_logger=audit,
+        rate_limiter=rate_limiter,
+        account_failure_limit=10,
+        account_failure_period=900,
     )
 
 

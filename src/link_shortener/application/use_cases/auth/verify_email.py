@@ -75,7 +75,7 @@ class VerifyEmailUseCase(BaseUseCase):
                 # Raising here rolls the whole transaction back, the claim
                 # included, so the token is *not* spent. That is harmless
                 # -- it names an account that is gone, so the next attempt
-                # fails at this same line -- and it is stated because an
+                # fails at this same line -- and it is stated because
                 # this is the branch that decides it.
                 log.warning("Email confirmation names a missing account")
                 raise ValidationError(

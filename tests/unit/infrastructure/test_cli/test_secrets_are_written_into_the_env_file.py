@@ -8,10 +8,16 @@ out of it usable -- the same variables, in the same places, with the
 comments that explain them still attached.
 
 What is guarded here is mostly what must *not* happen. A rewritten
-``SECRET_KEY`` signs out every session; a rewritten ``SHORT_CODE_PEPPER``
-stops the codes already handed out from resolving, because the hash a
-code is derived from no longer matches. Neither may follow from a setup
-command being run twice.
+``SECRET_KEY`` signs out every session and voids every issued token; a
+rewritten ``SHORT_CODE_PEPPER`` changes the code a URL not yet shortened
+will get. Neither may follow from a setup command being run twice.
+
+Not "stops the codes already handed out from resolving", which is what
+this said: a link is resolved by looking its stored code up, and nothing
+recomputes one. ``cli/commands/security.py`` retracts that sentence with
+a measurement -- a code made under one pepper answered 302 from a process
+running another -- and ``_COST_OF_REPLACING``, which is the text an
+operator actually reads, says the opposite of what this docstring said.
 """
 
 import os

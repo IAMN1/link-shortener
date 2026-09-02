@@ -103,6 +103,10 @@ function journalDetails(fields) {
 // and "error" is exactly the row somebody is scanning for.
 function journalLevelMarkup(level) {
     if (!level) return '';
+    // The five the stylesheet draws. `debug` is among them and was not
+    // drawn: the class was emitted and no rule matched it, so a DEBUG
+    // line looked exactly like a level the parser did not recognise --
+    // the one distinction this badge exists to make.
     var known = ['debug', 'info', 'warning', 'error', 'critical'];
     var name = String(level).toLowerCase();
     var suffix = known.indexOf(name) === -1 ? '' : ' journal-level--' + name;
@@ -404,7 +408,12 @@ function mountJournals(root) {
                 // reloading by hand.
                 if (resp.status === 401 || resp.status === 403) {
                     every = 0;
-                    journalStartPolling(0);
+                    // Both arguments, like every other call site: the
+                    // clear-and-reset above the guard in
+                    // `journalStartPolling` is what this needs, and it
+                    // reads as `setInterval(undefined, 0)` waiting to
+                    // happen if that guard ever moves.
+                    journalStartPolling(0, function () { load(true); });
                     pressed(everyButtons, function (button) {
                         return Number(button.getAttribute('data-journal-every')) === 0;
                     });

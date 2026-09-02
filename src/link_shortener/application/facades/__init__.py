@@ -1,11 +1,17 @@
 """
 What the web layer holds instead of the use cases themselves.
 
-A facade here is one object per area of the service, and every method on one
-is a single line: take the call, hand it to the use case that does it. What
-belongs here is an object that owns nothing, decides nothing and opens no
-transaction; anything that does one of those is a use case or a service, and
-goes where those go.
+A facade here is one object per area of the service, and a method on one is
+ordinarily a single line: take the call, hand it to the use case that does
+it. What belongs here is an object that owns nothing, opens no transaction
+and decides as little as possible; anything that owns state or opens a
+transaction is a use case or a service, and goes where those go.
+
+One method breaks the single line and is worth naming rather than
+pretending away: ``AdminService.resend_verification`` reads the account
+first, because the route needs the address the message went to and the use
+case is deliberately given an address rather than an id -- the public
+route reaches the same use case with a string a stranger typed.
 
 That rule is what separates this directory from ``application/services``. A
 service there is called *by* a use case and takes the unit of work the use

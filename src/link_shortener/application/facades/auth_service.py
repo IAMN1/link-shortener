@@ -3,9 +3,6 @@ from typing import Optional
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.auth import LoginResponse, RefreshedTokens
-from link_shortener.application.ports.auth.auth_service import (
-    AuthenticationService,
-)
 from link_shortener.application.use_cases.auth.change_password import (
     ChangePasswordUseCase,
 )
@@ -53,11 +50,6 @@ class AuthService:
     gains.
 
     Attributes:
-        authentication_service: The port, held for the callers that ask
-            this facade to validate a token. Signing out and refreshing
-            went through it directly while neither had a use case; both
-            have one now, because recording what happened is policy and
-            the journal was empty for both.
         login_use_case: Checks credentials and opens a session.
         register_use_case: Creates an account and mails its confirmation.
         verify_email_use_case: Spends a confirmation token.
@@ -70,7 +62,6 @@ class AuthService:
             replay of one.
     """
 
-    authentication_service: AuthenticationService
     login_use_case: LoginUseCase
     register_use_case: RegisterUseCase
     verify_email_use_case: VerifyEmailUseCase

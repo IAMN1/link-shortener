@@ -128,11 +128,11 @@ explained.
 | Command | |
 |---|---|
 | `db check` · `db status` | Can the database be reached |
-| `db migrate` | Apply Alembic migrations |
+| `db migrate` | Apply Alembic migrations. With `USE_ALEMBIC=false` it refuses and exits 1, in the same words as the `alembic` group — a deployment line that checks the exit code is told the migration did not run |
 | `db load-base-roles` | Seed or update the system roles from YAML |
 | `db load-custom-roles <file>` | The same from a file of your own |
 | `db seed --count N` | Fill the database with test links. They belong to nobody and are counted against nobody: the quota is measured against the caller's address, and a CLI call has none, so `GUEST_LINK_LIMIT` does not apply and there is nothing to raise. They also never expire — a guest's link made over HTTP lives seven days, these live until deleted |
-| `db init` · `db drop --yes` | Only meaningful with `USE_ALEMBIC=false` |
+| `db init` · `db drop --yes` | Only meaningful with `USE_ALEMBIC=false`, which is a setting like any other: it is read from the environment under `development`, `staging` and `production` alike, so either way of building the schema is available on any of them. `testing` is the exception — it spells `False` in the class and ignores the variable, so the suite does not depend on what is in the environment. With the flag on, these two refuse and the `alembic` group works; with it off, the other way round |
 
 ### Links
 

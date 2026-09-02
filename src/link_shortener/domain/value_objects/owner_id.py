@@ -25,10 +25,16 @@ class OwnerID:
         """
         Validate that an actual identifier was supplied.
 
+        Whitespace counts as empty, the way it does for ``PasswordHash``
+        next door: ``"   "`` is not an account any more than ``""`` is, and
+        a scope token built from it -- ``u:   `` -- is a scope no owner
+        can ever match again.
+
         Raises:
-            ValidationError: If the value is missing or empty.
+            ValidationError: If the value is missing, empty, or only
+                whitespace.
         """
-        if not self.value:
+        if not self.value or not self.value.strip():
             raise ValidationError(
                 N_("Owner id must not be empty. An owner-less link carries "
                 "owner=None."),

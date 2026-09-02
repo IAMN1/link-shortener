@@ -5,12 +5,13 @@ The CSRF layer refuses an unsafe cookie-authenticated request whose
 `BASE_URL`**, added by `_allowed_origins` itself -- and that second half is
 what nobody had written down.
 
-Two documents drew the wrong conclusion from the first half alone.
-`DEMO-DEPLOY-GUIDE.md` told an operator that `CORS_ORIGINS` had to name the
-deployment's own address or "the form after sign-in answers CSRF token
-missing or invalid", and `docs/configuration.md` described the same
-mechanism without mentioning `BASE_URL` at all. Both are now written
-against the table below; this file is what keeps the table true.
+Two documents drew the wrong conclusion from the first half alone. One is
+`docs/configuration.md`, which described the mechanism without mentioning
+`BASE_URL` at all. The other is a deployment guide kept beside the
+repository rather than in it, so a reader here cannot check it: it told an
+operator that `CORS_ORIGINS` had to name the deployment's own address or
+"the form after sign-in answers CSRF token missing or invalid". Both were
+written against the table below; this file is what keeps the table true.
 
 The distinction matters in both directions. An operator who believes the
 own address must be listed will list it -- harmless -- but will also read

@@ -202,8 +202,10 @@
     font-size: calc(var(--d-fs) - 2px);
     color: var(--c-text-3);
 }
-/* Pushes the freshness note to the far end of the row, so it sits away
-   from the controls and reads as a status rather than another button. */
+/* Pushes the buttons on its right to the far end of the refresh row, so
+   they sit away from the interval controls on its left rather than
+   reading as more of them. (The freshness note is not here: it lives in
+   `.card-header`, which spaces itself.) */
 .chart-bar-gap { flex: 1 1 auto; }
 .chart-fresh {
     display: inline-flex;
@@ -300,10 +302,12 @@
     flex: none;
 }
 
-/* The two series' colours, as classes. They were written into the markup
-   as `style="background: var(--c-humans)"`, which the content policy
-   refuses -- and a refused style attribute is an unstyled element rather
-   than an error, so the legend would have lost the very thing it is for. */
+/* The two series' colours, as classes rather than as
+   `style="background: var(--c-humans)"` in the markup. Not because the
+   content policy refuses that -- `style-src` keeps `'unsafe-inline'` on
+   purpose, and `security_headers.py` says at length why it has to -- but
+   because a colour that names a series belongs with the other tokens
+   rather than being retyped at each of its uses. */
 .chart-swatch--humans { background: var(--c-humans); }
 .chart-swatch--bots { background: var(--c-bots); }
 
@@ -507,6 +511,12 @@
     text-transform: uppercase;
     color: var(--c-text-3);
 }
+/* Recognised, and the quietest of the five -- a DEBUG line is not what
+   anybody is scanning for, so it keeps the base tint. The dotted border
+   is what separates it from a level the parser did not recognise, which
+   gets the plain badge: without a rule of its own the class was emitted
+   and the two were drawn identically. */
+.journal-level--debug { border-style: dotted; }
 .journal-level--info { color: var(--c-text-2); }
 .journal-level--warning { color: var(--c-warn); border-color: var(--c-warn); }
 .journal-level--error,
@@ -579,7 +589,7 @@
 .journal-search-fields {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: var(--d-gap-sm, 8px);
+    gap: 8px;
 }
 
 .journal-search-field {
@@ -594,8 +604,8 @@
 
 .journal-search-actions {
     display: flex;
-    gap: var(--d-gap-sm, 8px);
-    margin-top: var(--d-gap-sm, 8px);
+    gap: 8px;
+    margin-top: 8px;
 }
 
 /* The counted half of the journal page: four figures above the chart they
@@ -605,7 +615,7 @@
 .counts-tiles {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: var(--d-gap-sm, 8px);
+    gap: 8px;
     margin-bottom: var(--d-gap);
 }
 

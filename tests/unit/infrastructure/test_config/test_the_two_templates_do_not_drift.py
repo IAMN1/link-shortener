@@ -17,10 +17,10 @@ them together:
 
 * every setting declared in one is declared in the other, so a key added to
   the catalogue cannot reach only the local half;
-* their values are identical **except** for the eight named below, so a
+* their values are identical **except** for the nine named below, so a
   value that changes for the host run cannot silently stay behind in the
   Docker one;
-* those eight hold exactly the values written here, so changing the shape
+* those nine hold exactly the values written here, so changing the shape
   of the Docker deployment is a change to this file as well -- which is
   what makes it reviewable.
 
@@ -160,7 +160,7 @@ class TestTheValuesDifferOnlyWhereTheyShould:
         }
         assert not surprises, (
             f"These settings differ between the templates and are not in "
-            f"the list of eight that may: {surprises}. Either the "
+            f"the list of nine that may: {surprises}. Either the "
             f"difference is deliberate -- then add it to DOCKER_DIFFERS "
             f"with the reason in {DOCKER}'s header -- or one template was "
             f"edited and the other was not."
@@ -177,7 +177,7 @@ class TestTheValuesDifferOnlyWhereTheyShould:
             f"typo to be fixed in one place."
         )
         assert not commented_out, (
-            f"{DOCKER} has {name} commented out. Every one of the eight is "
+            f"{DOCKER} has {name} commented out. Every one of the nine is "
             f"a choice this deployment makes rather than a default it "
             f"accepts -- commented out, the value that applies is the "
             f"profile's, which for {name} is what the host run wants."

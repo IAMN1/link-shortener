@@ -26,6 +26,7 @@ from link_shortener.web.middleware.cache_control import PrivateCacheMiddleware
 from link_shortener.web.middleware.compression import CompressionMiddleware
 from link_shortener.web.middleware.csrf import CsrfProtectionMiddleware
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
+from link_shortener.web.middleware.host_check import HostCheckMiddleware
 from link_shortener.web.middleware.query_strictness import QueryStrictnessMiddleware
 from link_shortener.web.middleware.rate_limit import (
     RateLimitMiddleware,
@@ -85,6 +86,13 @@ def _seed_base_roles_if_ready(container) -> None:
     about it. A real failure -- unreachable database, refused permission,
     malformed YAML -- still warns.
 
+    The command it names follows ``USE_ALEMBIC``, because that flag picks
+    which of the two ways of building a schema is open and closes the
+    other outright. It used to say ``flask alembic upgrade head``
+    unconditionally -- so a deployment running with the flag off was told,
+    on every start until it had a schema, to run the one command that
+    profile refuses with exit 1, while ``flask db init`` went unmentioned.
+
     Must be called inside an application context.
 
     Args:
@@ -96,10 +104,22 @@ def _seed_base_roles_if_ready(container) -> None:
         db_manager = container.get_db_manager()
         missing = db_manager.missing_tables(RBAC_TABLES)
         if missing:
+            # Off the container rather than off ``current_app``: this
+            # branch is reached from the CLI as well, the container is
+            # the only thing handed in, and reading the flag through the
+            # request-time proxy turned an absent schema into
+            # "AUTO_SEED_ROLES failed: Working outside of application
+            # context" -- a warning, which is the one thing this function
+            # exists not to raise here.
+            build_it = (
+                "flask alembic upgrade head"
+                if getattr(container.config, "USE_ALEMBIC", True)
+                else "flask db init"
+            )
             logger.info(
                 "Skipping role seeding: database schema is not initialised",
                 missing_tables=", ".join(missing),
-                next_step="flask alembic upgrade head && flask db load-base-roles",
+                next_step=f"{build_it} && flask db load-base-roles",
             )
             return
 
@@ -252,12 +272,29 @@ def create_app(config=None) -> Flask:
     # response finally leaves, including the one the error handler
     # replaced, and compression still sees the body afterwards.
     #
-    # Its `before_request` mints the nonce, and it has to run before any
-    # view renders a template -- a page carrying a nonce the header does
-    # not name is a page whose script the browser refuses.
+    # Nothing about the nonce depends on this position: it is minted by a
+    # context processor, when a template asks for it, and read back out of
+    # `g` by the `after_request` that writes the header -- see
+    # `security_headers.py`, which says why a `before_request` would be
+    # the wrong place. What the position does decide is that its header
+    # goes on before compression touches the body.
     SecurityHeadersMiddleware(app)
     ## 1. Request logging (generates request_id)
     RequestLoggingMiddleware(app, container.get_logger(RequestLoggingMiddleware.__module__))
+    ## 1.5 The names this deployment answers to
+    #
+    # After logging, so a refusal still carries a `request_id` and leaves a
+    # line; before authentication, so a request for somebody else's name
+    # costs no database query.
+    #
+    # Ahead of the limiter, unlike everything below it, and for a reason
+    # that does not apply to the rest: being refused here buys a caller
+    # nothing. The order below exists because a hook that refuses before
+    # the limiter counts is a way to probe for free -- but a caller who
+    # sends the wrong `Host` gets no service at all, whatever they were
+    # probing for. Registers no hook when `ALLOWED_HOSTS` is empty, which
+    # is the default, so it costs nothing until a deployment names one.
+    HostCheckMiddleware(app, container.get_logger(HostCheckMiddleware.__module__))
     ## 2. Authentication (loads current_user into g)
     AuthenticationMiddleware(
         app,
@@ -504,6 +541,15 @@ def create_app(config=None) -> Flask:
             "guest quota and the rate limiter count by the connecting "
             "address. Correct where this service is reached directly; "
             "behind a proxy it makes every visitor one caller",
+            profile=env,
+        )
+
+    if deployed and not app.config.get("ALLOWED_HOSTS"):
+        logger.warning(
+            "ALLOWED_HOSTS is empty: the service answers to any Host it is "
+            "given, including a name somebody else pointed at this address. "
+            "Harmless while nothing builds an address from the request, and "
+            "the wrong default the moment something does",
             profile=env,
         )
 

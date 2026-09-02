@@ -167,8 +167,13 @@ class RoleLoader:
             not touch.
 
         Raises:
-            ValueError: If the file names the same permission or role
-                twice.
+            ValidationError: If the file names the same permission or
+                role twice, if a role name or description is outside what
+                a role may carry, or if it names a permission the service
+                does not know (``PermissionsNotFoundError``). A domain
+                refusal rather than a bare ``ValueError`` -- see
+                ``_refuse_duplicate_names`` -- so ``except ValueError``
+                around this catches none of them.
         """
         with open(file_path, "r") as f:
             config = yaml.safe_load(f)

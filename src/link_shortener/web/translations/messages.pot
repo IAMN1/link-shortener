@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-01 21:09+0300\n"
+"POT-Creation-Date: 2026-09-02 07:38+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -46,9 +46,10 @@ msgstr ""
 msgid "The new password must differ from the current one"
 msgstr ""
 
-#: src/link_shortener/application/use_cases/auth/login.py:77
-#: src/link_shortener/application/use_cases/auth/login.py:93
-#: src/link_shortener/application/use_cases/auth/login.py:133
+#: src/link_shortener/application/use_cases/auth/login.py:163
+#: src/link_shortener/application/use_cases/auth/login.py:180
+#: src/link_shortener/application/use_cases/auth/login.py:196
+#: src/link_shortener/application/use_cases/auth/login.py:236
 msgid "Invalid email or password"
 msgstr ""
 
@@ -80,7 +81,7 @@ msgstr ""
 
 #: src/link_shortener/application/use_cases/journals/read_journal.py:310
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:183
-#: src/link_shortener/web/controllers/api_controller.py:270
+#: src/link_shortener/web/controllers/api_controller.py:327
 #: src/link_shortener/web/security/decorators.py:55
 #: src/link_shortener/web/security/decorators.py:121
 msgid "Not authorized"
@@ -91,7 +92,11 @@ msgstr ""
 msgid "'%(code)s' is reserved by the service and cannot be used as a short code"
 msgstr ""
 
-#: src/link_shortener/application/use_cases/links/create_short_link.py:264
+#: src/link_shortener/application/use_cases/links/create_short_link.py:275
+msgid "ttl_seconds must not be negative"
+msgstr ""
+
+#: src/link_shortener/application/use_cases/links/create_short_link.py:283
 #, python-format
 msgid "ttl_seconds must not exceed %(max)s"
 msgstr ""
@@ -111,64 +116,64 @@ msgstr ""
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:180
+#: src/link_shortener/domain/exceptions.py:182
 #, python-format
 msgid "Link with code (%(code)s) not found"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:184
+#: src/link_shortener/domain/exceptions.py:186
 #: src/link_shortener/web/middleware/error_handler.py:477
 msgid "Link not found"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:241
+#: src/link_shortener/domain/exceptions.py:243
 #, python-format
 msgid "Short code '%(code)s' is already taken"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:254
+#: src/link_shortener/domain/exceptions.py:256
 #, python-format
 msgid "Link with code (%(code)s) has expired"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:258
+#: src/link_shortener/domain/exceptions.py:260
 msgid "Link has expired"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:272
+#: src/link_shortener/domain/exceptions.py:274
 msgid "Guest link limit exceeded"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:308
+#: src/link_shortener/domain/exceptions.py:310
 #, python-format
 msgid "User with id %(id)s not found"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:336
+#: src/link_shortener/domain/exceptions.py:338
 msgid "Email already registered"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:355
+#: src/link_shortener/domain/exceptions.py:357
 #, python-format
 msgid "Role %(name)s not found"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:374
+#: src/link_shortener/domain/exceptions.py:376
 #, python-format
 msgid "Role %(name)s already exists"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:394
+#: src/link_shortener/domain/exceptions.py:396
 #, python-format
 msgid "Role %(name)s belongs to the service and cannot be modified or deleted"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:420
+#: src/link_shortener/domain/exceptions.py:422
 #, python-format
 msgid "Role %(name)s cannot be assigned to an account"
 msgstr ""
 
-#: src/link_shortener/domain/exceptions.py:440
+#: src/link_shortener/domain/exceptions.py:442
 #, python-format
 msgid "Permissions not found: %(names)s"
 msgstr ""
@@ -177,161 +182,172 @@ msgstr ""
 msgid "ttl_seconds is too large to be a date"
 msgstr ""
 
-#: src/link_shortener/domain/policies/guest_quota_policy.py:58
+#: src/link_shortener/domain/policies/guest_quota_policy.py:61
 #, python-format
 msgid "Guest link limit of %(limit)s exceeded."
 msgstr ""
 
-#: src/link_shortener/domain/policies/password_policy.py:90
+#: src/link_shortener/domain/policies/password_policy.py:97
 msgid "Password must not be blank"
 msgstr ""
 
-#: src/link_shortener/domain/policies/password_policy.py:101
+#: src/link_shortener/domain/policies/password_policy.py:108
 msgid "Password must not contain a null character"
 msgstr ""
 
-#: src/link_shortener/domain/policies/password_policy.py:109
+#: src/link_shortener/domain/policies/password_policy.py:116
 #, python-format
 msgid "Password must be at least %(count)s characters"
 msgstr ""
 
-#: src/link_shortener/domain/policies/password_policy.py:131
+#: src/link_shortener/domain/policies/password_policy.py:138
 #, python-format
 msgid ""
 "Password must not exceed %(count)s characters, and fewer for alphabets "
 "that need more room per character"
 msgstr ""
 
-#: src/link_shortener/domain/policies/password_policy.py:142
+#: src/link_shortener/domain/policies/password_policy.py:149
 msgid "Password is too common -- choose one that is not on every attacker's list"
 msgstr ""
 
-#: src/link_shortener/domain/policies/privilege_policy.py:105
+#: src/link_shortener/domain/policies/privilege_policy.py:121
 #, python-format
 msgid "You cannot grant permissions you do not hold yourself: %(permissions)s"
 msgstr ""
 
-#: src/link_shortener/domain/policies/privilege_policy.py:125
+#: src/link_shortener/domain/policies/privilege_policy.py:227
+#, python-format
+msgid ""
+"You cannot act on an account holding permissions you do not hold "
+"yourself: %(permissions)s"
+msgstr ""
+
+#: src/link_shortener/domain/policies/privilege_policy.py:247
 msgid "This would leave the system without an administrator"
 msgstr ""
 
-#: src/link_shortener/domain/policies/role_policy.py:130
+#: src/link_shortener/domain/policies/role_policy.py:146
 msgid "A role name must be letters, digits, hyphen or underscore"
 msgstr ""
 
-#: src/link_shortener/domain/policies/role_policy.py:140
+#: src/link_shortener/domain/policies/role_policy.py:156
 #, python-format
 msgid "A role name must be %(least)s to %(most)s characters long"
 msgstr ""
 
-#: src/link_shortener/domain/policies/role_policy.py:198
+#: src/link_shortener/domain/policies/role_policy.py:214
 msgid "A role description must be text"
 msgstr ""
 
-#: src/link_shortener/domain/policies/role_policy.py:207
+#: src/link_shortener/domain/policies/role_policy.py:223
 #, python-format
 msgid "A role description must be at most %(most)s characters long"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/email.py:104
+#: src/link_shortener/domain/value_objects/email.py:136
+msgid "Email address is too long"
+msgstr ""
+
+#: src/link_shortener/domain/value_objects/email.py:144
 msgid "Invalid email format"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:172
+#: src/link_shortener/domain/value_objects/original_url.py:193
 msgid "Malformed URL: its authority cannot be parsed"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:213
+#: src/link_shortener/domain/value_objects/original_url.py:234
 #, python-format
 msgid "URL too long (max %(max)s characters)"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:236
+#: src/link_shortener/domain/value_objects/original_url.py:257
 msgid "URL contains control characters"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:242
+#: src/link_shortener/domain/value_objects/original_url.py:263
 msgid "URL must have a scheme!"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:251
+#: src/link_shortener/domain/value_objects/original_url.py:272
 #, python-format
 msgid "Scheme '%(scheme)s' is not allowed. Allowed schemes: %(allowed)s"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:280
+#: src/link_shortener/domain/value_objects/original_url.py:301
 msgid "URL must not contain credentials before the host"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:319
+#: src/link_shortener/domain/value_objects/original_url.py:340
 msgid "Brackets in a URL enclose an IPv6 address"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:341
+#: src/link_shortener/domain/value_objects/original_url.py:362
 msgid "URL must have a domain!"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:346
+#: src/link_shortener/domain/value_objects/original_url.py:367
 msgid "Invalid host"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:348
+#: src/link_shortener/domain/value_objects/original_url.py:369
 msgid "URL must have a hostname"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:353
-#: src/link_shortener/domain/value_objects/original_url.py:360
+#: src/link_shortener/domain/value_objects/original_url.py:374
+#: src/link_shortener/domain/value_objects/original_url.py:381
 msgid "Invalid port number"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:376
+#: src/link_shortener/domain/value_objects/original_url.py:407
 msgid "Empty host"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:393
+#: src/link_shortener/domain/value_objects/original_url.py:426
 msgid "Host must contain a dot (e.g., example.com)"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:397
+#: src/link_shortener/domain/value_objects/original_url.py:430
 msgid "Host too long"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:403
+#: src/link_shortener/domain/value_objects/original_url.py:436
 msgid "Empty label in host"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:405
+#: src/link_shortener/domain/value_objects/original_url.py:438
 msgid "Label too long"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:412
+#: src/link_shortener/domain/value_objects/original_url.py:445
 #, python-format
 msgid "Invalid characters in host label: %(label)s"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:428
+#: src/link_shortener/domain/value_objects/original_url.py:471
 msgid "Path contains control characters"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:472
-#: src/link_shortener/domain/value_objects/original_url.py:478
+#: src/link_shortener/domain/value_objects/original_url.py:515
+#: src/link_shortener/domain/value_objects/original_url.py:521
 msgid "URL must point at a public address"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:512
+#: src/link_shortener/domain/value_objects/original_url.py:564
 #, python-format
 msgid "Invalid international domain name: %(reason)s"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/original_url.py:545
-#: src/link_shortener/domain/value_objects/original_url.py:554
-#: src/link_shortener/domain/value_objects/original_url.py:558
-#: src/link_shortener/domain/value_objects/original_url.py:566
-#: src/link_shortener/domain/value_objects/original_url.py:569
+#: src/link_shortener/domain/value_objects/original_url.py:597
+#: src/link_shortener/domain/value_objects/original_url.py:606
+#: src/link_shortener/domain/value_objects/original_url.py:610
+#: src/link_shortener/domain/value_objects/original_url.py:618
+#: src/link_shortener/domain/value_objects/original_url.py:621
 msgid "Invalid IP address in host"
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/owner_id.py:33
+#: src/link_shortener/domain/value_objects/owner_id.py:39
 msgid "Owner id must not be empty. An owner-less link carries owner=None."
 msgstr ""
 
@@ -342,7 +358,7 @@ msgid ""
 "alphanumeric characters, underscore, or hyphen."
 msgstr ""
 
-#: src/link_shortener/domain/value_objects/url_hash.py:38
+#: src/link_shortener/domain/value_objects/url_hash.py:50
 #, python-format
 msgid "Invalid hash format: %(value)s. Must be 64 hex characters."
 msgstr ""
@@ -380,7 +396,7 @@ msgstr ""
 msgid "Not found"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:270 src/link_shortener/web/i18n.py:423
+#: src/link_shortener/web/i18n.py:270 src/link_shortener/web/i18n.py:439
 msgid "Refused"
 msgstr ""
 
@@ -440,74 +456,84 @@ msgstr ""
 msgid "If that address needs confirming, a link has been sent to it."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:318
+#: src/link_shortener/web/i18n.py:326
+#, python-format
+msgid "Confirmation message sent to %(email)s"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:329
+#, python-format
+msgid "%(email)s is already confirmed; nothing to send"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:331
 msgid "Email confirmed. You can sign in now."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:319
+#: src/link_shortener/web/i18n.py:332
 #: src/link_shortener/web/templates/dashboard/my_links.html:39
 msgid "No links"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:320
+#: src/link_shortener/web/i18n.py:333
 msgid "No links yet"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:321
+#: src/link_shortener/web/i18n.py:334
 msgid "No links have been visited yet"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:322
+#: src/link_shortener/web/i18n.py:335
 msgid "never"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:323
+#: src/link_shortener/web/i18n.py:336
 msgid "Results"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:324
+#: src/link_shortener/web/i18n.py:337
 #: src/link_shortener/web/templates/dashboard/link_stats.html:9
 msgid "Link"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:325
-#: src/link_shortener/web/templates/public/index.html:102
+#: src/link_shortener/web/i18n.py:338
+#: src/link_shortener/web/templates/public/index.html:115
 msgid "Extended"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:333
+#: src/link_shortener/web/i18n.py:346
 msgctxt "a link that was just made"
 msgid "Created"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:334
+#: src/link_shortener/web/i18n.py:347
 msgctxt "a link that already existed"
 msgid "Existing"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:335
+#: src/link_shortener/web/i18n.py:348
 msgid "Copy"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:336
+#: src/link_shortener/web/i18n.py:349
 #: src/link_shortener/web/templates/dashboard/roles_list.html:48
 #: src/link_shortener/web/templates/dashboard/users_list.html:90
 msgid "Delete"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:337
+#: src/link_shortener/web/i18n.py:350
 msgid "Delete this link"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:338
+#: src/link_shortener/web/i18n.py:351
 msgid "Only from this page, and only now."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:340
+#: src/link_shortener/web/i18n.py:353
 msgid "This link's traffic is shown to whoever made it."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:342
+#: src/link_shortener/web/i18n.py:355
 #: src/link_shortener/web/templates/dashboard/home.html:36
 #: src/link_shortener/web/templates/dashboard/my_links.html:27
 #: src/link_shortener/web/templates/dashboard/my_stats.html:40
@@ -516,9 +542,9 @@ msgstr ""
 msgid "Clicks"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:347
+#: src/link_shortener/web/i18n.py:360
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/link_stats.html:36
+#: src/link_shortener/web/templates/dashboard/link_stats.html:57
 #: src/link_shortener/web/templates/dashboard/my_links.html:28
 #: src/link_shortener/web/templates/dashboard/my_stats.html:40
 #: src/link_shortener/web/templates/dashboard/service_stats.html:37
@@ -526,221 +552,225 @@ msgstr ""
 msgid "Created"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:348
-#: src/link_shortener/web/templates/dashboard/link_stats.html:40
+#: src/link_shortener/web/i18n.py:361
+#: src/link_shortener/web/templates/dashboard/link_stats.html:61
 msgid "Last Access"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:349
+#: src/link_shortener/web/i18n.py:362
 msgid "Never"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:350
+#: src/link_shortener/web/i18n.py:363
 msgid "Days Old"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:351
-#: src/link_shortener/web/templates/dashboard/link_stats.html:32
+#: src/link_shortener/web/i18n.py:364
+#: src/link_shortener/web/templates/dashboard/link_stats.html:53
 msgid "Clicks/Day"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:352
+#: src/link_shortener/web/i18n.py:365
 msgid "Popular"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:353
+#: src/link_shortener/web/i18n.py:366
 msgid "Recent"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:356
+#: src/link_shortener/web/i18n.py:369
 msgid "Total"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:357
+#: src/link_shortener/web/i18n.py:370
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:75
 msgid "People"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:358
+#: src/link_shortener/web/i18n.py:371
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:78
 msgid "Robots"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:359
+#: src/link_shortener/web/i18n.py:372
 msgid "No visits in this span"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:360
+#: src/link_shortener/web/i18n.py:373
 msgid "Try a wider span"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:361
+#: src/link_shortener/web/i18n.py:374
 msgid "The figures could not be loaded"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:366
+#: src/link_shortener/web/i18n.py:379
 msgid "Others"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:369
+#: src/link_shortener/web/i18n.py:382
 msgid "As bars"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:370
+#: src/link_shortener/web/i18n.py:383
 msgid "As a ring"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:375
+#: src/link_shortener/web/i18n.py:388
 msgid "updated just now"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:376
+#: src/link_shortener/web/i18n.py:389
 #, python-format
 msgid "updated %(count)s s ago"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:377
+#: src/link_shortener/web/i18n.py:390
 #, python-format
 msgid "updated %(count)s min ago"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:378
+#: src/link_shortener/web/i18n.py:391
 #, python-format
 msgid "every %(interval)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:379
+#: src/link_shortener/web/i18n.py:392
 msgid "auto-refresh off"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:382
+#: src/link_shortener/web/i18n.py:395
 #: src/link_shortener/web/templates/dashboard/users_list.html:56
 msgid "Stats"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:387
+#: src/link_shortener/web/i18n.py:398
+msgid "QR"
+msgstr ""
+
+#: src/link_shortener/web/i18n.py:403
 msgid "Nothing has been written to this journal"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:388
+#: src/link_shortener/web/i18n.py:404
 msgid "The journal could not be read"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:392
+#: src/link_shortener/web/i18n.py:408
 msgid "not a record"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:399
+#: src/link_shortener/web/i18n.py:415
 #, python-format
 msgid "Lines: %(count)s · %(files)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:403
+#: src/link_shortener/web/i18n.py:419
 msgid "Nothing here matched that search"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:407
+#: src/link_shortener/web/i18n.py:423
 #, python-format
 msgid "Found: %(found)s · scanned: %(scanned)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:412
+#: src/link_shortener/web/i18n.py:428
 msgid "Not searched further back than this."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:414
+#: src/link_shortener/web/i18n.py:430
 msgid "This is the start of the journal."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:415
+#: src/link_shortener/web/i18n.py:431
 msgid "Older lines exist."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:417
+#: src/link_shortener/web/i18n.py:433
 #, python-format
 msgid "Archives reach back to %(name)s."
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:422
+#: src/link_shortener/web/i18n.py:438
 msgid "Signed in"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:424
+#: src/link_shortener/web/i18n.py:440
 msgid "Roles changed"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:425
+#: src/link_shortener/web/i18n.py:441
 msgid "Other events"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:430
+#: src/link_shortener/web/i18n.py:446
 #, python-format
 msgid "Counted: %(since)s — %(until)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:431
+#: src/link_shortener/web/i18n.py:447
 msgid "Security events over time"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:432
+#: src/link_shortener/web/i18n.py:448
 msgid "The counters could not be read"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:433
+#: src/link_shortener/web/i18n.py:449
 msgid "answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:434
+#: src/link_shortener/web/i18n.py:450
 msgid "not answering"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:439
+#: src/link_shortener/web/i18n.py:455
 msgid "timed out"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:443
+#: src/link_shortener/web/i18n.py:459
 msgid "not configured"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:450
+#: src/link_shortener/web/i18n.py:466
 msgid "answering, no schema"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:457
+#: src/link_shortener/web/i18n.py:473
 msgid "in this process only"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:458
+#: src/link_shortener/web/i18n.py:474
 msgid "unknown"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:461
+#: src/link_shortener/web/i18n.py:477
 #, python-format
 msgid "Worker process %(pid)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:466
+#: src/link_shortener/web/i18n.py:482
 msgid "well at the last check"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:467
+#: src/link_shortener/web/i18n.py:483
 msgid "reports itself unwell"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:470
+#: src/link_shortener/web/i18n.py:486
 msgid "the check itself failed"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:471
+#: src/link_shortener/web/i18n.py:487
 msgid "not checked yet"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:474
+#: src/link_shortener/web/i18n.py:490
 #, python-format
 msgid "%(active)s · %(finding)s"
 msgstr ""
 
-#: src/link_shortener/web/i18n.py:483
+#: src/link_shortener/web/i18n.py:499
 #, python-format
 msgid "%(journal)s (%(reason)s)"
 msgstr ""
@@ -758,12 +788,12 @@ msgstr ""
 msgid "Confirmation for %(email)s could not be queued"
 msgstr ""
 
-#: src/link_shortener/web/controllers/api_controller.py:375
-#: src/link_shortener/web/controllers/api_controller.py:439
+#: src/link_shortener/web/controllers/api_controller.py:432
+#: src/link_shortener/web/controllers/api_controller.py:496
 msgid "Sign in to see your own statistics"
 msgstr ""
 
-#: src/link_shortener/web/controllers/api_controller.py:428
+#: src/link_shortener/web/controllers/api_controller.py:485
 msgid "days must be a whole number"
 msgstr ""
 
@@ -902,8 +932,8 @@ msgid ""
 msgstr ""
 
 #: src/link_shortener/web/templates/error.html:28
-#: src/link_shortener/web/templates/public/index.html:109
-#: src/link_shortener/web/templates/public/index.html:120
+#: src/link_shortener/web/templates/public/index.html:122
+#: src/link_shortener/web/templates/public/index.html:133
 msgid "Short code"
 msgstr ""
 
@@ -912,8 +942,8 @@ msgid "Try another code"
 msgstr ""
 
 #: src/link_shortener/web/templates/error.html:30
-#: src/link_shortener/web/templates/public/index.html:111
-#: src/link_shortener/web/templates/public/index.html:122
+#: src/link_shortener/web/templates/public/index.html:124
+#: src/link_shortener/web/templates/public/index.html:135
 msgid "Look up"
 msgstr ""
 
@@ -944,18 +974,18 @@ msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:50
 #: src/link_shortener/web/templates/dashboard/create_link.html:18
-#: src/link_shortener/web/templates/dashboard/journals.html:182
+#: src/link_shortener/web/templates/dashboard/journals.html:183
 msgid "7 days"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:51
 #: src/link_shortener/web/templates/dashboard/create_link.html:19
-#: src/link_shortener/web/templates/dashboard/journals.html:184
+#: src/link_shortener/web/templates/dashboard/journals.html:185
 msgid "30 days"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:52
-#: src/link_shortener/web/templates/dashboard/journals.html:186
+#: src/link_shortener/web/templates/dashboard/journals.html:187
 msgid "90 days"
 msgstr ""
 
@@ -1020,46 +1050,46 @@ msgstr ""
 msgid "Links"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:76
+#: src/link_shortener/web/templates/dashboard/base.html:82
 #: src/link_shortener/web/templates/dashboard/home.html:12
 #: src/link_shortener/web/templates/dashboard/my_links.html:5
 msgid "My Links"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:79
+#: src/link_shortener/web/templates/dashboard/base.html:86
 #: src/link_shortener/web/templates/dashboard/create_link.html:4
 msgid "Create Link"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:84
+#: src/link_shortener/web/templates/dashboard/base.html:91
 msgid "Analytics"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:86
+#: src/link_shortener/web/templates/dashboard/base.html:93
 #: src/link_shortener/web/templates/dashboard/my_stats.html:5
 msgid "My Stats"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:89
+#: src/link_shortener/web/templates/dashboard/base.html:96
 msgid "Service Stats"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:100
-#: src/link_shortener/web/templates/dashboard/base.html:101
+#: src/link_shortener/web/templates/dashboard/base.html:107
+#: src/link_shortener/web/templates/dashboard/base.html:108
 #: src/link_shortener/web/templates/dashboard/journals.html:4
 msgid "Journals"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:106
+#: src/link_shortener/web/templates/dashboard/base.html:113
 msgid "Administration"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:108
+#: src/link_shortener/web/templates/dashboard/base.html:115
 #: src/link_shortener/web/templates/dashboard/users_list.html:5
 msgid "Users"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:113
+#: src/link_shortener/web/templates/dashboard/base.html:120
 #: src/link_shortener/web/templates/dashboard/create_user.html:20
 #: src/link_shortener/web/templates/dashboard/edit_user.html:15
 #: src/link_shortener/web/templates/dashboard/roles_list.html:6
@@ -1067,43 +1097,43 @@ msgstr ""
 msgid "Roles"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:117
+#: src/link_shortener/web/templates/dashboard/base.html:124
 msgid "Health Check"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:125
+#: src/link_shortener/web/templates/dashboard/base.html:132
 #: src/link_shortener/web/templates/dashboard/journals.html:93
 msgid "Account"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:126
+#: src/link_shortener/web/templates/dashboard/base.html:133
 #: src/link_shortener/web/templates/dashboard/security.html:4
 msgid "Security"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:129
+#: src/link_shortener/web/templates/dashboard/base.html:136
 msgid "Back to Home"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:130
-#: src/link_shortener/web/templates/dashboard/base.html:131
+#: src/link_shortener/web/templates/dashboard/base.html:137
+#: src/link_shortener/web/templates/dashboard/base.html:138
 #: src/link_shortener/web/templates/layout/base.html:102
 msgid "Log out"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:139
+#: src/link_shortener/web/templates/dashboard/base.html:146
 msgid "Expand the menu"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:140
+#: src/link_shortener/web/templates/dashboard/base.html:147
 msgid "Collapse"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:159
+#: src/link_shortener/web/templates/dashboard/base.html:166
 msgid "Menu"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:163
+#: src/link_shortener/web/templates/dashboard/base.html:170
 #: src/link_shortener/web/templates/layout/base.html:106
 #: src/link_shortener/web/templates/public/login.html:8
 #: src/link_shortener/web/templates/public/login.html:21
@@ -1113,7 +1143,7 @@ msgstr ""
 msgid "Log in"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/base.html:164
+#: src/link_shortener/web/templates/dashboard/base.html:171
 #, python-format
 msgid "You are not logged in. %(link)s"
 msgstr ""
@@ -1169,28 +1199,32 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:17
+#: src/link_shortener/web/templates/dashboard/create_role.html:24
+msgid "Letters, digits, hyphen or underscore"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/create_role.html:28
 #: src/link_shortener/web/templates/dashboard/roles_list.html:18
 msgid "Description"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:18
+#: src/link_shortener/web/templates/dashboard/create_role.html:29
 msgid "What this role is for"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:21
+#: src/link_shortener/web/templates/dashboard/create_role.html:32
 #: src/link_shortener/web/templates/dashboard/edit_role.html:15
 #: src/link_shortener/web/templates/dashboard/roles_list.html:18
 msgid "Permissions"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:22
+#: src/link_shortener/web/templates/dashboard/create_role.html:33
 msgid ""
 "Grouped by what they act on. The whole set used to be one flat column of "
 "ticks."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:26
+#: src/link_shortener/web/templates/dashboard/create_role.html:37
 msgid "Create role"
 msgstr ""
 
@@ -1331,7 +1365,7 @@ msgid "Dashboard — MaizLink"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/home.html:16
-#: src/link_shortener/web/templates/dashboard/link_stats.html:28
+#: src/link_shortener/web/templates/dashboard/link_stats.html:49
 #: src/link_shortener/web/templates/dashboard/my_stats.html:15
 #: src/link_shortener/web/templates/dashboard/service_stats.html:15
 #: src/link_shortener/web/templates/dashboard/user_stats.html:17
@@ -1472,26 +1506,26 @@ msgstr ""
 msgid "Details"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:177
+#: src/link_shortener/web/templates/dashboard/journals.html:178
 msgid "Security events"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:180
+#: src/link_shortener/web/templates/dashboard/journals.html:181
 msgid "24 h"
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:204
+#: src/link_shortener/web/templates/dashboard/journals.html:205
 #, python-format
 msgid "Read from %(name)s, from the end of the file, by polling."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:219
+#: src/link_shortener/web/templates/dashboard/journals.html:220
 msgid ""
 "The audit journal names destination addresses and the accounts that "
 "followed them."
 msgstr ""
 
-#: src/link_shortener/web/templates/dashboard/journals.html:222
+#: src/link_shortener/web/templates/dashboard/journals.html:223
 msgid ""
 "The application journal names the address of everyone who registered or "
 "signed in."
@@ -1504,6 +1538,19 @@ msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/link_stats.html:10
 msgid "All links"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:37
+msgid "QR code"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:40
+msgid "Open"
+msgstr ""
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:43
+#, python-format
+msgid "QR code for %(code)s"
 msgstr ""
 
 #: src/link_shortener/web/templates/dashboard/my_links.html:2
@@ -1943,41 +1990,41 @@ msgstr[1] ""
 msgid "%(link)s to keep them"
 msgstr ""
 
-#: src/link_shortener/web/templates/public/index.html:87
+#: src/link_shortener/web/templates/public/index.html:99
 msgid "Your short link appears here."
 msgstr ""
 
-#: src/link_shortener/web/templates/public/index.html:96
+#: src/link_shortener/web/templates/public/index.html:109
 msgid "Look up a code"
 msgstr ""
 
-#: src/link_shortener/web/templates/public/index.html:97
+#: src/link_shortener/web/templates/public/index.html:110
 msgid ""
 "Where a short code leads, when it was made, how many times it has been "
 "followed."
 msgstr ""
 
-#: src/link_shortener/web/templates/public/index.html:100
+#: src/link_shortener/web/templates/public/index.html:113
 msgid "How much detail"
 msgstr ""
 
-#: src/link_shortener/web/templates/public/index.html:101
+#: src/link_shortener/web/templates/public/index.html:114
 msgid "Basic"
 msgstr ""
 
-#: src/link_shortener/web/templates/public/index.html:124
+#: src/link_shortener/web/templates/public/index.html:137
 msgid "Extended figures are shown for your own links."
 msgstr ""
 
-#: src/link_shortener/web/templates/public/index.html:136
+#: src/link_shortener/web/templates/public/index.html:149
 msgid "The whole service is an API"
 msgstr ""
 
-#: src/link_shortener/web/templates/public/index.html:137
+#: src/link_shortener/web/templates/public/index.html:150
 msgid "Everything on this page is one call"
 msgstr ""
 
-#: src/link_shortener/web/templates/public/index.html:139
+#: src/link_shortener/web/templates/public/index.html:152
 #, python-format
 msgid "No SDK and no key ceremony. The full description lives at %(link)s."
 msgstr ""

@@ -344,12 +344,22 @@ class TestConfirmation:
         )
         return use_case, user, token
 
-    def test_a_live_token_confirms_the_account(self, confirmed):
+    def test_a_live_token_confirms_the_account(self, confirmed, uow):
+        """The flag and the commit, because the flag alone is not evidence.
+
+        ``user`` is the entity the fixture built and handed to the fake
+        repository, and the use case sets the flag on it in place -- so
+        the assertion below holds whether or not the transaction was ever
+        committed. Measured: deleting ``uow.commit()`` from the use case
+        left this green. ``TestRegistration`` beside it reads ``commits``
+        for exactly this reason.
+        """
         use_case, user, token = confirmed
 
         use_case.execute(token, context())
 
         assert user.email_verified is True
+        assert uow.commits == 1
 
     def test_the_confirmation_reaches_the_audit_journal(self, confirmed):
         """The act that lets an account sign in leaves a record.
@@ -688,9 +698,26 @@ class TestTheSweep:
         stale = User.create(Email("stale@example.com"), PasswordHash(HASH))
         stale.created_at = datetime.now(timezone.utc) - timedelta(hours=100)
         uow.users.save(stale)
+        # Expired, because that is what the second half counts:
+        # ``delete_expired`` removes tokens that can no longer be spent,
+        # and a live one is deliberately left alone.
+        uow.email_verifications.save(
+            EmailVerification.issue(
+                user_id=stale.id, token_hash=token_digest(issue_token()),
+                ttl_hours=24,
+                now=datetime.now(timezone.utc) - timedelta(hours=100),
+            )
+        )
 
-        accounts, _ = self._use_case(uow_factory).execute(context())
+        accounts, tokens = self._use_case(uow_factory).execute(context())
+
         assert accounts == 1
+        # The second half of the answer, which every test here discarded
+        # with ``_``: the use case returns it because the report prints it
+        # and because a token outliving the account it belongs to is a live
+        # credential for a row that is gone. Returning a constant 0 for it
+        # left the whole suite green.
+        assert tokens == 1
 
     def test_it_leaves_confirmed_accounts_alone(self, uow_factory, uow):
         settled = User.create(

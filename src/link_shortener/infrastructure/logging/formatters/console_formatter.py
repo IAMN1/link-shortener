@@ -63,4 +63,18 @@ class ConsoleFormatter(logging.Formatter):
 
         if extra_items:
             base += f" - [{' - '.join(extra_items)}]"
+
+        # The traceback, on its own lines, the way every console logger
+        # writes one. ``exc_info`` is a standard attribute, so the loop
+        # above skips it, and this formatter builds its line from scratch
+        # rather than through ``super().format()`` -- so an exception
+        # logged under ``LOGGER_TYPE=standard`` printed its message and
+        # nothing else. Appended rather than folded into the bracketed
+        # fields: a stack is not a field, and squeezing it into one puts
+        # the frames on a single line nobody can read.
+        if record.exc_info:
+            base += "\n" + self.formatException(record.exc_info)
+        elif record.exc_text:
+            base += "\n" + record.exc_text
+
         return base

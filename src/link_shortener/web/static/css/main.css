@@ -292,8 +292,6 @@ code {
     padding: 0.05em 0.3em;
 }
 
-/* Wherever digits line up in a column. */
-
 /* The system's smallest voice: a label that names a thing without being
    read as content. Used for eyebrows, column groups and panel headings. */
 .lab {

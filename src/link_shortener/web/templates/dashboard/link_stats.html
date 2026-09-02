@@ -23,6 +23,27 @@
     <p class="mono truncate" id="link-destination">&mdash;</p>
 </div>
 
+{# The code as a square, and the one thing on this page the server can
+   fill in: it is a function of the short code alone, which is already in
+   the address of this page. Everything around it is fetched, because it
+   depends on who is asking; this does not.
+
+   An `<img>` rather than the SVG inlined: the endpoint is public and
+   cacheable, so a second visit costs nothing, and the browser gets to
+   decide when to fetch it. The width is set here and the document scales
+   to it -- that is what the viewBox in it is for. #}
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">{{ _('QR code') }}</span>
+        <a class="btn btn--ghost btn--sm"
+           href="{{ url_for('api.get_link_qr', short_code=short_code) }}"
+           target="_blank" rel="noopener noreferrer">{{ _('Open') }}</a>
+    </div>
+    <img src="{{ url_for('api.get_link_qr', short_code=short_code) }}"
+         alt="{{ _('QR code for %(code)s', code=short_code) }}"
+         width="180" height="180" loading="lazy">
+</div>
+
 <div class="stats-grid stats-grid--four mb-2">
     <div class="stat-card">
         <span class="stat-label">{{ _('Total Clicks') }}</span>

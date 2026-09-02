@@ -10,6 +10,75 @@ recalled — the same rule the rest of this project's documents are held to.
 
 ## [Unreleased]
 
+### Added
+
+- **A QR code for every link.** `GET /api/v1/links/{code}/qr` answers an SVG
+  document, and the dashboard shows it on a link's own page and links to it
+  from the table. The square encodes the **short** address and never the
+  destination: a code carrying the destination scans perfectly and defeats
+  the link — no click recorded, no expiry honoured, and deleting the link
+  leaves every printed copy pointing at the target for good. The code is
+  resolved before anything is drawn, so an address that leads nowhere is a
+  `404` rather than a square that leads to one. SVG rather than PNG, with
+  both a `viewBox` and a default `width`, so one document prints on a
+  poster and renders in a table cell. Adds one dependency, `segno`: pure
+  Python, no dependencies of its own, and it writes SVG directly.
+
+- **`ALLOWED_HOSTS`.** The service answered to any `Host` it was given,
+  including a name somebody else pointed at its address. Empty by default,
+  which is what it has always done — nothing here reads `request.host`, and
+  `short_url` is built from `BASE_URL`, so the door led nowhere. Named, and
+  any other `Host` is refused with `400` before authentication runs. A
+  deployed profile that leaves it empty now says so at startup, the way an
+  empty `TRUSTED_PROXIES` does.
+
+### Fixed
+
+- **A request body had no upper bound.** Flask leaves `MAX_CONTENT_LENGTH`
+  unset, nothing stands in front of gunicorn, and `request.get_json()`
+  reads the whole body into memory *before* any validation — so the size of
+  an anonymous request was decided by the client. Measured on the
+  production profile: one `POST /api/v1/shorten` carrying 60 MB was
+  accepted whole and only then answered `400`; four concurrent 200 MB
+  bodies took the container from 342 MiB to **1.598 GiB** and 356 % CPU,
+  from four `curl` commands and no account. The per-endpoint throttle does
+  not help — it counts requests, and four are enough to hold four
+  synchronous workers. Now one mebibyte by default, and `validate()`
+  refuses a value too small to hold the largest batch the service admits.
+
+- **An address longer than its column answered `500`.** `users.email` is
+  `String(255)` and nothing above it said so, so a 261-character address
+  travelled the whole way down and was refused by PostgreSQL — which does
+  not raise `ValidationError`, so no handler knew it, and an
+  **unauthenticated** two-field body to `POST /api/v1/auth/register`
+  answered `500`. The bound is now `Email`'s, at the standard's 254
+  characters, and the answer is `400` with the field named. SQLite is why
+  the suite never saw it: it ignores a declared width, stores the row and
+  reports nothing.
+
+- **Nothing counted failed sign-ins per account.** `RATE_LIMITS["auth.login"]`
+  counts by address, which bounds one guesser: a hundred addresses trying
+  one account met a hundred separate budgets and no counter carrying the
+  account's name. `LOGIN_ACCOUNT_FAILURE_LIMIT` is that counter — ten wrong
+  guesses per fifteen minutes by default, refused with the same
+  `INVALID_CREDENTIALS` as any other failure so that it names no address.
+  Only a wrong password spends it: a right password against a deactivated
+  or unconfirmed account is not a guess, and counting it would let anyone
+  holding a valid credential lock its owner out. Refused rather than
+  delayed, because a sleeping request holds a synchronous worker and four
+  of those are the whole service.
+
+- **`admin:manage_users` reached accounts it could not have created.**
+  `require_may_confer` guarded handing a permission out; nothing guarded
+  taking one away, and deleting, deactivating and re-roling all take. So a
+  role carrying `admin:manage_users` and nothing else could remove the only
+  `auditor`, and with it the only account able to read the audit journal —
+  which is exactly the separation `admin:all` not carrying `audit:view`
+  exists to make. Guarded now by `require_may_act_on`, which compares only
+  *privileged* permissions: an account that merely signed up holds
+  `link:view_own`, which an administrative role has no reason to carry, and
+  a plain set difference would have refused the work the role exists for.
+
 ### Changed
 
 - The `auditor` role now holds `stats:view_basic` and `stats:view_full`.
@@ -87,8 +156,8 @@ frozen" is the honest one.
   pages.
 - **Docker Compose stack** — application, PostgreSQL, two Redis instances,
   a Celery worker and log rotation, with a development overlay.
-- **Test suite** — 4941 tests, 98.66% statement coverage against a floor of
-  88%, plus two live runs against a real stack: 157 HTTP checks and 68
+- **Test suite** — 5209 tests, 98.65% statement coverage against a floor of
+  88%, plus two live runs against a real stack: 159 HTTP checks and 71
   browser checks. CI runs the suite twice, in a clean environment and a
   polluted one.
 

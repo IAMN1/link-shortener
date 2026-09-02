@@ -68,8 +68,8 @@ def declared_query_parameters(app: Flask) -> Dict[Tuple[str, str], FrozenSet[str
     # of it, and assembling the whole thing costs about 4 ms -- most of it
     # generating component schemas that are thrown away here. The two
     # passes that finish the document write `responses` and `security`, so
-    # the parameters are the same either way; measured across all 23
-    # operations that declare one.
+    # the parameters are the same either way; compared field by field
+    # across all 40 operations, 8 of which declare a query parameter.
     paths = documented_paths()
 
     declared: Dict[Tuple[str, str], FrozenSet[str]] = {}

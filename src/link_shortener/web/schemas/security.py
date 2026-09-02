@@ -47,14 +47,27 @@ class SecurityCountsResponse(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "period": "7d",
-                "since": "2026-08-11T00:00:00Z",
+                "since": "2026-08-17T00:00:00Z",
                 "until": "2026-08-18T00:00:00Z",
-                "buckets": 28,
-                "totals": {"LOGIN_SUCCEEDED": 42, "LOGIN_FAILED": 11},
+                # The shortest span on offer, written out in full.
+                # `buckets` is what a page sizes its axis from and every
+                # series has to have exactly that many entries -- the
+                # invariant this module opens with -- so an example that
+                # abbreviates the arrays contradicts it in the one place a
+                # reader looks first. It said `"7d"` with `buckets: 28`
+                # and three entries a series.
+                "period": "24h",
+                "buckets": 24,
+                "totals": {"LOGIN_SUCCEEDED": 9, "LOGIN_FAILED": 11},
                 "series": {
-                    "LOGIN_SUCCEEDED": [2, 0, 5],
-                    "LOGIN_FAILED": [0, 11, 0],
+                    "LOGIN_SUCCEEDED": [
+                        0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 1, 0,
+                        0, 1, 0, 0, 2, 0, 0, 1, 0, 1, 0, 0,
+                    ],
+                    "LOGIN_FAILED": [
+                        0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0,
+                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    ],
                 },
             }
         }

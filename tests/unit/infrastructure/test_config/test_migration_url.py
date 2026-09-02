@@ -432,7 +432,8 @@ class TestADatabaseNobodyNamed:
     def test_development_may_still_migrate_its_default_file(self, monkeypatch):
         """The local setup of the quick start, on a fresh clone.
 
-        Step A3 itself runs ``flask alembic upgrade head``, which hands
+        The quick start's own third command is ``flask alembic upgrade
+        head``, which hands
         the URL over and never reaches any of this; the bare form of the
         same command does, and the file the profile falls back to is
         exactly the one the developer wants.

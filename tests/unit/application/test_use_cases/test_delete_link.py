@@ -2,7 +2,11 @@ from unittest.mock import Mock, MagicMock
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.use_cases.links.delete_link import DeleteLinkUseCase
-from link_shortener.domain import Link, ShortCode, UrlHash, OriginalUrl
+from link_shortener.application.dtos.current_user_info import CurrentUserInfo
+from link_shortener.domain import (
+    DomainError, Link, OriginalUrl, OwnerID, PermissionDeniedError,
+    ShortCode, SystemPermissions, UrlHash,
+)
 import pytest
 
 
@@ -159,3 +163,142 @@ class TestDeleteLinkUseCase:
         uow.commit.assert_not_called()
         mock_cache.delete.assert_not_called()
         mock_redirect_cache.delete_redirect.assert_not_called()
+
+
+class TestWhoMayDeleteWhichLink:
+    """
+    The branch every test above walks past.
+
+    All of them pass ``enforce_ownership=False``, which is the CLI's call
+    and the one path that skips ``_require_may_delete`` entirely — so the
+    ownership decision, the only authorization this use case makes, was
+    reached by no unit test at all. Measured: turning
+    ``owner_id is not None and owner_id == requester.id`` into an ``or``
+    left the unit suite green, and that flip hands a holder of
+    ``link:delete_own`` anybody's link.
+
+    The permission asked for is what these check, not the answer: the
+    answer is the authorization service's, and it is a double here. What
+    the use case decides is *which* permission the caller needs, and it
+    decides it from the row it just read.
+    """
+
+    def _owned_by(self, owner_id):
+        return Link.create(
+            url_hash=UrlHash("b" * 64),
+            short_code=ShortCode("abc123"),
+            original_url=OriginalUrl("https://example.com"),
+            owner=OwnerID(owner_id),
+        )
+
+    def _signed_in_as(self, uow, user_id):
+        requester = Mock()
+        requester.id = user_id
+        uow.users.find_by_id.return_value = requester
+        return RequestContext(
+            request_id="req-1",
+            remote_addr="127.0.0.1",
+            current_user=CurrentUserInfo(
+                id=user_id, email="who@example.com", roles=["user"],
+                is_active=True,
+            ),
+        )
+
+    def test_the_owner_is_asked_for_delete_own(
+        self, use_case, mock_uow_factory
+    ):
+        factory, uow = mock_uow_factory
+        uow.links.find_by_code.return_value = self._owned_by("user-1")
+        uow.links.delete.return_value = True
+        context = self._signed_in_as(uow, "user-1")
+        use_case.authorization_service.is_allowed.return_value = True
+
+        assert use_case.execute(
+            "abc123", context, enforce_ownership=True
+        ) is True
+
+        _, asked = use_case.authorization_service.is_allowed.call_args[0]
+        assert asked == SystemPermissions.LINK_DELETE_OWN.value
+
+    def test_a_stranger_is_asked_for_delete_any(
+        self, use_case, mock_uow_factory
+    ):
+        """The flip this class exists for: somebody else's link is not
+        the caller's own, and asking for ``delete_own`` there is the whole
+        defect."""
+        factory, uow = mock_uow_factory
+        uow.links.find_by_code.return_value = self._owned_by("somebody-else")
+        uow.links.delete.return_value = True
+        context = self._signed_in_as(uow, "user-1")
+        use_case.authorization_service.is_allowed.return_value = True
+
+        use_case.execute("abc123", context, enforce_ownership=True)
+
+        _, asked = use_case.authorization_service.is_allowed.call_args[0]
+        assert asked == SystemPermissions.LINK_DELETE_ANY.value
+
+    def test_a_guest_link_is_nobody_s_own(self, use_case, mock_uow_factory):
+        """``None == None`` must not read as ownership: a link with no
+        owner belongs to no account, and its creator proves themselves
+        with a token instead."""
+        factory, uow = mock_uow_factory
+        uow.links.find_by_code.return_value = Link.create(
+            url_hash=UrlHash("c" * 64),
+            short_code=ShortCode("abc123"),
+            original_url=OriginalUrl("https://example.com"),
+        )
+        uow.links.delete.return_value = True
+        context = self._signed_in_as(uow, "user-1")
+        use_case.authorization_service.is_allowed.return_value = True
+
+        use_case.execute("abc123", context, enforce_ownership=True)
+
+        _, asked = use_case.authorization_service.is_allowed.call_args[0]
+        assert asked == SystemPermissions.LINK_DELETE_ANY.value
+
+    def test_a_refusal_names_the_permission_it_wanted(
+        self, use_case, mock_uow_factory
+    ):
+        """What the error handler writes into the audit journal."""
+        factory, uow = mock_uow_factory
+        uow.links.find_by_code.return_value = self._owned_by("somebody-else")
+        context = self._signed_in_as(uow, "user-1")
+        use_case.authorization_service.is_allowed.return_value = False
+
+        with pytest.raises(PermissionDeniedError) as refusal:
+            use_case.execute("abc123", context, enforce_ownership=True)
+
+        assert refusal.value.required == (
+            SystemPermissions.LINK_DELETE_ANY.value,
+        )
+        uow.links.delete.assert_not_called()
+
+    def test_an_anonymous_caller_is_unauthenticated_rather_than_forbidden(
+        self, use_case, mock_uow_factory, context
+    ):
+        """A client can tell "sign in" from "signing in will not help"."""
+        factory, uow = mock_uow_factory
+        uow.links.find_by_code.return_value = self._owned_by("user-1")
+
+        with pytest.raises(DomainError) as refusal:
+            use_case.execute("abc123", context, enforce_ownership=True)
+
+        assert refusal.value.code == "UNAUTHENTICATED"
+        uow.links.delete.assert_not_called()
+
+    def test_a_matching_deletion_token_skips_the_question(
+        self, use_case, mock_uow_factory, context
+    ):
+        """The guest's own handle: the row was judged by its id, so the
+        authorization service is not asked at all."""
+        factory, uow = mock_uow_factory
+        link = self._owned_by("somebody-else")
+        uow.links.find_by_code.return_value = link
+        uow.links.delete.return_value = True
+
+        assert use_case.execute(
+            "abc123", context,
+            enforce_ownership=True, authorized_link_id=link.id,
+        ) is True
+
+        use_case.authorization_service.is_allowed.assert_not_called()

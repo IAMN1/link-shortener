@@ -105,9 +105,11 @@ class TestEveryAnswerAnAnonymousCallerGets:
                         f"declared {sorted(declared)}"
                     )
 
-        # 38 is what the sweep reaches now; it reached 23 while the paths
+        # 39 is what the sweep reaches now; it reached 23 while the paths
         # did not match, and the floor stood at 20. Set at the real number
         # rather than under it: a floor with slack in it is a floor that
-        # cannot report the loss it exists to report.
-        assert checked >= 38, f"only {checked} operations were reached"
+        # cannot report the loss it exists to report -- which is what it
+        # had again, at 38 against a sweep of 39, after the QR operation
+        # was added and this number was not moved with it.
+        assert checked >= 39, f"only {checked} operations were reached"
         assert undeclared == []

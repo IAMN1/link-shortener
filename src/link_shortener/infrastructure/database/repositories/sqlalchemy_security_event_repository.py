@@ -77,7 +77,13 @@ class SQLAlchemySecurityEventRepository(SecurityEventRepository):
         self, since: datetime, until: datetime, buckets: int
     ) -> List[Tuple[str, List[int]]]:
         """
-        The same counts, split into equal intervals across the span.
+        How many of each kind of event fell inside each interval of a span.
+
+        The only way to ask how many there were: a caller wanting the
+        total of a span adds its own buckets up. The sibling that answered
+        that second question with a second query is gone, because the two
+        answers disagreed -- the totals were read from the raw rows while
+        the series merged in the folded days.
 
         Args:
             since: Start of the span, inclusive.

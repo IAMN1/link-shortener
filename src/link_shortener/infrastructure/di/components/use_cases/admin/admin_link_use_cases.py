@@ -30,15 +30,27 @@ class AdminLinkUseCasesComponent:
     """Security journal, for the sweep that removes links."""
 
     create_short_link_use_case: CreateShortLinkUseCase
-    visit_retention_days: int = 90
     """Use case needed by ``SeedDatabaseUseCase`` to create test links."""
+
+    visit_retention_days: int = 90
+    """How long raw visit rows are kept, from ``VISIT_RETENTION_DAYS``.
+
+    Read by ``RollUpVisitsUseCase``, which folds finished days and then
+    deletes the raw rows behind this many. It was left undocumented
+    underneath the docstring belonging to the field above it, which read
+    as a use case being an ``int``.
+    """
 
     def get_clean_expired_links_use_case(self) -> CleanExpiredLinksUseCase:
         """
         Return a fully configured ``CleanExpiredLinksUseCase``.
 
-        The use case deletes links that have not been accessed for a
-        specified number of days.
+        The use case deletes links whose ``expires_at`` has passed, and
+        that is its only criterion -- it takes no day count and never
+        looks at ``last_accessed``. Its own docstring says why: "Sweeping
+        by ``last_accessed`` instead deletes the wrong rows in both
+        directions." A permanent link nobody has opened for a year is not
+        swept by it and never was.
         """
         return CleanExpiredLinksUseCase(
             uow_factory=self.uow_factory,

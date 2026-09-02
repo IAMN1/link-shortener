@@ -97,9 +97,13 @@ class TestRateLimitingIsOnByDefault:
         check accepts, and it raises the password-guessing allowance from
         five attempts a minute to seven hundred and twenty -- with the
         comment beside it still reading "5 attempts per minute per IP".
-        Only the four that exist to stop an attacker are pinned. Pinning
-        all ten would turn every deliberate tuning of a read limit into a
-        failing test, which is a different thing from a defect.
+        Four of the fifteen entries are pinned, and they are the four a
+        password guesser meets. Pinning all fifteen would turn every
+        deliberate tuning of a read limit into a failing test, which is a
+        different thing from a defect. Five further ``auth.*`` limits --
+        the reset, verification and password-change endpoints -- are not
+        pinned either; they are the mail-to-strangers half rather than the
+        guessing half.
 
         docs/configuration.md publishes these numbers, so
         changing one is changing the document too.

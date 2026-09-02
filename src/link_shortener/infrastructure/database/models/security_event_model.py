@@ -96,4 +96,8 @@ class SecurityEventDayModel(Base):
         DateTime(timezone=True), primary_key=True
     )
     event_type: Mapped[str] = mapped_column(String(64), primary_key=True)
-    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # ``server_default`` as well as ``default``, so that ``create_all``
+    # and the migration build the same column: see ``LinkVisitModel``.
+    total: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0",
+    )

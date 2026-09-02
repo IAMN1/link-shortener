@@ -1,11 +1,20 @@
 """
 Level 2 integration tests: SQLAlchemyLinkRepository against real PostgreSQL.
 
-These tests verify PostgreSQL-specific behavior that SQLite cannot test:
-- UUID generation
-- JSON/JSONB operations
-- Real connection pooling
-- psycopg2 driver compatibility
+What these actually reach is the repository's ordinary work carried out by
+a real server rather than by SQLite: saving and finding, deleting,
+incrementing a counter, listing by owner, counting a guest's links, and a
+unit of work that commits or rolls back. Plus two checks that the schema
+is really there.
+
+The list this docstring used to give -- UUID generation, JSON/JSONB
+operations, real connection pooling, psycopg2 compatibility -- named four
+things none of which is here: no model declares a JSON column anywhere in
+the schema, identifiers are generated in Python, the pool is untouched,
+and the driver is psycopg 3. What SQLite cannot show and this stack can is
+covered by its neighbours in this directory -- concurrency, the advisory
+locks, the migrations, the column widths a declared type actually
+enforces.
 """
 
 from sqlalchemy import text

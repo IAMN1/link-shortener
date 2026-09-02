@@ -315,6 +315,19 @@ def script_strings() -> Dict[str, str]:
         "confirmation_link_sent": gettext(
             "If that address needs confirming, a link has been sent to it."
         ),
+        # The administrative pair, and they are not the public sentence
+        # above: an operator acting on the account in front of them is
+        # entitled to know which of the two happened, which is why the
+        # route answers 202 and 200 apart. Out of the catalogue for the
+        # reason the three sentences above are -- the API builds both
+        # bodies as literals and never translates them, so the panel
+        # printed English onto a page it had just drawn in Russian.
+        "confirmation_sent_to": gettext(
+            "Confirmation message sent to %(email)s"
+        ),
+        "already_confirmed_nothing_sent": gettext(
+            "%(email)s is already confirmed; nothing to send"
+        ),
         "email_confirmed": gettext("Email confirmed. You can sign in now."),
         "no_links": gettext("No links"),
         "no_links_yet": gettext("No links yet"),
@@ -380,6 +393,9 @@ def script_strings() -> Dict[str, str]:
         # The way from the table of links to one link's own page. Drawn by
         # `my_links.js` per row, so it cannot come from the template.
         "chart_link_stats": gettext("Stats"),
+        # The way from the same table to the link's square. Drawn per row
+        # for the same reason as the one above it.
+        "qr_code": gettext("QR"),
         # The journal viewer. It reuses the freshness sentences above
         # rather than starting a second set: "updated 40 s ago" is the same
         # sentence about the same kind of reading, and two entries would be

@@ -55,7 +55,13 @@ class SeedDatabaseUseCase(BaseUseCase):
         created = 0
         existing = 0
         for i in range(count):
-            url = f"https://seed-db.com{i}"
+            # A path per link, not a host per link: ``seed-db.com{i}``
+            # spelled ``seed-db.com0``, ``seed-db.com1``, ... -- a fresh
+            # hostname under a top-level domain that does not exist, once
+            # per row. They validate and they deduplicate, so the seeding
+            # worked; what it produced was not the shape of anything a
+            # deployment stores.
+            url = f"https://seed-db.example/{i}"
             try:
                 response = self.create_short_link_use_case.execute(url, context)
             except Exception as e:

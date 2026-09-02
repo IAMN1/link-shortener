@@ -41,9 +41,12 @@ def guest_quota_spent(limit: int, window_days: int) -> GuestLinkLimitExceededErr
     """
     Build the refusal a guest gets when the allowance is gone.
 
-    Returned rather than raised: the single-link path raises it, and the
-    batch path carries it per item inside a 200. One sentence either way,
-    which is the point of building it here.
+    Returned rather than raised, because the callers do different things
+    with it. The single-link path raises it. The batch path does both: it
+    carries one per item inside a 200 where part of the batch got through,
+    and raises it where the quota refused every item and nothing else in
+    the request got done. One sentence in all three places, which is the
+    point of building it here.
 
     Args:
         limit: Links allowed inside the window.

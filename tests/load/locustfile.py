@@ -146,8 +146,9 @@ class MixedUser(HttpUser):
     """
     The mixture in the proportion a shortener actually works in.
 
-    Nine redirects per creation, and one health poll per hundred requests: a
-    link is created once and opened many times.
+    Ten redirects per creation, and one health poll per hundred requests:
+    a link is created once and opened many times. The weights are 90, 9
+    and 1, so ninety follows for nine creations is ten to one.
     """
 
     wait_time = between(0, 0.05)

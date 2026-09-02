@@ -246,13 +246,21 @@ class TestTheSpansOnOffer:
         assert refused.value.code == "VALIDATION_ERROR"
 
     def test_the_default_is_a_week(self, use_case, uow):
+        """The name of this test is the claim, so the literal is the check.
+
+        Written as ``counts.period == DEFAULT_PERIOD`` the same constant
+        supplied both sides: changing the default to ``"24h"`` left it
+        green under a name promising a week, and no literal ``"7d"``
+        appeared anywhere in the suite.
+        """
         context = signed_in_as(
             user_holding(SystemPermissions.AUDIT_VIEW.value), uow
         )
 
         counts = use_case.execute(context, now=NOON)
 
-        assert counts.period == DEFAULT_PERIOD
+        assert DEFAULT_PERIOD == "7d"
+        assert counts.period == "7d"
 
     def test_the_spans_are_the_visit_charts_own_spans(self):
         """Two charts about one service must be about the same days.

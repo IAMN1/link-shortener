@@ -72,8 +72,14 @@ _BROWSERS = (
     ("bot", re.compile(r"bot|crawler|spider|slurp|curl|wget|python-requests|"
                        r"headless|monitoring|preview|facebookexternalhit|"
                        r"whatsapp|telegrambot|slackbot", re.I)),
-    ("edge", re.compile(r"edg[ea]?/", re.I)),
-    ("opera", re.compile(r"opr/|opera", re.I)),
+    # ``edgios``/``opios``/``opt`` beside the desktop spellings for the
+    # reason ``crios`` and ``fxios`` sit beside ``chrome`` and ``firefox``
+    # below: on iOS every browser is WebKit and says so, so a string
+    # naming Edge or Opera there also carries ``Safari/``. Without the iOS
+    # spelling the Safari rule claimed them -- measured, a real
+    # ``EdgiOS/120.0`` string was classified ``safari``.
+    ("edge", re.compile(r"edg[ea]?/|edgios/", re.I)),
+    ("opera", re.compile(r"opr/|opios/|\bopt/|opera", re.I)),
     ("samsung", re.compile(r"samsungbrowser", re.I)),
     ("firefox", re.compile(r"firefox/|fxios/", re.I)),
     ("chrome", re.compile(r"chrome/|crios/|chromium", re.I)),
@@ -88,8 +94,14 @@ _BROWSERS = (
 # consulted by an `if/elif` further down, so that the precedence sits with
 # the patterns instead of in the order of two branches fifty lines away.
 _DEVICES = (
-    ("tablet", re.compile(r"ipad|tablet|android(?!.*mobile)", re.I)),
-    ("mobile", re.compile(r"mobile|iphone|ipod|windows phone", re.I)),
+    # ``mini`` is excluded alongside ``mobile`` because Opera Mini's
+    # classic string is the one Android string that names no screen at
+    # all: ``Opera/9.80 (Android; Opera Mini/7.5...)`` carries neither
+    # ``Mobile`` nor ``Tablet``, so the negative look-ahead passed and a
+    # phone browser was counted as a tablet. Measured on that exact
+    # string. No tablet string carries ``mini``.
+    ("tablet", re.compile(r"ipad|tablet|android(?!.*(?:mobile|mini))", re.I)),
+    ("mobile", re.compile(r"mobile|iphone|ipod|windows phone|opera mini", re.I)),
 )
 
 
@@ -138,9 +150,9 @@ def classify_client(user_agent: Optional[str]) -> tuple[str, str, bool]:
 
     # Each pattern is asked the question it can answer, in the order
     # `_DEVICES` states: the tablet rule names its class outright (`ipad`,
-    # `tablet`) or by an Android string with no `Mobile` in it, and
-    # whatever it does not claim is left to the phone rule, which no
-    # tablet string reaches.
+    # `tablet`) or by an Android string naming no screen at all -- no
+    # `Mobile` and no `mini` -- and whatever it does not claim is left to
+    # the phone rule, which no tablet string reaches.
     for name, pattern in _DEVICES:
         if pattern.search(user_agent):
             return name, browser, is_bot

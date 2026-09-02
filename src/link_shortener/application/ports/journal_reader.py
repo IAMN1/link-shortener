@@ -119,8 +119,17 @@ class JournalFilter:
         # read that has asked for nothing -- is the one this hides them
         # from. Asked for by name they come back, which is what makes the
         # search the way to see them.
+        #
+        # Hiding them is all this does. Answering ``True`` outright made
+        # ``event_type=LOGGING_CHAIN_PROBE`` ignore every other term of the
+        # same search: an operator narrowing to one day to find the gap
+        # where the chain stopped writing was handed the probes of every
+        # day in the live file and the archives, which is the one question
+        # this record exists to answer. So a probe asked for by name falls
+        # through to the rest of the filter like any other line.
         if fields.get("event_type") == HEALTH_PROBE_EVENT_TYPE:
-            return self.event_type == HEALTH_PROBE_EVENT_TYPE
+            if self.event_type != HEALTH_PROBE_EVENT_TYPE:
+                return False
 
         if self.is_empty:
             return True

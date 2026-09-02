@@ -23,7 +23,12 @@ from link_shortener.infrastructure.rate_limit.redis_rate_limiter import (
 
 @pytest.fixture
 def limiter(app, redis_client):
-    """A limiter on the real Redis, with a namespace of its own per test.
+    """A limiter on the real Redis, sharing one namespace across the file.
+
+    The isolation is the ``key`` fixture below, not the namespace: this
+    passes no prefix, so every test in this file writes under the
+    limiter's default one. A reader who took the namespace for the
+    isolation would drop the fresh key and find the tests interfering.
 
     Depends on ``app`` only so that the schema exists: the autouse cleanup
     fixture truncates tables after every test, and without it this file

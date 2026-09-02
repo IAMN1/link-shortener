@@ -67,7 +67,9 @@ it is named after.
 """
 
 import re
+import shutil
 import sys
+import tempfile
 import time
 import traceback
 from datetime import datetime, timezone
@@ -120,16 +122,34 @@ mail = MailCatcher()
 """This run's mail server. It accepts mail and sends it nowhere."""
 
 
+journals = tempfile.mkdtemp(prefix="smoke-journals-")
+"""Where this run writes its journals, and it is its own directory.
+
+``TestingConfig`` writes none at all and leaves ``LOG_DIR`` pointing at the
+repository's own ``datas/logs``, so the journal section read whatever the
+machine happened to hold: green on a developer's tree with an old
+``application.log`` in it, and vacuous on a clean checkout, where the two
+loops over ``page["lines"]`` and ``files_read`` iterate zero times and
+assert nothing. ``browser_test.py`` names this trap and takes a directory
+of its own for it; this run did not.
+
+Removed at the end of the run, with the run's database.
+"""
+
+
 class SmokeConfig(TestingConfig):
     """
-    The run's profile: testing as it stands, but with mail on and pointed
-    here.
+    The run's profile: testing as it stands, with mail on and pointed here,
+    and with journals of its own.
 
-    Without it, address confirmation had to be acted out -- the run issued a
-    token itself and wrote its digest into the table itself, which checks
-    ``/api/v1/auth/verify`` against a string the service did not issue.
-    Nothing then checked that registration issues a token, that the template
-    builds the link, or that the message goes out at all.
+    Without the mail half, address confirmation had to be acted out -- the
+    run issued a token itself and wrote its digest into the table itself,
+    which checks ``/api/v1/auth/verify`` against a string the service did
+    not issue. Nothing then checked that registration issues a token, that
+    the template builds the link, or that the message goes out at all.
+
+    Without the journal half, the checks on the journal reader read files
+    this run never wrote. See ``journals`` above.
     """
 
     MAIL_ENABLED = True
@@ -138,6 +158,9 @@ class SmokeConfig(TestingConfig):
     MAIL_USE_TLS = False
     MAIL_USE_SSL = False
     MAIL_FROM = "no-reply@link-shortener.test"
+
+    LOG_TO_FILE = True
+    LOG_DIR = journals
 
 
 app = create_app(config=SmokeConfig())
@@ -457,8 +480,17 @@ def _():
     # last touched before it, and nothing ran the two together -- so the
     # committed tree failed its own live check, 156 of 157, on this
     # assertion alone.
+    #
+    # And then it happened again, on the other half of the same sentence.
+    # `0ef8070` split "disabled" into `in_process` and `disabled` for
+    # exactly the reason written three paragraphs above -- a cache in this
+    # process is not a cache that is off -- and this line went on asking
+    # for the old word. 156 of 157 again, on this assertion again, and for
+    # months: the run is not in CI's default path, so nothing said so.
+    # Corrected by the run that added the QR endpoint, which is when the
+    # two were next run together.
     assert data["components"] == {
-        "cache": "disabled",
+        "cache": "in_process",
         "database": "ok",
         "rate_limiter": "enforcing",
         "task_queue": "inline",
@@ -1793,6 +1825,12 @@ def _():
     assert page["journal"] == "application"
     assert isinstance(page["lines"], list)
     assert isinstance(page["reached_start"], bool)
+    # And that there are lines at all, which is what makes the loop below
+    # a check. The run writes its own journals into a directory of its own
+    # now; before that it read whatever the machine held, so on a clean
+    # checkout this list was empty and everything after it asserted
+    # nothing while still printing a tick.
+    assert page["lines"], "this run wrote no journal to read"
     # Every line says which file it came from, and on a read that did not
     # ask for the archives that can only be the live journal.
     for line in page["lines"]:
@@ -1874,7 +1912,11 @@ def _():
         headers=auditor_headers,
     )
     assert r.status_code == 200, r.get_json()
-    for name in r.get_json()["files_read"]:
+    read = r.get_json()["files_read"]
+    # At least the live journal, for the reason the check above states:
+    # an empty list makes the loop below a tick over nothing.
+    assert read, "the read named no file at all"
+    for name in read:
         assert name.startswith("application.log"), name
 
 @test("GET /api/v1/journals/counters (as an auditor)")
@@ -1896,7 +1938,13 @@ def _():
     # The limit of `admin:all`, measured through this endpoint: these
     # numbers summarise the record kept about administrators, and a count
     # is the same information as a record, aggregated.
-    r = api.get("/api/v1/journals/counters", headers=auth_headers)
+    #
+    # Asked as the administrator, which is the whole check. It was asked
+    # with `auth_headers` -- the plain `user` account -- so it proved that
+    # somebody entitled to nothing is refused, which is not in doubt, and
+    # would have gone on passing if `admin:all` had started carrying
+    # `audit:view`. The neighbour on `journals/audit` had it right.
+    r = admin.get("/api/v1/journals/counters", headers=admin_headers)
     assert r.status_code == 403, r.get_json()
 
 @test("GET /api/v1/journals/counters?period= (outside the four on offer)")
@@ -2000,11 +2048,11 @@ Listed in full rather than sampled: a partial transcription leaves out the
 parameterised rules, which are exactly the ones a new page is most likely
 to be added beside.
 
-The second column is what makes these fifteen checks fifteen checks.
+The second column is what makes these sixteen checks sixteen checks.
 ``@login_required`` is the outer decorator, so asking as an anonymous
 caller measures one thing over and over -- that nobody is logged in -- and
 every ``@require_permission`` behind it could be deleted with this file
-still green. Seven of these pages are the plain role's to open and eight
+still green. Seven of these pages are the plain role's to open and nine
 are not, and that difference is the only evidence those decorators are
 there.
 """
@@ -2161,6 +2209,14 @@ def _():
 # ─── 21. Derived metrics on a link old enough to have any ──────────────
 print("\n=== DERIVED METRICS ===")
 
+AGED_CODE = "AGEDLNK"
+"""The planted link three checks below share.
+
+At module level rather than inside the first of them: the QR checks read
+the same row, and a second literal is how the two come to name different
+links while both keep passing.
+"""
+
 @test("GET /api/v1/links/<code>/extended (an aged, busy link)")
 def _():
     # Planted rather than created, because the four fields this endpoint
@@ -2174,7 +2230,7 @@ def _():
     # Asked after the totals in section 12 for the obvious reason: this row
     # and its 150 clicks would move every one of them.
     from datetime import timedelta, timezone
-    aged_code = "AGEDLNK"
+    aged_code = AGED_CODE
     with app.app_context():
         with db.session() as db_session:
             from sqlalchemy import text
@@ -2206,6 +2262,40 @@ def _():
     assert data["is_popular"] is True
     assert data["is_recent"] is False
     assert data["last_access_days_ago"] == 2
+
+
+@test("GET /api/v1/links/<code>/qr (the square is of the short address)")
+def _():
+    # The one property worth a live check: both squares scan, so a
+    # renderer quietly handed the destination would produce a perfectly
+    # valid image and no assertion about "is this a QR code" would fail.
+    # Held by rendering the alternative and demanding they differ.
+    from link_shortener.web.qr import render_svg
+
+    r = guest.get(f"/api/v1/links/{AGED_CODE}/qr")
+
+    assert r.status_code == 200, r.status_code
+    assert r.mimetype == "image/svg+xml", r.mimetype
+    # Public, unlike the two endpoints beside it: nothing about the caller
+    # is in the image, so a shared cache is correct here and wrong there.
+    assert "public" in r.headers.get("Cache-Control", "")
+
+    body = r.get_data()
+    assert body == render_svg(
+        f"{app.config['BASE_URL'].rstrip('/')}/{AGED_CODE}", title=AGED_CODE
+    ), "the square is not the one for this link's short address"
+    assert body != render_svg(
+        "https://aged.example", title=AGED_CODE
+    ), "the square carries the destination"
+
+@test("GET /api/v1/links/<code>/qr (a code that leads nowhere)")
+def _():
+    # Resolved before anything is drawn. Otherwise a printed square would
+    # lead to a 404 and nobody would find out until it was on paper.
+    r = guest.get("/api/v1/links/nosuchcode/qr")
+
+    assert r.status_code == 404, r.status_code
+    assert r.get_json()["error"] == "LINK_NOT_FOUND"
 
 
 # ─── 22. Ceilings on what a caller may ask for ─────────────────────────
@@ -2267,11 +2357,11 @@ success = result.summary()
 
 # The same guard the suite has in CI, for the same reason: "all passed" is
 # a statement about the checks that ran, and says nothing about the ones
-# that stopped running. Emptying DASHBOARD_PAGES removed fourteen checks
-# and printed a green run and exit 0. A check whose body is only comments
+# that stopped running. Emptying DASHBOARD_PAGES removed the checks it
+# generates -- sixteen of them now -- and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 157
+EXPECTED_CHECKS = 159
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")
@@ -2308,5 +2398,9 @@ if unreached:
     success = False
 
 mail.stop()
+
+# The journals this run wrote, and nothing else: `journals` is a directory
+# of this run's own, so removing it takes no file anybody else put there.
+shutil.rmtree(journals, ignore_errors=True)
 
 sys.exit(0 if success else 1)

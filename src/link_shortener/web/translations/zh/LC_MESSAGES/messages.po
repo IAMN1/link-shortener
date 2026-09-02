@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-01 21:09+0300\n"
+"POT-Creation-Date: 2026-09-02 07:38+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh\n"
@@ -47,9 +47,10 @@ msgstr "当前密码不正确"
 msgid "The new password must differ from the current one"
 msgstr "新密码必须与当前密码不同"
 
-#: src/link_shortener/application/use_cases/auth/login.py:77
-#: src/link_shortener/application/use_cases/auth/login.py:93
-#: src/link_shortener/application/use_cases/auth/login.py:133
+#: src/link_shortener/application/use_cases/auth/login.py:163
+#: src/link_shortener/application/use_cases/auth/login.py:180
+#: src/link_shortener/application/use_cases/auth/login.py:196
+#: src/link_shortener/application/use_cases/auth/login.py:236
 msgid "Invalid email or password"
 msgstr "邮箱地址或密码不正确"
 
@@ -81,7 +82,7 @@ msgstr "无法保存该链接"
 
 #: src/link_shortener/application/use_cases/journals/read_journal.py:310
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:183
-#: src/link_shortener/web/controllers/api_controller.py:270
+#: src/link_shortener/web/controllers/api_controller.py:327
 #: src/link_shortener/web/security/decorators.py:55
 #: src/link_shortener/web/security/decorators.py:121
 msgid "Not authorized"
@@ -92,7 +93,11 @@ msgstr "未获授权"
 msgid "'%(code)s' is reserved by the service and cannot be used as a short code"
 msgstr "「%(code)s」由服务保留，不能用作短代码"
 
-#: src/link_shortener/application/use_cases/links/create_short_link.py:264
+#: src/link_shortener/application/use_cases/links/create_short_link.py:275
+msgid "ttl_seconds must not be negative"
+msgstr "ttl_seconds 不得为负数"
+
+#: src/link_shortener/application/use_cases/links/create_short_link.py:283
 #, python-format
 msgid "ttl_seconds must not exceed %(max)s"
 msgstr "ttl_seconds 不得超过 %(max)s"
@@ -112,64 +117,64 @@ msgstr "未知的时间段「%(period)s」。请从以下选择：%(choices)s"
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr "days 必须在 1 到 730 之间，收到的是 %(days)s"
 
-#: src/link_shortener/domain/exceptions.py:180
+#: src/link_shortener/domain/exceptions.py:182
 #, python-format
 msgid "Link with code (%(code)s) not found"
 msgstr "找不到代码为 (%(code)s) 的链接"
 
-#: src/link_shortener/domain/exceptions.py:184
+#: src/link_shortener/domain/exceptions.py:186
 #: src/link_shortener/web/middleware/error_handler.py:477
 msgid "Link not found"
 msgstr "找不到该链接"
 
-#: src/link_shortener/domain/exceptions.py:241
+#: src/link_shortener/domain/exceptions.py:243
 #, python-format
 msgid "Short code '%(code)s' is already taken"
 msgstr "短代码「%(code)s」已被占用"
 
-#: src/link_shortener/domain/exceptions.py:254
+#: src/link_shortener/domain/exceptions.py:256
 #, python-format
 msgid "Link with code (%(code)s) has expired"
 msgstr "代码为 (%(code)s) 的链接已过期"
 
-#: src/link_shortener/domain/exceptions.py:258
+#: src/link_shortener/domain/exceptions.py:260
 msgid "Link has expired"
 msgstr "链接已过期"
 
-#: src/link_shortener/domain/exceptions.py:272
+#: src/link_shortener/domain/exceptions.py:274
 msgid "Guest link limit exceeded"
 msgstr "已超出访客链接上限"
 
-#: src/link_shortener/domain/exceptions.py:308
+#: src/link_shortener/domain/exceptions.py:310
 #, python-format
 msgid "User with id %(id)s not found"
 msgstr "找不到 id 为 %(id)s 的账户"
 
-#: src/link_shortener/domain/exceptions.py:336
+#: src/link_shortener/domain/exceptions.py:338
 msgid "Email already registered"
 msgstr "该邮箱地址已被注册"
 
-#: src/link_shortener/domain/exceptions.py:355
+#: src/link_shortener/domain/exceptions.py:357
 #, python-format
 msgid "Role %(name)s not found"
 msgstr "找不到角色 %(name)s"
 
-#: src/link_shortener/domain/exceptions.py:374
+#: src/link_shortener/domain/exceptions.py:376
 #, python-format
 msgid "Role %(name)s already exists"
 msgstr "角色 %(name)s 已存在"
 
-#: src/link_shortener/domain/exceptions.py:394
+#: src/link_shortener/domain/exceptions.py:396
 #, python-format
 msgid "Role %(name)s belongs to the service and cannot be modified or deleted"
 msgstr "角色 %(name)s 属于服务，无法修改或删除"
 
-#: src/link_shortener/domain/exceptions.py:420
+#: src/link_shortener/domain/exceptions.py:422
 #, python-format
 msgid "Role %(name)s cannot be assigned to an account"
 msgstr "角色 %(name)s 无法分配给账户"
 
-#: src/link_shortener/domain/exceptions.py:440
+#: src/link_shortener/domain/exceptions.py:442
 #, python-format
 msgid "Permissions not found: %(names)s"
 msgstr "未找到权限：%(names)s"
@@ -178,161 +183,172 @@ msgstr "未找到权限：%(names)s"
 msgid "ttl_seconds is too large to be a date"
 msgstr "ttl_seconds 过大，无法构成日期"
 
-#: src/link_shortener/domain/policies/guest_quota_policy.py:58
+#: src/link_shortener/domain/policies/guest_quota_policy.py:61
 #, python-format
 msgid "Guest link limit of %(limit)s exceeded."
 msgstr "已超出访客 %(limit)s 条链接的上限。"
 
-#: src/link_shortener/domain/policies/password_policy.py:90
+#: src/link_shortener/domain/policies/password_policy.py:97
 msgid "Password must not be blank"
 msgstr "密码不能只由不可见字符组成"
 
-#: src/link_shortener/domain/policies/password_policy.py:101
+#: src/link_shortener/domain/policies/password_policy.py:108
 msgid "Password must not contain a null character"
 msgstr "密码不能包含空字符"
 
-#: src/link_shortener/domain/policies/password_policy.py:109
+#: src/link_shortener/domain/policies/password_policy.py:116
 #, python-format
 msgid "Password must be at least %(count)s characters"
 msgstr "密码至少需要 %(count)s 个字符"
 
-#: src/link_shortener/domain/policies/password_policy.py:131
+#: src/link_shortener/domain/policies/password_policy.py:138
 #, python-format
 msgid ""
 "Password must not exceed %(count)s characters, and fewer for alphabets "
 "that need more room per character"
 msgstr "密码不得超过 %(count)s 个字符；每字符占用更多空间的文字则更少"
 
-#: src/link_shortener/domain/policies/password_policy.py:142
+#: src/link_shortener/domain/policies/password_policy.py:149
 msgid "Password is too common -- choose one that is not on every attacker's list"
 msgstr "此密码过于常见——请换一个不在攻击者常用列表里的"
 
-#: src/link_shortener/domain/policies/privilege_policy.py:105
+#: src/link_shortener/domain/policies/privilege_policy.py:121
 #, python-format
 msgid "You cannot grant permissions you do not hold yourself: %(permissions)s"
 msgstr "不能授予您自己没有的权限：%(permissions)s"
 
-#: src/link_shortener/domain/policies/privilege_policy.py:125
+#: src/link_shortener/domain/policies/privilege_policy.py:227
+#, python-format
+msgid ""
+"You cannot act on an account holding permissions you do not hold "
+"yourself: %(permissions)s"
+msgstr "不能操作拥有您自己没有的权限的账户：%(permissions)s"
+
+#: src/link_shortener/domain/policies/privilege_policy.py:247
 msgid "This would leave the system without an administrator"
 msgstr "这样做会让系统失去管理员"
 
-#: src/link_shortener/domain/policies/role_policy.py:130
+#: src/link_shortener/domain/policies/role_policy.py:146
 msgid "A role name must be letters, digits, hyphen or underscore"
 msgstr "角色名称只能包含字母、数字、连字符和下划线"
 
-#: src/link_shortener/domain/policies/role_policy.py:140
+#: src/link_shortener/domain/policies/role_policy.py:156
 #, python-format
 msgid "A role name must be %(least)s to %(most)s characters long"
 msgstr "角色名称长度必须为 %(least)s 到 %(most)s 个字符"
 
-#: src/link_shortener/domain/policies/role_policy.py:198
+#: src/link_shortener/domain/policies/role_policy.py:214
 msgid "A role description must be text"
 msgstr "角色描述必须是文本"
 
-#: src/link_shortener/domain/policies/role_policy.py:207
+#: src/link_shortener/domain/policies/role_policy.py:223
 #, python-format
 msgid "A role description must be at most %(most)s characters long"
 msgstr "角色描述长度不得超过 %(most)s 个字符"
 
-#: src/link_shortener/domain/value_objects/email.py:104
+#: src/link_shortener/domain/value_objects/email.py:136
+msgid "Email address is too long"
+msgstr "邮箱地址过长"
+
+#: src/link_shortener/domain/value_objects/email.py:144
 msgid "Invalid email format"
 msgstr "邮箱地址格式无效"
 
-#: src/link_shortener/domain/value_objects/original_url.py:172
+#: src/link_shortener/domain/value_objects/original_url.py:193
 msgid "Malformed URL: its authority cannot be parsed"
 msgstr "网址格式有误：无法解析其主机部分"
 
-#: src/link_shortener/domain/value_objects/original_url.py:213
+#: src/link_shortener/domain/value_objects/original_url.py:234
 #, python-format
 msgid "URL too long (max %(max)s characters)"
 msgstr "网址过长（最多 %(max)s 个字符）"
 
-#: src/link_shortener/domain/value_objects/original_url.py:236
+#: src/link_shortener/domain/value_objects/original_url.py:257
 msgid "URL contains control characters"
 msgstr "网址包含控制字符"
 
-#: src/link_shortener/domain/value_objects/original_url.py:242
+#: src/link_shortener/domain/value_objects/original_url.py:263
 msgid "URL must have a scheme!"
 msgstr "网址必须带有协议！"
 
-#: src/link_shortener/domain/value_objects/original_url.py:251
+#: src/link_shortener/domain/value_objects/original_url.py:272
 #, python-format
 msgid "Scheme '%(scheme)s' is not allowed. Allowed schemes: %(allowed)s"
 msgstr "不允许使用协议「%(scheme)s」。允许的协议：%(allowed)s"
 
-#: src/link_shortener/domain/value_objects/original_url.py:280
+#: src/link_shortener/domain/value_objects/original_url.py:301
 msgid "URL must not contain credentials before the host"
 msgstr "网址中不得在主机前包含凭据"
 
-#: src/link_shortener/domain/value_objects/original_url.py:319
+#: src/link_shortener/domain/value_objects/original_url.py:340
 msgid "Brackets in a URL enclose an IPv6 address"
 msgstr "网址中的方括号用于包裹 IPv6 地址"
 
-#: src/link_shortener/domain/value_objects/original_url.py:341
+#: src/link_shortener/domain/value_objects/original_url.py:362
 msgid "URL must have a domain!"
 msgstr "网址必须带有域名！"
 
-#: src/link_shortener/domain/value_objects/original_url.py:346
+#: src/link_shortener/domain/value_objects/original_url.py:367
 msgid "Invalid host"
 msgstr "主机无效"
 
-#: src/link_shortener/domain/value_objects/original_url.py:348
+#: src/link_shortener/domain/value_objects/original_url.py:369
 msgid "URL must have a hostname"
 msgstr "网址必须带有主机名"
 
-#: src/link_shortener/domain/value_objects/original_url.py:353
-#: src/link_shortener/domain/value_objects/original_url.py:360
+#: src/link_shortener/domain/value_objects/original_url.py:374
+#: src/link_shortener/domain/value_objects/original_url.py:381
 msgid "Invalid port number"
 msgstr "端口号无效"
 
-#: src/link_shortener/domain/value_objects/original_url.py:376
+#: src/link_shortener/domain/value_objects/original_url.py:407
 msgid "Empty host"
 msgstr "主机为空"
 
-#: src/link_shortener/domain/value_objects/original_url.py:393
+#: src/link_shortener/domain/value_objects/original_url.py:426
 msgid "Host must contain a dot (e.g., example.com)"
 msgstr "主机名必须包含点号（例如 example.com）"
 
-#: src/link_shortener/domain/value_objects/original_url.py:397
+#: src/link_shortener/domain/value_objects/original_url.py:430
 msgid "Host too long"
 msgstr "主机名过长"
 
-#: src/link_shortener/domain/value_objects/original_url.py:403
+#: src/link_shortener/domain/value_objects/original_url.py:436
 msgid "Empty label in host"
 msgstr "主机名中有空的标签"
 
-#: src/link_shortener/domain/value_objects/original_url.py:405
+#: src/link_shortener/domain/value_objects/original_url.py:438
 msgid "Label too long"
 msgstr "标签过长"
 
-#: src/link_shortener/domain/value_objects/original_url.py:412
+#: src/link_shortener/domain/value_objects/original_url.py:445
 #, python-format
 msgid "Invalid characters in host label: %(label)s"
 msgstr "主机名标签中有无效字符：%(label)s"
 
-#: src/link_shortener/domain/value_objects/original_url.py:428
+#: src/link_shortener/domain/value_objects/original_url.py:471
 msgid "Path contains control characters"
 msgstr "路径包含控制字符"
 
-#: src/link_shortener/domain/value_objects/original_url.py:472
-#: src/link_shortener/domain/value_objects/original_url.py:478
+#: src/link_shortener/domain/value_objects/original_url.py:515
+#: src/link_shortener/domain/value_objects/original_url.py:521
 msgid "URL must point at a public address"
 msgstr "网址必须指向公网地址"
 
-#: src/link_shortener/domain/value_objects/original_url.py:512
+#: src/link_shortener/domain/value_objects/original_url.py:564
 #, python-format
 msgid "Invalid international domain name: %(reason)s"
 msgstr "国际化域名无效：%(reason)s"
 
-#: src/link_shortener/domain/value_objects/original_url.py:545
-#: src/link_shortener/domain/value_objects/original_url.py:554
-#: src/link_shortener/domain/value_objects/original_url.py:558
-#: src/link_shortener/domain/value_objects/original_url.py:566
-#: src/link_shortener/domain/value_objects/original_url.py:569
+#: src/link_shortener/domain/value_objects/original_url.py:597
+#: src/link_shortener/domain/value_objects/original_url.py:606
+#: src/link_shortener/domain/value_objects/original_url.py:610
+#: src/link_shortener/domain/value_objects/original_url.py:618
+#: src/link_shortener/domain/value_objects/original_url.py:621
 msgid "Invalid IP address in host"
 msgstr "主机中的 IP 地址无效"
 
-#: src/link_shortener/domain/value_objects/owner_id.py:33
+#: src/link_shortener/domain/value_objects/owner_id.py:39
 msgid "Owner id must not be empty. An owner-less link carries owner=None."
 msgstr "所有者 id 不能为空。没有所有者的链接使用 owner=None。"
 
@@ -343,7 +359,7 @@ msgid ""
 "alphanumeric characters, underscore, or hyphen."
 msgstr "短代码格式无效：%(value)s。需为 %(min)s-%(max)s 个字母、数字、下划线或连字符。"
 
-#: src/link_shortener/domain/value_objects/url_hash.py:38
+#: src/link_shortener/domain/value_objects/url_hash.py:50
 #, python-format
 msgid "Invalid hash format: %(value)s. Must be 64 hex characters."
 msgstr "哈希格式无效：%(value)s。需为 64 个十六进制字符。"
@@ -381,7 +397,7 @@ msgstr "发送失败"
 msgid "Not found"
 msgstr "未找到"
 
-#: src/link_shortener/web/i18n.py:270 src/link_shortener/web/i18n.py:423
+#: src/link_shortener/web/i18n.py:270 src/link_shortener/web/i18n.py:439
 msgid "Refused"
 msgstr "已拒绝"
 
@@ -441,74 +457,84 @@ msgstr "如果该地址可以注册，链接已发送到该地址。"
 msgid "If that address needs confirming, a link has been sent to it."
 msgstr "如果该地址需要确认，链接已发送到该地址。"
 
-#: src/link_shortener/web/i18n.py:318
+#: src/link_shortener/web/i18n.py:326
+#, python-format
+msgid "Confirmation message sent to %(email)s"
+msgstr "确认邮件已发送至 %(email)s"
+
+#: src/link_shortener/web/i18n.py:329
+#, python-format
+msgid "%(email)s is already confirmed; nothing to send"
+msgstr "%(email)s 已确认，无需发送"
+
+#: src/link_shortener/web/i18n.py:331
 msgid "Email confirmed. You can sign in now."
 msgstr "邮箱地址已确认。现在可以登录了。"
 
-#: src/link_shortener/web/i18n.py:319
+#: src/link_shortener/web/i18n.py:332
 #: src/link_shortener/web/templates/dashboard/my_links.html:39
 msgid "No links"
 msgstr "没有链接"
 
-#: src/link_shortener/web/i18n.py:320
+#: src/link_shortener/web/i18n.py:333
 msgid "No links yet"
 msgstr "还没有链接"
 
-#: src/link_shortener/web/i18n.py:321
+#: src/link_shortener/web/i18n.py:334
 msgid "No links have been visited yet"
 msgstr "还没有链接被访问过"
 
-#: src/link_shortener/web/i18n.py:322
+#: src/link_shortener/web/i18n.py:335
 msgid "never"
 msgstr "永不"
 
-#: src/link_shortener/web/i18n.py:323
+#: src/link_shortener/web/i18n.py:336
 msgid "Results"
 msgstr "结果"
 
-#: src/link_shortener/web/i18n.py:324
+#: src/link_shortener/web/i18n.py:337
 #: src/link_shortener/web/templates/dashboard/link_stats.html:9
 msgid "Link"
 msgstr "链接"
 
-#: src/link_shortener/web/i18n.py:325
-#: src/link_shortener/web/templates/public/index.html:102
+#: src/link_shortener/web/i18n.py:338
+#: src/link_shortener/web/templates/public/index.html:115
 msgid "Extended"
 msgstr "详细"
 
-#: src/link_shortener/web/i18n.py:333
+#: src/link_shortener/web/i18n.py:346
 msgctxt "a link that was just made"
 msgid "Created"
 msgstr "已创建"
 
-#: src/link_shortener/web/i18n.py:334
+#: src/link_shortener/web/i18n.py:347
 msgctxt "a link that already existed"
 msgid "Existing"
 msgstr "已存在"
 
-#: src/link_shortener/web/i18n.py:335
+#: src/link_shortener/web/i18n.py:348
 msgid "Copy"
 msgstr "复制"
 
-#: src/link_shortener/web/i18n.py:336
+#: src/link_shortener/web/i18n.py:349
 #: src/link_shortener/web/templates/dashboard/roles_list.html:48
 #: src/link_shortener/web/templates/dashboard/users_list.html:90
 msgid "Delete"
 msgstr "删除"
 
-#: src/link_shortener/web/i18n.py:337
+#: src/link_shortener/web/i18n.py:350
 msgid "Delete this link"
 msgstr "删除此链接"
 
-#: src/link_shortener/web/i18n.py:338
+#: src/link_shortener/web/i18n.py:351
 msgid "Only from this page, and only now."
 msgstr "仅限本页面，且仅限此刻。"
 
-#: src/link_shortener/web/i18n.py:340
+#: src/link_shortener/web/i18n.py:353
 msgid "This link's traffic is shown to whoever made it."
 msgstr "该链接的访问数据只向创建它的人显示。"
 
-#: src/link_shortener/web/i18n.py:342
+#: src/link_shortener/web/i18n.py:355
 #: src/link_shortener/web/templates/dashboard/home.html:36
 #: src/link_shortener/web/templates/dashboard/my_links.html:27
 #: src/link_shortener/web/templates/dashboard/my_stats.html:40
@@ -517,9 +543,9 @@ msgstr "该链接的访问数据只向创建它的人显示。"
 msgid "Clicks"
 msgstr "访问次数"
 
-#: src/link_shortener/web/i18n.py:347
+#: src/link_shortener/web/i18n.py:360
 #: src/link_shortener/web/templates/dashboard/home.html:36
-#: src/link_shortener/web/templates/dashboard/link_stats.html:36
+#: src/link_shortener/web/templates/dashboard/link_stats.html:57
 #: src/link_shortener/web/templates/dashboard/my_links.html:28
 #: src/link_shortener/web/templates/dashboard/my_stats.html:40
 #: src/link_shortener/web/templates/dashboard/service_stats.html:37
@@ -527,221 +553,225 @@ msgstr "访问次数"
 msgid "Created"
 msgstr "创建时间"
 
-#: src/link_shortener/web/i18n.py:348
-#: src/link_shortener/web/templates/dashboard/link_stats.html:40
+#: src/link_shortener/web/i18n.py:361
+#: src/link_shortener/web/templates/dashboard/link_stats.html:61
 msgid "Last Access"
 msgstr "最近访问"
 
-#: src/link_shortener/web/i18n.py:349
+#: src/link_shortener/web/i18n.py:362
 msgid "Never"
 msgstr "从未"
 
-#: src/link_shortener/web/i18n.py:350
+#: src/link_shortener/web/i18n.py:363
 msgid "Days Old"
 msgstr "存在天数"
 
-#: src/link_shortener/web/i18n.py:351
-#: src/link_shortener/web/templates/dashboard/link_stats.html:32
+#: src/link_shortener/web/i18n.py:364
+#: src/link_shortener/web/templates/dashboard/link_stats.html:53
 msgid "Clicks/Day"
 msgstr "每日访问"
 
-#: src/link_shortener/web/i18n.py:352
+#: src/link_shortener/web/i18n.py:365
 msgid "Popular"
 msgstr "热门"
 
-#: src/link_shortener/web/i18n.py:353
+#: src/link_shortener/web/i18n.py:366
 msgid "Recent"
 msgstr "最新"
 
-#: src/link_shortener/web/i18n.py:356
+#: src/link_shortener/web/i18n.py:369
 msgid "Total"
 msgstr "总计"
 
-#: src/link_shortener/web/i18n.py:357
+#: src/link_shortener/web/i18n.py:370
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:75
 msgid "People"
 msgstr "真人"
 
-#: src/link_shortener/web/i18n.py:358
+#: src/link_shortener/web/i18n.py:371
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:78
 msgid "Robots"
 msgstr "机器人"
 
-#: src/link_shortener/web/i18n.py:359
+#: src/link_shortener/web/i18n.py:372
 msgid "No visits in this span"
 msgstr "此时间段内没有访问"
 
-#: src/link_shortener/web/i18n.py:360
+#: src/link_shortener/web/i18n.py:373
 msgid "Try a wider span"
 msgstr "试试更长的时间段"
 
-#: src/link_shortener/web/i18n.py:361
+#: src/link_shortener/web/i18n.py:374
 msgid "The figures could not be loaded"
 msgstr "无法加载统计数据"
 
-#: src/link_shortener/web/i18n.py:366
+#: src/link_shortener/web/i18n.py:379
 msgid "Others"
 msgstr "其他"
 
-#: src/link_shortener/web/i18n.py:369
+#: src/link_shortener/web/i18n.py:382
 msgid "As bars"
 msgstr "条形图"
 
-#: src/link_shortener/web/i18n.py:370
+#: src/link_shortener/web/i18n.py:383
 msgid "As a ring"
 msgstr "环形图"
 
-#: src/link_shortener/web/i18n.py:375
+#: src/link_shortener/web/i18n.py:388
 msgid "updated just now"
 msgstr "刚刚更新"
 
-#: src/link_shortener/web/i18n.py:376
+#: src/link_shortener/web/i18n.py:389
 #, python-format
 msgid "updated %(count)s s ago"
 msgstr "%(count)s 秒前更新"
 
-#: src/link_shortener/web/i18n.py:377
+#: src/link_shortener/web/i18n.py:390
 #, python-format
 msgid "updated %(count)s min ago"
 msgstr "%(count)s 分钟前更新"
 
-#: src/link_shortener/web/i18n.py:378
+#: src/link_shortener/web/i18n.py:391
 #, python-format
 msgid "every %(interval)s"
 msgstr "每 %(interval)s"
 
-#: src/link_shortener/web/i18n.py:379
+#: src/link_shortener/web/i18n.py:392
 msgid "auto-refresh off"
 msgstr "自动刷新已关闭"
 
-#: src/link_shortener/web/i18n.py:382
+#: src/link_shortener/web/i18n.py:395
 #: src/link_shortener/web/templates/dashboard/users_list.html:56
 msgid "Stats"
 msgstr "统计"
 
-#: src/link_shortener/web/i18n.py:387
+#: src/link_shortener/web/i18n.py:398
+msgid "QR"
+msgstr "二维码"
+
+#: src/link_shortener/web/i18n.py:403
 msgid "Nothing has been written to this journal"
 msgstr "这个日志中还没有写入任何内容"
 
-#: src/link_shortener/web/i18n.py:388
+#: src/link_shortener/web/i18n.py:404
 msgid "The journal could not be read"
 msgstr "无法读取该日志"
 
-#: src/link_shortener/web/i18n.py:392
+#: src/link_shortener/web/i18n.py:408
 msgid "not a record"
 msgstr "不是一条记录"
 
-#: src/link_shortener/web/i18n.py:399
+#: src/link_shortener/web/i18n.py:415
 #, python-format
 msgid "Lines: %(count)s · %(files)s"
 msgstr "行数：%(count)s · %(files)s"
 
-#: src/link_shortener/web/i18n.py:403
+#: src/link_shortener/web/i18n.py:419
 msgid "Nothing here matched that search"
 msgstr "没有符合该搜索的记录"
 
-#: src/link_shortener/web/i18n.py:407
+#: src/link_shortener/web/i18n.py:423
 #, python-format
 msgid "Found: %(found)s · scanned: %(scanned)s"
 msgstr "找到：%(found)s · 已扫描：%(scanned)s"
 
-#: src/link_shortener/web/i18n.py:412
+#: src/link_shortener/web/i18n.py:428
 msgid "Not searched further back than this."
 msgstr "搜索未再往前追溯。"
 
-#: src/link_shortener/web/i18n.py:414
+#: src/link_shortener/web/i18n.py:430
 msgid "This is the start of the journal."
 msgstr "这是日志的开头。"
 
-#: src/link_shortener/web/i18n.py:415
+#: src/link_shortener/web/i18n.py:431
 msgid "Older lines exist."
 msgstr "还有更早的行。"
 
-#: src/link_shortener/web/i18n.py:417
+#: src/link_shortener/web/i18n.py:433
 #, python-format
 msgid "Archives reach back to %(name)s."
 msgstr "归档可回溯到 %(name)s。"
 
-#: src/link_shortener/web/i18n.py:422
+#: src/link_shortener/web/i18n.py:438
 msgid "Signed in"
 msgstr "成功登录"
 
-#: src/link_shortener/web/i18n.py:424
+#: src/link_shortener/web/i18n.py:440
 msgid "Roles changed"
 msgstr "角色变更"
 
-#: src/link_shortener/web/i18n.py:425
+#: src/link_shortener/web/i18n.py:441
 msgid "Other events"
 msgstr "其他事件"
 
-#: src/link_shortener/web/i18n.py:430
+#: src/link_shortener/web/i18n.py:446
 #, python-format
 msgid "Counted: %(since)s — %(until)s"
 msgstr "统计范围：%(since)s — %(until)s"
 
-#: src/link_shortener/web/i18n.py:431
+#: src/link_shortener/web/i18n.py:447
 msgid "Security events over time"
 msgstr "安全事件随时间变化"
 
-#: src/link_shortener/web/i18n.py:432
+#: src/link_shortener/web/i18n.py:448
 msgid "The counters could not be read"
 msgstr "无法读取计数"
 
-#: src/link_shortener/web/i18n.py:433
+#: src/link_shortener/web/i18n.py:449
 msgid "answering"
 msgstr "正常响应"
 
-#: src/link_shortener/web/i18n.py:434
+#: src/link_shortener/web/i18n.py:450
 msgid "not answering"
 msgstr "无响应"
 
-#: src/link_shortener/web/i18n.py:439
+#: src/link_shortener/web/i18n.py:455
 msgid "timed out"
 msgstr "超时"
 
-#: src/link_shortener/web/i18n.py:443
+#: src/link_shortener/web/i18n.py:459
 msgid "not configured"
 msgstr "未配置"
 
-#: src/link_shortener/web/i18n.py:450
+#: src/link_shortener/web/i18n.py:466
 msgid "answering, no schema"
 msgstr "正常响应，但无表结构"
 
-#: src/link_shortener/web/i18n.py:457
+#: src/link_shortener/web/i18n.py:473
 msgid "in this process only"
 msgstr "仅在此进程中"
 
-#: src/link_shortener/web/i18n.py:458
+#: src/link_shortener/web/i18n.py:474
 msgid "unknown"
 msgstr "未知"
 
-#: src/link_shortener/web/i18n.py:461
+#: src/link_shortener/web/i18n.py:477
 #, python-format
 msgid "Worker process %(pid)s"
 msgstr "工作进程 %(pid)s"
 
-#: src/link_shortener/web/i18n.py:466
+#: src/link_shortener/web/i18n.py:482
 msgid "well at the last check"
 msgstr "上次检查时正常"
 
-#: src/link_shortener/web/i18n.py:467
+#: src/link_shortener/web/i18n.py:483
 msgid "reports itself unwell"
 msgstr "自报异常"
 
-#: src/link_shortener/web/i18n.py:470
+#: src/link_shortener/web/i18n.py:486
 msgid "the check itself failed"
 msgstr "检查本身失败"
 
-#: src/link_shortener/web/i18n.py:471
+#: src/link_shortener/web/i18n.py:487
 msgid "not checked yet"
 msgstr "尚未检查"
 
-#: src/link_shortener/web/i18n.py:474
+#: src/link_shortener/web/i18n.py:490
 #, python-format
 msgid "%(active)s · %(finding)s"
 msgstr "%(active)s · %(finding)s"
 
-#: src/link_shortener/web/i18n.py:483
+#: src/link_shortener/web/i18n.py:499
 #, python-format
 msgid "%(journal)s (%(reason)s)"
 msgstr "%(journal)s (%(reason)s)"
@@ -759,12 +789,12 @@ msgstr "请求体必须是 JSON 对象"
 msgid "Confirmation for %(email)s could not be queued"
 msgstr "无法将发往 %(email)s 的确认邮件加入队列"
 
-#: src/link_shortener/web/controllers/api_controller.py:375
-#: src/link_shortener/web/controllers/api_controller.py:439
+#: src/link_shortener/web/controllers/api_controller.py:432
+#: src/link_shortener/web/controllers/api_controller.py:496
 msgid "Sign in to see your own statistics"
 msgstr "登录后可查看自己的统计"
 
-#: src/link_shortener/web/controllers/api_controller.py:428
+#: src/link_shortener/web/controllers/api_controller.py:485
 msgid "days must be a whole number"
 msgstr "days 必须是整数"
 
@@ -902,8 +932,8 @@ msgid ""
 msgstr "该代码可能已过期，也可能从未存在过。未注册创建的代码几天后即失效。"
 
 #: src/link_shortener/web/templates/error.html:28
-#: src/link_shortener/web/templates/public/index.html:109
-#: src/link_shortener/web/templates/public/index.html:120
+#: src/link_shortener/web/templates/public/index.html:122
+#: src/link_shortener/web/templates/public/index.html:133
 msgid "Short code"
 msgstr "短代码"
 
@@ -912,8 +942,8 @@ msgid "Try another code"
 msgstr "换一个代码试试"
 
 #: src/link_shortener/web/templates/error.html:30
-#: src/link_shortener/web/templates/public/index.html:111
-#: src/link_shortener/web/templates/public/index.html:122
+#: src/link_shortener/web/templates/public/index.html:124
+#: src/link_shortener/web/templates/public/index.html:135
 msgid "Look up"
 msgstr "查询"
 
@@ -944,18 +974,18 @@ msgstr "24 小时"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:50
 #: src/link_shortener/web/templates/dashboard/create_link.html:18
-#: src/link_shortener/web/templates/dashboard/journals.html:182
+#: src/link_shortener/web/templates/dashboard/journals.html:183
 msgid "7 days"
 msgstr "7 天"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:51
 #: src/link_shortener/web/templates/dashboard/create_link.html:19
-#: src/link_shortener/web/templates/dashboard/journals.html:184
+#: src/link_shortener/web/templates/dashboard/journals.html:185
 msgid "30 days"
 msgstr "30 天"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:52
-#: src/link_shortener/web/templates/dashboard/journals.html:186
+#: src/link_shortener/web/templates/dashboard/journals.html:187
 msgid "90 days"
 msgstr "90 天"
 
@@ -1020,46 +1050,46 @@ msgstr "概览"
 msgid "Links"
 msgstr "链接"
 
-#: src/link_shortener/web/templates/dashboard/base.html:76
+#: src/link_shortener/web/templates/dashboard/base.html:82
 #: src/link_shortener/web/templates/dashboard/home.html:12
 #: src/link_shortener/web/templates/dashboard/my_links.html:5
 msgid "My Links"
 msgstr "我的链接"
 
-#: src/link_shortener/web/templates/dashboard/base.html:79
+#: src/link_shortener/web/templates/dashboard/base.html:86
 #: src/link_shortener/web/templates/dashboard/create_link.html:4
 msgid "Create Link"
 msgstr "创建链接"
 
-#: src/link_shortener/web/templates/dashboard/base.html:84
+#: src/link_shortener/web/templates/dashboard/base.html:91
 msgid "Analytics"
 msgstr "统计"
 
-#: src/link_shortener/web/templates/dashboard/base.html:86
+#: src/link_shortener/web/templates/dashboard/base.html:93
 #: src/link_shortener/web/templates/dashboard/my_stats.html:5
 msgid "My Stats"
 msgstr "我的统计"
 
-#: src/link_shortener/web/templates/dashboard/base.html:89
+#: src/link_shortener/web/templates/dashboard/base.html:96
 msgid "Service Stats"
 msgstr "服务统计"
 
-#: src/link_shortener/web/templates/dashboard/base.html:100
-#: src/link_shortener/web/templates/dashboard/base.html:101
+#: src/link_shortener/web/templates/dashboard/base.html:107
+#: src/link_shortener/web/templates/dashboard/base.html:108
 #: src/link_shortener/web/templates/dashboard/journals.html:4
 msgid "Journals"
 msgstr "日志"
 
-#: src/link_shortener/web/templates/dashboard/base.html:106
+#: src/link_shortener/web/templates/dashboard/base.html:113
 msgid "Administration"
 msgstr "管理"
 
-#: src/link_shortener/web/templates/dashboard/base.html:108
+#: src/link_shortener/web/templates/dashboard/base.html:115
 #: src/link_shortener/web/templates/dashboard/users_list.html:5
 msgid "Users"
 msgstr "用户"
 
-#: src/link_shortener/web/templates/dashboard/base.html:113
+#: src/link_shortener/web/templates/dashboard/base.html:120
 #: src/link_shortener/web/templates/dashboard/create_user.html:20
 #: src/link_shortener/web/templates/dashboard/edit_user.html:15
 #: src/link_shortener/web/templates/dashboard/roles_list.html:6
@@ -1067,43 +1097,43 @@ msgstr "用户"
 msgid "Roles"
 msgstr "角色"
 
-#: src/link_shortener/web/templates/dashboard/base.html:117
+#: src/link_shortener/web/templates/dashboard/base.html:124
 msgid "Health Check"
 msgstr "健康状态"
 
-#: src/link_shortener/web/templates/dashboard/base.html:125
+#: src/link_shortener/web/templates/dashboard/base.html:132
 #: src/link_shortener/web/templates/dashboard/journals.html:93
 msgid "Account"
 msgstr "账户"
 
-#: src/link_shortener/web/templates/dashboard/base.html:126
+#: src/link_shortener/web/templates/dashboard/base.html:133
 #: src/link_shortener/web/templates/dashboard/security.html:4
 msgid "Security"
 msgstr "安全"
 
-#: src/link_shortener/web/templates/dashboard/base.html:129
+#: src/link_shortener/web/templates/dashboard/base.html:136
 msgid "Back to Home"
 msgstr "返回首页"
 
-#: src/link_shortener/web/templates/dashboard/base.html:130
-#: src/link_shortener/web/templates/dashboard/base.html:131
+#: src/link_shortener/web/templates/dashboard/base.html:137
+#: src/link_shortener/web/templates/dashboard/base.html:138
 #: src/link_shortener/web/templates/layout/base.html:102
 msgid "Log out"
 msgstr "退出"
 
-#: src/link_shortener/web/templates/dashboard/base.html:139
+#: src/link_shortener/web/templates/dashboard/base.html:146
 msgid "Expand the menu"
 msgstr "展开菜单"
 
-#: src/link_shortener/web/templates/dashboard/base.html:140
+#: src/link_shortener/web/templates/dashboard/base.html:147
 msgid "Collapse"
 msgstr "收起"
 
-#: src/link_shortener/web/templates/dashboard/base.html:159
+#: src/link_shortener/web/templates/dashboard/base.html:166
 msgid "Menu"
 msgstr "菜单"
 
-#: src/link_shortener/web/templates/dashboard/base.html:163
+#: src/link_shortener/web/templates/dashboard/base.html:170
 #: src/link_shortener/web/templates/layout/base.html:106
 #: src/link_shortener/web/templates/public/login.html:8
 #: src/link_shortener/web/templates/public/login.html:21
@@ -1113,7 +1143,7 @@ msgstr "菜单"
 msgid "Log in"
 msgstr "登录"
 
-#: src/link_shortener/web/templates/dashboard/base.html:164
+#: src/link_shortener/web/templates/dashboard/base.html:171
 #, python-format
 msgid "You are not logged in. %(link)s"
 msgstr "您尚未登录。%(link)s"
@@ -1169,28 +1199,32 @@ msgstr "取消"
 msgid "Name"
 msgstr "名称"
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:17
+#: src/link_shortener/web/templates/dashboard/create_role.html:24
+msgid "Letters, digits, hyphen or underscore"
+msgstr "字母、数字、连字符或下划线"
+
+#: src/link_shortener/web/templates/dashboard/create_role.html:28
 #: src/link_shortener/web/templates/dashboard/roles_list.html:18
 msgid "Description"
 msgstr "说明"
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:18
+#: src/link_shortener/web/templates/dashboard/create_role.html:29
 msgid "What this role is for"
 msgstr "这个角色用来做什么"
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:21
+#: src/link_shortener/web/templates/dashboard/create_role.html:32
 #: src/link_shortener/web/templates/dashboard/edit_role.html:15
 #: src/link_shortener/web/templates/dashboard/roles_list.html:18
 msgid "Permissions"
 msgstr "权限"
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:22
+#: src/link_shortener/web/templates/dashboard/create_role.html:33
 msgid ""
 "Grouped by what they act on. The whole set used to be one flat column of "
 "ticks."
 msgstr "按作用对象分组。以前整套权限只是一列平铺的复选框。"
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:26
+#: src/link_shortener/web/templates/dashboard/create_role.html:37
 msgid "Create role"
 msgstr "创建角色"
 
@@ -1331,7 +1365,7 @@ msgid "Dashboard — MaizLink"
 msgstr "控制台 — MaizLink"
 
 #: src/link_shortener/web/templates/dashboard/home.html:16
-#: src/link_shortener/web/templates/dashboard/link_stats.html:28
+#: src/link_shortener/web/templates/dashboard/link_stats.html:49
 #: src/link_shortener/web/templates/dashboard/my_stats.html:15
 #: src/link_shortener/web/templates/dashboard/service_stats.html:15
 #: src/link_shortener/web/templates/dashboard/user_stats.html:17
@@ -1472,26 +1506,26 @@ msgstr "级别"
 msgid "Details"
 msgstr "详情"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:177
+#: src/link_shortener/web/templates/dashboard/journals.html:178
 msgid "Security events"
 msgstr "安全事件"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:180
+#: src/link_shortener/web/templates/dashboard/journals.html:181
 msgid "24 h"
 msgstr "24 小时"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:204
+#: src/link_shortener/web/templates/dashboard/journals.html:205
 #, python-format
 msgid "Read from %(name)s, from the end of the file, by polling."
 msgstr "通过 %(name)s 轮询读取，从文件末尾开始。"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:219
+#: src/link_shortener/web/templates/dashboard/journals.html:220
 msgid ""
 "The audit journal names destination addresses and the accounts that "
 "followed them."
 msgstr "审计日志会写出目标地址以及访问它们的账户。"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:222
+#: src/link_shortener/web/templates/dashboard/journals.html:223
 msgid ""
 "The application journal names the address of everyone who registered or "
 "signed in."
@@ -1505,6 +1539,19 @@ msgstr "链接 %(code)s — MaizLink"
 #: src/link_shortener/web/templates/dashboard/link_stats.html:10
 msgid "All links"
 msgstr "全部链接"
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:37
+msgid "QR code"
+msgstr "二维码"
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:40
+msgid "Open"
+msgstr "打开"
+
+#: src/link_shortener/web/templates/dashboard/link_stats.html:43
+#, python-format
+msgid "QR code for %(code)s"
+msgstr "%(code)s 的二维码"
 
 #: src/link_shortener/web/templates/dashboard/my_links.html:2
 msgid "My Links — MaizLink"
@@ -1955,41 +2002,41 @@ msgstr[0] "每条 %(days)s 天后过期"
 msgid "%(link)s to keep them"
 msgstr "%(link)s 即可长期保存"
 
-#: src/link_shortener/web/templates/public/index.html:87
+#: src/link_shortener/web/templates/public/index.html:99
 msgid "Your short link appears here."
 msgstr "短链接会显示在这里。"
 
-#: src/link_shortener/web/templates/public/index.html:96
+#: src/link_shortener/web/templates/public/index.html:109
 msgid "Look up a code"
 msgstr "查询代码"
 
-#: src/link_shortener/web/templates/public/index.html:97
+#: src/link_shortener/web/templates/public/index.html:110
 msgid ""
 "Where a short code leads, when it was made, how many times it has been "
 "followed."
 msgstr "短代码指向哪里、何时创建、被访问过多少次。"
 
-#: src/link_shortener/web/templates/public/index.html:100
+#: src/link_shortener/web/templates/public/index.html:113
 msgid "How much detail"
 msgstr "详细程度"
 
-#: src/link_shortener/web/templates/public/index.html:101
+#: src/link_shortener/web/templates/public/index.html:114
 msgid "Basic"
 msgstr "基本"
 
-#: src/link_shortener/web/templates/public/index.html:124
+#: src/link_shortener/web/templates/public/index.html:137
 msgid "Extended figures are shown for your own links."
 msgstr "详细数据仅对自己的链接显示。"
 
-#: src/link_shortener/web/templates/public/index.html:136
+#: src/link_shortener/web/templates/public/index.html:149
 msgid "The whole service is an API"
 msgstr "整个服务就是一个 API"
 
-#: src/link_shortener/web/templates/public/index.html:137
+#: src/link_shortener/web/templates/public/index.html:150
 msgid "Everything on this page is one call"
 msgstr "本页的一切都是一次调用"
 
-#: src/link_shortener/web/templates/public/index.html:139
+#: src/link_shortener/web/templates/public/index.html:152
 #, python-format
 msgid "No SDK and no key ceremony. The full description lives at %(link)s."
 msgstr "无需 SDK，也无需密钥流程。完整说明见 %(link)s。"

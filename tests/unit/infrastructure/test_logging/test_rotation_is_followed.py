@@ -27,6 +27,7 @@ configuration pointed at a name nothing writes rotates nothing, reports
 nothing, and leaves the disk filling up exactly as it did before.
 """
 
+import fnmatch
 import logging
 import os
 import re
@@ -34,6 +35,7 @@ from pathlib import Path
 
 import pytest
 
+from link_shortener.infrastructure.configs.app.base import JOURNAL_NAME
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.infrastructure.logging.bootstrap import setup_logging
 from link_shortener.infrastructure.logging.handlers.raising import (
@@ -292,6 +294,56 @@ class TestTheShippedConfigurationNamesTheseFiles:
         for variable in variables_in_the_template:
             expected = getattr(config, variable)
             assert f'${{{variable}:-{expected}}}' in script, variable
+
+    def test_the_rotator_admits_exactly_what_the_application_admits(
+        self, variables_in_the_template
+    ):
+        """The two name checks, held against each other on real values.
+
+        The entrypoint says its check "admits and refuses exactly what
+        ``JOURNAL_NAME`` in configs/app/base.py does", and until this
+        existed nothing held it to that. Both halves were wrong at once.
+        The pattern in the configuration was matched with ``re.match``
+        against ``^...$``, and "$" in Python also matches just before a
+        trailing newline -- which is the shape a value read out of a file
+        or a Kubernetes Secret arrives in -- so the application came up on
+        ``LOG_FILENAME=application\n`` and this container exited 1 on the
+        same value: rotation off, application running, nothing saying so.
+        And the script refused only a *leading dot* where the pattern
+        requires a leading alphanumeric, so ``_app`` went the other way.
+
+        The shell patterns are read out of the shipped script rather than
+        written here, so a change to one side has to be made on both.
+        """
+        script = ENTRYPOINT.read_text(encoding="utf-8")
+        found = re.search(r'case "\$\{name\}" in\n\s*(.+?)\)', script)
+        assert found, "the entrypoint no longer refuses a name by a case"
+
+        patterns = [
+            piece.strip().strip('"') for piece in found.group(1).split("|")
+        ]
+        assert patterns, "no patterns to hold the two checks against"
+
+        def the_shell_refuses(name: str) -> bool:
+            # The empty pattern is the script's `""` branch, which fnmatch
+            # would read as "matches only the empty string" anyway; spelt
+            # out so an empty name is refused for a reason a reader sees.
+            return not name or any(
+                fnmatch.fnmatchcase(name, pattern)
+                for pattern in patterns if pattern
+            )
+
+        for name in (
+            "application", "audit", "error", "A1-b_c.2", "app.log",
+            "_app", "-app", ".hidden", "", "a/b", "../etc/cron.d/x",
+            "app\n", "app\r\n", "\u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435",
+        ):
+            assert the_shell_refuses(name) is not bool(
+                JOURNAL_NAME.fullmatch(name)
+            ), (
+                f"{name!r}: the rotator and the application disagree about "
+                f"whether this is a journal name"
+            )
 
     def test_it_names_them_where_the_rotator_mounts_them(self):
         """

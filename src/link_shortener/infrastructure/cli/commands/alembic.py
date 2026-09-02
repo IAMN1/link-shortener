@@ -8,6 +8,19 @@ from typing import Optional
 from link_shortener.infrastructure.configs.app import migration_url
 
 
+ALEMBIC_DISABLED = (
+    "USE_ALEMBIC is disabled. The schema is managed from the models -- use "
+    "'flask db init' to create it and 'flask db drop' to remove it."
+)
+"""What every command that would change the schema says when it may not.
+
+Written once because it is said twice: the ``alembic`` group refuses
+through ``_require_alembic_enabled``, ``db migrate`` refuses through
+``commands.database.migrate_db``, and the two had drifted into different
+sentences with different exit codes -- one of them 0.
+"""
+
+
 def _project_root() -> Path:
     """
     Locate the directory holding ``alembic.ini``.

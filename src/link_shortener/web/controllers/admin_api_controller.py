@@ -22,7 +22,7 @@ from link_shortener.web.schemas.admin.admin_request import (
     UpdateRolePermissionsRequest, UpdateUserRolesRequest
 )
 from link_shortener.web.schemas.admin.admin_responses import RoleResponseSchema, UserResponseSchema
-from link_shortener.web.schemas.link import ShortLinkResponse
+from link_shortener.web.schemas.stats import MyStatsResponse
 from link_shortener.web.paging import window_from_query
 from link_shortener.web.request_body import json_object
 from link_shortener.web.security.context import create_request_context
@@ -266,12 +266,7 @@ class AdminApiController:
         if not self.admin_service.get_user(user_id, context):
             raise UserNotFoundError(user_id)
         stats = self.admin_service.get_user_activity_stats(user_id, context)
-        return jsonify({
-            "total_links": stats.total_links,
-            "total_clicks": stats.total_clicks,
-            "avg_clicks_per_link": stats.avg_clicks_per_link,
-            "recent_links": [ShortLinkResponse.from_dto(link).model_dump() for link in stats.recent_links]
-        })
+        return jsonify(MyStatsResponse.from_dto(stats).model_dump())
 
     # ------------------------------------------------------------------
     # Roles

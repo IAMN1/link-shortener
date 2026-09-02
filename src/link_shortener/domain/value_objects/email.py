@@ -43,6 +43,34 @@ right, arrived after Python 3.12, which is what this runs on.)
 """
 
 
+MAX_EMAIL_LENGTH = 254
+"""The longest an address may be, in characters.
+
+RFC 5321 section 4.5.3.1.3 caps a forward-path at 256 octets, and a path
+is written ``<address>`` -- so the address inside it has 254. The local
+part is capped at 64 by section 4.5.3.1.1, which this does not check
+separately: an address that passes both halves passes this one, and the
+whole-path limit is the one a receiving host actually enforces.
+
+Not decoration, and not a tidier document. Without it an address of any
+length reached ``users.email``, which is ``String(255)``: PostgreSQL
+refused the insert, the refusal is not a ``ValidationError``, and no
+handler on the way out knew it -- so an **unauthenticated** two-field
+body to ``POST /api/v1/auth/register`` answered ``500``. Measured on the
+production profile with a 261-character address. SQLite does not
+reproduce it: it ignores a declared width, so the suite running on SQLite
+saw the row stored and nothing wrong.
+
+254 rather than 255 leaves the column a character it can never need,
+which is the right way round: the rule is the standard's, and the column
+is wide enough to hold whatever the rule admits.
+
+This is the same shape of defect as the one ``Link.create`` records for
+``ttl_seconds`` -- a value the domain did not bound, refused instead by
+arithmetic or by a column, and reported as a fault of the service.
+"""
+
+
 @dataclass(frozen=True)
 class Email:
     """
@@ -96,6 +124,18 @@ class Email:
         Raises:
             ValidationError: If the email does not match the expected pattern.
         """
+        # Length before shape, and not for speed: the pattern is anchored
+        # and linear, so a long string costs little to match. It is that a
+        # 300-character address and a 300-character line of noise are the
+        # same fault, and the caller is better told which limit it met.
+        if len(self.value) > MAX_EMAIL_LENGTH:
+            # No length in the message and no value: the same reasoning as
+            # below -- this sentence reaches the client, and the object is
+            # also built from stored rows.
+            raise ValidationError(
+                N_("Email address is too long"), field="email"
+            )
+
         if not re.match(EMAIL_PATTERN_RE, self.value):
             # The offending value is deliberately left out: this message
             # reaches the client, and the same object is built from database

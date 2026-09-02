@@ -22,6 +22,7 @@ remembering that failed the first time.
 
 import pytest
 
+from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.infrastructure.database.unit_of_work import (
     SQLAlchemyUnitOfWork
 )
@@ -31,15 +32,40 @@ def repository_accessors():
     """
     Every repository property the unit of work publishes.
 
+    Read off the **port**, which is the definition of what a unit of work
+    hands back: every abstract property on ``UnitOfWork`` is a repository,
+    and a tenth added there is covered here the moment it is declared.
+
+    It used to be read off the implementation and filtered by
+    ``name.endswith(("s", "events"))``, which is a guess about spelling
+    rather than a question about the thing -- an accessor named ``audit``
+    or ``link_dedup`` would have been skipped in silence while the count
+    below still read nine, which is exactly the "somebody remembering this
+    file" this file exists to avoid.
+
     Returns:
         Sorted names of the properties that hand back a repository.
     """
     return sorted(
-        name for name in dir(SQLAlchemyUnitOfWork)
+        name for name, attribute in vars(UnitOfWork).items()
+        if isinstance(attribute, property)
+        and getattr(attribute.fget, "__isabstractmethod__", False)
+    )
+
+
+def implementation_only_properties():
+    """Repository-shaped properties the implementation adds of its own.
+
+    The other half of reading the port: a repository published by
+    ``SQLAlchemyUnitOfWork`` and not declared on ``UnitOfWork`` would be
+    invisible to the list above. ``session`` is the one property that is
+    not a repository and is named here rather than guessed at.
+    """
+    return sorted(
+        name for name in vars(SQLAlchemyUnitOfWork)
         if not name.startswith("_")
-        and isinstance(getattr(SQLAlchemyUnitOfWork, name, None), property)
-        and name.endswith(("s", "events"))
-        and name not in {"session"}
+        and isinstance(vars(SQLAlchemyUnitOfWork)[name], property)
+        and name not in set(repository_accessors()) | {"session"}
     )
 
 
@@ -63,6 +89,20 @@ class TestEveryAccessorRefusesAfterTheContextCloses:
 
         assert len(found) >= 9, found
         assert "security_events" in found, found
+
+    def test_the_implementation_publishes_no_repository_the_port_does_not(
+        self
+    ):
+        """
+        The other half of reading the port.
+
+        The list above is the port's, so a repository the implementation
+        added on its own would not be in it -- and would then never be
+        asked whether it refuses after the context closes. Named here
+        rather than guessed at by the shape of the word, which is how the
+        old filter missed anything not ending in "s".
+        """
+        assert implementation_only_properties() == []
 
     @pytest.mark.parametrize("name", repository_accessors())
     def test_it_refuses(self, closed_uow, name):

@@ -55,6 +55,7 @@ from .value_objects.visitor import anonymise_address, classify_client
 
 from .exceptions import (
     DomainError, LinkNotFoundError, ValidationError,
+    RefreshTokenReplayedError,
     CodeGenerationError, LinkCodeTakenError, LinkConflictError,
     LinkExpiredError,
     GuestLinkLimitExceededError,
@@ -113,6 +114,7 @@ __all__ = [
     # Exceptions
     "DomainError",
     "ValidationError",
+    "RefreshTokenReplayedError",
     "LinkNotFoundError",
     "CodeGenerationError",
     "LinkCodeTakenError",

@@ -149,7 +149,10 @@ class TestEveryBodyTheRoutesReadIsDescribed:
                         f"describes no requestBody"
                     )
 
-        assert checked >= 14, f"only {checked} body-reading operations were swept"
+        # The real number, not one under it: a floor with slack in it
+        # cannot report the loss it exists to report. See the same
+        # sentence in ``test_the_document_declares_what_the_routes_answer``.
+        assert checked >= 15, f"only {checked} body-reading operations were swept"
         assert undescribed == []
 
     def test_every_described_body_names_a_schema_the_document_carries(

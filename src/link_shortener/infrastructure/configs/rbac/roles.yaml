@@ -127,8 +127,10 @@ permissions:
 # ------------------------------------------------------------------------------
 # A role is a named collection of permissions. Users are assigned one or more
 # roles. Roles marked as `is_system: true` are protected and cannot be deleted
-# via the admin panel (they can only be modified through this configuration file
-# or direct database migrations).
+# via the admin panel. Changing what one of them grants takes either
+# `flask db load-custom-roles --update-existing` -- editing this file alone
+# does not reach a database that already holds the role, as the header above
+# says -- or SQL by hand. Not a migration: no Alembic revision touches RBAC.
 #
 # Fields:
 #   - name:        Unique role identifier (e.g., "admin", "user", "analyst").

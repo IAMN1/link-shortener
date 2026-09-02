@@ -308,20 +308,24 @@ class TestTheOperatorCanOptOut:
 
 class TestAHostWithATrailingDot:
     """
-    The root form of a name, and what the address reader makes of it.
+    The root form of a name, admitted and reduced to the name it spells.
 
-    No URL reaches this through the constructor: ``_validate_netloc`` runs
-    first and refuses ``8.8.8.8.`` as an empty label, so the line that
-    drops the dot is unreachable from outside and reads as dead code. It
-    is not dead, it is a guard standing behind another one -- and what it
-    guards is worth stating, because the two checks are in different
-    methods and nothing but their order keeps this shut.
+    ``example.com.`` is the fully qualified spelling of ``example.com``:
+    the last label is the root, every resolver accepts it and so does
+    every browser. It used to be refused, and refused for the wrong
+    reason -- ``_validate_host`` split on the dots, found an empty last
+    label and said ``Empty label in host`` -- which also left the
+    trailing-dot handling in ``_as_ip_address`` and
+    ``_validate_public_target`` unreachable from outside.
 
-    Asked of the reader directly, which is the only caller that can reach
-    it. Without the dot dropped, ``127.0.0.1.`` ends in an empty label,
-    the reader calls the host a name, and the internal-address check never
-    looks at it -- so admitting the trailing dot upstream would open the
-    loopback, in one line, in a different file.
+    The root label is dropped in two places now: at the top of
+    ``_validate_host``, so the name is admitted, and in
+    ``_to_ascii_host``, which is what ``_validate_public_target`` reads
+    the address out of and what ``normalize`` builds the stored form
+    from. The second is the load-bearing one. Left off, ``127.0.0.1.``
+    ends in an empty label, the address reader calls the host a name, and
+    the internal-address check never looks at it -- the trailing dot would
+    open the loopback, in one line, in a different file.
     """
 
     def test_the_dot_is_dropped_and_the_host_is_still_an_address(self):
@@ -334,11 +338,48 @@ class TestAHostWithATrailingDot:
         """Only the dot is dropped; what is in front of it still decides."""
         assert OriginalUrl._as_ip_address("example.com.") is None
 
-    def test_the_constructor_never_gets_that_far(self):
-        """Stated so the guard above is not mistaken for the behaviour a
-        caller sees: the URL is refused, and refused earlier."""
+    def test_the_root_form_of_a_public_name_is_admitted(self):
+        assert OriginalUrl("http://example.com./x").normalize() == (
+            "http://example.com/x"
+        )
+
+    def test_it_deduplicates_onto_the_name_without_the_dot(self):
+        """One destination, one hash, one short code. Normalised apart,
+        the two spellings would be two links pointing at one place."""
+        assert (
+            OriginalUrl("http://example.com./x").normalize()
+            == OriginalUrl("http://example.com/x").normalize()
+        )
+
+    def test_an_international_name_survives_its_root_label(self):
+        """``idna.encode`` refuses a name ending in a dot, so the root
+        label had to come off before the punycode form is built."""
+        assert OriginalUrl("http://\u043f\u0440\u0438\u043c\u0435\u0440.\u0440\u0444./").normalize() == (
+            "http://xn--e1afmkfd.xn--p1ai/"
+        )
+
+    @pytest.mark.parametrize("url", [
+        "http://127.0.0.1./x",
+        "http://0177.0.0.1./x",
+        "http://127.1./x",
+        "http://169.254.169.254./x",
+        "http://10.0.0.1./x",
+        "http://localhost./x",
+        "http://kubernetes.default.svc./x",
+        "http://metadata.google.internal./x",
+    ])
+    def test_the_root_label_does_not_reopen_an_internal_target(self, url):
+        """The whole risk of admitting the dot, pinned: every one of these
+        was refused before and has to stay refused."""
+        with pytest.raises(ValidationError, match="public address"):
+            OriginalUrl(url)
+
+    def test_two_dots_are_still_an_empty_label(self):
+        """Exactly one root label is dropped. The second dot is a label
+        with nothing in it, and that is the refusal this used to give
+        every fully qualified name."""
         with pytest.raises(ValidationError, match="Empty label"):
-            OriginalUrl("http://8.8.8.8./x")
+            OriginalUrl("http://example.com../x")
 
 
 class TestWhatTheAddressReaderRefusesOnItsOwn:

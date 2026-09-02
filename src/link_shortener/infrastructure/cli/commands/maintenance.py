@@ -117,7 +117,10 @@ def clean_unverified_accounts(
         context: Request context.
 
     Returns:
-        Number of deleted accounts.
+        A pair: accounts deleted, and confirmation tokens removed with
+        them. Both, because the report prints both -- "and N dead
+        confirmation tokens" -- and the caller unpacks two where this
+        promised one.
     """
     return use_case.execute(context)
 

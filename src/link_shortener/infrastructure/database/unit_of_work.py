@@ -35,13 +35,15 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
     """
     Unit of Work that wraps a SQLAlchemy session.
 
-    On entering the context a new session is obtained and a transaction is
-    started. Repositories are created lazily and share the same session.
-    Exiting the context will roll back the transaction unless ``commit()``
-    was called explicitly.
+    On entering the context a new session is obtained, a transaction is
+    started, and all nine repositories are built -- eagerly, in ``__enter__``,
+    sharing that one session. Exiting the context will roll back the
+    transaction unless ``commit()`` was called explicitly.
 
     The ``read_only`` flag is honoured on PostgreSQL by issuing
-    ``SET TRANSACTION READ ONLY``.
+    ``SET TRANSACTION READ ONLY``, and nowhere else: on SQLite it changes
+    nothing, and it never stops ``commit()``. It is a statement of intent
+    that one engine enforces, not a guarantee this class makes.
     """
 
     def __init__(
@@ -53,8 +55,12 @@ class SQLAlchemyUnitOfWork(UnitOfWork):
         """
         Args:
             db_manager: Configured ``DatabaseManager`` that provides sessions.
-            read_only: If ``True``, the transaction is marked as read-only
-                (no writes allowed), and commit will be skipped.
+            read_only: If ``True``, the transaction asks PostgreSQL for
+                ``SET TRANSACTION READ ONLY``, which refuses a write.
+                On every other engine it is remembered and does nothing,
+                and on no engine does it stop ``commit()`` -- a caller that
+                opens a read-only unit of work and calls ``commit`` gets a
+                real one.
             logger: Handed to the repositories that have something to
                 report about the rows they read. Optional so that a unit
                 of work assembled by hand still works; the application

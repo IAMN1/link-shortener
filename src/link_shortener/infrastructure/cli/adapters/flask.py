@@ -19,6 +19,7 @@ from link_shortener.infrastructure.cli.commands.database import load_base_roles_
 from link_shortener.infrastructure.cli.commands.database import load_custom_roles_from_cfg as load_custom_roles_logic
 from link_shortener.infrastructure.cli.commands.database import check_db_connection as check_db_logic
 from link_shortener.infrastructure.cli.commands.database import migrate_db as migrate_db_logic
+from link_shortener.infrastructure.cli.commands.alembic import ALEMBIC_DISABLED
 from link_shortener.infrastructure.cli.commands.stats import refresh_stats as refresh_stats_logic
 from link_shortener.infrastructure.cli.commands.stats import get_stats as get_stats_logic
 from link_shortener.infrastructure.cli.commands.maintenance import clean_expired_links as clean_expired_logic
@@ -124,6 +125,24 @@ def _counted(number: int, noun: str) -> str:
 
     ending = "es" if noun.endswith(("s", "x", "z", "ch", "sh")) else "s"
     return f"{number} {noun}{ending}"
+
+
+def _were(number: int) -> str:
+    """The verb that agrees with a count, for the lines that need one.
+
+    ``_counted`` settles the noun and leaves the verb, which is half a
+    rule: "1 address were not attempted" reads exactly as badly as "1
+    addresss" did. Its own function rather than a second argument to
+    ``_counted``, because the two are not always adjacent -- one line puts
+    four words between them.
+
+    Args:
+        number: How many.
+
+    Returns:
+        ``"was"`` for one, ``"were"`` otherwise.
+    """
+    return "was" if number == 1 else "were"
 
 
 def _as_moment(when: Union[int, datetime, None]) -> str:
@@ -688,13 +707,16 @@ def normalize_emails(apply_changes):
     click.echo(f"Lowered {_counted(result['changed'], 'address')}.")
     if result["skipped"]:
         click.echo(
-            f"{result['skipped']} left in conflict and untouched.", err=True
+            f"{_counted(result['skipped'], 'address')} left in conflict "
+            f"and untouched.",
+            err=True,
         )
     if result["refused"]:
         # Not a conflict this command could see when it looked: the row
         # was taken between the report and the write.
         click.echo(
-            f"{result['refused']} were taken by another account between "
+            f"{_counted(result['refused'], 'address')} "
+            f"{_were(result['refused'])} taken by another account between "
             f"the report and the write; they are conflicts now, and the "
             f"next run will list them as such and touch nothing.",
             err=True,
@@ -704,8 +726,9 @@ def normalize_emails(apply_changes):
         # changed by its owner while this ran. Either way the write
         # matched nothing, and neither is this command's to undo.
         click.echo(
-            f"{result['moved']} were deleted or changed by somebody else "
-            f"between the report and the write, and were left alone.",
+            f"{_counted(result['moved'], 'address')} "
+            f"{_were(result['moved'])} deleted or changed by somebody else "
+            f"between the report and the write, and left alone.",
             err=True,
         )
     if result["failed"]:
@@ -713,8 +736,9 @@ def normalize_emails(apply_changes):
         # locked database and a value too long for the column alike. The
         # database's own words go to the operator instead.
         click.echo(
-            f"{result['failed']} could not be written and were left as "
-            f"they are. The database gave:",
+            f"{_counted(result['failed'], 'address')} could not be written "
+            f"and {_were(result['failed'])} left as they are. The database "
+            f"gave:",
             err=True,
         )
         for reason in result["reasons"]:
@@ -726,8 +750,9 @@ def normalize_emails(apply_changes):
     unfinished = result["remaining"] > 0
     if unfinished:
         click.echo(
-            f"Interrupted. {result['remaining']} addresses were not "
-            f"attempted; running again picks them up.",
+            f"Interrupted. {_counted(result['remaining'], 'address')} "
+            f"{_were(result['remaining'])} not attempted; running again "
+            f"picks them up.",
             err=True,
         )
 
@@ -829,20 +854,22 @@ def maintenance_health():
         "enforcing": "OK",
         "not_enforcing": "FAILED",
     }
-    verdicts = state.component_states()
-    database_line = said[verdicts["database"]]
-    cache_line = said[verdicts["cache"]]
-    queue_line = said[verdicts["task_queue"]]
+    # The verdict's own word is carried beside the sentence, because the
+    # list of what failed is built from it below. Built from the sentence,
+    # that list had to name the passing ones as strings -- and it named
+    # two of the five.
+    passing = frozenset({"ok", "disabled", "inline", "enforcing", "in_process"})
 
+    verdicts = state.component_states()
     lines = [
-        ("Database", database_line),
-        ("Cache", cache_line),
-        ("Task queue", queue_line),
-        ("Rate limiter", said[verdicts["rate_limiter"]]),
+        ("Database", verdicts["database"]),
+        ("Cache", verdicts["cache"]),
+        ("Task queue", verdicts["task_queue"]),
+        ("Rate limiter", verdicts["rate_limiter"]),
     ]
     width = max(len(name) for name, _ in lines) + 1
     for name, verdict in lines:
-        click.echo(f"{_within(name + ':', width)} {verdict}")
+        click.echo(f"{_within(name + ':', width)} {said[verdict]}")
 
     # About this process, and that is the point: the command runs in the
     # container an operator is asking about, opens the same three files
@@ -907,12 +934,20 @@ def maintenance_health():
         # counts, and it says `no schema` instead. Written against FAILED
         # this list came out empty for exactly that fault -- measured:
         # `Unhealthy: ` on stderr, naming nothing, for the one failure
-        # whose remedy is a single documented command. A row added later
-        # is covered by the same rule as long as its passing answers are
-        # these two.
+        # whose remedy is a single documented command.
+        #
+        # Asked of the verdict rather than of the sentence, and that is
+        # the repair of the same defect from the other side. Written as
+        # `verdict not in ("OK", "not configured")` it named two of the
+        # five passing answers, and the third -- `in_process`, which
+        # renders as "in this process only, not shared" -- was counted a
+        # failure: with `REDIS_ENABLED=false` and the database down, the
+        # line read `Unhealthy: Database, Cache`, naming a cache working
+        # exactly as configured and one that `HealthSnapshot.healthy` and
+        # `/health` both call fine. That is the two-surfaces-disagree
+        # drift this whole block exists to prevent.
         failed = [
-            name for name, verdict in lines
-            if verdict not in ("OK", "not configured")
+            name for name, verdict in lines if verdict not in passing
         ]
         click.echo("Unhealthy: " + ", ".join(failed), err=True)
         raise SystemExit(1)
@@ -1693,12 +1728,7 @@ def _require_alembic_enabled() -> str:
         SystemExit: If Alembic is switched off for this configuration.
     """
     if not current_app.config.get("USE_ALEMBIC", True):
-        click.echo(
-            "USE_ALEMBIC is disabled. The schema is managed from the models "
-            "-- use 'flask db init' to create it and 'flask db drop' to "
-            "remove it.",
-            err=True,
-        )
+        click.echo(ALEMBIC_DISABLED, err=True)
         raise SystemExit(1)
     return _echo_target()
 

@@ -452,7 +452,18 @@ class FailoverService(Generic[T]):
 
         If the call fails, automatically switch to the next service and
         retry. Returns the result of the successful call, or
-        ``ALL_SERVICES_FAILED`` when every service refused it.
+        ``ALL_SERVICES_FAILED`` when nothing below the active service took
+        it either.
+
+        "Below", and not "every service": this walks **downwards** from
+        wherever the index stands and never upwards, because climbing back
+        is ``_attempt_upgrade``'s job and nobody else's --
+        ``test_without_the_background_thread_a_demotion_is_permanent``
+        holds that. So a call arriving while the chain is demoted, and
+        refused by everything from there down, is dropped without the
+        healthier implementation above it being asked. That is the price of
+        keeping one direction per method; what it is not is "every service
+        refused", which is what this used to say.
 
         No ordinary exception from a wrapped service escapes -- the
         clause is ``except Exception``, so a KeyboardInterrupt still

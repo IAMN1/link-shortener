@@ -5,6 +5,18 @@ from link_shortener.domain.exceptions import ValidationError
 from link_shortener.domain.i18n import N_
 
 
+HASH_PATTERN = re.compile(r"[a-f0-9]{64}")
+"""The whole digest, and nothing after it.
+
+Matched with ``fullmatch``, for the reason ``short_code.CODE_PATTERN``
+spells out: written as ``^...$`` and matched with ``match`` it accepted a
+digest with a trailing newline, because ``$`` in Python also matches just
+before a newline at the end of the string. Two strings would then be two
+different hashes that both validated, one of which cannot go in a cache
+key -- and the deduplication entry is keyed by exactly this value.
+"""
+
+
 @dataclass(frozen=True)
 class UrlHash:
     """
@@ -30,7 +42,7 @@ class UrlHash:
             ValidationError: If the hash does not match the required pattern.
         """
 
-        if not re.match(r"^[a-f0-9]{64}$", self.value):
+        if not HASH_PATTERN.fullmatch(self.value):
             raise ValidationError(
                       f"Invalid hash format: {self.value}. Must be 64 hex characters.",
                       field="url_hash",

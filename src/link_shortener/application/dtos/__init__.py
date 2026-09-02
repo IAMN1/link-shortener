@@ -11,6 +11,13 @@ back, but ``CurrentUserInfo`` is what the web layer hands in, and the rule
 is the same either way: the domain must not be passed across the boundary
 raw, and the web layer's own schemas must not reach inside it.
 
+``GetRecentLinksUseCase`` is the one that does not follow it -- it is
+annotated ``List[Link]`` and hands the entities out. Its only caller is
+``flask link recent``, which reads ``short_code.value`` and ``created_at``
+off them to print a table, so nothing crosses an HTTP boundary; it is
+stated here rather than left as a silent exception to a rule this file
+states as absolute.
+
 ``Refusal`` is the member the rule admits least obviously. It never crosses
 on its own -- it is carried inside a batch item -- but it is the same kind
 of thing: a reason, in a shape the boundary can still translate, rather

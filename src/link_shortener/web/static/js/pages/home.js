@@ -58,10 +58,6 @@
         btn.textContent = btn.dataset.label;
     }
 
-    function escapeHtml(s) {
-        if (s == null) return '';
-        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
 
     // The short URL, split at the last slash so the code can be made
     // unbreakable on its own.

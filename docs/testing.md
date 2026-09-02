@@ -1,6 +1,6 @@
 # Testing
 
-**4941 tests**, 98.66% coverage against a floor of 88%, plus two live runs
+**5209 tests**, 98.65% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -62,14 +62,14 @@ tests/
 Neither is collected by pytest — `python_files = "test_*.py"` does not match
 their names.
 
-### smoke_test.py — 157 checks over HTTP
+### smoke_test.py — 159 checks over HTTP
 
 ```bash
 uv run python tests/live/smoke_test.py
 ```
 
 The exit code is non-zero if any check failed **or if the number of checks
-is not 157**: "everything passed" is a statement about the checks that ran,
+is not 159**: "everything passed" is a statement about the checks that ran,
 and says nothing about the ones that stopped running.
 
 Route coverage is not claimed but counted: the run records which rule
@@ -128,7 +128,7 @@ the throttle instead of what it is named after.
 
 </details>
 
-### browser_test.py — 68 checks in a real browser
+### browser_test.py — 71 checks in a real browser
 
 ```bash
 uv sync --group browser
@@ -276,7 +276,10 @@ Both now raise `tests/live/mail_catcher.py`, an SMTP server on the loopback,
 point the mailer at it, and take the link out of the delivered message.
 
 Measured by pointing `VERIFY_PATH` at a path nothing answers: the HTTP run
-gives 92/157, the browser run 19/68.
+gives 93/159, the browser run 21/71. Both halves are remeasured when a run
+changes size — the numerator is not arithmetic on the old one, and it does
+not follow the denominator: the same breakage moved the HTTP figure by one
+while the browser figure did not move at all.
 
 The link has to be **opened**, not parsed. The message now leads to a page
 whose button posts the token, which tempted the HTTP run into extracting the
@@ -495,7 +498,7 @@ flowchart TD
     subgraph clean["clean"]
         C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
         C2 --> C3[count collected tests<br/>minimum 4500] --> C4[pytest --error-for-skips]
-        C4 --> C5[smoke_test.py<br/>157 checks] --> C6[browser_test.py<br/>68 checks]
+        C4 --> C5[smoke_test.py<br/>159 checks] --> C6[browser_test.py<br/>71 checks]
     end
     subgraph hostile["hostile"]
         H1[the same, plus a polluted .env<br/>and exported variables] --> H2[pytest --error-for-skips]

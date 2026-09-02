@@ -1,8 +1,9 @@
 """Starting and reaching the test stack of real PostgreSQL and Redis.
 
 Two directories need this: ``tests/integration/docker``, which checks what
-only a real backend can show -- concurrency, PostgreSQL deadlines, Redis
-eviction -- and ``tests/e2e``, which walks a user's whole path over the
+only a real backend can show -- concurrency, advisory locks, the column
+widths PostgreSQL enforces and SQLite ignores, and a real Redis behind the
+limiter -- and ``tests/e2e``, which walks a user's whole path over the
 same stack. Written once here so that both start the same containers, wait
 the same way, and report a failure to start in the same words.
 

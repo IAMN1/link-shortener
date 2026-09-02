@@ -490,7 +490,7 @@ LINK_EVENTS = {
 class TestSecurityEvents:
     """Events about an account rather than about a link.
 
-    They arrive through one method on the adapters and five named wrappers
+    They arrive through one method on the adapters and twenty-four named wrappers
     above it, so what is tested here is that the wrappers reach the right
     event type, that the address is masked on the way, and that the event
     type is the one thing a caller cannot talk the adapter out of.

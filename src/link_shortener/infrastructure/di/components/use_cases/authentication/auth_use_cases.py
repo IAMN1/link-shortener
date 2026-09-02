@@ -9,7 +9,7 @@ from link_shortener.application import (
     SendAccountExistsEmailUseCase, SendPasswordResetEmailUseCase,
     SendVerificationEmailUseCase, SignOutUseCase,
     VerifyEmailUseCase, AuthenticationService, Logger, Mailer,
-    MailTemplates, TaskQueue, UserManagementService
+    MailTemplates, RateLimiter, TaskQueue, UserManagementService
 )
 
 
@@ -40,6 +40,9 @@ class AuthUseCasesComponent:
     verification_ttl_hours: int
     password_reset_ttl_minutes: int
     unverified_ttl_hours: int
+    rate_limiter: RateLimiter
+    login_account_failure_limit: int
+    login_account_failure_period: int
 
     def get_login_use_case(self) -> LoginUseCase:
         """
@@ -53,6 +56,9 @@ class AuthUseCasesComponent:
             logger=self.logger,
             uow_factory=self.uow_factory,
             audit_logger=self.audit_logger,
+            rate_limiter=self.rate_limiter,
+            account_failure_limit=self.login_account_failure_limit,
+            account_failure_period=self.login_account_failure_period,
         )
 
     def get_change_password_use_case(self) -> ChangePasswordUseCase:

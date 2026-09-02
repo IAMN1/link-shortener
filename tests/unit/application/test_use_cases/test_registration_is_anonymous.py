@@ -70,6 +70,16 @@ class FakeUow:
     Records the order of its own events, because the order is a rule here
     as much as on the other path: a message handed off inside the block is
     a network call made with the transaction still open.
+
+    Leaving an exception uncommitted is modelled, and the rows written
+    inside the block are taken back. The twin of this class in
+    ``test_email_confirmation.py`` says why in one sentence -- the real
+    ``SQLAlchemyUnitOfWork.__exit__`` rolls back on the way out, and a
+    double that did not made a use case look like it kept a change it
+    actually loses -- and this copy had drifted away from it. The window
+    it hides is real here: ``_register`` saves the account, then issues
+    the confirmation, then commits, so anything that raises in between
+    left the account standing in the fake and nowhere else.
     """
 
     def __init__(self, users=None):
@@ -78,16 +88,24 @@ class FakeUow:
         self.roles = Mock()
         self.roles.get_by_name.return_value = Role(id="r", name="user")
         self.commits = 0
+        self.rolled_back = 0
         self.events = []
+        self._committed_users = list(self.users.users)
 
     def commit(self):
         self.commits += 1
         self.events.append("commit")
+        self._committed_users = list(self.users.users)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, *rest):
+        if exc_type is not None:
+            self.rolled_back += 1
+            self.events.append("rollback")
+            self.users.users = list(self._committed_users)
+            self.email_verifications.rows = []
         self.events.append("closed")
         return False
 
@@ -391,4 +409,87 @@ class TestTheAddressLosingARaceIsStillSilent:
         racing_register.execute(FREE, PASSWORD, context())
 
         queue.enqueue_account_exists_email.assert_called_once()
+        queue.enqueue_verification_email.assert_not_called()
+
+
+class TestARegistrationThatBreaksHalfwayLeavesNoAccount:
+    """
+    The window between the account and its confirmation.
+
+    ``_register`` saves the user, issues the token, saves the
+    confirmation and commits -- in that order, in one block. The
+    docstring on the use case states the guarantee that order buys:
+    "there is no state where one exists without the other". Anything
+    raising after the first save is what tests it, and nothing did:
+    ``TestTheAddressLosingARaceIsStillSilent`` raises *at* ``users.save``,
+    which never opens the window.
+
+    An account left behind here is not merely a stray row. It holds the
+    address, so the person cannot register it again -- and it can never
+    be confirmed, because the confirmation that would have let it sign in
+    is the row that failed to be written.
+    """
+
+    @pytest.fixture
+    def broken_uow(self):
+        """A unit of work whose confirmation insert fails after the save."""
+
+        class TheConfirmationCannotBeWritten(FakeUow):
+            def __init__(self):
+                super().__init__(users=[])
+                self.email_verifications.save = self._refuse
+
+            @staticmethod
+            def _refuse(verification):
+                raise RuntimeError("email_verifications insert failed")
+
+        return TheConfirmationCannotBeWritten()
+
+    @pytest.fixture
+    def broken_register(self, broken_uow, queue, auth):
+        return RegisterUseCase(
+            uow_factory=lambda read_only=False, _u=broken_uow: _u,
+            authentication_service=auth,
+            logger=Mock(),
+            audit_logger=Mock(),
+            default_role_name="user",
+            task_queue=queue,
+            verification_ttl_hours=24,
+        )
+
+    def test_the_failure_reaches_the_caller(self, broken_register):
+        """
+        Not swallowed. Only a lost race is answered as a taken address;
+        a broken insert is a fault, and a 202 for it would tell the
+        person their account exists when it does not.
+        """
+        with pytest.raises(RuntimeError):
+            broken_register.execute(FREE, PASSWORD, context())
+
+    def test_nothing_is_committed(self, broken_register, broken_uow):
+        with pytest.raises(RuntimeError):
+            broken_register.execute(FREE, PASSWORD, context())
+
+        assert broken_uow.commits == 0
+        assert broken_uow.rolled_back == 1
+
+    def test_the_account_does_not_survive_the_block(
+        self, broken_register, broken_uow
+    ):
+        """The one the drifted double could not express."""
+        with pytest.raises(RuntimeError):
+            broken_register.execute(FREE, PASSWORD, context())
+
+        assert broken_uow.users.find_by_email(Email(FREE)) is None
+
+    def test_no_confirmation_is_mailed_for_an_account_that_is_gone(
+        self, broken_register, queue
+    ):
+        """
+        The hand-off is after the block for exactly this reason: a worker
+        that got the message would deliver a link to a row nobody wrote.
+        """
+        with pytest.raises(RuntimeError):
+            broken_register.execute(FREE, PASSWORD, context())
+
         queue.enqueue_verification_email.assert_not_called()

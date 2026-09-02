@@ -15,7 +15,9 @@ held against the real URL map by the last test here.
 import pytest
 from openapi_spec_validator import validate
 
-from link_shortener.web.schemas.openapi import OPERATION_VERBS
+from link_shortener.web.schemas.openapi import (
+    OPERATION_VERBS, READS_ITS_BODY_LENIENTLY,
+)
 from tests.integration.conftest import account_with_permissions, register_and_login
 
 
@@ -281,16 +283,58 @@ class TestEveryApiRouteIsDescribed:
         when it carries no body at all. Measured by the contract run:
         ``POST /api/v1/auth/verify`` with no body answered ``415`` against
         a document declaring ``200, 400, 403, 429``.
+
+        "Asks for JSON" is the rule, and having a request body is not the
+        same question. Two operations read theirs through
+        ``optional_json_object``, which answers ``{}`` for a request that
+        is not offered as JSON rather than refusing it -- so written
+        against ``requestBody`` alone this demanded a 415 those two cannot
+        answer, and the document grew one. They are read from
+        ``READS_ITS_BODY_LENIENTLY``, the same constant the document
+        builder consults, so the rule cannot be exempted in one place and
+        not the other; the test below proves the exemption is earned.
         """
         undeclared = [
             f"{verb.upper()} {path}"
             for path, path_item in document["paths"].items()
             for verb, operation in operations_of(path_item)
             if "requestBody" in operation
+            and (path, verb) not in READS_ITS_BODY_LENIENTLY
             and "415" not in operation["responses"]
         ]
 
         assert not undeclared, f"415 undeclared on: {sorted(undeclared)}"
+
+    @pytest.mark.parametrize("path, verb", sorted(READS_ITS_BODY_LENIENTLY))
+    def test_an_exempted_operation_really_does_not_answer_415(
+        self, client, path, verb
+    ):
+        """
+        The premise of the exemption above, asked of the running service.
+
+        Without it the set is a list of two strings the document and the
+        test agree about, and an operation added to it would be excused
+        from a refusal it does make.
+        """
+        for body in (
+            {"data": "a=b", "content_type": "application/x-www-form-urlencoded"},
+            {},
+        ):
+            answer = client.open(path, method=verb.upper(), **body)
+
+            assert answer.status_code != 415, (
+                f"{verb.upper()} {path} answered 415 for {body or 'no body'}, "
+                f"so it does not belong in READS_ITS_BODY_LENIENTLY"
+            )
+
+    def test_every_other_operation_with_a_body_does_answer_415(self, client):
+        """The other half: the exemption must not have swallowed the rule."""
+        for path, verb in (
+            ("/api/v1/shorten", "post"), ("/api/v1/auth/verify", "post"),
+        ):
+            answer = client.open(path, method=verb.upper())
+
+            assert answer.status_code == 415, f"{verb.upper()} {path}"
 
     def test_the_refusals_it_declares_are_ones_the_service_gives(self, client):
         """

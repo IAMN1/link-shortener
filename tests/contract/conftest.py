@@ -44,11 +44,11 @@ exit code 5 -- so a run that lost this directory says so.
 class ContractConfig(IntegrationTestConfig):
     """What the contract run needs that a normal integration test does not.
 
-    Derived rather than declared again. The thirteen settings that make a
-    test build of this service -- in-memory database, no Redis, no cache,
-    no journals, no seeding, a fixed base URL -- were written out here a
-    second time, and a fourteenth added to the integration build would
-    have appeared in one and not the other. That is not a cosmetic
+    Derived rather than declared again. The settings that make a test
+    build of this service -- sixteen of them: in-memory database, no
+    Redis, no cache, no journals, no seeding, a fixed base URL -- were
+    written out here a second time, and one added to the integration build
+    would have appeared in one and not the other. That is not a cosmetic
     difference for this directory: the settings being repeated are the
     ones that keep a run from reaching real infrastructure, so the copy
     that fell behind would have been the one that quietly talked to it.

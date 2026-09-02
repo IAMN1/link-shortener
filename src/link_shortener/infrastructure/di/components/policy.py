@@ -27,7 +27,7 @@ class PolicyComponent:
         # Annotated Optional rather than inferred from this assignment: the
         # attribute holds None until the first call builds it, and a checker
         # told otherwise reports both the assignment and the return as errors.
-        self._hash_caclculator: Optional[HashCalculator] = None
+        self._hash_calculator: Optional[HashCalculator] = None
         self._code_generator: Optional[CodeGenerator] = None
 
     def get_hash_calculator(self) -> HashCalculator:
@@ -37,9 +37,9 @@ class PolicyComponent:
         The calculator produces a deterministic 64-character hex digest
         of a normalised URL.
         """
-        if self._hash_caclculator is None:
-            self._hash_caclculator = SHA256HashCalculator()
-        return self._hash_caclculator
+        if self._hash_calculator is None:
+            self._hash_calculator = SHA256HashCalculator()
+        return self._hash_calculator
 
     def get_code_generator(self) -> CodeGenerator:
         """

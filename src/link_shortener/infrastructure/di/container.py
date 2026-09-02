@@ -31,6 +31,7 @@ from link_shortener.application import (
     RefreshSessionUseCase, SignOutUseCase,
     Mailer, RateLimiter, ReadJournalUseCase, RedirectLinkUseCase, RegisterUseCase,
     RequestPasswordResetUseCase,
+    ResendUserVerificationUseCase,
     ResendVerificationUseCase, ResetPasswordUseCase, RollUpSecurityEventsUseCase,
     RollUpVisitsUseCase, SeedDatabaseUseCase,
     SendAccountExistsEmailUseCase, SendPasswordResetEmailUseCase,
@@ -84,11 +85,19 @@ class Container:
     """
     Root DI container for the link shortener application.
 
-    All dependencies are created lazily. The container provides:
+    The container provides:
 
     * Public accessors for use cases.
     * Public accessors for application services.
     * Public accessors for cross-cutting infrastructure (cache, logger, etc.).
+
+    What is built when is not uniform, and the accessors do not say so on
+    their own. ``__init__`` builds the infrastructure components, asks four
+    of them for their object so that ``InfrastructureHealthCheck`` has one,
+    and then composes the three facades -- which builds the link, batch,
+    stats, admin, auth and health use cases with them. Only the journal use
+    cases stay unbuilt until something asks. So a CLI command that wants
+    only ``get_db_manager()`` has already opened Redis and built the mailer.
 
     Lifecycle:
         ``close()`` must be called at shutdown to release resources (database
@@ -261,7 +270,6 @@ class Container:
         self._admin_role_use_cases: Optional[AdminRoleUseCasesComponent] = None
         self._admin_user_use_cases: Optional[AdminUserUseCasesComponent] = None
         self._auth_use_cases: Optional[AuthUseCasesComponent] = None
-        self._user_activity_stats_uc: Optional[GetUserActivityStatsUseCase] = None
         self._health_use_cases: Optional[HealthUseCasesComponent] = None
         self._journal_use_cases: Optional[JournalUseCasesComponent] = None
 
@@ -287,7 +295,7 @@ class Container:
             create_user_uc=self.get_create_user_use_case(),
             update_user_roles_uc=self.get_update_user_roles_use_case(),
             confirm_user_email_uc=self.get_confirm_user_email_use_case(),
-            resend_verification_uc=self.get_resend_verification_use_case(),
+            resend_verification_uc=self.get_resend_user_verification_use_case(),
             deactivate_user_uc=self.get_deactivate_user_use_case(),
             activate_user_uc=self.get_activate_user_use_case(),
             list_users_uc=self.get_list_users_use_case(),
@@ -306,7 +314,6 @@ class Container:
         # Facade service for authentication (eagerly composed)
         # ------------------------------------------------------------------
         self._auth_service = AuthService(
-            authentication_service=self.get_authentication_service(),
             login_use_case=self.get_login_use_case(),
             register_use_case=self.get_register_use_case(),
             verify_email_use_case=self.get_verify_email_use_case(),
@@ -478,6 +485,18 @@ class Container:
                 verification_ttl_hours=self.config.EMAIL_VERIFICATION_TTL_HOURS,
                 password_reset_ttl_minutes=self.config.PASSWORD_RESET_TTL_MINUTES,
                 unverified_ttl_hours=self.config.UNVERIFIED_ACCOUNT_TTL_HOURS,
+                # The same limiter the middleware counts addresses with,
+                # asked for a different key. One backend, so a deployment
+                # that has Redis has both budgets in it and a deployment
+                # that has not has neither -- rather than a second store
+                # to configure and a second thing to be surprised by.
+                rate_limiter=self.rate_limiter_component.get_rate_limiter(),
+                login_account_failure_limit=(
+                    self.config.LOGIN_ACCOUNT_FAILURE_LIMIT
+                ),
+                login_account_failure_period=(
+                    self.config.LOGIN_ACCOUNT_FAILURE_PERIOD
+                ),
             )
             # Wire the synchronous fallback for NullTaskQueue, the same way
             # the click counter is wired. Without a broker the message is
@@ -665,6 +684,20 @@ class Container:
     def get_confirm_user_email_use_case(self) -> ConfirmUserEmailUseCase:
         """Return fully configured ``ConfirmUserEmailUseCase``."""
         return self._init_admin_user_use_cases().get_confirm_user_email_use_case()
+
+    def get_resend_user_verification_use_case(
+        self,
+    ) -> ResendUserVerificationUseCase:
+        """Return fully configured ``ResendUserVerificationUseCase``.
+
+        Composed here rather than in ``AdminUserUseCasesComponent``: it
+        wraps the authentication component's resend use case, and the two
+        components do not know each other.
+        """
+        return ResendUserVerificationUseCase(
+            uow_factory=self._uow_factory,
+            resend_verification=self.get_resend_verification_use_case(),
+        )
 
     def get_activate_user_use_case(self) -> ActivateUserUseCase:
         """Return fully configured ``ActivateUserUseCase``."""

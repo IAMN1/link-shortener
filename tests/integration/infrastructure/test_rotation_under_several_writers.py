@@ -1,7 +1,8 @@
 """Four writers and a rotation, which is the deployment this runs in.
 
-``dockers/docker-compose.yml`` starts gunicorn with ``--workers 4``, and
-each worker builds the application for itself: four processes hold four
+``dockers/Dockerfile`` starts gunicorn with ``--workers
+${GUNICORN_WORKERS:-4}`` -- the compose file gives no command of its own,
+on purpose -- and each worker builds the application for itself: four processes hold four
 descriptors on the same ``application.log``. Rotation is therefore not a
 question about a handler but a question about four of them at once, and
 the single-process checks in
