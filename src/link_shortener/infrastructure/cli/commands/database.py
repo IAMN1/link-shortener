@@ -6,7 +6,10 @@ from sqlalchemy import text
 from link_shortener.application import RequestContext, SeedDatabaseUseCase
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.use_cases.admin.database.seed_database import SeedResult
-from link_shortener.infrastructure.cli.commands.alembic import AlembicCommands
+from link_shortener.infrastructure.cli.commands.alembic import (
+    ALEMBIC_DISABLED,
+    AlembicCommands,
+)
 from link_shortener.infrastructure.cli.commands.maintenance import (
     what_the_database_said,
 )
@@ -240,6 +243,15 @@ def migrate_db(
     with no error handling of its own: there was nothing left for it to
     handle.
 
+    A migration asked for while ``USE_ALEMBIC`` is off is refused, not
+    reported as done. It used to answer ``True`` -- the whole ``alembic``
+    group refuses the same request through ``_require_alembic_enabled``,
+    with the same reason in the same words, and exits 1; this one printed
+    to stdout and exited 0, so a deployment line reading ``flask db
+    migrate || exit 1`` was told the schema was up to date on a
+    deployment where nothing had run. The wording is the group's, so the
+    two do not drift apart again.
+
     Args:
         use_alembic: flag indicating whether alembic is enabled
         database_url: Database to migrate. Handed to alembic so the schema
@@ -250,6 +262,6 @@ def migrate_db(
         answers in.
     """
     if not use_alembic:
-        return True, "Alembic is disabled. Use 'flask db init' to create tables."
+        return False, ALEMBIC_DISABLED
 
     return AlembicCommands.upgrade("head", database_url=database_url)

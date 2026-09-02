@@ -20,6 +20,7 @@ from sqlalchemy import inspect, text
 
 from link_shortener.domain.value_objects.email import Email
 from link_shortener.domain.value_objects.short_code import ShortCode
+from link_shortener.infrastructure.cli.commands.alembic import ALEMBIC_DISABLED
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.infrastructure.database.manager import DatabaseManager
 from link_shortener.infrastructure.database.seed import seed_base_roles
@@ -882,7 +883,7 @@ class TestLinkCreate:
 
 
 class TestMigrateWithoutAlembic:
-    """``flask db migrate`` with Alembic off must not name the database."""
+    """``flask db migrate`` with Alembic off must refuse, not report success."""
 
     def test_it_neither_migrates_nor_announces_the_database(self, runner, app):
         """It must leave the schema alone, and say nothing about where it is.
@@ -890,8 +891,8 @@ class TestMigrateWithoutAlembic:
         Both halves are asserted because the wording alone is no evidence
         of the deed: measured, a ``drop_all`` added to this branch took
         every table with it while the command still exited 0 and still
-        printed "Alembic is disabled", and the text-only version of this
-        test stayed green.
+        printed the refusal, and the text-only version of this test
+        stayed green.
 
         Announcing the database is the smaller half, and not free either:
         the URL carries the host and the user, and this branch has no
@@ -908,14 +909,43 @@ class TestMigrateWithoutAlembic:
 
         result = runner.invoke(app.cli, ["db", "migrate"])
 
-        assert result.exit_code == 0, result.output
-        assert "Alembic is disabled" in result.output
+        assert ALEMBIC_DISABLED in result.output
         assert "sqlite" not in result.output.lower()
         assert "Database:" not in result.output
 
         with app.app_context():
             after = set(inspect(app.container.get_db_manager().engine).get_table_names())
         assert after == before
+
+    def test_it_answers_exactly_as_the_alembic_group_answers(self, runner, app):
+        """
+        A refusal, not a success. This command exited 0 and printed to
+        stdout, while ``flask alembic upgrade`` refuses the same request
+        through ``_require_alembic_enabled`` and exits 1 -- so a
+        deployment line reading ``flask db migrate || exit 1`` carried on
+        past a migration that had not run.
+
+        The group is invoked beside it rather than trusted from memory,
+        and all three of code, stream and sentence are compared against
+        what it actually did: a spelled-out ``== 1`` would still pass if
+        the group started answering 0 too, which is the drift that put
+        these two apart in the first place.
+
+        The streams are read apart, for the reason the class below
+        records: click 8.2 merged them into ``output``, so an assertion
+        written on ``output`` cannot tell a refusal on stderr from one
+        printed to stdout -- and stdout was where this one went.
+        """
+        assert app.config.get("USE_ALEMBIC") is False
+
+        refused = runner.invoke(app.cli, ["db", "migrate"])
+        by_the_group = runner.invoke(app.cli, ["alembic", "upgrade"])
+
+        assert by_the_group.exit_code == 1, by_the_group.output
+        assert refused.exit_code == by_the_group.exit_code, refused.output
+        assert ALEMBIC_DISABLED in refused.stderr
+        assert ALEMBIC_DISABLED in by_the_group.stderr
+        assert refused.stdout == "", refused.stdout
 
 
 class TestTheAlembicGroupWithAlembicOff:

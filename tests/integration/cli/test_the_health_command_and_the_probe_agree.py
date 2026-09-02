@@ -180,6 +180,39 @@ class TestTheRefusalReachesTheErrorStream:
         for name in ("Database", "Cache", "Task queue", "Rate limiter"):
             assert re.search(rf"^{name}: ", result.stdout, re.M), result.stdout
 
+    def test_a_cache_in_this_process_only_is_not_named_a_failure(
+        self, app, runner
+    ):
+        """
+        The same defect from the other side, and the commoner one.
+
+        ``REDIS_ENABLED=false`` is the documented local arrangement: the
+        cache answers ``in_process`` -- "in this process only, not shared"
+        -- which ``HealthSnapshot.healthy`` and ``/health`` both treat as
+        fine. The verdict list matched two rendered sentences and this was
+        not one of them, so with the database down beside it the line read
+        ``Unhealthy: Database, Cache``, naming a cache doing exactly what
+        it was configured to do. That is the two surfaces disagreeing that
+        the block exists to prevent, arriving through the list rather than
+        through the snapshot.
+        """
+        answering(app, HealthSnapshot(
+            database=False, cache=False, cache_configured=False,
+            cache_stores=True, task_queue=True, rate_limiter=True,
+        ))
+
+        result = runner.invoke(app.cli, ["maintenance", "health"])
+
+        assert result.exit_code == 1
+        verdict = next(
+            line for line in result.stderr.splitlines()
+            if line.startswith("Unhealthy:")
+        )
+        assert "Database" in verdict, verdict
+        assert "Cache" not in verdict, verdict
+        # And the row itself still says what it is, on stdout.
+        assert "in this process only" in result.stdout
+
     def test_a_database_without_the_schema_is_named_too(self, app, runner):
         """
         The one fault whose row is not spelled ``FAILED``.

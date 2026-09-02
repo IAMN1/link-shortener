@@ -41,7 +41,11 @@ class InMemoryLinkCache(ServiceCache):
         self._redirects: Dict[str, CachedRedirect] = {}  # key -> cached redirect
         self._stats: Optional[Dict[str, Any]] = None
 
-        # Expiry timestamps: key -> expiration time (monotonic seconds)
+        # Expiry timestamps: key -> expiration time, on the wall clock.
+        # Not monotonic, which this said: a clock stepped backwards -- NTP,
+        # a container resuming -- pushes every entry's expiry that much
+        # further out. The bound on the damage is that this cache lives in
+        # one process and holds nothing anybody else reads.
         self._expiry: Dict[str, float] = {}
         self.link_ttl = link_ttl
         self.stats_ttl = stats_ttl
@@ -335,8 +339,16 @@ class InMemoryLinkCache(ServiceCache):
         if entry is None:
             return None
 
-        # Same rules as the Redis implementation: an entry that cannot
-        # vouch for itself is a miss, not an answer.
+        # An entry that cannot vouch for itself is a miss, not an answer.
+        #
+        # Stricter than the Redis implementation by one test, and the
+        # difference is worth naming rather than papering over: that one
+        # checks `is_for` and hands an expired entry back, leaving the
+        # caller to raise `LinkExpiredError` from it. Here the entry is
+        # dropped and the request falls through to L2 and the repository,
+        # which answer the same 410 by a longer road. Both are correct;
+        # only this one makes the caller's own `is_expired` branch
+        # unreachable.
         if not entry.is_for(short_code) or entry.is_expired():
             return None
 

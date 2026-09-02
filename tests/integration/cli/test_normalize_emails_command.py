@@ -673,7 +673,12 @@ class TestWhatHappensBetweenTheReportAndTheWrite:
         finally:
             app.container.db_component._manager = db_manager
 
-        assert "1 were taken by another account" in result.stderr, result.stderr
+        # Counted and conjugated: this line read "1 were taken", and the
+        # assertion held it that way -- a test defending the very defect
+        # ``TestTheCountsAgreeWithTheirNouns`` states the rule against.
+        assert "1 address was taken by another account" in result.stderr, (
+            result.stderr
+        )
         # Non-zero: the account is still unreachable, which is the state
         # this command exists to clear.
         assert result.exit_code == 1, result.output
@@ -706,7 +711,7 @@ class TestWhatHappensBetweenTheReportAndTheWrite:
         finally:
             app.container.db_component._manager = db_manager
 
-        assert "1 were deleted or changed by somebody else" in result.stderr, (
+        assert "1 address was deleted or changed by somebody else" in result.stderr, (
             result.stderr
         )
         # Zero: the row is gone or already somebody else's, and no second
@@ -741,5 +746,5 @@ class TestWhatHappensBetweenTheReportAndTheWrite:
             app.container.db_component._manager = db_manager
 
         assert "Lowered 1 address." in result.output, result.output
-        assert "1 addresses were not attempted" in result.stderr, result.stderr
+        assert "1 address was not attempted" in result.stderr, result.stderr
         assert result.exit_code == 1, result.output

@@ -147,9 +147,16 @@ def write_secrets(
 
     Existing values are kept unless ``force`` says otherwise: rewriting a
     ``SECRET_KEY`` signs out every session and voids every issued token,
-    and rewriting ``SHORT_CODE_PEPPER`` is worse -- codes already handed
-    out stop resolving. Neither is something a setup command may do
+    and rewriting ``SHORT_CODE_PEPPER`` changes the code a URL not yet
+    shortened will get. Neither is something a setup command may do
     because a file happened to be there.
+
+    Not "codes already handed out stop resolving", which is what this said
+    and what the comment above ``_COST_OF_REPLACING`` retracts with a
+    measurement: a link is resolved by looking its stored code up, and a
+    code made under one pepper answered 302 from a process running
+    another. An operator reading this before rotating was being given the
+    opposite answer to the one the command itself prints.
 
     Args:
         path: Env file to edit. It has to exist already; this command

@@ -80,8 +80,9 @@ def get_link_info(
     # One refusal turned into a value, because only one of the two the use
     # case raises means "there is nothing here": ``_code_to_look_up``
     # answers ``LinkNotFoundError`` for a malformed code as well as for an
-    # unused one, and says so in its own docstring -- "a malformed code
-    # raises no ValueError here".
+    # unused one, and says so in its own docstring -- "A code the format
+    # rules refuse is a code no link can carry, so the honest answer is
+    # that there is no such link".
     #
     # There was a second clause catching ``ValueError`` beneath this one.
     # It could not run: ``ShortCode`` refuses a bad code with

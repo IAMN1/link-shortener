@@ -86,6 +86,13 @@ def _seed_base_roles_if_ready(container) -> None:
     about it. A real failure -- unreachable database, refused permission,
     malformed YAML -- still warns.
 
+    The command it names follows ``USE_ALEMBIC``, because that flag picks
+    which of the two ways of building a schema is open and closes the
+    other outright. It used to say ``flask alembic upgrade head``
+    unconditionally -- so a deployment running with the flag off was told,
+    on every start until it had a schema, to run the one command that
+    profile refuses with exit 1, while ``flask db init`` went unmentioned.
+
     Must be called inside an application context.
 
     Args:
@@ -97,10 +104,22 @@ def _seed_base_roles_if_ready(container) -> None:
         db_manager = container.get_db_manager()
         missing = db_manager.missing_tables(RBAC_TABLES)
         if missing:
+            # Off the container rather than off ``current_app``: this
+            # branch is reached from the CLI as well, the container is
+            # the only thing handed in, and reading the flag through the
+            # request-time proxy turned an absent schema into
+            # "AUTO_SEED_ROLES failed: Working outside of application
+            # context" -- a warning, which is the one thing this function
+            # exists not to raise here.
+            build_it = (
+                "flask alembic upgrade head"
+                if getattr(container.config, "USE_ALEMBIC", True)
+                else "flask db init"
+            )
             logger.info(
                 "Skipping role seeding: database schema is not initialised",
                 missing_tables=", ".join(missing),
-                next_step="flask alembic upgrade head && flask db load-base-roles",
+                next_step=f"{build_it} && flask db load-base-roles",
             )
             return
 
@@ -253,9 +272,12 @@ def create_app(config=None) -> Flask:
     # response finally leaves, including the one the error handler
     # replaced, and compression still sees the body afterwards.
     #
-    # Its `before_request` mints the nonce, and it has to run before any
-    # view renders a template -- a page carrying a nonce the header does
-    # not name is a page whose script the browser refuses.
+    # Nothing about the nonce depends on this position: it is minted by a
+    # context processor, when a template asks for it, and read back out of
+    # `g` by the `after_request` that writes the header -- see
+    # `security_headers.py`, which says why a `before_request` would be
+    # the wrong place. What the position does decide is that its header
+    # goes on before compression touches the body.
     SecurityHeadersMiddleware(app)
     ## 1. Request logging (generates request_id)
     RequestLoggingMiddleware(app, container.get_logger(RequestLoggingMiddleware.__module__))

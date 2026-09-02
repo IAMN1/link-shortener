@@ -170,6 +170,18 @@ class RedisLinkCache(ServiceCache):
         method runs, so a client set to None by an earlier failure would
         raise past all of this error handling.
 
+        Read once into a local and checked, because moving the dereference
+        inside the ``try`` was not enough on its own: the clauses below
+        catch ``redis.*`` and nothing else, so ``None.get`` came out as an
+        ``AttributeError`` and left the cache the same way it would have
+        before. ``_mark_unavailable`` sets the attribute to ``None`` on any
+        connection-level failure, and this class is built for several
+        threads -- ``_ensure_connection`` takes a lock for exactly that
+        reason -- so a caller that passed the check a moment before the
+        outage reached this line holding nothing. On the redirect path that
+        is a 500 out of a cache the module docstring promises will answer a
+        miss instead.
+
         Args:
             operation: Callable taking the Redis client and returning a value.
 
@@ -178,8 +190,15 @@ class RedisLinkCache(ServiceCache):
         """
         if not self._ensure_connection():
             return None
+
+        client = self._client
+        if client is None:
+            # Lost between the check above and this line. A miss is the
+            # right answer and the one every other failure here gives.
+            return None
+
         try:
-            return operation(self._client)
+            return operation(client)
         except redis.ResponseError as e:
             # The server answered -- it just refused this command, typically
             # WRONGTYPE on a key someone else wrote. The connection is fine,
@@ -221,8 +240,14 @@ class RedisLinkCache(ServiceCache):
         """
         if not self._ensure_connection():
             return False
+
+        client = self._client
+        if client is None:
+            # See ``_execute_read``: the same window, and the same answer.
+            return False
+
         try:
-            operation(self._client)
+            operation(client)
             return True
         except redis.ResponseError as e:
             # Rejected command, live connection -- see _execute_read.
@@ -636,9 +661,14 @@ class RedisLinkCache(ServiceCache):
         """
         Work out how long a redirect entry may live.
 
-        Capped at the time left on the link itself, so an expired entry
-        cannot outlive the link it points at -- it disappears by
-        construction rather than by anyone remembering to check.
+        Capped at the time left on the link itself, so an entry does not
+        outlive the link it points at by more than the floor below: a link
+        with four-tenths of a second left is stored for one, because
+        ``SETEX`` refuses a zero TTL and rounding a live link down to
+        nothing would drop a perfectly good entry. Within that second the
+        caller's own ``is_expired`` is what answers -- which is why
+        ``RedirectLinkUseCase`` keeps that branch, and calls it belt and
+        braces rather than decoration.
 
         Args:
             expires_at: When the link expires, or ``None`` if never.
