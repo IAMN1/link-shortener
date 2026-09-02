@@ -33,6 +33,10 @@ from typing import Any, Dict, Optional, Type
 
 from pydantic import BaseModel
 
+from link_shortener.domain.value_objects.short_code import (
+    MAX_LENGTH as CODE_MAX_LENGTH,
+    MIN_LENGTH as CODE_MIN_LENGTH,
+)
 from link_shortener.web.paging import MAX_PAGE_SIZE
 from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.error import ErrorResponse
@@ -595,7 +599,21 @@ CODE_PARAMETER = {
         "answers to itself -- health, static, dashboard and the like -- "
         "cannot be claimed."
     ),
-    "schema": {"type": "string"},
+    # Declared, not only described. While the schema said `string` and the
+    # shape lived in the sentence above, a generated caller was entitled to
+    # ask for any string at all -- and `/api/v1/links/mine` is a path of its
+    # own, which OpenAPI resolves to the concrete operation rather than to
+    # this template. The service answered that request with a list, the
+    # template promises an object, and the contract run reddened on it
+    # whenever its generator happened to produce `mine`. Six characters is
+    # the domain's own floor (`ShortCode.MIN_LENGTH`), so a four-letter word
+    # was never a code this operation could be asked for.
+    "schema": {
+        "type": "string",
+        "minLength": CODE_MIN_LENGTH,
+        "maxLength": CODE_MAX_LENGTH,
+        "pattern": f"^[a-zA-Z0-9_-]{{{CODE_MIN_LENGTH},{CODE_MAX_LENGTH}}}$",
+    },
 }
 
 USER_PARAMETER = {
