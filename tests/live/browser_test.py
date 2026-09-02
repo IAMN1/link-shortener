@@ -2189,6 +2189,24 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
             lambda p: bool(asked),
             what="the viewer to ask for a journal",
         )
+
+        # And then wait for the asking to *settle*, because the page asks
+        # twice on opening: `journals.js` for the journal and
+        # `security_counts.js` for the counters, and one route glob catches
+        # both. Counting from the first of the pair makes the second look
+        # like a poll -- which is what CI reported, "1 more", on a machine
+        # slow enough to put the assertion between them. It passed here
+        # every time, which is the shape of a race rather than a fix.
+        #
+        # Settling cannot hide a page that is still polling: the fastest
+        # interval the page offers is five seconds, so a quiet second and a
+        # half only establishes the baseline, and the window below still
+        # sees every poll that follows.
+        quiet_for = 1500
+        counted = -1
+        while counted != len(asked):
+            counted = len(asked)
+            page.wait_for_timeout(quiet_for)
         after_the_refusal = len(asked)
 
         # Two intervals of the fastest setting the page offers, and a
