@@ -6,7 +6,7 @@ These tests verify that all layers work together correctly.
 """
 
 
-from tests.integration.conftest import confirm_email, csrf_headers
+from tests.integration.conftest import a_guest, confirm_email, csrf_headers
 
 
 class TestGuestUserJourney:
@@ -110,25 +110,52 @@ class TestRegisteredUserJourney:
 
 
 class TestDuplicateUrlJourney:
-    """Journey: two users shorten the same URL."""
+    """Journey: the same URL shortened twice, by one caller and by two.
 
-    def test_same_url_different_users(self, client):
-        # 1. User A creates link
-        r1 = client.post("/api/v1/shorten", json={"url": "https://shared.com"})
+    Both halves were one client on one address, so "User B" was User A
+    with a comment saying otherwise, and the assertion it made -- the same
+    code back -- is what one caller should get. Measured: dropping the
+    guest identifier from ``DedupScope`` entirely, which is the whole
+    reason that value object exists, left this file green.
+    """
+
+    def test_one_guest_asking_twice_gets_one_link(self, app):
+        alice = a_guest(app, "198.51.100.10")
+
+        r1 = alice.post("/api/v1/shorten", json={"url": "https://shared.com"})
         assert r1.status_code == 201
         code1 = r1.get_json().get("short_code")
 
-        # 2. User B creates link for same URL (guest with different IP)
-        r2 = client.post("/api/v1/shorten", json={"url": "https://shared.com"})
+        r2 = alice.post("/api/v1/shorten", json={"url": "https://shared.com"})
         assert r2.status_code == 200
         code2 = r2.get_json().get("short_code")
 
-        # 3. Both codes should be the same (deduplication)
         assert code1 == code2
 
-        # 4. Redirect still works
-        r = client.get(f"/{code1}", follow_redirects=False)
+        r = alice.get(f"/{code1}", follow_redirects=False)
         assert r.status_code == 302
+
+    def test_two_guests_asking_for_one_url_get_two_links(self, app):
+        """
+        The half that was never there. A link belongs to whoever made it:
+        handed Alice's link, Bob could neither list it nor delete it, and
+        when Alice's was a guest link it expired under him. The scope is
+        what stops that, and this is the check that holds it.
+        """
+        alice = a_guest(app, "198.51.100.20")
+        bob = a_guest(app, "198.51.100.21")
+
+        hers = alice.post("/api/v1/shorten", json={"url": "https://both.example"})
+        his = bob.post("/api/v1/shorten", json={"url": "https://both.example"})
+
+        assert hers.status_code == 201
+        assert his.status_code == 201, "Bob was handed Alice's link"
+        assert hers.get_json()["short_code"] != his.get_json()["short_code"]
+
+        # And both resolve: two rows, not one row with two names.
+        for answer in (hers, his):
+            code = answer.get_json()["short_code"]
+            assert alice.get(f"/{code}", follow_redirects=False).status_code == 302
 
 
 class TestExpiredLinkJourney:

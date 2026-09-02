@@ -79,13 +79,35 @@ class TestLogin:
         assert "access_token" in data
 
     def test_login_wrong_password(self, client):
+        """
+        The account is confirmed first, and that is what makes this a
+        check on the password.
+
+        An unconfirmed account is answered 401 for the **right** password
+        too -- deliberately, so the refusals do not tell a guesser their
+        guess landed. Registered and left unconfirmed, this test therefore
+        passed with the password comparison removed altogether: it was
+        reading the ``email_verified`` branch and calling it a wrong
+        password.
+        """
         client.post("/api/v1/auth/register", json={
             "email": "lpw@example.com", "password": "StrongPass1!"
         })
+        confirm_email(client.application, "lpw@example.com")
+
         r = client.post("/api/v1/auth/login", json={
             "email": "lpw@example.com", "password": "wrong"
         })
         assert r.status_code == 401
+
+        # The premise, and it comes second on purpose: a successful login
+        # leaves cookies in this client's jar, and the next unsafe request
+        # it makes is then cookie-authenticated and refused 403 by the
+        # CSRF layer before it reaches any of this.
+        right = client.post("/api/v1/auth/login", json={
+            "email": "lpw@example.com", "password": "StrongPass1!"
+        })
+        assert right.status_code == 200, right.get_json()
 
     def test_login_nonexistent_user(self, client):
         r = client.post("/api/v1/auth/login", json={
@@ -140,6 +162,11 @@ class TestErrorDisclosure:
         client.post("/api/v1/auth/register", json={
             "email": "oracle@example.com", "password": "StrongPass1!"
         })
+        # Confirmed, so "known" means an account that could really sign
+        # in. Left unconfirmed it is refused for a second reason as well,
+        # and the two answers could match for that reason instead of the
+        # one this check is about.
+        confirm_email(client.application, "oracle@example.com")
 
         known = client.post("/api/v1/auth/login", json={
             "email": "oracle@example.com", "password": self.OVERLONG_PASSWORD
@@ -220,11 +247,17 @@ class TestMalformedBody:
         assert r.status_code == 400, r.get_json()
 
     def test_a_wrong_password_is_still_401(self, client):
-        """The branch that does mean "refused" keeps its status."""
+        """The branch that does mean "refused" keeps its status.
+
+        Confirmed first, for the reason ``test_login_wrong_password``
+        gives: an unconfirmed account answers 401 whatever the password,
+        so without this the check cannot tell the two branches apart.
+        """
         client.post(
             "/api/v1/auth/register",
             json={"email": "status@example.com", "password": "StrongPass1!"},
         )
+        confirm_email(client.application, "status@example.com")
 
         r = client.post(
             "/api/v1/auth/login",
@@ -232,6 +265,14 @@ class TestMalformedBody:
         )
 
         assert r.status_code == 401
+
+        # The premise, second for the reason ``test_login_wrong_password``
+        # gives: a successful login leaves cookies, and the next unsafe
+        # request on this client is answered 403 by the CSRF layer.
+        assert client.post(
+            "/api/v1/auth/login",
+            json={"email": "status@example.com", "password": "StrongPass1!"},
+        ).status_code == 200
 
     def test_a_body_nested_beyond_the_decoder_is_refused(self, client):
         """
