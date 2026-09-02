@@ -263,9 +263,10 @@ class RedisRateLimiter(RateLimiter):
         window_start = now - period
 
         # One class in redis-py serves both the sync and the async client,
-        # so ``eval`` is declared as returning an awaitable as well; this
-        # client is the synchronous one and the script returns two numbers.
-        allowed, remaining = self.redis.eval(  # type: ignore[misc]
+        # so ``eval`` is declared as returning an awaitable, and its
+        # response type admits a bare string; this client is the
+        # synchronous one and the script returns two numbers.
+        allowed, remaining = self.redis.eval(  # type: ignore[misc, str-unpack]
             SLIDING_WINDOW_SCRIPT,
             1,               # number of keys
             redis_key,       # KEYS[1]

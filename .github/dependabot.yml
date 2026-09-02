@@ -3,11 +3,12 @@
 # That is the point: an upgrade arrives already measured against this
 # project rather than as a version bump to be trusted.
 #
-# Note for whoever merges one: Dependabot writes `uv.lock` and leaves
-# `requirements.txt` alone, and the Dockerfile installs from the second.
-# The workflow's "Guard requirements.txt against uv.lock" step fails in
-# that case rather than letting the image go stale, and the fix is to
-# re-run the export it prints.
+# There is one manifest here and no derived copy of it: the image exports
+# its dependency list from `uv.lock` during the build. While a generated
+# `requirements.txt` was checked in, Dependabot treated it as a manifest of
+# its own and updated it apart from the lock -- 23 packages in the file and
+# none in the lock, in the September 2026 group -- so every such pull
+# request had to be repaired by hand.
 version: 2
 updates:
   - package-ecosystem: "uv"

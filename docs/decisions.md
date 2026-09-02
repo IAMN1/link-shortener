@@ -206,13 +206,48 @@ property of the profile.
 `tests` or in `migrations` — and neither driver it runs on is an async
 one (`psycopg` for PostgreSQL, the standard library for SQLite). The
 extra's only effect was to pin `greenlet` unconditionally, which
-SQLAlchemy already requires on the platforms that need it; `requirements.txt`
-now carries it with that platform marker instead of without one.
+SQLAlchemy already requires on the platforms that need it; the lock now
+carries it with that platform marker instead of without one.
 
 **Why it is worth a line here.** An extra names a capability, and this one
 named a capability the service does not have. A reader deciding how to add
 a background job would have taken it as a statement that the async stack
 was already available and paid for.
+
+### The image exports its dependencies rather than reading a copy of them
+
+**Decided** (2026-09-02): `requirements.txt` is no longer in the repository.
+A stage of its own runs `uv export` against `uv.lock` during the build, and
+pip installs from what it writes.
+
+**Why.** The file was generated, and a generated file committed beside its
+source is a copy that goes stale quietly. Dependabot reads it as a manifest
+in its own right: the September 2026 minor-and-patch group moved **23**
+packages in `requirements.txt` and **none** in `uv.lock` — `click` 8.3.1
+against 8.5.0, `werkzeug` 3.1.5 against 3.1.8, and twenty-one more. CI
+installs from the lock, so each of those pull requests tested one set of
+packages while the image would have shipped another. A workflow step
+compared the two and failed, correctly, and the repair was a hand-run export
+every month.
+
+**What the move cost, measured on one lock, before against after.** The
+image is 592 MB either way; a cold build takes 47.7 s against 47.9 s and a
+fully cached one 2.6 s against 2.0 s; `importlib.metadata` lists the same 89
+packages in both images, name for name and version for version. The export
+performed inside the build reproduces the file that used to be committed,
+byte for byte apart from the header line naming the command. `uv` itself
+does not reach the image: the runtime stage copies the builder's
+`site-packages` and `/usr/local/bin` whole, which is why the export is a
+stage of its own and not two more lines in the builder.
+
+**What the alternative was.** A workflow that regenerates the file on a
+`dependabot/**` branch and commits it back. Runs Dependabot triggers get a
+read-only `GITHUB_TOKEN`, which the `permissions:` key can widen — but a
+push made with that token starts no workflow run, so the pull request would
+keep the checks of the commit before the repair. Making them re-run needs a
+personal access token or a GitHub App key kept as a Dependabot secret: a
+long-lived write credential added to the repository in order to maintain a
+copy of a file that did not need to exist.
 
 ### One formatter, and a dependency nothing imported
 

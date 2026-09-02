@@ -49,7 +49,7 @@ COPY ./migrations /probe/migrations
 """Only the copies whose sources are directories.
 
 A directory is what carries something nobody chose to send; the single
-files the Dockerfile copies -- `alembic.ini`, `requirements.txt` -- are
+files the Dockerfile copies -- `alembic.ini`, `pyproject.toml` -- are
 named one by one and cannot.
 """
 

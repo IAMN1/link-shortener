@@ -1,6 +1,6 @@
 [project]
 name = "link-shortener"
-version = "0.9.0"
+version = "1.0.0"
 description = "A URL shortener with clean architecture, RBAC and a two-level cache"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -58,10 +58,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-# A group of its own rather than part of `dev`: `uv export` puts only the
-# default group into requirements.txt, and that file is what pip installs
-# into the image. Everything in `dev` travels into the runtime image;
-# nothing in a group of its own does.
+# A group of its own rather than part of `dev`: `uv export` writes only the
+# default group, and that export is what pip installs into the image.
+# Everything in `dev` travels into the runtime image; nothing in a group of
+# its own does.
 # Installed by hand: `uv sync --group browser`.
 browser = [
     "playwright>=1.49",
