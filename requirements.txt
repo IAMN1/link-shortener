@@ -4,9 +4,9 @@ alembic==1.19.1
     # via link-shortener
 amqp==5.3.1
     # via kombu
-annotated-types==0.7.0
+annotated-types==0.8.0
     # via pydantic
-astroid==4.0.3
+astroid==4.3.1
     # via pylint
 attrs==26.1.0
     # via
@@ -25,7 +25,7 @@ blinker==1.9.0
     # via flask
 celery==5.6.3
     # via link-shortener
-click==8.3.1
+click==8.5.0
     # via
     #   celery
     #   click-didyoumean
@@ -44,9 +44,9 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   click
     #   pylint
     #   pytest
-coverage==7.13.3
+coverage==7.16.0
     # via pytest-cov
-dill==0.4.0
+dill==0.4.1
     # via pylint
 flake8==7.3.0
 flask==3.1.3
@@ -58,7 +58,7 @@ flask-babel==4.0.0
     # via link-shortener
 flask-cors==6.0.5
     # via link-shortener
-greenlet==3.3.0 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'
+greenlet==3.5.5 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'
     # via sqlalchemy
 gunicorn==26.2.0
     # via link-shortener
@@ -91,11 +91,11 @@ kombu==5.6.2
     # via celery
 lazy-object-proxy==1.12.0
     # via openapi-spec-validator
-librt==0.7.7 ; platform_python_implementation != 'PyPy'
+librt==0.15.0 ; platform_python_implementation != 'PyPy'
     # via mypy
-mako==1.3.11
+mako==1.4.1
     # via alembic
-markdown-it-py==4.0.0
+markdown-it-py==4.2.0
     # via rich
 markupsafe==3.0.3
     # via
@@ -121,19 +121,19 @@ packaging==25.0
     #   pytest
 pathable==0.6.0
     # via jsonschema-path
-pathspec==1.0.3
+pathspec==1.1.1
     # via mypy
-platformdirs==4.5.1
+platformdirs==4.11.5
     # via pylint
 pluggy==1.6.0
     # via
     #   pytest
     #   pytest-cov
-prompt-toolkit==3.0.52
+prompt-toolkit==3.0.53
     # via click-repl
-psycopg==3.3.3
+psycopg==3.3.4
     # via link-shortener
-psycopg-binary==3.3.3 ; implementation_name != 'pypy'
+psycopg-binary==3.3.4 ; implementation_name != 'pypy'
     # via psycopg
 pycodestyle==2.14.0
     # via
@@ -145,7 +145,7 @@ pydantic==2.13.5
     #   openapi-schema-validator
     #   openapi-spec-validator
     #   pydantic-settings
-pydantic-core==2.46.5
+pydantic-core==2.48.0
     # via pydantic
 pydantic-settings==2.15.0
     # via
@@ -153,7 +153,7 @@ pydantic-settings==2.15.0
     #   openapi-spec-validator
 pyflakes==3.4.0
     # via flake8
-pygments==2.19.2
+pygments==2.21.0
     # via
     #   pytest
     #   rich
@@ -206,14 +206,14 @@ sqlalchemy==2.0.52
     # via
     #   alembic
     #   link-shortener
-stevedore==5.6.0
+stevedore==5.9.1
     # via bandit
 structlog==25.5.0
     # via link-shortener
-tomlkit==0.13.3
+tomlkit==0.15.1
     # via pylint
 types-pyyaml==6.0.12.20260724
-typing-extensions==4.15.0
+typing-extensions==4.16.0
     # via
     #   alembic
     #   mypy
@@ -223,7 +223,7 @@ typing-extensions==4.15.0
     #   referencing
     #   sqlalchemy
     #   typing-inspection
-typing-inspection==0.4.2
+typing-inspection==0.4.4
     # via
     #   pydantic
     #   pydantic-settings
@@ -232,16 +232,16 @@ tzdata==2026.3
     #   kombu
     #   psycopg
     #   tzlocal
-tzlocal==5.3.1
+tzlocal==5.4.4
     # via celery
 vine==5.1.0
     # via
     #   amqp
     #   celery
     #   kombu
-wcwidth==0.6.0
+wcwidth==0.8.3
     # via prompt-toolkit
-werkzeug==3.1.5
+werkzeug==3.1.8
     # via
     #   flask
     #   flask-cors
