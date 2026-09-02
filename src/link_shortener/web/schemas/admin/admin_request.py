@@ -72,7 +72,9 @@ class CreateUserRequest(StrictRequest):
         json_schema_extra={
             "example": {
                 "email": "newuser@example.com",
-                "password": "a-password-of-their-own",
+                # Published example, which is the one place a
+                # password-shaped string belongs.
+                "password": "a-password-of-their-own",  # nosec B105
                 "is_active": True,
                 "roles": ["user", "editor"]
             }

@@ -32,7 +32,9 @@ STATUS_BY_CODE = {
     # here anyway: the one thing worse than the wrong status for it would
     # be a 500, which is what an uncaught path would produce, and 401 is
     # what the caught path already returns.
-    "REFRESH_TOKEN_REPLAYED": 401,
+    # The status, not a secret: B105 reads the key and reports the
+    # value beside it, which here is an HTTP status code.
+    "REFRESH_TOKEN_REPLAYED": 401,  # nosec B105
     # `EMAIL_NOT_VERIFIED` stood here and no longer does. Nothing raises
     # it: signing in with an unconfirmed address answers
     # `INVALID_CREDENTIALS`, the same as a wrong password, so that the

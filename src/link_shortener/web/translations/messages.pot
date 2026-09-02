@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-02 09:08+0300\n"
+"POT-Creation-Date: 2026-09-02 10:54+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -122,7 +122,7 @@ msgid "Link with code (%(code)s) not found"
 msgstr ""
 
 #: src/link_shortener/domain/exceptions.py:186
-#: src/link_shortener/web/middleware/error_handler.py:477
+#: src/link_shortener/web/middleware/error_handler.py:479
 msgid "Link not found"
 msgstr ""
 
@@ -842,65 +842,65 @@ msgstr ""
 msgid "This request could not be verified. Reload the page and try again."
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:177
-#: src/link_shortener/web/middleware/error_handler.py:593
+#: src/link_shortener/web/middleware/error_handler.py:179
+#: src/link_shortener/web/middleware/error_handler.py:595
 msgid "An internal error occurred"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:273
+#: src/link_shortener/web/middleware/error_handler.py:275
 msgid "The request could not be understood"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:274
+#: src/link_shortener/web/middleware/error_handler.py:276
 msgid "You do not have access to this"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:275
+#: src/link_shortener/web/middleware/error_handler.py:277
 msgid "That conflicts with something already stored"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:276
+#: src/link_shortener/web/middleware/error_handler.py:278
 msgid "What was sent is too large"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:277
+#: src/link_shortener/web/middleware/error_handler.py:279
 msgid "The service expects a JSON body"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:278
+#: src/link_shortener/web/middleware/error_handler.py:280
 msgid "The service is unavailable right now"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:327
+#: src/link_shortener/web/middleware/error_handler.py:329
 msgid "Page not found"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:330
+#: src/link_shortener/web/middleware/error_handler.py:332
 msgid "Resource not found"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:372
+#: src/link_shortener/web/middleware/error_handler.py:374
 msgid "Method not allowed"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:381
+#: src/link_shortener/web/middleware/error_handler.py:383
 #, python-format
 msgid "Method %(method)s not allowed"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:410
+#: src/link_shortener/web/middleware/error_handler.py:412
 msgid "Request validation failed"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:557
+#: src/link_shortener/web/middleware/error_handler.py:559
 msgid "Bad request"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:561
+#: src/link_shortener/web/middleware/error_handler.py:563
 msgid "Malformed request body"
 msgstr ""
 
-#: src/link_shortener/web/middleware/error_handler.py:588
+#: src/link_shortener/web/middleware/error_handler.py:590
 msgid "Internal server error"
 msgstr ""
 
