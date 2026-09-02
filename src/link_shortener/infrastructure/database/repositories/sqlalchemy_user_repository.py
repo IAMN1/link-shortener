@@ -31,8 +31,14 @@ EMAIL_INDEX_NAME = next(
 
 Read off the model rather than written out, because the name is what
 PostgreSQL reports a violation of and the two would otherwise have to be
-kept in step by hand. The migration creates it under this name as well,
-and ``test_schema_matches_migration`` is what holds those together.
+kept in step by hand. The migration creates it under this name as well --
+``migrations/versions/0001_initial_schema.py`` -- and nothing holds the two
+names together: ``test_schema_matches_migration`` compares indexes by their
+columns and deliberately not by their names, which its own helper says in
+so many words. Rename it in the revision alone and every test still passes
+while ``_is_email_clash`` below stops recognising the violation, so two
+simultaneous registrations of one address answer 500 instead of the refusal
+this constant exists to produce.
 """
 
 
@@ -353,8 +359,14 @@ class SQLAlchemyUserRepository(UserRepository):
         never meet.
 
         On any other engine this does nothing, and the guard is advisory
-        there. PostgreSQL is what production runs; SQLite serves local
-        development and the test suite, whose writes are serialised anyway.
+        there -- genuinely advisory, with nothing standing in for it.
+        SQLite serialises *writes*, and what this protects is a read
+        followed by a write: ``require_administrator_remains`` counts the
+        remaining administrators and only then writes, so two callers can
+        both count, both see one other remaining, and both commit. That is
+        the state the count exists to prevent, and on SQLite it is
+        reachable. PostgreSQL is what a deployed profile is required to
+        run; SQLite serves local development and the test suite.
         """
         if self.session.get_bind().dialect.name != "postgresql":
             return

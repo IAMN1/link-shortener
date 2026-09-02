@@ -8,8 +8,9 @@ stopped part-way and could not be built by migrations at all. It went
 unnoticed because every other test builds the schema with ``create_all``
 from the models, which never runs a revision.
 
-Step A3 of the quick start is ``alembic upgrade head``, so this is the path
-a clone takes on its first run. Tested against SQLite because that is what a
+``flask alembic upgrade head`` is the third command under "Run it" in the
+quick start -- the guide numbers no steps, so it is named by what it is --
+and so this is the path a clone takes on its first run. Tested against SQLite because that is what a
 developer gets out of the box; PostgreSQL-only behaviour belongs in
 ``tests/integration/docker/``.
 """

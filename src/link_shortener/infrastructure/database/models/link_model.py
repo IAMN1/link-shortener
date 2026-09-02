@@ -19,7 +19,9 @@ class LinkModel(Base):
         url_hash: SHA-256 hash of the original URL, indexed together with the
             owner for deduplication. Deliberately not unique: deduplication
             is per owner and skips expired links, so the same hash may
-            legitimately appear more than once (see migration ``0003``).
+            legitimately appear more than once -- the index in
+            ``migrations/versions/0001_initial_schema.py`` is not unique,
+            deliberately.
         original_url: Full original URL, up to 2048 characters.
         short_code: Generated short code (6-10 chars), unique and indexed.
         created_at: Timestamp when the link was created (UTC).

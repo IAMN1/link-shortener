@@ -15,8 +15,11 @@ class AdminRoleUseCasesComponent:
     """
     Provides factory methods for all role administration use cases.
 
-    All dependencies (UoW factory, role service, authorization service,
-    logger, audit logger) are injected at construction time.
+    All dependencies -- the UoW factory, the role service, the user
+    service, the default role name, the logger and the audit logger -- are
+    injected at construction time. No authorization service among them:
+    the routes carry the permission check and ``privilege_guard`` reads the
+    actor out of the unit of work the operation runs in.
     """
 
     uow_factory: UnitOfWorkFactory
