@@ -7,17 +7,23 @@ drives the Flask test client, which has no browser in it -- so the twelve
 files that turn an API answer into something a person reads are, as far as
 any other run can tell, empty. Reversing ``data.message || data.error`` in
 all twelve -- putting the machine-readable code back in front of the
-sentence on every form -- leaves the suite green at 5051 and the HTTP run
-green at 157/157, and takes this one down to twenty of the sixty-seven
-checks it held when that was measured.
+sentence on every form -- leaves the suite green at 5171 and the HTTP run
+green at 159/159, and takes this one down to twenty of the sixty-seven
+checks it held when that was measured. The suite size and the HTTP figure
+are the live ones, kept by `test_the_documented_suite_size` and by the
+smoke run's own `EXPECTED_CHECKS`; sixty-seven is the number this file held
+on the day the reversal was tried, and is left where it is.
 
 Run it by hand, as ``smoke_test.py`` is run:
 
     uv run python tests/live/browser_test.py
 
-It is not collected by pytest (``python_files = "test_*.py"`` does not match
-the name) and is not part of CI: a browser is a new kind of run, and the
-decision to add one to CI is not this file's to make.
+It is not collected by pytest (``python_files = "test_*.py"`` does not
+match the name). It *is* part of CI, on the clean half of the matrix only:
+the workflow installs Chromium and runs this file, and skips it on the
+hostile half because the run reads nothing from the environment and
+Chromium is a hundred megabytes to fetch for the same answer. This
+paragraph used to say the decision was not yet made; it has been.
 
 The server is a real one on a real port, because that is the whole point --
 a test client cannot execute a script. The database is a file in a

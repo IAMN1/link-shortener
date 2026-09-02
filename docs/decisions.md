@@ -103,8 +103,8 @@ which reads the URL, rather than `DATABASE_TYPE`.
 
 **Why.** With an explicit `DATABASE_URL` the parts are not read at all, so
 `DATABASE_TYPE` kept saying `sqlite` while the service ran on PostgreSQL —
-and the SQLite-only branches (foreign-key enforcement, connect args) were
-chosen by that stale value.
+and the branches that turn on the engine — SQLite's foreign-key
+enforcement, PostgreSQL's connect args — were chosen by that stale value.
 
 ### Shared in-memory databases are named through `DATABASE_URL` only
 
@@ -344,9 +344,10 @@ case calls either. They exist so the suite can see what an atomic write
 did.
 
 **Why they look dead.** Production spends a confirmation through `claim`,
-which finds and marks the row in one conditional `UPDATE`, and folds the
+where a conditional `UPDATE` filtered on `used_at IS NULL` is what decides
+— the read beside it only fetches the owner to hand back — and folds the
 visit days through `roll_up_days`, which writes one row per link per day
-from a `GROUP BY`. Both answer a count, not a row. Grep for callers of
+from a `GROUP BY` and answers a count. Neither hands back the entity. Grep for callers of
 either read outside `tests/` and there are none — which is the shape a
 dead method has.
 
@@ -711,9 +712,13 @@ entry's own fix that made it — found by walking the perimeter again
 afterwards rather than by any test.
 
 **What it costs.** A caller holding `stats:view_basic` and not
-`link:view_own` can no longer ask for `scope=mine`. No seeded role is in
-that position — `user` and `analyst` carry both — which is exactly why
-every branch is asserted rather than left true by accident.
+`link:view_own` can no longer ask for `scope=mine`. `user` and `analyst`
+carry both, so the pages written for them are unaffected. Two seeded roles
+are in that position: `guest`, for which `scope=mine` means nothing, and
+`auditor` — a sign-in role that may read the journals and owns no links, so
+asking about its own traffic is a question with no answer either way. Every
+branch is asserted rather than left true by accident for exactly this
+reason.
 
 ---
 
@@ -737,8 +742,10 @@ there. `no-store` rather than `no-cache`, because `no-cache` permits the
 browser to keep the entity and revalidate — and history navigation is
 exactly the case where it does not revalidate.
 
-Anonymous responses are left cacheable, and so are static files even for a
-signed-in visitor: the stylesheet, the font and the vendored navigation
+Anonymous responses are left cacheable — with one exception, the answer
+whose deletion token matched, which carries figures belonging to one caller
+and is marked `no-store` before the anonymous branch is reached — and so
+are static files even for a signed-in visitor: the stylesheet, the font and the vendored navigation
 library are the same bytes for everyone and are asked for on every page.
 Marking them would re-fetch a quarter of a megabyte per navigation to
 protect files handed to anyone who asks.
@@ -760,8 +767,9 @@ page carries its code in the address, which is the one that matters here.
 inline `<script>`, the JSON block carrying the translated strings. Excusing
 it with `'unsafe-inline'` excuses every injected script along with it, which
 is the same as having no `script-src` at all. The nonce is 128 bits from
-`secrets.token_urlsafe`, minted in `before_request` so the markup and the
-header cannot disagree — a page whose nonce the header does not name is a
+`secrets.token_urlsafe`, minted by the context processor that hands it to
+the template and read back out of `g` by the `after_request` that writes
+the header, so the markup and the header cannot disagree — a page whose nonce the header does not name is a
 page whose script is refused silently, in the browser and nowhere else.
 
 **What `style-src` keeps, and why.** `'unsafe-inline'`, alone among the
@@ -788,7 +796,11 @@ cookies carrying `httponly`, `secure` and `samesite="Strict"`.
 **What it cost the test run.** `browser_test.py` waited on pages with
 `page.wait_for_function`, which evaluates a string as JavaScript inside the
 page — `script-src` without `'unsafe-eval'` refuses it, and every one of
-the fifteen waits died. They poll through Playwright's own protocol now.
+the fifteen waits died. The page waits go through a helper of the run's
+own now, which polls through Playwright's protocol rather than evaluating
+a string. One direct `page.wait_for_function` came back with the QR
+checks; the helper's own docstring still states the rule it is an
+exception to.
 Loosening the policy to let the run through was the other way, and it would
 have meant the run measuring a policy no deployment would use.
 
@@ -927,30 +939,39 @@ retention sweep and the daily roll-up already delete. What it holds is the
 network the request came from, never a whole address — the value object
 zeroes the host part before it ever reaches here.
 
-### A trailing dot is dropped where the address is read
+### The root form of a name is admitted, and reduced to the name
 
-**Decided** (2026-08-27): `_as_ip_address` drops a single trailing dot
-before deciding whether a host is an address, and the line stays although
-no URL can reach it.
+**Decided** (2026-08-27, revised 2026-09-02): a single trailing dot is
+dropped wherever the host is read, and `http://example.com./x` is
+accepted as the address it spells.
 
-**Why it looks dead.** `_validate_netloc` runs first and refuses
-`http://8.8.8.8./x` as an empty label, so the constructor never gets that
-far. Measured: the line has no coverage from the whole suite, and every
-URL with a trailing dot is refused with `Empty label in host`.
+**What it was.** `_as_ip_address` dropped the dot and nothing could reach
+that line: `_validate_host` split the name on its dots, found an empty
+last label and refused every fully qualified spelling as `Empty label in
+host` — a wrong answer given for a wrong reason, since `example.com.` is
+what a resolver and every browser accept. The entry recorded that as a
+guard kept for a case nothing could produce.
 
-**What it does if it is reached.** Asked of the reader directly:
-`_as_ip_address("127.0.0.1.")` answers `127.0.0.1`. Without the dot
-dropped, the last label is empty, `_ends_in_number("")` is false, and the
-reader calls the host a **name** — at which point the internal-address
-check never looks at it. So admitting a trailing dot upstream, which is
-one line in a different method and a reasonable thing to want (it is the
-root form of a name, and browsers accept it), would open the loopback.
-The guard is what stands between those two facts, and nothing but the
-order of two methods keeps it shut today.
+**What it is.** `_without_root_label` is called from two places:
+`_validate_host`, so the name is admitted, and `_to_ascii_host`, which is
+what `_validate_public_target` reads the address out of and what
+`normalize` builds the stored form from. The second is the load-bearing
+one, and it is why this could not be a one-line change in `_validate_host`
+alone: left on, the dot makes `127.0.0.1.` end in an empty label, the
+address reader calls the host a **name**, and the internal-address check
+never looks at it — the trailing dot would open the loopback, in one line,
+in a different file. Dropped in `_to_ascii_host` as well, the reader sees
+`127.0.0.1` and refuses it. Exactly one dot: `example.com..` really does
+carry an empty label and is still refused.
 
-**What is held instead of achieved.** Three tests ask the reader directly
-— the loopback, a public address, and a name — and a fourth states what a
-caller actually gets, so the guard is not mistaken for the behaviour.
+**What it also buys.** `normalize` now hashes the two spellings alike, so
+one destination gets one link and one short code rather than two.
+
+**What holds it.** `TestAHostWithATrailingDot` asks the reader directly
+(the loopback, a public address, a name), asks the constructor for the
+admitted case and for the deduplication, and parametrises eight internal
+targets written with a trailing dot — the whole risk of admitting it,
+pinned.
 
 ### Four methods the domain no longer carries
 
@@ -995,16 +1016,184 @@ the easier one to reach for — the shape of every "the role was removed and
 they could still do it" report. Nothing read the claim; it was written,
 carried and trusted by nobody, which is the best moment to remove one.
 
-### The URL rule is written twice, on purpose
+### The URL rule is written once, in the value object
 
-**Decided** (2026-08-10): keep two spellings of one rule — the value object
-and the Pydantic schema.
+**Decided** (2026-08-10, revised): the rule about what a URL may be lives
+in `OriginalUrl` and nowhere else. `CreateShortLinkRequest.url` is a plain
+`str` — no `HttpUrl`, no `AnyUrl`, no field validator.
 
-**Why.** They answer different questions at different moments: the schema
-refuses malformed input at the edge with a field-level message, the value
-object guarantees the invariant for every path that did not come through
-HTTP. Collapsing them would mean either a domain that trusts its callers or
-an API whose validation errors name no field.
+**Why the second spelling went.** It was kept on the reasoning that the
+schema refuses malformed input at the edge with a field-level message
+while the value object guarantees the invariant for every path that did
+not come through HTTP. What that costs is two rules that can disagree, and
+`web/schemas/strict.py` states the settled version of the argument for the
+address field beside it: "the rule lives in `Email` … two spellings of one
+rule is how they start to disagree." The domain error carries `field="url"`
+through `handle_domain_validation`, so the answer still names the field —
+which was the half the edge spelling was there for.
+
+**Where two spellings are still kept, and why that is not this.** A role's
+name and description are bounded in `role_policy` *and* in the admin
+schema, because roles arrive through a second door — `flask db
+load-custom-roles` reads a YAML file and never meets a schema. A URL has
+no such second door that the value object does not already stand in.
+
+### The one header that speaks for the visit after this one
+
+**Decided** (2026-08-30): the response carries
+`Strict-Transport-Security: max-age=31536000` wherever `USE_HTTPS` is on,
+and carries nothing where it is off. `HSTS_MAX_AGE` sets the number and `0`
+switches it off. No `includeSubDomains`, no `preload`.
+
+**Why it was missing and why that mattered.** Five headers were sent and
+this was not one of them. The five say what a page that already loaded may
+do; this one is about the request *before* the page — the first of a later
+visit, which a browser makes over `http://` unless it was told otherwise.
+`COOKIE_SECURE` already keeps the session out of that request, so the
+answer to "what leaks" is nothing. What is lost is the visit itself, to
+whoever answered instead of this service.
+
+**Why conditional on `USE_HTTPS`.** Sent from a plain-HTTP origin the
+header is ignored, which makes it harmless and useless at once — but not
+in a development run. A browser that once reached the same origin over TLS
+remembers, and afterwards refuses plain `http://localhost` for as long as
+the max-age says, with the run no longer there to tell it otherwise. The
+condition is what keeps the header out of every profile that is not
+actually behind TLS.
+
+**Why a year.** The window is not "how long a session lasts" but "how long
+until this browser's next first request". A month covers people who come
+back this month, which is the wrong set: the visitor the header exists for
+is the one who has not been here in a while and types the address without
+a scheme.
+
+**Why `0` rather than a boolean.** A deployment whose reverse proxy sends
+the header needs a way to stop this one, not a way to duplicate it: two
+`Strict-Transport-Security` headers are not additive, and a browser reads
+the first. Caddy sends one by default. One number expresses "off", "the
+default" and "something else" without a second setting to disagree with it.
+
+**What was left out, deliberately.** `includeSubDomains` speaks for every
+sibling on the domain — several of which may have no TLS at all, and none
+of which this service knows about. `preload` is recorded in the browsers
+themselves and takes months to undo, which makes it a decision about the
+domain rather than about this application. A deployment that wants either
+has a proxy in front of it and can say so there, where whoever sets it owns
+the whole domain.
+
+**What holds it.** Four tests in
+`tests/unit/web/test_middleware/test_security_headers.py`, and each half of
+the condition has its own: sending the header unconditionally reddens the
+two that check it is absent, and never sending it reddens the two that
+check it is present.
+
+
+### A deployed profile allows no origin it was not given
+
+**Decided** (2026-08-30): `CORS_ORIGINS` defaults to `[]` in `staging` and
+`production`. The base default, `http://localhost:5000`, stays where it
+belongs — on the profiles served from a laptop.
+
+**What the inherited default did.** Nothing asked a deployment to revisit
+it. The profile refuses to start without five values and this was not among
+them, so a service on a real domain answered, measured:
+
+```
+Origin http://localhost:5000     -> Allow-Origin: http://localhost:5000
+                                    Allow-Credentials: true
+Origin https://maizlink.example  -> no CORS headers
+Origin https://evil.example      -> no CORS headers
+```
+
+The allowance served nobody. The service's own pages are same-origin and
+consult it never; what it did allow was a page opened on that port, on any
+visitor's machine, to send requests carrying that visitor's cookies and read
+the answers back. Unsafe methods still meet CSRF, so the reach is reading —
+which for this service includes an account's own links and statistics.
+
+**Why empty is not closed.** `csrf.py` adds `BASE_URL` to the origins it
+admits, so forms keep working with nothing named. Measured with
+`CORS_ORIGINS` empty and `DOMAIN=maizlink.example`: a signed-in form post
+from `https://maizlink.example` answered 201, the same post from
+`https://evil.example` answered 403. A deployment with a separate front-end
+names its origin the way it names every other setting.
+
+**What holds it.** `test_deployed_profiles_name_no_origin.py`, which asks
+both deployed profiles and checks the base one still names the loopback —
+the default was never the defect, inheriting it was.
+
+### An empty proxy list is said out loud, not refused
+
+**Decided** (2026-08-30): a profile that is neither `DEBUG` nor `TESTING`
+warns at startup when `TRUSTED_PROXIES` is empty. It still starts.
+
+**Why not a refusal.** The empty value has two readings and the value
+cannot tell them apart: "this service is reached directly", which is a real
+deployment and correctly configured, and "there is a proxy in front and
+nobody named it", which is the one that costs. Refusing would stop the
+first to catch the second.
+
+**What the second one costs.** `get_client_ip()` falls back to the
+connecting address, which behind a balancer is the balancer, and both the
+guest quota and the rate limiter count by it. Measured with
+`GUEST_LINK_LIMIT=3`, six visitors from six addresses through one proxy:
+empty gave `201, 201, 201, 429, 429, 429` — the fourth visitor refused on
+his first link — and `TRUSTED_PROXIES=['10.0.0.1']` gave six creations. The
+service looks healthy throughout; the quota is spent by strangers.
+
+**Why the condition is not the profile's name.** A configuration handed to
+`create_app` as an object carries no `ENV` attribute, so `env` there is the
+string `custom` for every caller that builds its configuration in code —
+which is every test and any deployment that does the same. A check written
+against `production` and `staging` would have been silent in exactly those
+places. "Deployed" is read as *neither DEBUG nor TESTING*, the same way
+`_deployed_backend_errors` reads it.
+
+**What holds it.** `test_the_empty_proxy_list_is_said_out_loud.py`. Both
+halves of the condition have a test: warning unconditionally reddens the
+local-profile check, warning never reddens the deployed one.
+
+### Both spellings of the loopback are one origin, and neither is listed
+
+**Decided** (2026-08-31): the CSRF layer derives the other spelling of a
+loopback `BASE_URL` — `localhost` from `127.0.0.1` and back, at the port
+`BASE_URL` names — and admits it alongside `BASE_URL` itself. Nothing is
+added for any other host.
+
+**Why a reader would question it.** It admits an origin the operator never
+listed. `CORS_ORIGINS` is the line a deployment sets to say which origins
+may send credentials, and here is a rule that widens it from underneath.
+That is worth an entry precisely because the widening is invisible in the
+setting.
+
+**What it fixes.** The two loopback entries the templates ship were pinned
+to port 5000. The guide tells a reader to move the published port when 5000
+is taken — and moving it put the failure back: measured on a stack
+published at 5101, `http://localhost:5101` wrote fine and
+`http://127.0.0.1:5101` answered `403 CSRF_TOKEN_INVALID` on every
+signed-in form, the logout included, which failed silently and left the
+dashboard open. Meanwhile the two stale entries for 5000, where nothing was
+listening, were still admitted. A person typing the address does not
+distinguish the two spellings; a browser does.
+
+**Why it widens nothing that matters.** The twin is derived from
+`BASE_URL`, and `BASE_URL` comes from `DOMAIN`, which both deployed
+profiles refuse to start without. A deployment therefore names a real host
+and gains no twin — measured, `DOMAIN=demo.example.com` admits neither
+spelling of the loopback. A host that merely looks like one,
+`localhost.evil.example`, is somebody else's domain and gains nothing
+either: the match is on the whole host, not a suffix. Both loopback
+spellings already reach the same process on the same machine, so admitting
+one when the other is admitted grants no reach that was not there.
+
+**What holds it.**
+`test_the_own_domain_needs_no_cors_entry.py` drives the running
+application from both spellings, at a moved port, from a real domain and
+from a lookalike host. `test_the_documents_admit_the_loopback_twin.py`
+holds the settings documents against it: both templates and
+`configuration.md` described the old failure for a day after the fix
+landed, telling the reader to name an origin the service now admits on its
+own.
 
 ---
 
@@ -1126,8 +1315,10 @@ the domain — and the domain must not import Flask-Babel: the CLI and the
 Celery worker raise the same errors with no request anywhere near them.
 
 Marking rather than a table of `code → sentence` in the web layer, because
-`VALIDATION_ERROR` is one code covering 51 different sentences. A table
-answers all 51 with one, and "Password must be at least 8 characters" is
+`VALIDATION_ERROR` is one code covering many different sentences —
+measured by walking every `raise ValidationError(...)` in `src` that does
+not name a code of its own: 67 raise sites, 54 distinct sentences. A table
+answers all 54 with one, and "Password must be at least 8 characters" is
 exactly the sentence a person needs.
 
 `template` beside `message` rather than instead of it, because an f-string
@@ -1149,18 +1340,21 @@ generic one, so marking them would put the service's internals in front of
 a translator with no way to see where they appear. The exception is named
 rather than implicit: `error_handler.CODES_WORDED_FOR_THE_CLIENT` lists
 the 5xx codes whose sentence *is* written for whoever reads it, and holds
-one entry. `REGISTRATION_UNAVAILABLE` says a deployment cannot register
+two entries. `REGISTRATION_UNAVAILABLE` says a deployment cannot register
 anybody, which somebody who just pressed Register is owed in their own
 language; it is a code of its own for that reason, because it used to
 share `CONFIGURATION_ERROR` with a sentence naming a role from the
 configuration, and one code cannot have two audiences.
+`MAIL_NOT_HANDED_OFF` joined it for the same reason, from the entry on the
+administrative resend.
 
 And a refusal Werkzeug words itself keeps its English. The statuses a
 visitor here actually meets have sentences of this project's own — 400,
 403, 409, 413, 415 and 503 in `_sentence_for`, 404 and 405 in handlers of
 their own, 410 and 401 and the guest ceiling as domain errors, and the
-throttle's 429 through `ngettext` — and the web layer calls `abort()`
-nowhere, so nothing else is raised from inside it. What is left is the set
+throttle's 429 through `ngettext` — and the web layer calls `abort()` in
+one place only, `host_check.py`, whose 400 is answered by the sentence
+`_sentence_for` already carries for that status. What is left is the set
 this service does not answer with at all: 408, 422, 451, 501, 502, 504 and
 their neighbours, which arrive from Werkzeug or a proxy. Their descriptions
 are written for a developer rather than for a reader, and translating a
@@ -1180,7 +1374,8 @@ addresses at all, so the service answers identically whether every `#:` is
 right or every one of them is wrong; `tests/unit/web/test_translations.py`
 checks that the strings are marked, extracted, translated and compiled, none of
 which involves an address. Measured on 2026-08-28, before the regeneration: of
-573 addresses, 35 no longer found their own text within three lines of where
+the addresses then in the template, 35 no longer found their own text within
+three lines of where
 they pointed — `read_journal.py:299` had come to rest on a comment while the
 `N_("Authentication required")` it named had moved to 303. The remaining 16
 after it are an artefact of the check, not of the template: a `{% trans %}`
@@ -1256,10 +1451,13 @@ translator moving the value across the sentence has to know which value it
 is.
 
 **What was left open.** The whole dictionary travels with every page, so a
-page pays for sentences its own script never asks for. Measured: 1404 bytes
-in English, 4257 in Russian — Flask's `tojson` escapes non-ASCII, so every
-Cyrillic letter travels as `\uXXXX` — and 594 and 915 bytes respectively once
-`web/middleware/compression.py` has had it. Splitting the dictionary per page
+page pays for sentences its own script never asks for. Re-measured on the
+tree as it stands, at 94 keys: 3974 bytes in English, 11 896 in Russian —
+Flask's `tojson` escapes non-ASCII, so every Cyrillic letter travels as
+`\uXXXX` — and 1514 and 2230 bytes respectively once
+`web/middleware/compression.py` has had it. (It was 1404 / 4257 and 594 /
+915 when this was written, at 41 keys; the dictionary has grown, and the
+figures are re-measured rather than carried forward.) Splitting the dictionary per page
 would mean each template naming the keys its own script uses, which is the
 second list this arrangement exists to avoid.
 
@@ -1353,12 +1551,13 @@ the timer — it answers from a roll-up that gains one row a day.
 code for a holder of `stats:view_any`, and `scope=mine` for everybody else.
 
 **Why.** The tiles at the top of that page come from
-`/links/<code>/extended`, which answers the link's owner, an administrator
-and a holder of `stats:view_any` — the three named in *One link's traffic
-belongs to whoever owns the link*. The charts beneath them were fetched
-under `scope=mine` for all three, and the service applies the owner and the
-code as one condition, so the third of those three was shown a stranger's
-link reporting five visits in the tiles and none in the chart under them.
+`/links/<code>/extended`, which answers the link's owner, an administrator,
+a holder of `stats:view_any` and whoever presents that link's deletion
+token — the four named in *One link's traffic belongs to whoever owns the
+link*. The charts beneath them were fetched under `scope=mine` for all of
+them, and the service applies the owner and the code as one condition, so
+a holder of `stats:view_any` was shown a stranger's link reporting five
+visits in the tiles and none in the chart under them.
 Measured against the running stack: `/extended` answered `clicks: 5`,
 `/stats/visits?scope=mine&code=…` answered `total: 0`, and the same
 question without the owner condition answered `5`. The page's own script
@@ -1439,8 +1638,9 @@ So the two shapes say what each can honestly promise. The list is ordered
 where the ordering is computed and can be trusted; the response is a
 mapping, which is what a caller looking up one event type wants, and its
 docstring promises no order. Making the domain return a mapping would
-throw away an ordering that costs one `sorted` over at most a dozen event
-types; making the response return pairs would hand every caller an
+throw away an ordering that costs one `sorted` over at most the
+twenty-four event types that can reach the table — the vocabulary less the
+three `COUNTED_ELSEWHERE` link events; making the response return pairs would hand every caller an
 ordering the format cannot guarantee, and would complicate the one caller
 there is.
 
@@ -1532,8 +1732,8 @@ a deployment rotating from the host is entitled to have it off. And the
 second stream is untouched by any of it: gunicorn's access log goes to
 stdout and nowhere else, where the Docker `json-file` driver keeps it with
 no limit unless `DOCKER_LOG_MAX_SIZE` and `DOCKER_LOG_MAX_FILE` set one,
-which they now do for `app` and `celery_worker` and for nothing else in the
-stack.
+which they now do for the three services that write a stream of their own
+— `app`, `celery_worker` and `logrotate`.
 
 ### The worker logs where the application logs, and does not raise
 
@@ -1626,7 +1826,7 @@ way: 39 lines of 39 stamped and levelled.
 
 **What holds it.** `TestBothChainsWriteOneClock` in
 `tests/integration/infrastructure/test_records_reach_the_journals.py`, in
-four parts: each chain's stamp is parsed and bracketed against real UTC
+five parts: each chain's stamp is parsed and bracketed against real UTC
 taken around the call, the two chains are compared against each other,
 `LOG_DATE_FORMAT` is set to something no parser accepts to prove it reaches
 no file, and a record made by `celery.worker` — a logger outside this
@@ -1741,8 +1941,12 @@ for the search.*
 
 **Decided** (2026-08-18): the audit journal carried three events — a link
 created, followed, deleted — and nothing about accounts at all. It now
-carries eighteen more, through one method on `AuditLogger`
-(`log_security_event`) and a named wrapper per event above it.
+carries twenty-four more, through one method on `AuditLogger`
+(`log_security_event`) and a named wrapper per event above it. The
+enumeration below is the eighteen this entry was written for; the six
+added since are `SESSION_ENDED`, `REFRESH_TOKEN_REPLAYED`, `REGISTERED`,
+`EXPIRED_LINKS_SWEPT`, `SECURITY_HISTORY_SWEPT` and
+`ADDRESSES_NORMALISED`, each with an entry of its own further down.
 
 **Which events, by one rule.** An act that changes who may do what leaves a
 record. That admits both sign-in outcomes (`LOGIN_SUCCEEDED`,
@@ -1758,8 +1962,8 @@ the reading of a journal (`AUDIT_VIEWED`). It excludes listing accounts,
 reading one, and seeding the database: they change nothing, and a journal
 that records reads as loudly as writes buries the writes.
 
-`PERMISSION_DENIED` is the eighteenth and the one the rule as stated does
-not reach: a refusal changes nothing, which is exactly why it was missing
+`PERMISSION_DENIED` was the eighteenth and is the one the rule as stated
+does not reach: a refusal changes nothing, which is exactly why it was missing
 for as long as it was. It is admitted by the reading below — what was
 attempted and refused is what an investigation is opened over — and it is
 written from the error handler rather than from a wrapper a caller
@@ -1855,14 +2059,17 @@ second is the one that may mean the intrusion already happened. The two
 readers are different people, and `audit:view` is what separates them.
 
 **Reading a journal is recorded, but polling it is not.** The viewer polls
-every five seconds. A record per read would put twelve lines a minute into
-the journal being displayed, each of which is then displayed, pushing out
+every ten seconds by default, and five is one of the six intervals it
+offers. A record per read would put six lines a minute into the journal
+being displayed, and twelve at the fastest setting, each of which is then displayed, pushing out
 the lines the reader came for — the same reflection the read's own
 `log.debug` was already dropped to `debug` to avoid. What is recorded is
 the act of going to look: opening the page, switching journals, reaching
-into the archives. The refresh marks itself with `follow=true` and is not
-recorded; every other control on the page reloads with `follow=false`, and
-that flag decides on its own.
+into the archives — and pressing Refresh, which is a reading like any
+other. What is not recorded is the timer: it is the one caller that sends
+`follow=true`, and that flag decides on its own. Refresh binds
+`load(false)` deliberately, so a person going back to look is on the
+record while a page left open is not.
 
 It did not at first. This entry said that a request naming the archives was
 recorded whatever it claimed about itself, on the reasoning that the page
@@ -1877,7 +2084,9 @@ and the reader takes whichever they find first.
 **What looking at it changed.** Two things the suite had no opinion about.
 Masking applied only to the call's fields left binding as a way around it:
 an address bound as `email` reached the record whole on the standard
-adapter, whose `_log` merges the bound fields *after* the event's — the
+adapter, whose `_log` merges the bound fields *before* the event's, so a
+bound value reaches the record untouched unless the mask is applied to the
+merged whole — the
 same defect the link events had been fixed for, reintroduced on the new
 method. And the first live run of the sign-in events recorded four of the
 five outcomes: the fifth request came back `CSRF_TOKEN_INVALID`, because
@@ -2079,18 +2288,23 @@ routes that happen to refuse inside a use case, and not on the routes that
 refuse in a decorator, which is most of them.
 
 **Why a class and not a code.** Because not every 403 is one of these.
-"This would leave the system without an administrator" and "no account may
-wear `guest`" are refusals about the state of the service, not about who is
-asking; filed as attempted escalation they would bury the ones that are.
-The type is what lets one place tell them apart.
+"This would leave the system without an administrator" is a refusal about
+the state of the service, not about who is asking; filed as attempted
+escalation it would bury the ones that are. ("No account may wear `guest`"
+is not a 403 at all — `ROLE_NOT_ASSIGNABLE` is answered 400, because the
+request is well formed and names an operation the service does not
+perform.) The type is what lets one place tell them apart.
 
 **Why from the error handler.** It is where every `PermissionDeniedError`
-raised on a route ends up, and one writer cannot forget what eight raisers
-can — the argument `CountingAuditLogger` is built on. The limit of
-it is the CLI, which reaches `DeleteLinkUseCase` with no request and no
-error handler; a refusal there is logged by the use case and not recorded.
-That is a narrow gap: the CLI runs as whoever has a shell on the host, and
-what such a caller can do is not bounded by this application anyway.
+raised on a route ends up, and one writer cannot forget what nine raisers
+can — the argument `CountingAuditLogger` is built on. The limit of it is
+that the handler is a *route's*: a caller reaching a use case outside a
+request meets no handler. In practice the CLI does not produce one of
+these at all — `link delete` passes `enforce_ownership=False`, which is
+the only thing that would reach `_require_may_delete` — so the gap is
+narrower still than it reads. It stays stated because the CLI runs as
+whoever has a shell on the host, and what such a caller can do is not
+bounded by this application anyway.
 
 **What looking at it changed.** Two things, neither of which the suite had
 an opinion about. The first record carried `request_path` and `path` with
@@ -2108,12 +2322,12 @@ the rest of the service uses.
 **Decided** (2026-08-21): the journal viewer and the counters panel stop
 their timers on a 401 or a 403, and go on polling through anything else.
 
-**Why.** The viewer polls every five seconds, and a refusal used to change
-nothing about that: it painted the message and asked again. Harmless while
+**Why.** The viewer polls every ten seconds by default, and a refusal used
+to change nothing about that: it painted the message and asked again. Harmless while
 a refusal was recorded nowhere, and not harmless the moment one became an
 audit event — a permission withdrawn while somebody had the page open
-writes twelve lines a minute into the journal, about a reader who has
-walked away. A 500 or a dropped connection is the kind of thing that comes
+writes six lines a minute into the journal — twelve at the fastest of the
+six intervals — about a reader who has walked away. A 500 or a dropped connection is the kind of thing that comes
 back, so those keep polling; a page that gave up on the first of them would
 need reloading by hand.
 
@@ -2418,9 +2632,12 @@ when.
 service with nothing to clean would otherwise write a line an hour saying
 so, and the records that matter would sit among them.
 
-**`clean-expired` still writes nothing**, and that stays: a link that
-reached its own expiry is not somebody losing an entitlement, and the
-account that owns it is untouched.
+**`clean-expired` wrote nothing when this was decided, on the reasoning
+that a link reaching its own expiry is not somebody losing an entitlement
+and the account that owns it is untouched.** That was revised: a sweep
+that removes rows is the one act in this service that takes data away
+without an operator behind it, and `EXPIRED_LINKS_SWEPT` is written now,
+under the same "only if it removed something" rule as the sweep above.
 
 ### A missing account and a taken address answer what the spec already promised
 
@@ -2731,8 +2948,9 @@ health`, the command an operator runs at exactly that moment, ended in an
 
 That is the failure the entire failover exists to survive, arriving one
 step before failover can see it. `dockers/logrotate.conf` promises the
-opposite in as many words: "a file the application cannot write to: the
-write fails, `FailoverService` counts it in `dropped_calls`."
+opposite in as many words: "A failure here means a file the application
+may not write to: the write is refused, FailoverService counts the refusal
+in dropped_calls, and the only place to see it is /api/v1/admin/health."
 
 **Re-measured after the change**, same outage, same stack: the container
 came up `Up (healthy)`, `/health` answered **200**, and the command printed
@@ -2935,7 +3153,7 @@ operation already declares, and has no branch for a response written as a
 `$ref`.
 
 **Why.** The branch was there and never ran. Measured on the table as it
-stands: building one document puts 59 responses through the merge — 40
+stands: building one document puts 62 responses through the merge — 43
 declaring nothing under 403 or 429, 19 declaring a description of their own
 — and not one is a `$ref`. There is none under any other status code
 either. `PATHS` is written by hand in the module beside it, inline, so a
@@ -3124,7 +3342,9 @@ storing a token for an address with no account behind it, or sleeping to a
 fixed budget — the first writes rows for strangers, the second makes every
 real request as slow as the slowest one. Neither is worth it while the
 throttle stands at three requests an hour per caller — per IP while the
-caller is anonymous, which these two routes always are — and that is what
+caller is anonymous, which is how these two routes are reached in practice,
+though neither refuses a signed-in one, whom the throttle keys as
+`user:<id>` — and that is what
 the timing attack would have to be run through. Per caller, not per
 address asked about: one IP gets three requests an hour to this route
 whatever addresses it names, which is the binding constraint here. It was
@@ -3138,13 +3358,19 @@ wrote reads exactly like a documented decision.
 </details>
 
 <details>
-<summary><b>Self-registration writes no <code>USER_CREATED</code></b> — accepted 2026-08-19</summary>
+<summary><b>Self-registration writes no <code>USER_CREATED</code></b> — accepted 2026-08-19, closed since</summary>
 
-`USER_CREATED` is written when an operator makes an account, from
-`CreateUserUseCase`. An account somebody makes for themselves through
-`POST /api/v1/auth/register` is not recorded in the audit journal at all —
-the registration is in `application.log` like any other request, and the
-first audit record about that account is whatever it does next.
+**Closed by `REGISTERED`.** This was accepted as a limit and is no longer
+one: `use_cases/auth/register.py` writes `AuditEvent.REGISTERED` for an
+account that made itself, and the entry below is kept for the reasoning
+about why it could not simply be `USER_CREATED`.
+
+`USER_CREATED` is written when an operator makes an account — from
+`CreateUserUseCase` and from `flask create-user`. An account somebody made
+for themselves through `POST /api/v1/auth/register` was not recorded in the
+audit journal at all — the registration was in `application.log` like any
+other request, and the first audit record about that account was whatever
+it did next.
 
 The event is shaped for the operator's case and cannot honestly carry the
 other one: `user_id` means whoever is asking and `target_user_id` means the
@@ -3155,11 +3381,10 @@ administrator having done it, and is the opposite of what the field is for.
 
 What it would cost to fix: either a second event with its own shape, or a
 convention that `user_id` may equal `target_user_id` and means "nobody
-did". The first is worth doing when the journal is read for account
-provenance rather than for privilege changes; the second buys a record by
-making an existing field ambiguous. Left as is, and stated here, so that a
-reader of the audit journal does not take the absence of a `USER_CREATED`
-as evidence that no account was made.
+did". The first was taken — `REGISTERED`, with the account under
+`target_user_id` and no actor, exactly as `LOGIN_SUCCEEDED` carries it.
+The second was refused: it buys a record by making an existing field
+ambiguous.
 
 </details>
 
@@ -3195,8 +3420,10 @@ cannot quietly start claiming more than it does.
 `FailoverService` holds its lock while probing the primary, so a slow probe
 blocks the callers that would have used the fallback. The fix is a probe
 outside the lock with a compare-and-set afterwards; the cost is a window in
-which two probes run at once. Left as is because the probe has a timeout and
-the window is bounded by it.
+which two probes run at once. Left as is because the probe is a local call
+into a logging object rather than a request across a network — there is no
+timeout on it, and the bound is that it writes to a file rather than
+waiting on one.
 
 </details>
 
@@ -3247,8 +3474,8 @@ a time window, which needs the same store.
 there is written to `application.log` by the use case and not to the audit
 journal.
 
-Closing it means either writing the event from each raiser — eight call
-sites and the ninth forgetting, the argument `CountingAuditLogger`
+Closing it means either writing the event from each raiser — nine call
+sites and the tenth forgetting, the argument `CountingAuditLogger`
 exists to avoid — or giving the CLI an equivalent of the handler, which is
 a second place deciding what a refusal is. Left because the gap is narrow
 in the way that matters: the CLI runs as whoever has a shell on the host,
@@ -3297,160 +3524,3 @@ When a decision is made that a reader would otherwise question, add a
 section with the same three parts. The value is not the decision — it is the
 measurement behind it. An entry that says "we chose X because it is better"
 is worse than no entry: it looks like reasoning and carries none.
-
-### The one header that speaks for the visit after this one
-
-**Decided** (2026-08-30): the response carries
-`Strict-Transport-Security: max-age=31536000` wherever `USE_HTTPS` is on,
-and carries nothing where it is off. `HSTS_MAX_AGE` sets the number and `0`
-switches it off. No `includeSubDomains`, no `preload`.
-
-**Why it was missing and why that mattered.** Five headers were sent and
-this was not one of them. The five say what a page that already loaded may
-do; this one is about the request *before* the page — the first of a later
-visit, which a browser makes over `http://` unless it was told otherwise.
-`COOKIE_SECURE` already keeps the session out of that request, so the
-answer to "what leaks" is nothing. What is lost is the visit itself, to
-whoever answered instead of this service.
-
-**Why conditional on `USE_HTTPS`.** Sent from a plain-HTTP origin the
-header is ignored, which makes it harmless and useless at once — but not
-in a development run. A browser that once reached the same origin over TLS
-remembers, and afterwards refuses plain `http://localhost` for as long as
-the max-age says, with the run no longer there to tell it otherwise. The
-condition is what keeps the header out of every profile that is not
-actually behind TLS.
-
-**Why a year.** The window is not "how long a session lasts" but "how long
-until this browser's next first request". A month covers people who come
-back this month, which is the wrong set: the visitor the header exists for
-is the one who has not been here in a while and types the address without
-a scheme.
-
-**Why `0` rather than a boolean.** A deployment whose reverse proxy sends
-the header needs a way to stop this one, not a way to duplicate it: two
-`Strict-Transport-Security` headers are not additive, and a browser reads
-the first. Caddy sends one by default. One number expresses "off", "the
-default" and "something else" without a second setting to disagree with it.
-
-**What was left out, deliberately.** `includeSubDomains` speaks for every
-sibling on the domain — several of which may have no TLS at all, and none
-of which this service knows about. `preload` is recorded in the browsers
-themselves and takes months to undo, which makes it a decision about the
-domain rather than about this application. A deployment that wants either
-has a proxy in front of it and can say so there, where whoever sets it owns
-the whole domain.
-
-**What holds it.** Four tests in
-`tests/unit/web/test_middleware/test_security_headers.py`, and each half of
-the condition has its own: sending the header unconditionally reddens the
-two that check it is absent, and never sending it reddens the two that
-check it is present.
-
-
-### A deployed profile allows no origin it was not given
-
-**Decided** (2026-08-30): `CORS_ORIGINS` defaults to `[]` in `staging` and
-`production`. The base default, `http://localhost:5000`, stays where it
-belongs — on the profiles served from a laptop.
-
-**What the inherited default did.** Nothing asked a deployment to revisit
-it. The profile refuses to start without five values and this was not among
-them, so a service on a real domain answered, measured:
-
-```
-Origin http://localhost:5000     -> Allow-Origin: http://localhost:5000
-                                    Allow-Credentials: true
-Origin https://maizlink.example  -> no CORS headers
-Origin https://evil.example      -> no CORS headers
-```
-
-The allowance served nobody. The service's own pages are same-origin and
-consult it never; what it did allow was a page opened on that port, on any
-visitor's machine, to send requests carrying that visitor's cookies and read
-the answers back. Unsafe methods still meet CSRF, so the reach is reading —
-which for this service includes an account's own links and statistics.
-
-**Why empty is not closed.** `csrf.py` adds `BASE_URL` to the origins it
-admits, so forms keep working with nothing named. Measured with
-`CORS_ORIGINS` empty and `DOMAIN=maizlink.example`: a signed-in form post
-from `https://maizlink.example` answered 201, the same post from
-`https://evil.example` answered 403. A deployment with a separate front-end
-names its origin the way it names every other setting.
-
-**What holds it.** `test_deployed_profiles_name_no_origin.py`, which asks
-both deployed profiles and checks the base one still names the loopback —
-the default was never the defect, inheriting it was.
-
-### An empty proxy list is said out loud, not refused
-
-**Decided** (2026-08-30): a profile that is neither `DEBUG` nor `TESTING`
-warns at startup when `TRUSTED_PROXIES` is empty. It still starts.
-
-**Why not a refusal.** The empty value has two readings and the value
-cannot tell them apart: "this service is reached directly", which is a real
-deployment and correctly configured, and "there is a proxy in front and
-nobody named it", which is the one that costs. Refusing would stop the
-first to catch the second.
-
-**What the second one costs.** `get_client_ip()` falls back to the
-connecting address, which behind a balancer is the balancer, and both the
-guest quota and the rate limiter count by it. Measured with
-`GUEST_LINK_LIMIT=3`, six visitors from six addresses through one proxy:
-empty gave `201, 201, 201, 429, 429, 429` — the fourth visitor refused on
-his first link — and `TRUSTED_PROXIES=['10.0.0.1']` gave six creations. The
-service looks healthy throughout; the quota is spent by strangers.
-
-**Why the condition is not the profile's name.** A configuration handed to
-`create_app` as an object carries no `ENV` attribute, so `env` there is the
-string `custom` for every caller that builds its configuration in code —
-which is every test and any deployment that does the same. A check written
-against `production` and `staging` would have been silent in exactly those
-places. "Deployed" is read as *neither DEBUG nor TESTING*, the same way
-`_deployed_backend_errors` reads it.
-
-**What holds it.** `test_the_empty_proxy_list_is_said_out_loud.py`. Both
-halves of the condition have a test: warning unconditionally reddens the
-local-profile check, warning never reddens the deployed one.
-
-### Both spellings of the loopback are one origin, and neither is listed
-
-**Decided** (2026-08-31): the CSRF layer derives the other spelling of a
-loopback `BASE_URL` — `localhost` from `127.0.0.1` and back, at the port
-`BASE_URL` names — and admits it alongside `BASE_URL` itself. Nothing is
-added for any other host.
-
-**Why a reader would question it.** It admits an origin the operator never
-listed. `CORS_ORIGINS` is the line a deployment sets to say which origins
-may send credentials, and here is a rule that widens it from underneath.
-That is worth an entry precisely because the widening is invisible in the
-setting.
-
-**What it fixes.** The two loopback entries the templates ship were pinned
-to port 5000. The guide tells a reader to move the published port when 5000
-is taken — and moving it put the failure back: measured on a stack
-published at 5101, `http://localhost:5101` wrote fine and
-`http://127.0.0.1:5101` answered `403 CSRF_TOKEN_INVALID` on every
-signed-in form, the logout included, which failed silently and left the
-dashboard open. Meanwhile the two stale entries for 5000, where nothing was
-listening, were still admitted. A person typing the address does not
-distinguish the two spellings; a browser does.
-
-**Why it widens nothing that matters.** The twin is derived from
-`BASE_URL`, and `BASE_URL` comes from `DOMAIN`, which both deployed
-profiles refuse to start without. A deployment therefore names a real host
-and gains no twin — measured, `DOMAIN=demo.example.com` admits neither
-spelling of the loopback. A host that merely looks like one,
-`localhost.evil.example`, is somebody else's domain and gains nothing
-either: the match is on the whole host, not a suffix. Both loopback
-spellings already reach the same process on the same machine, so admitting
-one when the other is admitted grants no reach that was not there.
-
-**What holds it.**
-`test_the_own_domain_needs_no_cors_entry.py` drives the running
-application from both spellings, at a moved port, from a real domain and
-from a lookalike host. `test_the_documents_admit_the_loopback_twin.py`
-holds the settings documents against it: both templates and
-`configuration.md` described the old failure for a day after the fix
-landed, telling the reader to name an origin the service now admits on its
-own.

@@ -1,6 +1,6 @@
 # Testing
 
-**5051 tests**, 98.67% coverage against a floor of 88%, plus two live runs
+**5171 tests**, 98.65% coverage against a floor of 88%, plus two live runs
 pytest does not collect. This page is how to run them and what each level is
 actually for.
 
@@ -276,7 +276,10 @@ Both now raise `tests/live/mail_catcher.py`, an SMTP server on the loopback,
 point the mailer at it, and take the link out of the delivered message.
 
 Measured by pointing `VERIFY_PATH` at a path nothing answers: the HTTP run
-gives 94/159, the browser run 19/69.
+gives 93/159, the browser run 19/69. Both halves are remeasured when a run
+changes size — the numerator is not arithmetic on the old one, and it does
+not follow the denominator: the same breakage moved the HTTP figure by one
+while the browser figure did not move at all.
 
 The link has to be **opened**, not parsed. The message now leads to a page
 whose button posts the token, which tempted the HTTP run into extracting the

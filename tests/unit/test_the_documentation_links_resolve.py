@@ -1,6 +1,6 @@
 """Every link between these documents, and every anchor one points at.
 
-There are 147 of them across nineteen files and nothing read any. A broken
+There are 154 of them across sixteen files and nothing read any. A broken
 one is invisible from inside the repository -- the markdown renders, the
 text reads the same, and the failure appears only when somebody clicks it
 on GitHub and lands on a 404 or at the top of the right page instead of the
