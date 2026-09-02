@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, Optional
 import secrets
 import uuid
 import bcrypt
 import jwt
 
-from link_shortener.application import AuthenticationService, UnitOfWork
+from link_shortener.application import UnitOfWorkFactory, AuthenticationService
 from link_shortener.application.dtos.auth import RefreshedTokens
 from link_shortener.domain import User, Email, RefreshSession
+from link_shortener.domain.exceptions import RefreshTokenReplayedError
 from link_shortener.domain.policies.password_policy import validate_password
 
 
@@ -23,7 +24,7 @@ class JwtAuthenticationService(AuthenticationService):
     """
     def __init__(
         self,
-        uow_factory: Callable[[], UnitOfWork],
+        uow_factory: UnitOfWorkFactory,
         secret_key: str,
         access_expire_minutes: int,
         refresh_expire_days: int,
@@ -57,7 +58,7 @@ class JwtAuthenticationService(AuthenticationService):
         if self._decoy_hash is None:
             self._decoy_hash = self.hash_password(secrets.token_urlsafe(16))
         return self._decoy_hash
-    
+
     def hash_password(self, plain: str) -> str:
         """
         Hash a plain-text password using bcrypt.
@@ -103,7 +104,7 @@ class JwtAuthenticationService(AuthenticationService):
             )
         except ValueError:
             return False
-    
+
     def authenticate(self, email: str, password: str) -> Optional[User]:
         """
         Verify a password against an account.
@@ -134,7 +135,7 @@ class JwtAuthenticationService(AuthenticationService):
                 return None
             # Return a detached entity (session will be closed).
             return user
-    
+
     def _create_token(
         self,
         user: User,
@@ -146,9 +147,17 @@ class JwtAuthenticationService(AuthenticationService):
         """
         Internal helper to build a signed JWT.
 
-        The payload includes ``sub`` (user ID), ``email``, ``roles``,
-        standard ``exp``/``iat`` claims, and a ``type`` claim to distinguish
-        access and refresh tokens. Refresh tokens additionally carry a
+        The payload includes ``sub`` (user ID), ``email``, standard
+        ``exp``/``iat`` claims, and a ``type`` claim to distinguish
+        access and refresh tokens.
+
+        No ``roles`` claim, though there was one. Nothing decided anything
+        by it: the middleware reads the account from the database on every
+        request, which is what makes a demotion take effect at once. What
+        the claim did was look authoritative while being a snapshot up to
+        fifteen minutes stale -- the shape a wrong decision arrives in
+        later, when somebody reads roles off the token because they are
+        there. Refresh tokens additionally carry a
         ``jti`` naming the session row that can retire them; access tokens
         carry a ``sid`` naming the login they belong to, which is what makes
         them revocable at all.
@@ -166,7 +175,6 @@ class JwtAuthenticationService(AuthenticationService):
         payload = {
             "sub": user.id,
             "email": user.email.value,
-            "roles": [role.name for role in user.roles],
             "exp": datetime.now(timezone.utc) + expires_delta,
             "iat": datetime.now(timezone.utc),
             "type": token_type,
@@ -279,7 +287,7 @@ class JwtAuthenticationService(AuthenticationService):
             uow.commit()
             return revoked
 
-    
+
     REQUIRED_CLAIMS = ("exp", "sub", "type")
     """Claims a token must carry before anything else is asked of it.
 
@@ -318,15 +326,19 @@ class JwtAuthenticationService(AuthenticationService):
             return payload
         except jwt.PyJWTError:
             return None
-    
+
     def refresh_access_token(self, refresh_token: str) -> Optional[RefreshedTokens]:
         """
         Exchange a refresh token for a fresh pair, rotating the refresh token.
 
         The presented token is retired and replaced. Presenting one that was
         already spent is treated as a replay -- the honest holder and the
-        copy are indistinguishable at that point, so every session of the
-        user is revoked and both have to log in again.
+        copy are indistinguishable at that point, so the chain that token
+        belongs to is revoked and both have to sign in again. That chain
+        and no more: the account's other sessions, on its other devices,
+        are left alone, or holding one dead token would be a way to sign
+        the victim out everywhere. The reason is written again at the
+        branch that does it.
 
         Args:
             refresh_token: The refresh token.
@@ -363,6 +375,16 @@ class JwtAuthenticationService(AuthenticationService):
                 if session.replaced_by is not None:
                     uow.refresh_sessions.revoke_chain(session.chain_id)
                     uow.commit()
+                    # Raised rather than returned, so the layer that can
+                    # write a record hears about it. Returning "no" here
+                    # made a leaked credential indistinguishable from an
+                    # expiry to everything above, and the detection went
+                    # into no journal at all. What the caller is told does
+                    # not change: `RefreshSessionUseCase` catches this and
+                    # answers None.
+                    raise RefreshTokenReplayedError(
+                        user_id=user_id, chain_id=session.chain_id
+                    )
                 return None
 
             user = uow.users.find_by_id(user_id)

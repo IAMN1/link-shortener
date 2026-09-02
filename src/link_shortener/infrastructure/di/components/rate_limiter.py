@@ -1,3 +1,4 @@
+from typing import Optional
 import redis
 from link_shortener.application import RateLimiter
 from link_shortener.infrastructure.rate_limit.memory_rate_limiter import MemoryRateLimiter
@@ -36,7 +37,10 @@ class RateLimiterComponent:
         self.socket_timeout = socket_timeout
         self.logger = logger
         self.retry_interval = retry_interval
-        self._limiter = None
+        # Annotated Optional rather than inferred from this assignment: the
+        # attribute holds None until the first call builds it, and a checker
+        # told otherwise reports both the assignment and the return as errors.
+        self._limiter: Optional[RateLimiter] = None
 
     def get_rate_limiter(self) -> RateLimiter:
         """
@@ -67,5 +71,19 @@ class RateLimiterComponent:
                     retry_interval=self.retry_interval,
                 )
             else:
+                # Said out loud, as the cache, the queue and the mailer say
+                # their own fallbacks. This one was the silent exception,
+                # and it is the one whose silence costs most: the window
+                # lives in the process, so the service enforces the
+                # configured limit once per worker rather than once per
+                # deployment -- four gunicorn workers, four times the
+                # limit, with nothing in the log to say so. Measured with
+                # two limiters over one key: the first refused at the
+                # limit while the second still allowed.
+                if self.logger:
+                    self.logger.warning(
+                        "Redis is off, using the in-memory rate limiter; "
+                        "each worker enforces the limit on its own"
+                    )
                 self._limiter = MemoryRateLimiter()
         return self._limiter

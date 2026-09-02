@@ -1,31 +1,40 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Create User – Linkr{% endblock %}
+{% block title %}{{ _('Create User — MaizLink') }}{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">Create User</h1>
+<div class="dash-head">
+    <h1 class="dash-title">{{ _('Create User') }}</h1>
+    <a href="{{ url_for('dashboard.users_list') }}" class="btn btn--ghost btn--sm">{{ _('Cancel') }}</a>
+</div>
 
-<div class="card" style="max-width:480px;">
+<div class="card narrow">
     <form id="create-user-form">
         <div class="form-group">
-            <label class="form-label" for="email">Email</label>
-            <input type="email" id="email" class="form-input" required>
+            <label class="form-label" for="email">{{ _('Email') }}</label>
+            <input type="email" id="email" class="form-input" required autocomplete="off">
         </div>
         <div class="form-group">
-            <label class="form-label" for="password">Password</label>
-            <input type="password" id="password" class="form-input" required minlength="6">
+            <label class="form-label" for="password">{{ _('Password') }}</label>
+            <input type="password" id="password" class="form-input" required minlength="{{ min_password_length }}" autocomplete="new-password">
         </div>
         <div class="form-group">
-            <label class="form-label">Roles</label>
-            {% for role in roles %}
-            <label style="display:block; margin-bottom:0.25rem;">
-                <input type="checkbox" name="roles" value="{{ role.name }}"> {{ role.name }}
-            </label>
-            {% endfor %}
+            <span class="form-label">{{ _('Roles') }}</span>
+            {# A tick and its word are one target now. Every row here used to
+               carry `style="display:block; margin-bottom:0.25rem"` written
+               out by hand, and the label was not clickable. #}
+            <div class="check-list">
+                {% for role in roles %}
+                <label class="check">
+                    <input type="checkbox" name="roles" value="{{ role.name }}">
+                    <code>{{ role.name }}</code>
+                </label>
+                {% endfor %}
+            </div>
         </div>
         <div id="create-user-error" class="form-error hidden"></div>
-        <button type="submit" class="btn btn--primary btn--block mt-1">Create User</button>
+        <button type="submit" class="btn btn--primary btn--block">{{ _('Create user') }}</button>
     </form>
 </div>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/create_user.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/create_user.js') }}" defer></script>
 {% endblock %}

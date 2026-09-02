@@ -6,9 +6,10 @@ built with ``admin:view_users`` and ``admin:view_roles`` and nothing else --
 which the admin API itself can create, and the live run does create one --
 must still be refused by every route that writes.
 
-Measured with ``ADMIN_MANAGE_USERS`` swapped for ``ADMIN_VIEW_USERS`` on one
-decorator: such a role deleted an account, and its links with it, with the
-whole suite green. The two constants sit next to each other and read almost
+With ``ADMIN_MANAGE_USERS`` swapped for ``ADMIN_VIEW_USERS`` on one
+decorator, such a role deletes an account and its links with it, and
+everything else passes. The two constants sit next to each other and read
+almost
 alike, so the swap is a plausible slip rather than an invented one.
 """
 
@@ -71,7 +72,7 @@ def reader_token(app, client):
         with db.session() as session:
             session.execute(text(
                 "INSERT OR IGNORE INTO roles (id, name, description, is_system) "
-                "VALUES ('11111111-1111-1111-1111-111111111111', 'auditor', "
+                "VALUES ('11111111-1111-1111-1111-111111111111', 'admin-reader', "
                 "'reads the administration', 0)"
             ))
             for permission in READ_PERMISSIONS:

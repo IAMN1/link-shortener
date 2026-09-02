@@ -88,13 +88,3 @@ class RefreshSession:
             and self.replaced_by is None
             and expires_at > now
         )
-
-    def revoke(self, now: Optional[datetime] = None) -> None:
-        """
-        Retire the session, leaving an already-set revocation time alone.
-
-        Args:
-            now: Revocation time; defaults to the current UTC time.
-        """
-        if self.revoked_at is None:
-            self.revoked_at = now or datetime.now(timezone.utc)

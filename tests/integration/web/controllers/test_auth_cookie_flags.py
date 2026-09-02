@@ -11,7 +11,7 @@ only the response is what a browser acts on.
 
 import pytest
 
-from tests.integration.conftest import confirm_email, csrf_headers, register_and_login
+from tests.integration.conftest import confirm_email, csrf_headers
 
 
 COOKIES = ("access_token", "refresh_token")

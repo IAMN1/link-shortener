@@ -9,17 +9,20 @@ maintained by hand -- the run records which rule answered each request and
 fails if one was never reached.
 
 The administrator is made the way an operator makes the first one, by
-writing the role onto an account (`promote_to_admin`): there is no endpoint
+writing the role onto an account (`grant_role`): there is no endpoint
 for it and should not be, since the first administrator cannot be appointed
 by an administrator.
 
-Five clients, because one cannot stand for five callers. A Flask test
+Ten clients, because one cannot stand for ten callers. A Flask test
 client keeps a cookie jar, so the moment any request on it logs in, every
 later request on that client is a cookie-authenticated one -- and the CSRF
 layer refuses unsafe cookie-authenticated requests that carry no token,
 before the request reaches any logic. A single shared client therefore
 turned every later POST and DELETE into 403 and, worse, turned each
 "anonymous" check into a check on a signed-in caller.
+
+Six of them are roles a caller can be; the other four are second devices,
+and they exist because two sections replace an account's password.
 
   - ``guest``    never authenticates. It is what an anonymous caller is.
   - ``api``      authenticates with ``Authorization: Bearer`` and holds no
@@ -29,6 +32,11 @@ turned every later POST and DELETE into 403 and, worse, turned each
                  Every unsafe request on it goes through ``csrf()``.
   - ``admin``    an account with the admin role, written straight into
                  the database the way an operator makes the first one.
+  - ``auditor``  an account holding the `auditor` role: the two journal
+                 permissions and the health report, and nothing that
+                 writes. It exists because the administrator cannot stand
+                 in for it -- `admin:all` deliberately does not carry
+                 `audit:view`, so the same run needs a caller who has it.
   - ``stranger`` a second account, logged in and entitled to nothing here.
                  Without it the file has only an owner and an anonymous
                  caller, and every per-object authorization check could be
@@ -36,26 +44,43 @@ turned every later POST and DELETE into 403 and, worse, turned each
                  "logged in, but not yours" is a third answer, and it is
                  the one those checks exist to give.
 
+  - ``changer`` and ``changer_second`` are two devices of one further
+                 account, for the section that changes that account's
+                 password. Sharing the account with the sections around it
+                 would leave them unable to sign in halfway through the
+                 run; sharing one client between the two devices would make
+                 "the other device was signed out" a claim about the device
+                 that made the change.
+  - ``forgetful`` and ``forgetful_second`` are the same pair for the reset
+                 section, which replaces a password too -- and reads the
+                 link out of a delivered message, so its account also has
+                 to be the only one that was mailed anything recently.
+
 Every client answers from an address of its own, and the checks that measure
 a quota get a fresh one. The guest quota counts per address throughout; the
 rate limiter counts per address only while the caller is anonymous and
 switches to the account once one is signed in, so `session_client` and
-`api` share a bucket whatever addresses they claim. Sharing an address made
-each check the neighbour of every check that happened to precede it:
-registrations are three per hour, and the fourth scenario used to measure
-the throttle rather than what it was named after.
+`api` share a bucket whatever addresses they claim. A shared address makes
+each check the neighbour of whatever preceded it: registrations are three
+per hour, so a fourth scenario would measure the throttle rather than what
+it is named after.
 """
 
 import re
+import shutil
 import sys
+import tempfile
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from flask import request
+
+from mail_catcher import MailCatcher
 
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.web.app_factory import create_app
@@ -92,7 +117,53 @@ class LiveTestResult:
 
 
 result = LiveTestResult()
-app = create_app(config=TestingConfig())
+
+mail = MailCatcher()
+"""This run's mail server. It accepts mail and sends it nowhere."""
+
+
+journals = tempfile.mkdtemp(prefix="smoke-journals-")
+"""Where this run writes its journals, and it is its own directory.
+
+``TestingConfig`` writes none at all and leaves ``LOG_DIR`` pointing at the
+repository's own ``datas/logs``, so the journal section read whatever the
+machine happened to hold: green on a developer's tree with an old
+``application.log`` in it, and vacuous on a clean checkout, where the two
+loops over ``page["lines"]`` and ``files_read`` iterate zero times and
+assert nothing. ``browser_test.py`` names this trap and takes a directory
+of its own for it; this run did not.
+
+Removed at the end of the run, with the run's database.
+"""
+
+
+class SmokeConfig(TestingConfig):
+    """
+    The run's profile: testing as it stands, with mail on and pointed here,
+    and with journals of its own.
+
+    Without the mail half, address confirmation had to be acted out -- the
+    run issued a token itself and wrote its digest into the table itself,
+    which checks ``/api/v1/auth/verify`` against a string the service did
+    not issue. Nothing then checked that registration issues a token, that
+    the template builds the link, or that the message goes out at all.
+
+    Without the journal half, the checks on the journal reader read files
+    this run never wrote. See ``journals`` above.
+    """
+
+    MAIL_ENABLED = True
+    MAIL_HOST = "127.0.0.1"
+    MAIL_PORT = mail.port
+    MAIL_USE_TLS = False
+    MAIL_USE_SSL = False
+    MAIL_FROM = "no-reply@link-shortener.test"
+
+    LOG_TO_FILE = True
+    LOG_DIR = journals
+
+
+app = create_app(config=SmokeConfig())
 
 touched_rules = set()
 
@@ -102,9 +173,20 @@ def _record_the_rule_that_answered(response):
     """
     Note which route rule answered, so coverage is counted not claimed.
 
-    The file used to say in its own docstring how many routes it reached.
-    That number was maintained by hand and had no way of noticing a check
-    being deleted, renamed, or quietly pointed somewhere else.
+    A number stated in the docstring would be maintained by hand and could
+    not notice a check being deleted, renamed, or quietly pointed somewhere
+    else.
+
+    The path *and* the method, because six of these paths carry two of
+    them -- `GET` and `DELETE` on `/api/v1/links/<short_code>`, `GET` and
+    `POST` on `/api/v1/auth/verify`, and four more under `/admin/`.
+    Counting paths alone, those two answers were one entry: a `DELETE`
+    added to a path some `GET` already reached raised no denominator and
+    could go unchecked with the run still printing full coverage.
+
+    `HEAD` is recorded as the `GET` it mirrors. Flask serves it off the
+    `GET` rule and never registers one of its own, so leaving it as sent
+    would add a pair no denominator below has.
 
     Args:
         response: The response about to be returned.
@@ -113,7 +195,8 @@ def _record_the_rule_that_answered(response):
         The response, untouched.
     """
     if request.url_rule is not None:
-        touched_rules.add(str(request.url_rule))
+        method = "GET" if request.method == "HEAD" else request.method
+        touched_rules.add((str(request.url_rule), method))
     return response
 
 with app.app_context():
@@ -228,17 +311,24 @@ stranger = new_client("127.0.0.4")
 admin = new_client("127.0.0.5")
 
 
-def promote_to_admin(email: str) -> None:
+def grant_role(email: str, role_name: str) -> None:
     """
-    Give an account the admin role, the way an operator would.
+    Put a seeded role on an account, the way an operator would.
 
-    There is no endpoint for this and there should not be: the first
-    administrator cannot be made by an administrator. The row is written
-    directly, which is what `flask db` does and what the deployment notes
-    tell an operator to do.
+    There is no endpoint for the first of these and there should not be:
+    the first administrator cannot be made by an administrator. The row is
+    written directly, which is what `flask db` does and what the deployment
+    notes tell an operator to do.
+
+    Used for ``auditor`` as well, and for a reason worth stating: an
+    administrator *can* grant it through the API, and that is exactly the
+    path the permission split leaves open on purpose -- it leaves a record.
+    Granting it here keeps this run measuring the journals rather than
+    measuring the grant.
 
     Args:
-        email: Address of the account to promote.
+        email: Address of the account.
+        role_name: Name of a seeded role.
     """
     from sqlalchemy import text
 
@@ -250,10 +340,11 @@ def promote_to_admin(email: str) -> None:
                 {"email": email},
             ).fetchone()
             role = session.execute(
-                text("SELECT id FROM roles WHERE name = 'admin'")
+                text("SELECT id FROM roles WHERE name = :name"),
+                {"name": role_name},
             ).fetchone()
             assert user is not None, f"no account for {email}"
-            assert role is not None, "the admin role was never seeded"
+            assert role is not None, f"the {role_name} role was never seeded"
             session.execute(
                 text(
                     "INSERT OR IGNORE INTO user_roles (user_id, role_id) "
@@ -263,84 +354,101 @@ def promote_to_admin(email: str) -> None:
             )
             session.commit()
 
+def mailed_link(email: str) -> str:
+    """
+    Take the last link with a token in it out of what was mailed.
+
+    Serves both kinds of message, and the name says so: the confirmation
+    and the password reset are the same problem read the same way, and the
+    reader matches on the token rather than on a path. Which one comes
+    back is decided by which message was delivered last, which is why the
+    reset checks register their own account.
+
+    Nothing here mints a token and nothing here spells the path. The use
+    case issues the token, the template builds the link, the mailer
+    submits the message over SMTP, and this reads back exactly what was
+    delivered -- so a token that stopped being issued, a link built on a
+    path nothing answers, and a message that never left all fail here.
+
+    Rebuilding the path from a known constant would undo that: measured --
+    with the path written out here, a ``VERIFY_PATH`` changed to
+    ``/auth/verify`` still gave 114/114.
+
+    Only the path is handed back, and the origin is deliberately not
+    checked here. A test client can be given a path and nothing else, so
+    the only comparison available would be against ``BASE_URL`` -- the
+    same value the link was built from, which makes the assertion agree
+    with itself: with that check in place a ``BASE_URL`` of
+    ``http://attacker.example/`` still gives 114/114.
+
+    The host the link is built on is checked where the comparison can be
+    independent, against a ``Host`` header the caller chose:
+    ``tests/integration/web/controllers/test_confirmation_link_is_built_from_configuration.py``.
+    ``browser_test.py`` covers it from the other side, by opening the whole
+    URL in a browser.
+
+    Args:
+        email: Address the message was sent to.
+
+    Returns:
+        Path with query string, as the link carries them.
+    """
+    target = mail.confirmation_target(email)
+    assert target is not None, f"no message carrying a link reached {email}"
+    return target
+
+
+def token_from(link: str) -> str:
+    """
+    Take the token out of a mailed link, of either kind.
+
+    Args:
+        link: Path with query string, as the message carries it.
+
+    Returns:
+        The token, unescaped.
+    """
+    query = parse_qs(urlparse(link).query)
+    token = query.get("token", [""])[0]
+    assert token, f"no token in {link!r}"
+    return token
+
+
 def confirm_email(email: str) -> None:
     """
-    Mark an address as confirmed, as following the mailed link would.
+    Confirm an address the way its owner does.
 
-    Registration leaves an account unconfirmed and login refuses it until
-    the address is proven, so every account this run signs in with has to
-    get past that first. It cannot be done through the route: only the
-    digest of the token is stored, and the token exists for the length of
-    one call to the mailer -- which is a ``NullMailer`` here, because this
-    run uses the testing profile and that profile cannot send mail at all.
+    The mailed link opens a page; the page's button sends the token. So
+    this reads the token out of the delivered link and posts it, which is
+    the request that button makes. Following the link alone confirms
+    nothing on purpose -- see the checks around ``/verify``.
+
+    Every account this run signs in with has to get past the confirmation
+    first: registration leaves it unconfirmed and login refuses it until
+    the address is proven.
 
     Args:
         email: Address of the account to confirm.
     """
-    from sqlalchemy import text
+    link = mailed_link(email)
 
-    with app.app_context():
-        db = app.container.get_db_manager()
-        with db.session() as session:
-            updated = session.execute(
-                text("UPDATE users SET email_verified = 1 WHERE email = :email"),
-                {"email": email},
-            ).rowcount
-            assert updated == 1, f"no account for {email}"
-            session.commit()
-
-
-def issue_confirmation(email: str) -> str:
-    """
-    Store a confirmation for an account and hand back its raw token.
-
-    The token a real user gets arrives by mail; this run sends none, and
-    the table keeps only a digest. So the token is minted here and its
-    digest written the way registration would have written it -- which is
-    what makes the link below a real link and not a mock of one.
-
-    Args:
-        email: Address of the account.
-
-    Returns:
-        The token that opens the confirmation.
-    """
-    import uuid
-    from datetime import datetime, timedelta, timezone
-
-    from sqlalchemy import text
-
-    from link_shortener.domain.value_objects.verification_token import (
-        issue_token,
-        token_digest,
+    # The link is followed, not just parsed. Reading the token out and
+    # posting it to a path written here would confirm the address whatever
+    # the message actually said: measured -- with only the post, a
+    # ``VERIFY_PATH`` pointing at a route nothing answers left this run at
+    # 114 of 115, because every account still got confirmed. Following it
+    # first puts the link itself back in the path of every check that
+    # needs an account.
+    landing = new_client("10.0.0.98").get(link)
+    assert landing.status_code == 200, (
+        f"the mailed link answered {landing.status_code}: {link}"
     )
 
-    token = issue_token()
-    now = datetime.now(timezone.utc)
-    with app.app_context():
-        db = app.container.get_db_manager()
-        with db.session() as session:
-            user = session.execute(
-                text("SELECT id FROM users WHERE email = :email"),
-                {"email": email},
-            ).fetchone()
-            assert user is not None, f"no account for {email}"
-            session.execute(
-                text(
-                    "INSERT INTO email_verifications "
-                    "(id, user_id, token_hash, expires_at, created_at, used_at) "
-                    "VALUES (:id, :uid, :hash, :expires, :created, NULL)"
-                ),
-                {
-                    "id": str(uuid.uuid4()),
-                    "uid": user[0],
-                    "hash": token_digest(token),
-                    "expires": now + timedelta(hours=24),
-                    "created": now,
-                },
-            )
-            session.commit()
-    return token
+    token = token_from(link)
+    response = new_client("10.0.0.99").post(
+        "/api/v1/auth/verify", json={"token": token}
+    )
+    assert response.status_code == 200, response.get_json()
 
 
 GUEST_URL = "https://example.com"
@@ -365,11 +473,27 @@ def _():
     # assertions below would be measuring nothing. "cache: disabled" names
     # the absence of a cache server, not the absence of a cache -- an
     # in-memory one is running, which is what section 12 invalidates.
+    #
+    # "task_queue: inline" is the same distinction on the other side, and
+    # this line asked for "ok" until it was measured: `/health` stopped
+    # answering "ok" for a queue with no broker in `cc13cf5`, this file was
+    # last touched before it, and nothing ran the two together -- so the
+    # committed tree failed its own live check, 156 of 157, on this
+    # assertion alone.
+    #
+    # And then it happened again, on the other half of the same sentence.
+    # `0ef8070` split "disabled" into `in_process` and `disabled` for
+    # exactly the reason written three paragraphs above -- a cache in this
+    # process is not a cache that is off -- and this line went on asking
+    # for the old word. 156 of 157 again, on this assertion again, and for
+    # months: the run is not in CI's default path, so nothing said so.
+    # Corrected by the run that added the QR endpoint, which is when the
+    # two were next run together.
     assert data["components"] == {
-        "cache": "disabled",
+        "cache": "in_process",
         "database": "ok",
         "rate_limiter": "enforcing",
-        "task_queue": "ok",
+        "task_queue": "inline",
     }
 
 @test("GET /health (never throttled)")
@@ -402,32 +526,56 @@ def _():
     # answerable for one of the two.
     assert set(r.get_json()) == {"message"}
 
-@test("A fresh registration cannot sign in yet")
+@test("A fresh registration cannot sign in yet, and is told nothing extra")
 def _():
     # The account exists and the password is right; what it lacks is a
-    # confirmed address. Named apart from a wrong password on purpose --
-    # this is the one refusal the holder can act on, and only somebody who
-    # already knows the password ever sees it.
-    r = new_client("10.0.0.30").post("/api/v1/auth/login", json={
+    # confirmed address. It used to be named apart from a wrong password,
+    # on the argument that only somebody who already knows the password
+    # ever sees it -- true, and beside the point: what it told them is
+    # that the guess *landed*, which is worth having away from this
+    # service because people reuse passwords. Both answers are asked for
+    # here, because the property is that they are the same one.
+    unconfirmed = new_client("10.0.0.30").post("/api/v1/auth/login", json={
         "email": "test@example.com", "password": "Test1234!"
     })
-    assert r.status_code == 401, r.get_json()
-    assert r.get_json()["error"] == "EMAIL_NOT_VERIFIED", r.get_json()
+    wrong = new_client("10.0.0.30").post("/api/v1/auth/login", json={
+        "email": "test@example.com", "password": "NotThePassword9!"
+    })
+    assert unconfirmed.status_code == 401, unconfirmed.get_json()
+    assert unconfirmed.get_json()["error"] == "INVALID_CREDENTIALS", unconfirmed.get_json()
+    assert unconfirmed.get_json() | {"timestamp": None} == wrong.get_json() | {
+        "timestamp": None
+    }, (unconfirmed.get_json(), wrong.get_json())
 
 @test("GET /api/v1/auth/verify (a link that was never issued)")
 def _():
     r = new_client("10.0.0.31").get("/api/v1/auth/verify?token=never-issued")
     assert r.status_code == 400, r.get_json()
 
-@test("GET /api/v1/auth/verify (the real link)")
+@test("GET /verify (the mailed link lands on a page, and spends nothing)")
 def _():
-    token = issue_confirmation("test@example.com")
-    r = new_client("10.0.0.32").get(f"/api/v1/auth/verify?token={token}")
+    # The link points at a page now, not at the endpoint. Loading it must
+    # not confirm anything: mail scanners follow links, and a load that
+    # spent the token would leave its owner told that their confirmation
+    # is invalid.
+    link = mailed_link("test@example.com")
+    r = new_client("10.0.0.32").get(link)
+    assert r.status_code == 200, r.status_code
+    assert r.headers["Content-Type"].startswith("text/html"), r.headers["Content-Type"]
+    assert b"verify-btn" in r.data, "the page carries no button to press"
+
+@test("POST /api/v1/auth/verify (the real token)")
+def _():
+    # What the button on that page sends.
+    token = token_from(mailed_link("test@example.com"))
+    r = new_client("10.0.0.37").post("/api/v1/auth/verify", json={"token": token})
     assert r.status_code == 200, r.get_json()
 
-    # And once only: the same link again is refused, in the same words as
-    # a link that never existed.
-    again = new_client("10.0.0.33").get(f"/api/v1/auth/verify?token={token}")
+    # And once only: the same token again is refused, in the same words as
+    # a token that never existed.
+    again = new_client("10.0.0.33").post(
+        "/api/v1/auth/verify", json={"token": token}
+    )
     unknown = new_client("10.0.0.36").get("/api/v1/auth/verify?token=no-such")
     assert again.status_code == unknown.status_code == 400
     assert again.get_json()["message"] == unknown.get_json()["message"]
@@ -622,6 +770,237 @@ def _():
     assert r.get_json()["refresh_token"] != handed_out
 
 
+# ─── 4b. Auth: Password change ────────────────────────────────────────
+print("\n=== AUTH: PASSWORD CHANGE ===")
+
+# Its own account, registered here and used nowhere else. The checks below
+# replace its password, and an account shared with a later section would
+# be a section that stops being able to sign in halfway through the run.
+CHANGER = "changer@example.com"
+CHANGER_OLD = "Test1234!"
+CHANGER_NEW = "Changed5678!"
+
+changer = new_client("10.0.0.60")
+changer_second = new_client("10.0.0.61")
+changer_second_token = None
+
+@test("An account of its own to change the password of")
+def _():
+    global changer_second_token
+    r = changer.post("/api/v1/auth/register", json={
+        "email": CHANGER, "password": CHANGER_OLD
+    })
+    assert r.status_code == 202, r.get_json()
+    confirm_email(CHANGER)
+    r = changer.post("/api/v1/auth/login", json={
+        "email": CHANGER, "password": CHANGER_OLD
+    })
+    assert r.status_code == 200, r.get_json()
+    # A second sign-in from its own client: this is the device the change
+    # is supposed to throw out, and it has to exist before the change.
+    r = changer_second.post("/api/v1/auth/login", json={
+        "email": CHANGER, "password": CHANGER_OLD
+    })
+    assert r.status_code == 200, r.get_json()
+    changer_second_token = r.get_json()["access_token"]
+
+@test("POST /api/v1/auth/change-password (nobody signed in)")
+def _():
+    r = new_client("10.0.0.62").post("/api/v1/auth/change-password", json={
+        "current_password": CHANGER_OLD, "new_password": CHANGER_NEW
+    })
+    assert r.status_code == 401, r.get_json()
+
+@test("POST /api/v1/auth/change-password (the wrong current password)")
+def _():
+    r = changer.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "not-it", "new_password": CHANGER_NEW},
+        headers=csrf(changer),
+    )
+    assert r.status_code == 400, r.get_json()
+    # Named rather than generalised: the caller is already inside the
+    # account, so there is nothing left for a vague answer to protect.
+    assert r.get_json()["details"][0]["field"] == "current_password", r.get_json()
+
+@test("POST /api/v1/auth/change-password (the password it already has)")
+def _():
+    r = changer.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": CHANGER_OLD, "new_password": CHANGER_OLD},
+        headers=csrf(changer),
+    )
+    assert r.status_code == 400, r.get_json()
+
+@test("POST /api/v1/auth/change-password (a password the policy refuses)")
+def _():
+    r = changer.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": CHANGER_OLD, "new_password": "123"},
+        headers=csrf(changer),
+    )
+    assert r.status_code == 400, r.get_json()
+
+@test("POST /api/v1/auth/change-password (the change takes)")
+def _():
+    r = changer.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": CHANGER_OLD, "new_password": CHANGER_NEW},
+        headers=csrf(changer),
+    )
+    assert r.status_code == 200, r.get_json()
+    assert set(r.get_json()) == {"access_token", "refresh_token"}
+
+    # The password afterwards is the new one and not the old one, asked
+    # from a client that was never signed in as anybody.
+    refused = new_client("10.0.0.63").post("/api/v1/auth/login", json={
+        "email": CHANGER, "password": CHANGER_OLD
+    })
+    assert refused.status_code == 401, refused.get_json()
+    accepted = new_client("10.0.0.64").post("/api/v1/auth/login", json={
+        "email": CHANGER, "password": CHANGER_NEW
+    })
+    assert accepted.status_code == 200, accepted.get_json()
+
+@test("A password change signs out the other devices, not this one")
+def _():
+    # The other device's token is still a validly signed claim; what
+    # stopped it is that the session it names has been revoked.
+    r = changer_second.get(
+        "/api/v1/links/mine",
+        headers={"Authorization": f"Bearer {changer_second_token}"},
+    )
+    assert r.status_code == 401, r.status_code
+    # And it cannot refresh its way back in.
+    r = changer_second.post(
+        "/api/v1/auth/refresh", headers=csrf(changer_second)
+    )
+    assert r.status_code == 401, r.status_code
+    # The client that made the change kept working, on the cookies the
+    # answer replaced -- with no token echoed here at all.
+    r = changer.get("/api/v1/links/mine")
+    assert r.status_code == 200, r.status_code
+
+
+# ─── 4c. Auth: Password reset by mail ─────────────────────────────────
+print("\n=== AUTH: PASSWORD RESET ===")
+
+# Its own account again, and for the same reason: these checks replace its
+# password, so an account shared with a later section would be one that
+# stops being able to sign in halfway through the run.
+FORGETFUL = "forgetful@example.com"
+FORGETFUL_OLD = "Test1234!"
+FORGETFUL_NEW = "Remembered9!"
+
+forgetful = new_client("10.0.0.70")
+forgetful_second = new_client("10.0.0.71")
+forgetful_second_token = None
+reset_link = None
+
+@test("An account of its own to reset the password of")
+def _():
+    global forgetful_second_token
+    r = forgetful.post("/api/v1/auth/register", json={
+        "email": FORGETFUL, "password": FORGETFUL_OLD
+    })
+    assert r.status_code == 202, r.get_json()
+    confirm_email(FORGETFUL)
+    # A device that is signed in when the reset happens, so that "every
+    # session goes" is a claim about something that existed.
+    r = forgetful_second.post("/api/v1/auth/login", json={
+        "email": FORGETFUL, "password": FORGETFUL_OLD
+    })
+    assert r.status_code == 200, r.get_json()
+    forgetful_second_token = r.get_json()["access_token"]
+
+@test("GET /forgot-password (the page that asks for a link)")
+def _():
+    r = new_client("10.0.0.72").get("/forgot-password")
+    assert r.status_code == 200, r.status_code
+    assert b"forgot-form" in r.data, "the page carries no form to submit"
+
+@test("POST /api/v1/auth/forgot-password (an address nobody holds)")
+def _():
+    # Answers the same as for a registered one, word for word. A route
+    # that mails on request and answers honestly says who is registered.
+    unknown = new_client("10.0.0.73").post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "nobody-here@example.com"},
+    )
+    known = new_client("10.0.0.74").post(
+        "/api/v1/auth/forgot-password", json={"email": FORGETFUL}
+    )
+    assert unknown.status_code == 202, unknown.get_json()
+    assert known.status_code == unknown.status_code
+    assert known.get_json()["message"] == unknown.get_json()["message"]
+
+@test("GET /reset-password (the mailed link lands on a page, and spends nothing)")
+def _():
+    global reset_link
+    # Read back out of the message that was delivered, path and all. A
+    # path written here instead would pass a `RESET_PATH` pointing
+    # anywhere -- which is exactly how the confirmation link was measured.
+    reset_link = mailed_link(FORGETFUL)
+    r = new_client("10.0.0.75").get(reset_link)
+    assert r.status_code == 200, r.status_code
+    assert r.headers["Content-Type"].startswith("text/html"), r.headers["Content-Type"]
+    assert b"reset-form" in r.data, "the page carries no form to submit"
+
+@test("POST /api/v1/auth/reset-password (a token nobody issued)")
+def _():
+    r = new_client("10.0.0.76").post(
+        "/api/v1/auth/reset-password",
+        json={"token": "never-issued", "new_password": FORGETFUL_NEW},
+    )
+    assert r.status_code == 400, r.get_json()
+
+@test("POST /api/v1/auth/reset-password (the real token)")
+def _():
+    token = token_from(reset_link)
+    r = new_client("10.0.0.77").post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": FORGETFUL_NEW},
+    )
+    assert r.status_code == 200, r.get_json()
+    # Nobody was signed in by it: the account was just opened by a link
+    # out of a mailbox, and the first thing it should ask for is the
+    # password that was chosen.
+    assert "access_token" not in r.get_json()
+
+    # And once only. The same token again is refused in the same words as
+    # one that never existed -- "already used" would say an account exists
+    # and somebody reset it.
+    again = new_client("10.0.0.78").post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "Third1234!"},
+    )
+    unknown = new_client("10.0.0.79").post(
+        "/api/v1/auth/reset-password",
+        json={"token": "no-such-token", "new_password": "Third1234!"},
+    )
+    assert again.status_code == unknown.status_code == 400
+    assert again.get_json()["message"] == unknown.get_json()["message"]
+
+@test("A reset replaces the password and signs out every device")
+def _():
+    refused = new_client("10.0.0.80").post("/api/v1/auth/login", json={
+        "email": FORGETFUL, "password": FORGETFUL_OLD
+    })
+    assert refused.status_code == 401, refused.get_json()
+    accepted = new_client("10.0.0.81").post("/api/v1/auth/login", json={
+        "email": FORGETFUL, "password": FORGETFUL_NEW
+    })
+    assert accepted.status_code == 200, accepted.get_json()
+
+    # The device that was signed in before the reset. Its access token is
+    # still a validly signed claim; the session it names is gone.
+    r = forgetful_second.get(
+        "/api/v1/links/mine",
+        headers={"Authorization": f"Bearer {forgetful_second_token}"},
+    )
+    assert r.status_code == 401, r.status_code
+
+
 # ─── 5. Shorten: Guest ────────────────────────────────────────────────
 print("\n=== SHORTEN: GUEST ===")
 
@@ -804,6 +1183,23 @@ def _():
     r = guest.post("/api/v1/batch/shorten", json={})
     assert r.status_code == 400
 
+@test("POST /api/v1/batch/shorten (a refused item names its code)")
+def _():
+    # The fourth of the five requests a minute this address is allowed
+    # here, and the last one this section spends.
+    #
+    # A per-item refusal reads the way the error envelope does: `error` is
+    # the code, `message` is the sentence. It used to hold the sentence
+    # under the envelope's name for the code, so the only way to tell a
+    # malformed URL from a spent quota was to match on text -- text that
+    # changes with the reader's language.
+    r = guest.post("/api/v1/batch/shorten", json={"urls": ["not-a-url"]})
+    assert r.status_code == 200
+    item = r.get_json()["results"][0]
+    assert item["success"] is False
+    assert item["error"] == "VALIDATION_ERROR"
+    assert item["message"] and item["message"] != item["error"]
+
 
 # ─── 10. Authenticated: Create link ────────────────────────────────────
 print("\n=== AUTHENTICATED: CREATE LINK ===")
@@ -979,9 +1375,8 @@ print("\n=== STATS ===")
 def _():
     # Asked first, and by nobody: the seeded 'guest' role carries
     # stats:view_basic, so this endpoint has no authenticated path to speak
-    # of. Its OpenAPI entry used to declare a 401 that could not happen;
-    # the owner decided on 2026-08-09 that the totals stay public, and the
-    # entry was brought to the code rather than the other way round.
+    # of, and its OpenAPI entry declares no 401: the totals are public by
+    # decision, and the entry follows the code.
     #
     # The totals live here rather than on the authenticated check below
     # because this is the read that computes them. The next one is served
@@ -1023,6 +1418,37 @@ def _():
     r = api.get("/api/v1/stats/mine", headers=auth_headers)
     assert r.status_code == 200
     assert r.get_json()["total_clicks"] == 3
+
+@test("GET /api/v1/stats/visits (the redirects of this run are in it)")
+def _():
+    # The counter and the chart are written in one transaction, so they
+    # have to agree: this run has redirected three times by now, and both
+    # `/stats/mine` above and this endpoint must say so.
+    r = api.get("/api/v1/stats/visits?period=24h")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["total"] >= 3, body
+    assert len(body["buckets"]) == 24
+    assert sum(bucket["total"] for bucket in body["buckets"]) == body["total"]
+    # A short code is somebody's link: naming one needs stats:view_full,
+    # which the guest role does not carry.
+    assert body["top_links"] == []
+
+@test("GET /api/v1/stats/visits/daily (one entry per day, ending today)")
+def _():
+    r = api.get("/api/v1/stats/visits/daily?days=7")
+    assert r.status_code == 200
+    days = r.get_json()["days"]
+    assert len(days) == 7, days
+    # Today, not tomorrow: the span runs to midnight tonight.
+    today = datetime.now(timezone.utc).date().isoformat()
+    assert days[-1]["at"].startswith(today), days[-1]
+
+@test("GET /api/v1/stats/visits (a period nobody offers)")
+def _():
+    r = api.get("/api/v1/stats/visits?period=forever")
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "VALIDATION_ERROR"
 
 
 # ─── 13. Delete link ───────────────────────────────────────────────────
@@ -1098,7 +1524,7 @@ def _():
         "email": "admin@example.com", "password": "Test1234!"
     })
     assert r.status_code == 202, r.get_json()
-    promote_to_admin("admin@example.com")
+    grant_role("admin@example.com", "admin")
     confirm_email("admin@example.com")
 
     # Signed in here rather than at registration: registration issues no
@@ -1160,6 +1586,74 @@ def _():
     )
     assert r.status_code == 200
     assert sorted(r.get_json()["roles"]) == ["analyst", "user"]
+
+# The two endpoints below act on an account that is stuck: registered,
+# never confirmed, and therefore refused at the login form. The account
+# made through the admin API cannot stand in for it -- that one is
+# confirmed at creation, on the grounds that an administrator typed the
+# address -- and against a confirmed account both endpoints are no-ops
+# that still answer as if they had worked.
+STUCK = "never-confirmed@example.com"
+stuck_id = None
+
+@test("An account that registered and never confirmed reads as unverified")
+def _():
+    global stuck_id
+    r = new_client("127.0.0.7").post("/api/v1/auth/register", json={
+        "email": STUCK, "password": "Test1234!"
+    })
+    assert r.status_code == 202, r.get_json()
+
+    listing = admin.get("/api/v1/admin/users", headers=admin_headers)
+    assert listing.status_code == 200
+    rows = [u for u in listing.get_json() if u["email"] == STUCK]
+    assert len(rows) == 1, listing.get_json()
+    # Both states, which is the distinction the column was missing: an
+    # account can be enabled and still unable to sign in.
+    assert rows[0]["is_active"] is True
+    assert rows[0]["email_verified"] is False
+    stuck_id = rows[0]["id"]
+
+@test("POST /api/v1/admin/users/<id>/resend-verification (as an admin)")
+def _():
+    # Counted before and after rather than looked for once: the catcher
+    # keeps everything this run delivered, so "a message is there" would
+    # also be true of the one registration itself sent.
+    before = len(mail.messages_to(STUCK))
+    r = admin.post(
+        f"/api/v1/admin/users/{stuck_id}/resend-verification",
+        headers=admin_headers,
+    )
+    assert r.status_code == 202, r.get_json()
+    assert STUCK in r.get_json()["message"]
+    assert len(mail.messages_to(STUCK)) == before + 1, (
+        "the endpoint answered but no message left the service"
+    )
+
+@test("POST /api/v1/admin/users/<id>/verify-email (as an admin)")
+def _():
+    r = admin.post(
+        f"/api/v1/admin/users/{stuck_id}/verify-email", headers=admin_headers
+    )
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["email_verified"] is True
+
+    # Pressing it again is not an error: two operators reaching for the
+    # same account both want the state it already has.
+    again = admin.post(
+        f"/api/v1/admin/users/{stuck_id}/verify-email", headers=admin_headers
+    )
+    assert again.status_code == 200, again.get_json()
+
+@test("An account confirmed by an administrator can log in")
+def _():
+    # What the button is for, rather than the field it wrote: until it ran,
+    # this same request answered 401 EMAIL_NOT_VERIFIED -- the refusal
+    # checked further up, on an account nobody had confirmed either.
+    r = new_client("127.0.0.7").post("/api/v1/auth/login", json={
+        "email": STUCK, "password": "Test1234!"
+    })
+    assert r.status_code == 200, r.get_json()
 
 @test("POST /api/v1/admin/users/<id>/deactivate (as an admin)")
 def _():
@@ -1241,11 +1735,17 @@ def _():
 def _():
     r = admin.delete("/api/v1/admin/roles/admin", headers=admin_headers)
     assert r.status_code == 400
-    assert r.get_json()["error"] == "ROLE_DELETION_FAILED"
+    assert r.get_json()["error"] == "ROLE_IS_SYSTEM"
     # And it is still there.
     assert admin.get(
         "/api/v1/admin/roles/admin", headers=admin_headers
     ).status_code == 200
+
+@test("GET /api/v1/stats/visits (an admin sees which links they were)")
+def _():
+    r = admin.get("/api/v1/stats/visits?period=24h", headers=admin_headers)
+    assert r.status_code == 200
+    assert r.get_json()["top_links"], "the breakdown is withheld from an admin too"
 
 @test("GET /api/v1/stats (an admin sees the breakdown)")
 def _():
@@ -1286,6 +1786,198 @@ def _():
     ).status_code == 200
 
 
+# ─── 14c. The journals, and who reads which ────────────────────────────
+print("\n=== JOURNALS ===")
+
+# A sixth client, and the only one whose whole point is what it may *not*
+# do. The administrator above cannot stand in for it: `admin:all` does not
+# carry `audit:view`, so an admin asking for the audit journal is refused
+# -- which is the arrangement this section exists to prove, and it needs
+# both sides of it in one run.
+auditor = new_client("127.0.0.9")
+auditor_headers = None
+
+
+@test("An auditor, holding the reading permissions and nothing that writes")
+def _():
+    global auditor_headers
+    r = auditor.post("/api/v1/auth/register", json={
+        "email": "auditor@example.com", "password": "Test1234!"
+    })
+    assert r.status_code == 202, r.get_json()
+    grant_role("auditor@example.com", "auditor")
+    confirm_email("auditor@example.com")
+
+    r = auditor.post("/api/v1/auth/login", json={
+        "email": "auditor@example.com", "password": "Test1234!"
+    })
+    assert r.status_code == 200
+    auditor_headers = {"Authorization": f"Bearer {r.get_json()['access_token']}"}
+
+@test("GET /api/v1/journals/application (as an auditor)")
+def _():
+    r = auditor.get("/api/v1/journals/application", headers=auditor_headers)
+    assert r.status_code == 200, r.get_json()
+    page = r.get_json()
+    # The shape, not the contents: what is in the file depends on what this
+    # deployment has done, and a run that asserted a particular line would
+    # be asserting its own history.
+    assert page["journal"] == "application"
+    assert isinstance(page["lines"], list)
+    assert isinstance(page["reached_start"], bool)
+    # And that there are lines at all, which is what makes the loop below
+    # a check. The run writes its own journals into a directory of its own
+    # now; before that it read whatever the machine held, so on a clean
+    # checkout this list was empty and everything after it asserted
+    # nothing while still printing a tick.
+    assert page["lines"], "this run wrote no journal to read"
+    # Every line says which file it came from, and on a read that did not
+    # ask for the archives that can only be the live journal.
+    for line in page["lines"]:
+        assert line["source"] == "application.log", line["source"]
+        assert set(line) == {"raw", "fields", "parsed", "source"}
+
+@test("GET /api/v1/journals/audit (as an auditor)")
+def _():
+    r = auditor.get("/api/v1/journals/audit", headers=auditor_headers)
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["journal"] == "audit"
+
+@test("GET /api/v1/journals/error (as an auditor)")
+def _():
+    r = auditor.get("/api/v1/journals/error", headers=auditor_headers)
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["journal"] == "error"
+
+@test("GET /api/v1/journals/application (as an admin)")
+def _():
+    # The operational journals are ordinary administrative work, and
+    # withholding them would be ceremony rather than separation of duties.
+    r = admin.get("/api/v1/journals/application", headers=admin_headers)
+    assert r.status_code == 200, r.get_json()
+
+@test("GET /api/v1/journals/audit (an admin is refused)")
+def _():
+    # The whole arrangement, in one check. An administrator holds every
+    # power the audit journal records, so `admin:all` deliberately does not
+    # carry `audit:view` -- they can still take the `auditor` role, and
+    # taking it is itself an event.
+    r = admin.get("/api/v1/journals/audit", headers=admin_headers)
+    assert r.status_code == 403, r.get_json()
+    assert r.get_json()["error"] == "FORBIDDEN"
+
+@test("GET /api/v1/journals/application (authenticated, entitled to neither)")
+def _():
+    r = api.get("/api/v1/journals/application", headers=auth_headers)
+    assert r.status_code == 403
+
+@test("GET /api/v1/journals/audit (unauthenticated)")
+def _():
+    # 401 rather than 403: nobody is signed in, and the two statuses are
+    # how a client tells "log in" from "logging in will not help".
+    r = guest.get("/api/v1/journals/audit")
+    assert r.status_code == 401
+
+@test("GET /api/v1/journals/<name> (a name no journal has)")
+def _():
+    # The enum is what keeps a string in the address from becoming a path,
+    # and the refusal is about the name rather than about a permission:
+    # answering 403 here would tell an anonymous caller that a journal by
+    # that name exists.
+    r = auditor.get("/api/v1/journals/passwd", headers=auditor_headers)
+    assert r.status_code == 404
+    assert r.get_json()["error"] == "JOURNAL_NOT_FOUND"
+
+@test("GET /api/v1/journals/application?limit= (outside the range)")
+def _():
+    # Refused rather than trimmed: a caller who asked for ten thousand
+    # lines and silently got two thousand has been told the journal holds
+    # two thousand lines.
+    for asked in ("0", "-1", "20000", "all"):
+        r = auditor.get(
+            f"/api/v1/journals/application?limit={asked}",
+            headers=auditor_headers,
+        )
+        assert r.status_code == 400, f"limit={asked} answered {r.status_code}"
+        assert r.get_json()["error"] == "VALIDATION_ERROR"
+
+@test("GET /api/v1/journals/application?archives=true")
+def _():
+    # Rotation may have left archives beside the live journal or not, so
+    # what is checked is that asking for them is answered and that
+    # everything handed back is still a file belonging to this journal --
+    # `application.log`, `application.log.1`, `application.log.2.gz`.
+    r = auditor.get(
+        "/api/v1/journals/application?archives=true&limit=50",
+        headers=auditor_headers,
+    )
+    assert r.status_code == 200, r.get_json()
+    read = r.get_json()["files_read"]
+    # At least the live journal, for the reason the check above states:
+    # an empty list makes the loop below a tick over nothing.
+    assert read, "the read named no file at all"
+    for name in read:
+        assert name.startswith("application.log"), name
+
+@test("GET /api/v1/journals/counters (as an auditor)")
+def _():
+    # The figures the charts are drawn from. They are the audit journal
+    # counted, so they open to the same permission -- which is why this
+    # runs on the auditor and the next one on the administrator.
+    r = auditor.get("/api/v1/journals/counters", headers=auditor_headers)
+    assert r.status_code == 200, r.get_json()
+    body = r.get_json()
+    assert body["period"] == "7d", body
+    assert isinstance(body["totals"], dict), body
+    # This run has signed in several times by now, so the one event that
+    # cannot be absent is a successful sign-in.
+    assert body["totals"].get("LOGIN_SUCCEEDED", 0) > 0, body
+
+@test("GET /api/v1/journals/counters (an administrator is refused)")
+def _():
+    # The limit of `admin:all`, measured through this endpoint: these
+    # numbers summarise the record kept about administrators, and a count
+    # is the same information as a record, aggregated.
+    #
+    # Asked as the administrator, which is the whole check. It was asked
+    # with `auth_headers` -- the plain `user` account -- so it proved that
+    # somebody entitled to nothing is refused, which is not in doubt, and
+    # would have gone on passing if `admin:all` had started carrying
+    # `audit:view`. The neighbour on `journals/audit` had it right.
+    r = admin.get("/api/v1/journals/counters", headers=admin_headers)
+    assert r.status_code == 403, r.get_json()
+
+@test("GET /api/v1/journals/counters?period= (outside the four on offer)")
+def _():
+    # Refused rather than trimmed to the nearest: a caller free to name a
+    # span is a caller free to name a bucket count.
+    r = auditor.get(
+        "/api/v1/journals/counters?period=all-of-it", headers=auditor_headers
+    )
+    assert r.status_code == 400, r.get_json()
+
+@test("GET /api/v1/journals/counters (every span answers with its own width)")
+def _():
+    widths = {"24h": 24, "7d": 28, "30d": 30, "90d": 90}
+    for period, buckets in widths.items():
+        r = auditor.get(
+            f"/api/v1/journals/counters?period={period}",
+            headers=auditor_headers,
+        )
+        assert r.status_code == 200, r.get_json()
+        body = r.get_json()
+        assert body["buckets"] == buckets, (period, body["buckets"])
+        for name, series in body["series"].items():
+            assert len(series) == buckets, (period, name, len(series))
+
+@test("GET /dashboard/service/journals (as an auditor)")
+def _():
+    # The page itself, which is guarded by `require_any_permission` --
+    # either permission opens it, because either has something to show.
+    r = auditor.get("/dashboard/service/journals", follow_redirects=False)
+    assert r.status_code == 200
+
+
 # ─── 15. Web UI routes ─────────────────────────────────────────────────
 print("\n=== WEB UI ROUTES ===")
 
@@ -1324,9 +2016,23 @@ DASHBOARD_PAGES = (
     ("/dashboard/", 200),
     ("/dashboard/links", 200),
     ("/dashboard/stats", 200),
+    # The page about one link. `200` for the plain role and any code:
+    # the page is a shell, and the figures on it are narrowed to the
+    # caller's own links by the endpoint it fetches -- a code belonging
+    # to somebody else answers with zeroes rather than with a refusal.
+    ("/dashboard/links/<short_code>/stats", 200),
     ("/dashboard/create-link", 200),
+    # Open to every signed-in account and guarded by no permission: what
+    # is on it belongs to whoever is reading it.
+    ("/dashboard/security", 200),
     ("/dashboard/service/stats", 200),
     ("/dashboard/service/health", 403),
+    # Neither `audit:view` nor `logs:view` is in the plain role, so the
+    # page is closed to it -- and it is open to the auditor, which is
+    # checked in section 14c. Both halves are needed: a page guarded by
+    # `require_any_permission("audit:view", "logs:view")` and a page
+    # guarded by nothing at all give the same answer to one of them.
+    ("/dashboard/service/journals", 403),
     ("/dashboard/users", 403),
     ("/dashboard/users/new", 403),
     ("/dashboard/users/<user_id>/edit", 403),
@@ -1338,22 +2044,25 @@ DASHBOARD_PAGES = (
 """Every /dashboard rule the application registers, with the answer each
 owes a signed-in caller holding the plain 'user' role.
 
-Listed in full rather than sampled: the eight that used to be here were an
-incomplete transcription, and the five left out were the parameterised ones
--- exactly the rules a new page is most likely to be added beside.
+Listed in full rather than sampled: a partial transcription leaves out the
+parameterised rules, which are exactly the ones a new page is most likely
+to be added beside.
 
-The second column is what makes these thirteen checks thirteen checks.
+The second column is what makes these sixteen checks sixteen checks.
 ``@login_required`` is the outer decorator, so asking as an anonymous
 caller measures one thing over and over -- that nobody is logged in -- and
 every ``@require_permission`` behind it could be deleted with this file
-still green. Five of these pages are the plain role's to open and eight are
-not, and that difference is the only evidence those decorators are there.
+still green. Seven of these pages are the plain role's to open and nine
+are not, and that difference is the only evidence those decorators are
+there.
 """
 
 for _page, _signed_in in DASHBOARD_PAGES:
     @test(f"GET {_page}")
     def _(page=_page, expected=_signed_in):
-        path = page.replace("<user_id>", stranger_id)
+        path = page.replace("<user_id>", stranger_id).replace(
+            "<short_code>", "smokeCode1"
+        )
         # Nobody home: a page answers that with a trip to the login form,
         # not with the 401 an API endpoint would give.
         r = guest.get(path, follow_redirects=False)
@@ -1500,6 +2209,14 @@ def _():
 # ─── 21. Derived metrics on a link old enough to have any ──────────────
 print("\n=== DERIVED METRICS ===")
 
+AGED_CODE = "AGEDLNK"
+"""The planted link three checks below share.
+
+At module level rather than inside the first of them: the QR checks read
+the same row, and a second literal is how the two come to name different
+links while both keep passing.
+"""
+
 @test("GET /api/v1/links/<code>/extended (an aged, busy link)")
 def _():
     # Planted rather than created, because the four fields this endpoint
@@ -1513,7 +2230,7 @@ def _():
     # Asked after the totals in section 12 for the obvious reason: this row
     # and its 150 clicks would move every one of them.
     from datetime import timedelta, timezone
-    aged_code = "AGEDLNK"
+    aged_code = AGED_CODE
     with app.app_context():
         with db.session() as db_session:
             from sqlalchemy import text
@@ -1545,6 +2262,40 @@ def _():
     assert data["is_popular"] is True
     assert data["is_recent"] is False
     assert data["last_access_days_ago"] == 2
+
+
+@test("GET /api/v1/links/<code>/qr (the square is of the short address)")
+def _():
+    # The one property worth a live check: both squares scan, so a
+    # renderer quietly handed the destination would produce a perfectly
+    # valid image and no assertion about "is this a QR code" would fail.
+    # Held by rendering the alternative and demanding they differ.
+    from link_shortener.web.qr import render_svg
+
+    r = guest.get(f"/api/v1/links/{AGED_CODE}/qr")
+
+    assert r.status_code == 200, r.status_code
+    assert r.mimetype == "image/svg+xml", r.mimetype
+    # Public, unlike the two endpoints beside it: nothing about the caller
+    # is in the image, so a shared cache is correct here and wrong there.
+    assert "public" in r.headers.get("Cache-Control", "")
+
+    body = r.get_data()
+    assert body == render_svg(
+        f"{app.config['BASE_URL'].rstrip('/')}/{AGED_CODE}", title=AGED_CODE
+    ), "the square is not the one for this link's short address"
+    assert body != render_svg(
+        "https://aged.example", title=AGED_CODE
+    ), "the square carries the destination"
+
+@test("GET /api/v1/links/<code>/qr (a code that leads nowhere)")
+def _():
+    # Resolved before anything is drawn. Otherwise a printed square would
+    # lead to a 404 and nobody would find out until it was on paper.
+    r = guest.get("/api/v1/links/nosuchcode/qr")
+
+    assert r.status_code == 404, r.status_code
+    assert r.get_json()["error"] == "LINK_NOT_FOUND"
 
 
 # ─── 22. Ceilings on what a caller may ask for ─────────────────────────
@@ -1606,11 +2357,11 @@ success = result.summary()
 
 # The same guard the suite has in CI, for the same reason: "all passed" is
 # a statement about the checks that ran, and says nothing about the ones
-# that stopped running. Emptying DASHBOARD_PAGES removed thirteen checks
-# and printed a green run and exit 0. A check whose body is only comments
+# that stopped running. Emptying DASHBOARD_PAGES removed the checks it
+# generates -- sixteen of them now -- and printed a green run and exit 0. A check whose body is only comments
 # does the same. Equality, not a floor -- this number is small enough to
 # keep honest, and both directions are worth knowing about.
-EXPECTED_CHECKS = 114
+EXPECTED_CHECKS = 159
 counted = result.passed + result.failed
 if counted != EXPECTED_CHECKS:
     print(f"\nExpected {EXPECTED_CHECKS} checks, ran {counted}.")
@@ -1620,14 +2371,36 @@ if counted != EXPECTED_CHECKS:
 # Flask's own rule, and this run drives the API rather than the pages that
 # load assets -- `tests/live/browser_test.py` is what exercises those, in a
 # real browser. Nothing else may go unreached without being named here.
-NOT_REACHED_ON_PURPOSE = {"/static/<path:filename>"}
-all_rules = {str(rule) for rule in app.url_map.iter_rules()}
+NOT_REACHED_ON_PURPOSE = {("/static/<path:filename>", "GET")}
+
+# One entry per (path, method), which is what a caller can actually ask
+# for. Counted over paths alone this was 49, and six of them carried two
+# methods each: `GET` and `DELETE` on a link, `GET` and `POST` on the
+# confirmation endpoint, and four under `/admin/`. A method added to a
+# path already reached moved nothing, so it could ship unchecked with the
+# run still printing full coverage.
+#
+# `HEAD` and `OPTIONS` are dropped rather than counted: Flask adds both to
+# every rule on its own, nobody wrote them, and requiring a check for each
+# would ask this run to prove Werkzeug works.
+all_rules = {
+    (str(rule), method)
+    for rule in app.url_map.iter_rules()
+    for method in (rule.methods or set())
+    if method not in {"HEAD", "OPTIONS"}
+}
 unreached = sorted(all_rules - touched_rules - NOT_REACHED_ON_PURPOSE)
 print(f"\nRoute rules reached: {len(touched_rules)}/{len(all_rules)}")
 if unreached:
     print("Never reached by this run:")
-    for rule in unreached:
-        print(f"  - {rule}")
+    for path, method in unreached:
+        print(f"  - {method} {path}")
     success = False
+
+mail.stop()
+
+# The journals this run wrote, and nothing else: `journals` is a directory
+# of this run's own, so removing it takes no file anybody else put there.
+shutil.rmtree(journals, ignore_errors=True)
 
 sys.exit(0 if success else 1)

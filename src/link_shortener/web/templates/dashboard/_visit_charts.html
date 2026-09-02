@@ -1,0 +1,119 @@
+{# The charts of recorded visits, drawn by `static/js/charts.js`.
+
+   One template for both statistics pages rather than a copy in each. The
+   two differ by a single word -- `mine` or `service` -- and everything
+   else about them is the same question asked of a different scope, so a
+   second copy would be two things to keep in step and one of them would
+   eventually be forgotten. `scope` is the only argument.
+
+   The controls are drawn by the server, not by the script, and that is
+   deliberate: their words are sentences, `gettext` runs here, and a
+   control built in JavaScript would need its label carried into the
+   browser through `script_strings` for no gain. The script reads the
+   spans and the intervals off the `data-` attributes, so the two sides
+   agree on values while each keeps what it is good at -- the server the
+   words, the script the behaviour.
+
+   The interval on the freshness note comes from the pressed button's own
+   text for the same reason: "every 5 min" and the control that set it
+   cannot then disagree. #}
+{# `code` narrows every figure to one link. Who may read one is decided by
+   the endpoint -- `require_can_view_link_details`, the same gate the
+   extended link endpoint passes through -- so a stranger's code is refused
+   rather than answered with zeroes. The page that passes a code sends
+   `mine` beside it for every reader not entitled to somebody else's
+   traffic, which leaves the owner condition as a second lock on an address
+   whose short code is guessable by construction. #}
+{% macro visit_charts(scope, code=None) %}
+<div data-visit-scope="{{ scope }}"{% if code %} data-visit-code="{{ code }}"{% endif %}>
+
+    <div class="alert alert--error hidden mb-2" data-visit-error></div>
+
+    <div class="card mb-2">
+        <div class="card-header">
+            <span class="card-title">{{ _('Visits') }}</span>
+            {# Lit while the page is polling and unlit when it is not. The
+               dot is the glance; the words beside it are the message. #}
+            <span class="chart-fresh">
+                <span class="chart-fresh-dot" data-visit-fresh-dot></span>
+                <span data-visit-fresh-text></span>
+            </span>
+        </div>
+
+        <div class="chart-bar">
+            <span class="chart-bar-label">{{ _('Span') }}</span>
+            {# `aria-pressed` is set by the script from the remembered
+               choice, and it is what the stylesheet keys on -- the markup
+               does not guess here, because the answer is in the reader's
+               browser rather than in the request. #}
+            <button type="button" class="btn btn--sm" data-visit-period="24h">{{ _('24 hours') }}</button>
+            <button type="button" class="btn btn--sm" data-visit-period="7d">{{ _('7 days') }}</button>
+            <button type="button" class="btn btn--sm" data-visit-period="30d">{{ _('30 days') }}</button>
+            <button type="button" class="btn btn--sm" data-visit-period="90d">{{ _('90 days') }}</button>
+
+            <span class="chart-bar-label">{{ _('Refresh') }}</span>
+            {# Five intervals and an off switch. The off switch is not the
+               same control as "Refresh now" beside it: it stops the page
+               asking at all -- the chart stops redrawing under the pointer
+               and the service stops counting -- while the button fetches
+               once, on demand. #}
+            <button type="button" class="btn btn--sm" data-visit-every="5">{{ _('5 s') }}</button>
+            <button type="button" class="btn btn--sm" data-visit-every="10">{{ _('10 s') }}</button>
+            <button type="button" class="btn btn--sm" data-visit-every="30">{{ _('30 s') }}</button>
+            <button type="button" class="btn btn--sm" data-visit-every="60">{{ _('1 min') }}</button>
+            <button type="button" class="btn btn--sm" data-visit-every="300">{{ _('5 min') }}</button>
+            <button type="button" class="btn btn--sm" data-visit-every="0">{{ _('Off') }}</button>
+            <button type="button" class="btn btn--sm btn--ghost" data-visit-refresh>{{ _('Refresh now') }}</button>
+        </div>
+
+        <div class="chart-figure" data-visit-columns></div>
+
+        {# Two series, so a legend is not optional: colour alone is never
+           allowed to be the only thing that says which is which. #}
+        <div class="chart-legend">
+            <span class="chart-key">
+                <span class="chart-swatch chart-swatch--humans"></span>{{ _('People') }}
+            </span>
+            <span class="chart-key">
+                <span class="chart-swatch chart-swatch--bots"></span>{{ _('Robots') }}
+            </span>
+        </div>
+    </div>
+
+    <div class="chart-pair mb-2">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">{{ _('Devices') }}</span>
+                {# Starts as a ring and switches to bars, per breakdown and
+                   remembered per breakdown: devices as bars and browsers
+                   as a ring is a legitimate pair of answers. #}
+                <button type="button" class="btn btn--sm btn--ghost" data-visit-shape="devices"></button>
+            </div>
+            <div data-visit-share="devices"></div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">{{ _('Browsers') }}</span>
+                <button type="button" class="btn btn--sm btn--ghost" data-visit-shape="browsers"></button>
+            </div>
+            <div data-visit-share="browsers"></div>
+        </div>
+    </div>
+
+    {# The daily chart answers from the roll-up, so it reaches further back
+       than the raw rows live -- and it is zero-filled, which is why an
+       idle week here is a run of empty columns rather than a straight line
+       drawn between two distant points.
+
+       Loaded with the page and on an explicit refresh, never by the timer:
+       a table that gains one row a day does not need to be asked every
+       five seconds. #}
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">{{ _('The last 90 days') }}</span>
+        </div>
+        <div class="chart-figure" data-visit-daily></div>
+    </div>
+
+</div>
+{% endmacro %}

@@ -2,7 +2,7 @@
 
 import pytest
 from tests.integration.conftest import (
-    auth_headers, confirm_email, csrf_headers, register_and_login
+    auth_headers, confirm_email, csrf_headers
 )
 
 
@@ -79,13 +79,35 @@ class TestLogin:
         assert "access_token" in data
 
     def test_login_wrong_password(self, client):
+        """
+        The account is confirmed first, and that is what makes this a
+        check on the password.
+
+        An unconfirmed account is answered 401 for the **right** password
+        too -- deliberately, so the refusals do not tell a guesser their
+        guess landed. Registered and left unconfirmed, this test therefore
+        passed with the password comparison removed altogether: it was
+        reading the ``email_verified`` branch and calling it a wrong
+        password.
+        """
         client.post("/api/v1/auth/register", json={
             "email": "lpw@example.com", "password": "StrongPass1!"
         })
+        confirm_email(client.application, "lpw@example.com")
+
         r = client.post("/api/v1/auth/login", json={
             "email": "lpw@example.com", "password": "wrong"
         })
         assert r.status_code == 401
+
+        # The premise, and it comes second on purpose: a successful login
+        # leaves cookies in this client's jar, and the next unsafe request
+        # it makes is then cookie-authenticated and refused 403 by the
+        # CSRF layer before it reaches any of this.
+        right = client.post("/api/v1/auth/login", json={
+            "email": "lpw@example.com", "password": "StrongPass1!"
+        })
+        assert right.status_code == 200, right.get_json()
 
     def test_login_nonexistent_user(self, client):
         r = client.post("/api/v1/auth/login", json={
@@ -140,6 +162,11 @@ class TestErrorDisclosure:
         client.post("/api/v1/auth/register", json={
             "email": "oracle@example.com", "password": "StrongPass1!"
         })
+        # Confirmed, so "known" means an account that could really sign
+        # in. Left unconfirmed it is refused for a second reason as well,
+        # and the two answers could match for that reason instead of the
+        # one this check is about.
+        confirm_email(client.application, "oracle@example.com")
 
         known = client.post("/api/v1/auth/login", json={
             "email": "oracle@example.com", "password": self.OVERLONG_PASSWORD
@@ -159,11 +186,36 @@ class TestErrorDisclosure:
 class TestMalformedBody:
     """An odd request body is a client error, never a crash."""
 
-    @pytest.mark.parametrize("body", [42, "a string", [1, 2, 3], None])
+    @pytest.mark.parametrize("body", [42, "a string", [1, 2, 3]])
     def test_non_object_body_is_rejected(self, client, body):
         for path in ("/api/v1/auth/login", "/api/v1/auth/register"):
             r = client.post(path, json=body)
             assert r.status_code == 400, f"{path} with {body!r} → {r.status_code}"
+
+    def test_no_body_at_all_is_the_same_415_the_rest_of_the_api_answers(
+        self, client
+    ):
+        """A request offering no JSON is refused as one, here as elsewhere.
+
+        These routes used to parse the body silently, which turned "you
+        sent no JSON" into "you sent no credentials" -- 400 and "Email and
+        password are required" to a caller whose fields were fine and
+        whose encoding was not. ``POST /api/v1/shorten`` answered 415 to
+        the same request throughout. One reader now serves both, in
+        ``web/request_body.py``, so there is one answer.
+        """
+        for path in ("/api/v1/auth/login", "/api/v1/auth/register"):
+            r = client.post(path)
+            assert r.status_code == 415, f"{path} with no body → {r.status_code}"
+
+    def test_a_body_offered_as_json_but_empty_names_the_missing_fields(
+        self, client
+    ):
+        """``{}`` is a JSON body, so it is read and found wanting."""
+        for path in ("/api/v1/auth/login", "/api/v1/auth/register"):
+            r = client.post(path, json={})
+            assert r.status_code == 400, f"{path} with {{}} → {r.status_code}"
+            assert r.get_json()["error"] == "VALIDATION_ERROR"
 
     @pytest.mark.parametrize(
         "payload",
@@ -195,11 +247,17 @@ class TestMalformedBody:
         assert r.status_code == 400, r.get_json()
 
     def test_a_wrong_password_is_still_401(self, client):
-        """The branch that does mean "refused" keeps its status."""
+        """The branch that does mean "refused" keeps its status.
+
+        Confirmed first, for the reason ``test_login_wrong_password``
+        gives: an unconfirmed account answers 401 whatever the password,
+        so without this the check cannot tell the two branches apart.
+        """
         client.post(
             "/api/v1/auth/register",
             json={"email": "status@example.com", "password": "StrongPass1!"},
         )
+        confirm_email(client.application, "status@example.com")
 
         r = client.post(
             "/api/v1/auth/login",
@@ -208,11 +266,20 @@ class TestMalformedBody:
 
         assert r.status_code == 401
 
+        # The premise, second for the reason ``test_login_wrong_password``
+        # gives: a successful login leaves cookies, and the next unsafe
+        # request on this client is answered 403 by the CSRF layer.
+        assert client.post(
+            "/api/v1/auth/login",
+            json={"email": "status@example.com", "password": "StrongPass1!"},
+        ).status_code == 200
+
     def test_a_body_nested_beyond_the_decoder_is_refused(self, client):
         """
-        ``"[" * 10000`` is twenty kilobytes and exhausts the decoder's
-        stack. ``RecursionError`` is not a ``ValueError``, so the silent
-        parse did not swallow it and it reached the catch-all as a 500.
+        ``"[" * 10000`` nests ten thousand deep and exhausts the
+        decoder's stack. ``RecursionError`` is not a ``ValueError``, so
+        the silent parse did not swallow it and it reached the catch-all
+        as a 500.
         """
         for path in ("/api/v1/auth/login", "/api/v1/auth/register"):
             r = client.post(

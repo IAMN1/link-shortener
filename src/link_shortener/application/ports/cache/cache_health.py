@@ -5,23 +5,12 @@ class CacheHealth(ABC):
     """
     Interface a cache implements so its state can be reported truthfully.
 
-    The health check used to work this out from the outside, by reaching
-    into the cache's private attributes: it called the client's ``ping``
-    directly and, when that failed, fell back to asking whether the cache
-    believed itself connected. Both answers were wrong in opposite
-    directions.
-
-    A failing direct ``ping`` never told the cache anything, so its
-    "available" flag stayed set from the last successful operation and the
-    fallback confirmed a Redis that was switched off. Once some other
-    request did notice the outage and dropped the client, the absence of a
-    client was then read as "no cache is configured" -- so a Redis that had
-    since recovered was reported as deliberately disabled, indefinitely,
-    because nothing on the health path ever tried to reconnect.
-
-    Both readings came from inferring a state instead of asking the
-    component that owns it. The two methods below are that component's
-    answers.
+    Asked of the cache rather than worked out from the outside. A health
+    check reaching into a client of its own cannot tell the two failures
+    apart: a ``ping`` that fails leaves the cache's own state untouched,
+    and a client dropped by some other request reads as "no cache is
+    configured" rather than as an outage. The methods below are the
+    component's own answers.
     """
 
     @abstractmethod
@@ -36,6 +25,30 @@ class CacheHealth(ABC):
 
         Returns:
             ``True`` if a real backend is configured.
+        """
+        ...
+
+    @abstractmethod
+    def stores_entries(self) -> bool:
+        """
+        Report whether anything is actually being cached.
+
+        The other half of ``is_configured``, and apart from it because the
+        two were read as one question and are not one. A cache with no
+        server can still be keeping entries: ``InMemoryLinkCache`` holds
+        them in this process, serves them, and goes on serving a link
+        another process deleted until its TTL runs out.
+
+        Answering only ``is_configured`` made every report say the same
+        thing about two situations that behave differently. Measured on a
+        live run: ``/health`` said ``"cache": "disabled"`` while the same
+        process logged four ``Redirect cache hit`` lines in the same
+        seconds, and the guide's own troubleshooting entry for a stale
+        redirect points at a cache the reports called absent.
+
+        Returns:
+            ``True`` if entries are kept anywhere -- in a server or in
+            this process.
         """
         ...
 

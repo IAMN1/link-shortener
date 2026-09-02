@@ -9,6 +9,9 @@ import logging
 from typing import Any, Dict, Optional
 
 from link_shortener.application import Logger
+from link_shortener.infrastructure.logging.utils import (
+    HEALTH_PROBE_FIELDS, HEALTH_PROBE_MESSAGE, probe_level,
+)
 
 
 class StandardLogger(Logger):
@@ -58,7 +61,7 @@ class StandardLogger(Logger):
         module = extra.pop("module", None)
         if module:
             extra["module_name"] = module
-        
+
         # For the 'exception' level, logging.Logger.exception requires
         # exc_info=True or an exception instance.  We call the appropriate
         # method and pass exc_info separately.
@@ -110,13 +113,26 @@ class StandardLogger(Logger):
     ) -> None:
         """Log an exception message with traceback.
 
+        ``exc_info`` is passed through, and that is the repair of a
+        disagreement rather than a simplification. The port says ``None``
+        asks for *no* traceback -- "the renderer skips a falsy value,
+        which is why it is not the default" -- and ``StructLogger``
+        implements exactly that. This one turned ``None`` into ``True``,
+        so the same call captured the current exception here and
+        suppressed it there, and ``FailoverService`` swaps between the two
+        at will: one call, two answers, decided by which chain happened to
+        be active. The stdlib reads a falsy ``exc_info`` the way the port
+        means it, so passing it on is all that was needed.
+
         Args:
             message: The log message.
-            exc_info: The exception instance; if ``None`` the current exception
-                is captured.
+            exc_info: What to render a traceback from. ``True`` -- the
+                default -- takes the exception being handled; an exception
+                instance is rendered instead; ``None`` asks for no
+                traceback at all.
             **kwargs: Additional structured data.
         """
-        kwargs["exc_info"] = exc_info if exc_info is not None else True
+        kwargs["exc_info"] = exc_info
         self._log("exception", message, **kwargs)
 
     def is_healthy(self) -> bool:
@@ -124,7 +140,7 @@ class StandardLogger(Logger):
 
         Asked of the hierarchy rather than of this logger alone. This
         application configures the root logger and lets records propagate to
-        it (``bootstrap.configure_logging``), so ``logger.handlers`` is empty
+        it (``bootstrap.setup_logging``), so ``logger.handlers`` is empty
         for every named logger it builds and always was -- the check read
         that as "no handlers, unhealthy" while the records were arriving on
         the root's handlers all along. ``hasHandlers`` is the question that
@@ -134,18 +150,24 @@ class StandardLogger(Logger):
         where ``propagate`` is false -- which is exactly as far as a record
         would travel.
 
+        Written at the level this logger actually passes records at, which
+        is what makes it a probe: see ``probe_level``. At ``DEBUG`` it was
+        dropped by every handler's own level test before reaching one, so
+        a chain refusing every real record still answered ``True``.
+
         Returns:
             ``True`` if a handler is reachable from this logger and a
             health-check message can be written, ``False`` otherwise.
         """
         if not self._logger.hasHandlers():
             return False
+        level = probe_level(self._logger.name)
         try:
             test_logger = logging.getLogger(self._logger.name + "._health_test")
             test_logger.handlers = self._logger.handlers
             test_logger.propagate = True
-            test_logger.setLevel(logging.DEBUG)
-            test_logger.debug("health_check")
+            test_logger.setLevel(level)
+            test_logger.log(level, HEALTH_PROBE_MESSAGE, extra=dict(HEALTH_PROBE_FIELDS))
             return True
         except Exception:
             return False

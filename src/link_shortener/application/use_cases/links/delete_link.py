@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.auth.authorization_service import (
@@ -12,11 +12,15 @@ from link_shortener.application.ports.cache.link_service_stats_cache import (
 from link_shortener.application.ports.cache.redirect_cache import RedirectCache
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import (
+    UnitOfWork, UnitOfWorkFactory,
+)
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
-    DomainError, Link, LinkNotFoundError, SystemPermissions
+    DomainError, Link, LinkNotFoundError, PermissionDeniedError,
+    SystemPermissions,
 )
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -24,11 +28,9 @@ class DeleteLinkUseCase(BaseUseCase):
     """
     Deletes a short link.
 
-    Ownership is decided here rather than by the caller, and from the row
-    this use case loads inside its own transaction. The web layer used to
-    read the owner through ``get_link_info`` and compare it itself, which
-    made the answer only as trustworthy as whatever that read returned --
-    at the time, a cache entry nothing had confirmed.
+    Ownership is decided here, from the row this use case loads inside its
+    own transaction, rather than from a value the caller supplies: read any
+    other way, the answer is only as trustworthy as that read.
 
     Attributes:
         uow_factory: Callable that returns a new Unit of Work instance.
@@ -40,7 +42,7 @@ class DeleteLinkUseCase(BaseUseCase):
         authorization_service: Service that answers permission questions.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     cache: LinkCache
     redirect_cache: RedirectCache
     stats_cache: StatsCache
@@ -124,10 +126,9 @@ class DeleteLinkUseCase(BaseUseCase):
                 return deleted
         except LinkNotFoundError:
             # A code that cannot exist and a code nobody has taken are the
-            # same answer to the caller. This branch used to catch every
-            # ValueError and ValidationError raised anywhere inside the
-            # block above and report all of them as "no such link",
-            # including failures that had nothing to do with the code.
+            # same answer to the caller. LinkNotFoundError specifically: a
+            # wider except would report any failure in the block above as
+            # "no such link".
             log.warning("Not a usable short code", code=short_code_str)
             return False
 
@@ -184,12 +185,16 @@ class DeleteLinkUseCase(BaseUseCase):
             log: Bound logger.
 
         Raises:
-            DomainError: If the requester may not delete this link
-                (code=``FORBIDDEN``).
+            DomainError: With code ``UNAUTHENTICATED`` when nobody is
+                signed in at all.
+            PermissionDeniedError: When somebody is and may not delete this
+                link. Answered ``FORBIDDEN``, and it carries the permission
+                they would have needed, which is what the error handler
+                writes to the audit journal.
         """
         requester = self._load_requester(context, uow)
         if requester is None:
-            raise DomainError("Authentication required", code="UNAUTHENTICATED")
+            raise DomainError(N_("Authentication required"), code="UNAUTHENTICATED")
 
         owner_id = link.owner.value if link.owner else None
         owns_it = owner_id is not None and owner_id == requester.id
@@ -206,8 +211,9 @@ class DeleteLinkUseCase(BaseUseCase):
                 code=link.short_code.value,
                 required_permission=required,
             )
-            raise DomainError(
-                "You are not allowed to delete this link", code="FORBIDDEN"
+            raise PermissionDeniedError(
+                N_("You are not allowed to delete this link"),
+                required=[required],
             )
 
     @staticmethod

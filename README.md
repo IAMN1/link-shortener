@@ -1,441 +1,270 @@
-# Link Shortener
+<div align="center">
 
-Сервис сокращения ссылок на Python/Flask с архитектурой Clean Architecture. Поддерживает гостевое создание ссылок, аккаунты пользователей, RBAC, асинхронную статистику и кэширование в Redis.
+<img src="docs/media/banner.png" alt="MaizLink — a URL shortener built the way a service that has to stay up is built" width="820">
 
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+# MaizLink
+
+Clean architecture, role-based access control, a two-level cache, and a test
+suite that fails when the documentation starts lying.
+
 [![tests](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml/badge.svg)](https://github.com/IAMN1/link-shortener/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/badge/coverage-91.78%25-blue.svg)]()
+[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![tests: 5210](https://img.shields.io/badge/tests-5210-0b5d3b)](docs/testing.md)
+[![coverage: 98%](https://img.shields.io/badge/coverage-98%25-0b5d3b)](docs/testing.md)
+[![mypy: strict](https://img.shields.io/badge/mypy-0%20errors-0b5d3b)](docs/testing.md)
+[![license: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-## Возможности
+[Quick start](docs/getting-started.md) ·
+[Architecture](docs/architecture.md) ·
+[Why it is built this way](docs/decisions.md) ·
+[All docs](docs/README.md)
 
-- **Гостевые ссылки** — сокращение URL без регистрации (автоистечение через 7 дней)
-- **Аккаунты пользователей** — постоянные ссылки, личная статистика, панель управления
-- **Пакетное создание** — сокращение нескольких URL за один запрос
-- **TTL** — настраиваемое время жизни ссылок (гости: 7 дней по умолчанию, пользователи: любое)
-- **Дедупликация в пределах владельца** — повторное сокращение своего URL отдаёт свою же
-  живую ссылку (`200`, `is_new: false`); чужая и истёкшая не отдаются никогда
-- **RBAC** — четыре роли: guest, user, analyst, admin. Анонимный запрос
-  выполняется в роли `guest`, а не «без ролей»; над ней стоит потолок
-  разрешений, заданный в коде
-- **Кэширование** — двухуровневый кэш (L1: редиректы, L2: объекты ссылок) с инвалидацией при удалении
-- **Асинхронная статистика** — подсчёт кликов через Celery
-- **Rate limiting** — защита от brute-force на auth-эндпоинтах
-- **Health check кэширование** — снимок зависимостей кэшируется 2 сек
-- **CLI** — команды обслуживания для администраторов
-- **Безопасность** — JWT с разделением типов токенов, trusted proxy validation, restricted CORS
+**English** · [Русский](README.ru.md)
 
-## Быстрый старт
+<img src="docs/media/demo.gif" alt="A long address is shortened, the theme is switched to dark, and the dashboard opens on its links, a link's own page with its QR square, a month of visit statistics by device and browser, the audit journal, the users page and the role editor" width="820">
 
-### Локально (SQLite, без Docker)
+</div>
+
+---
+
+```console
+$ curl -X POST localhost:5000/api/v1/shorten -H 'Content-Type: application/json' \
+       -d '{"url": "https://example.com/a/very/long/address"}'
+
+{ "short_url": "http://localhost:5000/kR3-9fA", "is_new": true,
+  "expires_at": "2026-08-21T12:00:33Z", "deletion_token": "IjE3YzJ…" }
+```
+
+No account needed for that. The link works, expires in seven days, and the
+token in the answer is how its maker deletes it — because a link with no
+owner has nothing for ownership to match.
+
+## Why look at this one
+
+URL shorteners are a weekend project. This one is a study in what the
+weekend project leaves out.
+
+| | |
+|---|---|
+| **Anonymous callers are a role, not an exception** | A signed-out visitor acts as `guest`, a real RBAC role with real permissions. There is no `if user is None` branch deciding policy. |
+| **The document cannot drift from the code** | `/api/openapi.json` is generated from the same Pydantic models the endpoints validate against, and a test holds the route table against it. Publishing a rate limit the service does not enforce fails the suite. |
+| **Refusals are told apart** | `401` means "nobody is authenticated", `403` means "authenticated and not allowed". A guest link's own deletion token is a third answer again. |
+| **The interface offers what the caller may do** | The markup asks the same authorization service the route asks. A role cannot be shown a button that answers 403. |
+| **Failure is a state, not a crash** | The logger and the cache degrade to a fallback rather than taking the request down, and the health endpoint reports which one is live. |
+
+## Quick start
+
+<table>
+<tr><td width="50%" valign="top">
+
+**Locally** — SQLite, in-memory cache
 
 ```bash
-git clone https://github.com/your-org/link-shortener.git
-cd link-shortener
-uv sync                                    # ставит зависимости и сам проект
-cp .env.example .env                       # задайте SECRET_KEY и SHORT_CODE_PEPPER
-uv run flask alembic upgrade head          # создать схему БД
-uv run flask db load-base-roles            # создать роли guest/user/analyst/admin
-uv run flask create-admin --email admin@example.com --password secret
+uv sync
+cp .env.example .env
+uv run flask security \
+    generate-secrets --write .env
+uv run flask alembic upgrade head
+uv run flask create-admin \
+    --email admin@example.com \
+    --password 'your-password'
 uv run flask run
 ```
 
-### В Docker (PostgreSQL + Redis + Celery)
+</td><td width="50%" valign="top">
+
+**In Docker** — PostgreSQL, Redis, Celery, Mailpit
 
 ```bash
-cp .env.example .env.docker
+cp .env.docker.example .env.docker
+uv run flask security generate-secrets \
+    --write .env.docker \
+    --with-service-passwords
+docker compose --env-file .env.docker \
+    up -d --build
 ```
 
-В `.env.docker` задайте — иначе стек поднимется на SQLite без Redis и Celery,
-а healthcheck базы не пройдёт:
+</td></tr>
+</table>
 
-```ini
-ENV_FILE=.env.docker          # должен совпадать со значением --env-file
-SECRET_KEY=<hex-строка 64 байта>
-SHORT_CODE_PEPPER=<другой секрет>
+> [!TIP]
+> Two templates rather than one, because one file cannot answer both
+> questions: `.env.example` describes the run on the left, SQLite and a
+> cache in the process; `.env.docker.example` describes the one on the
+> right, with every dependency in a container. Nine lines differ between
+> them and a test holds the rest identical.
+>
+> `--write` fills the secrets into the file in place; without them the
+> deployed profiles refuse to start. `--with-service-passwords` adds the
+> two the stack's own PostgreSQL and Redis are started with — the
+> repository ships no default password, and both services refuse to start
+> rather than come up open. Roles seed themselves on startup in
+> `development`, which is why neither block runs `db load-base-roles`.
+>
+> **To watch somebody sign up, take the block on the right.** It brings up
+> Mailpit, and the confirmation message lands in its inbox at
+> <http://127.0.0.1:8025> rather than being delivered. The block on the
+> left has no catcher: mail there goes to `localhost:1025` and nothing is
+> listening, so a visitor who registers is left with an address they
+> cannot confirm and an account they cannot sign in to. The admin the
+> block creates is confirmed already, so the rest of it works. To have
+> both, run `docker compose --env-file .env.docker up -d mailpit` beside
+> the local application.
+>
+> Something else — the application on the host against containerised
+> services, your own PostgreSQL, a different profile: the whole matrix,
+> with the values for each combination, is in
+> [Getting started](docs/getting-started.md#choosing-where-each-part-runs).
+> Step-by-step, with the expected output of every command, is there too.
 
-DATABASE_TYPE=postgresql
-DATABASE_HOST=db
-DATABASE_NAME=db_shortener    # без расширения .db — это имя базы, не файл
-DATABASE_USER=shortener
-DATABASE_PASSWORD=<пароль>
+## What it does
 
-REDIS_ENABLED=true
-REDIS_PASSWORD=<пароль>
-CELERY_ENABLED=true
-
-DOMAIN=localhost:5000         # обязательно при HOST=0.0.0.0
+```mermaid
+flowchart LR
+    V([Visitor]) -->|POST /api/v1/shorten| APP
+    V -->|GET /code| APP
+    APP{{Flask · gunicorn}} --> PG[(PostgreSQL)]
+    APP --> RC[(Redis · cache)]
+    APP --> BR[(Redis · queue)]
+    BR --> CEL[Celery: clicks and mail]
+    CEL --> PG
+    CEL --> SMTP[(SMTP)]
 ```
 
-```bash
-docker compose --env-file .env.docker up -d --build
-docker compose --env-file .env.docker exec app flask db load-base-roles
-docker compose --env-file .env.docker exec app \
-    flask create-admin --email admin@example.com --password secret
-```
-
-Миграции применяются автоматически: сервис `migrations` выполняет
-`alembic upgrade head` до старта приложения.
-
-Откройте `http://localhost:5000/` — можно сокращать ссылки сразу без регистрации.
-
-> Команда выше поднимает **стек для разработки**: dev-сервер Flask с
-> отладчиком и смонтированными исходниками. Compose сам подхватывает
-> `docker-compose.override.yml`, где это и задано. Порт привязан к
-> `127.0.0.1`: отладчик Werkzeug — интерактивная консоль, и в сети ей делать
-> нечего.
->
-> **Продакшн-форма** — тот же стек без надстройки, то есть с явным
-> перечислением базового файла:
->
-> ```bash
-> docker compose -f docker-compose.yml --env-file .env.docker up -d --build
-> ```
->
-> Тогда приложение запускается командой образа: gunicorn с потолком на
-> запрос (`GUNICORN_TIMEOUT`), без отладчика и без монтирования исходников.
-
-Подробнее: [docs/QUICKSTART.md](docs/QUICKSTART.md)
+| | |
+|---|---|
+| **Guest links** | Shortened without an account, seven-day life, quota per address |
+| **Accounts** | Permanent links, personal statistics, a dashboard |
+| **Batch** | Several URLs per request; what fails comes back per item |
+| **QR codes** | Every link as an SVG square, on its page and at its own address. It encodes the *short* URL, so the counters, the expiry and the deletion still apply |
+| **Deduplication** | Within one owner: shortening your own URL again returns your own live link |
+| **RBAC** | `guest`, `user`, `analyst`, `auditor`, `admin` — roles seeded from YAML, editable through the panel |
+| **Email confirmation** | Registration never says whether an address is taken |
+| **Two-level cache** | Redirects and link objects, invalidated on delete |
+| **Asynchronous counters** | Clicks counted by Celery, off the request path |
+| **Rate limiting** | Every route, tighter on auth and link creation; `/health` and `/static/` exempt |
+| **CLI** | Seven command groups for operating the service |
 
 ## API
 
-| Метод | Эндпоинт | Требуемое разрешение | Описание |
-|-------|----------|----------------------|----------|
-| POST | `/api/v1/shorten` | `link:create` (есть у `guest`) | Создать короткую ссылку (гость или пользователь) |
-| GET | `/api/v1/links/<code>` | Нет | Информация о ссылке. `owner_id`, `clicks` и `last_accessed` отдаются только владельцу, админу и держателю `stats:view_any`; остальным приходит `null`. Адрес, исходный URL и дата создания публичны |
-| GET | `/api/v1/links/<code>/extended` | Владение, `admin:all` или `stats:view_any` | Расширенная аналитика. Аноним получает `401`, чужой вошедший — `403` |
-| GET | `/api/v1/stats` | `stats:view_basic` (есть у `guest`) | Итоги по сервису. Разбивка `popular_links` дополнительно требует `stats:view_full`, иначе приходит пустым списком |
-| GET | `/api/v1/links/mine` | `link:view_own` | Список ссылок пользователя (пагинация: `offset`, `limit`) |
-| DELETE | `/api/v1/links/<code>` | `link:delete_own` для своей, `link:delete_any` для чужой | Удалить ссылку |
-| GET | `/api/v1/stats/mine` | `link:view_own` | Личная статистика |
-| POST | `/api/v1/batch/shorten` | `link:create` (есть у `guest`) | Пакетное создание ссылок. Правила те же, что у одиночного: гостевой лимит, TTL по умолчанию, дедупликация в пределах владельца. Всё, что не прошло — невалидный URL, остаток квоты, — возвращается поэлементной ошибкой в `results`; сам запрос отвечает `200`, весь пакет не отклоняется |
-| POST | `/api/v1/auth/register` | Нет | Регистрация. Отвечает `202` и ничем не выдаёт, был адрес занят или свободен. Свободный: учётка создаётся неподтверждённой, на адрес уходит ссылка подтверждения. Занятый: не меняется ничего, а на адрес уходит письмо, что кто-то пытался его зарегистрировать |
-| GET | `/api/v1/auth/verify?token=…` | Нет | Подтвердить адрес по ссылке из письма. Ссылка одноразовая; все виды отказа отвечают одинаково |
-| POST | `/api/v1/auth/resend-verification` | Нет | Прислать ссылку заново. Отвечает `202` независимо от того, зарегистрирован адрес или нет |
-| POST | `/api/v1/auth/login` | Нет | Получить JWT токены. Неподтверждённый адрес отвергается кодом `EMAIL_NOT_VERIFIED` |
-| POST | `/api/v1/auth/refresh` | Refresh-токен (cookie или тело) | Обменять refresh-токен на новую пару |
-| POST | `/api/v1/auth/logout` | Refresh-токен или Bearer | Завершить сессию |
-| GET | `/api/v1/admin/health` | Admin | Проверка здоровья инфраструктуры |
-| GET | `/api/v1/admin/users` | Admin | Список пользователей |
-| GET | `/api/v1/admin/roles` | Admin | Список ролей |
+Thirty-nine operations. Full description: `/api/openapi.json`, rendered at
+`/api/docs`.
 
-### Коды отказа
+| Method | Endpoint | Permission | |
+|---|---|---|---|
+| `POST` | `/api/v1/shorten` | `link:create` — held by `guest` | Create a link |
+| `POST` | `/api/v1/batch/shorten` | `link:create` | Several at once |
+| `GET` | `/api/v1/links/{code}` | — | Where it points. Owner and traffic withheld from everyone else |
+| `GET` | `/api/v1/links/{code}/extended` | ownership, `admin:all` or `stats:view_any` | Derived analytics |
+| `GET` | `/api/v1/links/{code}/qr` | — | The short link as an SVG QR code |
+| `DELETE` | `/api/v1/links/{code}` | `link:delete_own` / `link:delete_any` / deletion token | Remove it |
+| `GET` | `/api/v1/stats` | `stats:view_basic` — held by `guest` | Service totals |
+| `GET` | `/api/v1/stats/visits` | `stats:view_basic` / `link:view_own` | When links were opened, bucketed; `scope=mine` for your own; `?code=` needs the link's owner or `stats:view_any` |
+| `GET` | `/api/v1/stats/visits/daily` | `stats:view_basic` / `link:view_own` | Visits per day, reaching past the retention window |
+| `GET` | `/api/v1/stats/mine` | `link:view_own` | Your own |
 
-`401` означает «запрос никем не аутентифицирован», `403` — «аутентифицирован,
-но разрешения нет». Раньше оба случая отвечали `403`, и клиент не мог
-отличить «войди» от «вход не поможет».
+<details>
+<summary>Authentication, accounts and administration</summary>
 
-Анонимный запрос при этом не отвергается автоматически: он выполняется в
-роли `guest`, поэтому разрешение, которое эта роль несёт, проходит проверку.
-Подробнее — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), раздел «Роль
-`guest` и анонимные запросы».
+| Method | Endpoint | Permission | |
+|---|---|---|---|
+| `POST` | `/api/v1/auth/register` | — | `202`, and the same answer whether or not the address was free |
+| `GET`, `POST` | `/api/v1/auth/verify` | — | Spend the confirmation token |
+| `POST` | `/api/v1/auth/resend-verification` | — | Ask for another message |
+| `POST` | `/api/v1/auth/login` | — | Tokens; a wrong password, a switched-off account and an unconfirmed address are all `INVALID_CREDENTIALS` |
+| `POST` | `/api/v1/auth/refresh` | refresh token | Rotate the pair |
+| `POST` | `/api/v1/auth/logout` | session | Revoke it server-side |
+| `POST` | `/api/v1/auth/change-password` | session | Replace your own password; every session goes, this one is reopened |
+| `POST` | `/api/v1/auth/forgot-password` | — | `202`, and the same answer whether or not the address has an account |
+| `POST` | `/api/v1/auth/reset-password` | — | Spend a mailed token and set a new password; every session goes |
+| `GET`, `POST` | `/api/v1/admin/users` | `admin:view_users` / `admin:manage_users` | List, create |
+| `PUT` | `/api/v1/admin/users/{id}/roles` | `admin:manage_users` | Replace roles |
+| `POST` | `/api/v1/admin/users/{id}/deactivate` | `admin:manage_users` | Suspend; refused for the last administrator |
+| `POST` | `/api/v1/admin/users/{id}/verify-email` | `admin:manage_users` | Confirm an address the mailed link cannot reach; spends any outstanding token |
+| `POST` | `/api/v1/admin/users/{id}/resend-verification` | `admin:manage_users` | Send the confirmation message again, addressed by account id |
+| `GET`, `POST` | `/api/v1/admin/roles` | `admin:view_roles` / `admin:manage_roles` | List, create |
+| `PUT` | `/api/v1/admin/roles/{name}/permissions` | `admin:manage_roles` | Replace permissions; system roles are protected |
+| `GET` | `/api/v1/admin/health` | `admin:view_system_health` | What each dependency answered |
+| `GET` | `/api/v1/journals/{journal}` | `audit:view` for `audit`, `logs:view` for `application` and `error` | The end of one journal, oldest line first; `admin:all` does not carry the first of the two |
 
-Истёкшая ссылка отвечает `410` на всех путях — и на редиректе, и на обоих
-информационных эндпоинтах.
+</details>
 
-### Регистрация не говорит, занят ли адрес
+## The parts that usually go wrong
 
-`POST /api/v1/auth/register` отвечает `202` и одной и той же фразой, был
-адрес свободен или занят, и не возвращает учётку. Свободному адресу уходит
-ссылка подтверждения; занятому — письмо о том, что кто-то пытался его
-зарегистрировать, и ничего в существующей учётке не меняется.
+> [!NOTE]
+> These are the rules people trip over. Each one is enforced by a test that
+> fails when the behaviour changes — the reasoning is in
+> [Decisions](docs/decisions.md).
 
-Одинакового ответа мало: раньше занятый адрес отвечал за 0.56 мс, а
-свободный — за 162.52 мс, потому что проверка существования замыкалась до
-хеширования пароля. Пароль теперь хешируется до обращения к базе, а письмо
-уходит в обоих случаях — при `CELERY_ENABLED=false` оно отправляется прямо
-на потоке запроса, и ветка без письма была бы короче на длину SMTP-обмена.
-После правки обе ветки дают 1.0 при перекрывающихся диапазонах. Подробности
-и цена — в [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#регистрация-не-говорит-занят-ли-адрес).
+- **An expired link answers `410`** everywhere — on the redirect and on both
+  information endpoints.
+- **What is public**: the short address, the destination, when it was made,
+  when it expires. **What is not**: the owner and the traffic. The counters
+  are closed together with the identifier, because `/extended` is computed
+  entirely from them.
+- **Registration does not say whether an address is taken.** Same answer,
+  same timing, a message either way. The administrative path says so
+  outright — there the caller is entitled to know.
+- **Cookies pass CSRF, bearer tokens do not need to.** A client that can set
+  `Authorization` has already shown it can set headers.
+- **Logging out revokes the session** rather than merely dropping the cookie,
+  and a spent refresh token revokes the chain it belonged to.
 
-Админский путь (`POST /api/v1/admin/users`) по-прежнему говорит «Email
-already registered»: там вызывающий аутентифицирован и имеет право знать.
-
-### Подтверждение адреса
-
-Регистрация создаёт учётку неподтверждённой и отправляет на адрес ссылку.
-До перехода по ней вход отвечает `401` с кодом `EMAIL_NOT_VERIFIED` — и это
-единственный отказ входа, который называет причину. Неверный пароль и
-деактивированная учётка по-прежнему отвечают одинаково: назвать причину там
-значит подтвердить, что учётка существует. Здесь это не так — ответ видит
-только тот, кто уже знает пароль.
-
-Ссылка живёт `EMAIL_VERIFICATION_TTL_HOURS` (по умолчанию сутки) и работает
-один раз. Неизвестный токен, потраченный, просроченный и указывающий на
-удалённую учётку отвечают одним и тем же текстом: различие сделало бы этот
-маршрут способом узнать, кто зарегистрирован.
-
-Учётка, которую никто не подтвердил за `UNVERIFIED_ACCOUNT_TTL_HOURS` (по
-умолчанию трое суток), удаляется, и адрес освобождается. Без этого любой мог
-бы занять чужой адрес навсегда: зарегистрировать его заново нельзя, войти
-нельзя.
-
-Учётки, созданные администратором через `POST /api/v1/admin/users`,
-считаются подтверждёнными сразу — им никто не собирается писать.
-
-При выключенном канале (`MAIL_ENABLED=false`) регистрация по-прежнему
-проходит, но подтвердить адрес нечем: письмо не уходит, и войти в такую
-учётку нельзя, пока её не подтвердят иначе.
-
-### Что публично, а что нет
-
-Публичны: адрес короткой ссылки, исходный URL, дата создания, срок жизни.
-Этого достаточно, чтобы посмотреть, куда ведёт код, до перехода по нему.
-
-Приватны: `owner_id` и трафик — `clicks`, `last_accessed` и всё, что из них
-считается (`/extended` целиком). Счётчики закрыты вместе с идентификатором
-не из осторожности: каждое поле `/extended` — арифметика над ними, поэтому
-пока они были публичными, ограничение на `/extended` обходилось
-калькулятором.
-
-*Следствие для гостевых ссылок:* у них нет владельца, поэтому их счётчики
-не видит никто, кроме администратора и держателя `stats:view_any` — в том
-числе тот, кто эту ссылку создал.
-
-### Ограничения ролей и анонимный доступ
-
-Проверка `link:create` различает **атрибутированное** создание — ссылку,
-привязанную к учётной записи. Она не мешает тому же человеку выйти из
-аккаунта и сократить URL анонимно: сервис публичный, анонима сдерживает
-гостевая квота, а не RBAC. Роль без `link:create` (например, `analyst`)
-означает «этот аккаунт не создаёт ссылок», а не «этот человек не может
-создать ссылку».
-
-### Аутентификация
-
-Токен предъявляется одним из двух способов — какой применим, зависит от клиента.
-
-**Программный клиент** — заголовок `Authorization: Bearer <access_token>`.
-Оба токена возвращаются в теле ответа `POST /api/v1/auth/login`, cookie-jar
-держать не нужно:
+## Testing
 
 ```bash
-TOKENS=$(curl -s -X POST http://localhost:5000/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"user@example.com","password":"..."}')
-
-ACCESS=$(echo "$TOKENS" | jq -r .access_token)
-REFRESH=$(echo "$TOKENS" | jq -r .refresh_token)
-
-curl http://localhost:5000/api/v1/links/mine -H "Authorization: Bearer $ACCESS"
-
-# Продлить сессию: refresh-токен ротируется, сохраните новый
-curl -X POST http://localhost:5000/api/v1/auth/refresh \
-  -H 'Content-Type: application/json' \
-  -d "{\"refresh_token\":\"$REFRESH\"}"
-
-# Завершить сессию: достаточно access-токена
-curl -X POST http://localhost:5000/api/v1/auth/logout \
-  -H "Authorization: Bearer $ACCESS"
+uv run pytest tests/                      # 5210 tests
+uv run python tests/live/smoke_test.py    # 159 checks over HTTP
+uv run python tests/live/browser_test.py  # 71 checks in a real browser
 ```
 
-**Браузер** — HttpOnly-cookie, которые ставит тот же `login`. Страницы дашборда
-отдаются сервером, а обычная навигация не может послать заголовок, поэтому для
-веб-интерфейса это единственный работающий способ. JavaScript токен не видит и
-нигде не хранит.
+Four levels — unit, integration on SQLite, integration on real PostgreSQL and
+Redis, end-to-end — plus two live runs that pytest does not collect. CI runs
+the suite twice, in a clean environment and in a hostile one, to catch tests
+that read configuration nobody gave them.
 
-Принимается только access-токен: refresh-токен годится исключительно для
-`POST /api/v1/auth/refresh`. Деактивация учётной записи отзывает доступ на
-следующем же запросе, а не по истечении токена.
+Full breakdown: [Testing](docs/testing.md).
 
-### Сессии и отзыв токенов
+## Documentation
 
-Каждый выданный refresh-токен несёт `jti`, которому соответствует строка в
-таблице `refresh_sessions`. Отсюда:
+| | |
+|---|---|
+| [Getting started](docs/getting-started.md) | From an empty directory to a working service, with the expected output of each step |
+| [Architecture](docs/architecture.md) | Layers, data flows, caching, authorization |
+| [Configuration](docs/configuration.md) | Profiles, precedence, and the settings that bite; the exhaustive list of what an operator sets is `.env.example` |
+| [Operations](docs/operations.md) | Migrations, CLI, backups, upgrades, health |
+| [Testing](docs/testing.md) | The four levels, the live runs, and what CI enforces |
+| [Development](docs/development.md) | Patterns, the frontend, the load profile |
+| [Decisions](docs/decisions.md) | One hundred write-ups of why something is the way it is |
+| [Roadmap](docs/roadmap.md) | What was considered and never built, and what each idea would cost |
 
-- **Выход** отзывает сессию на сервере, а не только удаляет cookie. Вместе
-  с ней перестают работать и выданные ею access-токены: каждый несёт claim
-  `sid` с именем своей сессии, и оно проверяется на каждом запросе. Другие
-  устройства остаются в системе.
-- **Обмен токена ротирует его** — `POST /api/v1/auth/refresh` возвращает и
-  новый access, и новый refresh, а предъявленный retired.
-- **Повторное предъявление потраченного токена** означает, что он
-  скопирован: оригинал и копию в этот момент не различить, поэтому
-  отзывается **цепочка этого входа** — и только она. Остальные устройства
-  не затрагиваются: иначе один найденный мёртвый токен стал бы способом
-  разлогинить человека везде по требованию.
-- **Блокировка аккаунта** отзывает все его сессии.
+## Requirements
 
-Строки истёкших сессий чистятся командой
-`flask maintenance clean-sessions` — см. расписание обслуживания в
-[OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md).
+Python 3.12, [uv](https://docs.astral.sh/uv/). Docker Compose v2 for the full
+stack. PostgreSQL and Redis are required in the deployed profiles and optional
+locally.
 
-### CSRF
+## Contributing
 
-Запрос, аутентифицированный **cookie**, на любом методе кроме
-`GET/HEAD/OPTIONS/TRACE` проходит три проверки: значение читаемой cookie
-`csrf_token` дублируется в заголовке `X-CSRF-Token`; токен подписан
-`SECRET_KEY` и привязан к пользователю, которому выдан; названный браузером
-`Origin` (или `Referer`) входит в список разрешённых. Иначе —
-`403 CSRF_TOKEN_INVALID`.
+Issues and pull requests are welcome — [CONTRIBUTING.md](CONTRIBUTING.md)
+covers the setup, what a change has to pass, and the one-flag sign-off
+(`git commit -s`) the project uses instead of a CLA. Taking part means
+keeping to the [Code of Conduct](CODE_OF_CONDUCT.md), and the address in
+it reaches the maintainer and nobody else.
 
-Запрос с валидным `Authorization: Bearer` эту проверку не проходит вовсе:
-клиент, который умеет выставить заголовок, к CSRF не уязвим. Для curl и
-скриптов ничего не меняется.
+## Security
 
-Исключение — `POST /api/v1/auth/refresh` и `POST /api/v1/auth/logout`: они
-читают сессионную cookie сами, поэтому их authority — cookie, и Bearer
-освобождения не даёт. Токен там нужен всегда.
+Found a hole? Please report it privately through the
+[Security tab](https://github.com/IAMN1/link-shortener/security/advisories/new)
+rather than a public issue — [SECURITY.md](SECURITY.md) says what to
+expect, what is already known, and what I will not pursue you for.
 
-### Rate Limiting
+## License
 
-| Эндпоинт | Лимит | Описание |
-|----------|-------|----------|
-| `POST /api/v1/auth/login` | 5 / мин | Защита от brute-force |
-| `POST /api/v1/auth/register` | 3 / час | Защита от спама |
-| `POST /api/v1/auth/refresh` | 10 / мин | Защита от replay |
-| `POST /api/v1/auth/logout` | 20 / мин | |
-| `POST /api/v1/shorten` | 30 / мин | Создание ссылки |
-| `POST /api/v1/batch/shorten` | 5 / мин | Пакетное создание |
-| `GET /api/v1/links/{code}` | 100 / мин | Чтение ссылки |
-| `GET /api/v1/links/{code}/extended` | 50 / мин | Чтение с метриками |
-| `GET /api/v1/stats` | 10 / мин | Счётчики сервиса |
-| `GET /{code}` | 200 / мин | Редиректы |
+[Apache License 2.0](LICENSE). Use it, fork it, ship it — commercially
+too. Keep the copyright notice, say what you changed, and note that the
+licence carries an explicit patent grant: a contributor cannot later sue
+users over patents in what they contributed.
 
-Всё остальное — 100 запросов в минуту. `/health` и всё, что отдаётся
-из-под `/static/`, не троттлятся вовсе; лимит, заданный такому маршруту,
-не игнорируется, а не даёт приложению стартовать. Подробности — в
-[docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md).
-
-### Пагинация
-
-`GET /api/v1/links/mine` поддерживает query-параметры:
-- `offset` — количество пропущенных записей (по умолчанию 0)
-- `limit` — максимальное количество записей (по умолчанию 50, макс. 200)
-
-## Архитектура
-
-```
-src/link_shortener/
-├── domain/          # Сущности, объекты-значения, интерфейсы репозиториев
-├── application/     # Use case'ы, DTO, сервисы приложения, порты
-├── infrastructure/  # Реализации: БД, кэш, авторизация, DI, CLI
-└── web/             # Контроллеры, middleware, шаблоны, статика
-```
-
-Подробнее: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-
-## Тестирование
-
-Менеджер пакетов: **uv**
-
-Три уровня: unit (моки), интеграционные (in-memory SQLite и отдельно —
-настоящие PostgreSQL с Redis в Docker) и e2e.
-
-```bash
-uv run pytest tests/ -v                                    # всё вместе
-uv run pytest tests/unit/ -v                               # только уровень 1
-uv run pytest tests/ --cov=src/link_shortener --cov-report=term-missing
-```
-
-Тесты: 2289 (unit + integration + e2e), покрытие: 91.78% при
-пороге 88% (`--cov-fail-under` в `pyproject.toml`).
-
-Разбор уровней, структура каталогов и то, что закрывает каждый флаг, — в
-[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#запуск-тестов).
-
-### Прогоны руками
-
-Два прогона pytest не собирает — их запускают отдельно:
-
-```bash
-# 114 проверок по HTTP против настоящего приложения
-uv run python tests/live/smoke_test.py
-
-# 9 проверок настоящим браузером: исполняет web/static/js/pages/*.js
-uv sync --group browser              # один раз
-uv run playwright install chromium   # один раз
-uv run python tests/live/browser_test.py
-```
-
-### CI
-
-`.github/workflows/tests.yml` на каждый push гоняет набор **дважды**: в
-чистом окружении и во враждебном — с `.env` из `.env.example` (плюс значения,
-расходящиеся с умолчаниями) и экспортированными `GUEST_LINK_LIMIT`,
-`BATCH_CREATE_LIMIT`, `DATABASE_URL`, `SQLALCHEMY_ECHO`. Второй прогон ловит
-тесты, читающие конфигурацию, которую им не давали; в чистом окружении такое
-не проявляется, потому что там нечему утечь. Тест, пропущенный на исполнении,
-в CI считается отказом (`--error-for-skips`); отдельно проверяются число
-собранных тестов по нижней границе — «прошло N» ничего не значит, пока
-неизвестно, сколько собралось, — и соответствие `requirements.txt` файлу
-`uv.lock`, иначе Docker-образ разойдётся с тем, что тестирует CI.
-
-Бейдж вверху показывает состояние последнего прогона **в ветке по
-умолчанию**, а не последнего вообще. Он оживёт, когда
-workflow окажется в ветке по умолчанию, а репозиторий станет публичным:
-пока репозиторий приватный, GitHub отдаёт картинку бейджа только по
-аутентифицированному запросу, а README тянет её анонимно.
-
-Подробнее: [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#ci-набор-гоняется-дважды)
-
-## Технологический стек
-
-| Компонент | Технология |
-|-----------|------------|
-| Язык | Python 3.12 |
-| Фреймворк | Flask 3.x |
-| База данных | PostgreSQL 15 |
-| Кэш | Redis 7 |
-| Задачи | Celery 5.x |
-| Миграции | Alembic |
-| Авторизация | JWT (PyJWT) |
-| Валидация | Pydantic v2 |
-| Логирование | structlog |
-| Менеджер пакетов | uv |
-| Контейнеризация | Docker, Docker Compose |
-
-## CLI-команды
-
-Нужные в первый день:
-
-```bash
-flask db migrate                               # применить миграции
-flask db load-base-roles                       # системные роли из roles.yaml
-flask create-admin --email <e> --password <p>  # первый администратор
-flask security check-secrets                   # ключи не остались дефолтными?
-flask maintenance health                       # БД и Redis отвечают?
-```
-
-Полный справочник — восемь групп команд с флагами и примерами вывода:
-[docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md#cli-команды).
-
-## Конфигурация
-
-`FLASK_ENV` выбирает **профиль** — класс конфигурации из
-`infrastructure/configs/app/`: `development`, `staging`, `production`,
-`testing`. Профиль задаёт умолчания, а `.env` их переопределяет.
-
-Приоритет, побеждает верхний:
-
-1. настоящая переменная окружения (`export`, `environment:` в compose);
-2. `.env.<профиль>` — например `.env.production`;
-3. `.env`;
-4. умолчание профиля в коде.
-
-Профиль `testing` намеренно игнорирует окружение целиком — и `.env`-файлы, и экспортированные переменные — автотесты должны давать
-одинаковый результат на любой машине.
-
-Пять переменных, без которых развёртывание ведёт себя не так, как ожидают:
-
-| Переменная | По умолчанию | Что будет иначе |
-|------------|--------------|-----------------|
-| `FLASK_ENV` | development | Выбирает профиль, а с ним — умолчания всего остального |
-| `SECRET_KEY` | случайный | Подписывает JWT: без явного значения все токены умирают при каждом рестарте |
-| `SHORT_CODE_PEPPER` | случайный | Соль генерации кодов: разойдётся между инстансами — разойдутся и коды |
-| `DOMAIN` | (пусто) | Обязателен в профиле `production` — `validate()` без него отказывает. Иначе `BASE_URL` собирается как `http://{HOST}:{PORT}/`, то есть при `HOST=0.0.0.0` ссылки получают адрес, по которому к сервису не обратиться |
-| `DATABASE_TYPE` | sqlite | В `production` и `staging` допустим только `postgresql`: на SQLite такой профиль не стартует вовсе, потому что умолчание молча заводило пустой файл. В `development` доступны оба |
-
-Остальные — в `.env.example`, разобраны по группам в
-[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#конфигурация) и
-[docs/OPERATIONS_AND_MIGRATIONS.md](docs/OPERATIONS_AND_MIGRATIONS.md#справочник-конфигурации).
-
-## Документация
-
-- [Быстрый старт](docs/QUICKSTART.md) — пошаговая инструкция первого запуска
-- [Руководство разработчика](docs/DEVELOPER_GUIDE.md) — архитектура, паттерны, как вносить изменения
-- [Архитектура](docs/ARCHITECTURE.md) — подробное описание системы
-- [Эксплуатация](docs/OPERATIONS_AND_MIGRATIONS.md) — CLI команды, миграции, обслуживание
-
-## Лицензия
-
-MIT
+The licence covers the code and not the name: section 6 grants no
+trademark rights, so a fork travels under a name of its own.

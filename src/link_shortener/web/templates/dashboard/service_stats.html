@@ -1,33 +1,61 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Service Stats – Linkr{% endblock %}
+{% import "dashboard/_visit_charts.html" as charts %}
+{% block title %}{{ _('Service Stats — MaizLink') }}{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">Service Statistics</h1>
+<h1 class="dash-title">{{ _('Service Statistics') }}</h1>
+
+<div id="service-error" class="alert alert--error hidden mb-2"></div>
 
 <div class="stats-grid mb-2">
     <div class="stat-card">
-        <div class="stat-value" id="stat-total-urls">-</div>
-        <div class="stat-label">Total URLs</div>
+        <span class="stat-label">{{ _('Total URLs') }}</span>
+        <span class="stat-value" id="stat-total-urls">&mdash;</span>
     </div>
     <div class="stat-card">
-        <div class="stat-value" id="stat-total-clicks">-</div>
-        <div class="stat-label">Total Clicks</div>
+        <span class="stat-label">{{ _('Total Clicks') }}</span>
+        <span class="stat-value" id="stat-total-clicks">&mdash;</span>
     </div>
 </div>
 
-<div class="card">
+{# The charts are service-wide and need `stats:view_basic`, which is what
+   this page already needs to exist -- the sidebar entry asks for it. The
+   top-links table below is the part that needs more, and it is guarded
+   separately: a count is not the same disclosure as a short code. #}
+{{ charts.visit_charts('service') }}
+
+{# The popular-links list comes with `stats:view_full`. Without it the
+   service sends nothing for this table, and the page used to show an empty
+   "Top Links" that read as "the service has no traffic". #}
+{% if can('stats:view_full') %}
+<div class="card card--flush">
     <div class="card-header">
-        <span class="card-title">Top Links</span>
+        <span class="card-title">{{ _('Top Links') }}</span>
     </div>
     <div class="table-wrap">
         <table class="table">
             <thead>
-                <tr><th>Short URL</th><th>Original</th><th>Clicks</th><th>Created</th></tr>
+                <tr><th>{{ _('Code') }}</th><th>{{ _('Destination') }}</th><th>{{ _('Clicks') }}</th><th>{{ _('Created') }}</th></tr>
             </thead>
-            <tbody id="popular-tbody"><tr><td colspan="4" class="text-muted text-center">Loading...</td></tr></tbody>
+            <tbody id="popular-tbody">
+                <tr><td colspan="4" class="loading">{{ _('Loading…') }}</td></tr>
+            </tbody>
         </table>
     </div>
 </div>
+{% else %}
+<div class="explain">
+    {%- set permission %}<code>stats:view_full</code>{% endset -%}
+    <b>{{ _('Totals only.') }}</b>
+    {% trans name=permission %}The list of most-visited links needs the {{ name }} permission.{% endtrans %}
+</div>
+{% endif %}
+{% endblock %}
+{# In the head for the reason written out in `my_stats.html`: this file
+   owns a timer, and a timer's owner has to run once per tab. #}
+{% block extra_head %}
+    {{ super() }}
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/service_stats.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/service_stats.js') }}" defer></script>
 {% endblock %}

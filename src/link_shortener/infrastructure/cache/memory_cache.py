@@ -1,7 +1,7 @@
 """
 Thread-safe in-memory cache with TTL support.
 
-Implements LinkCache, RedirectCache, and StatsCache using Python dictionaries.
+Implements every role ``ServiceCache`` names, using Python dictionaries.
 Suitable for development and testing when Redis is unavailable.
 """
 
@@ -11,14 +11,13 @@ from threading import RLock
 from typing import Any, Dict, List, Optional
 
 from link_shortener.application import (
-    CachedRedirect, CacheHealth, LinkCache, RedirectCache, StatsCache,
-    CacheKeyBuilder
+    CachedRedirect, ServiceCache, CacheKeyBuilder
 )
 from link_shortener.domain import DedupScope, Link, ShortCode, UrlHash
 
 
 
-class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
+class InMemoryLinkCache(ServiceCache):
     """
     In-memory cache that stores data in Python dictionaries.
 
@@ -42,7 +41,11 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         self._redirects: Dict[str, CachedRedirect] = {}  # key -> cached redirect
         self._stats: Optional[Dict[str, Any]] = None
 
-        # Expiry timestamps: key -> expiration time (monotonic seconds)
+        # Expiry timestamps: key -> expiration time, on the wall clock.
+        # Not monotonic, which this said: a clock stepped backwards -- NTP,
+        # a container resuming -- pushes every entry's expiry that much
+        # further out. The bound on the damage is that this cache lives in
+        # one process and holds nothing anybody else reads.
         self._expiry: Dict[str, float] = {}
         self.link_ttl = link_ttl
         self.stats_ttl = stats_ttl
@@ -51,8 +54,51 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
 
     # ========== CacheHealth methods ==========
     def is_configured(self) -> bool:
-        """No backend is involved; there is nothing to be up or down."""
+        """
+        No backend to reach, so nothing here can be up or down.
+
+        The question this answers is "is there a cache service to watch",
+        and there is not: the entries are in this process's memory. What
+        it does **not** answer is "is anything being cached", and the two
+        got read as one -- ``NullCache`` returns ``False`` here as well,
+        and it stores nothing at all, so every report built on this makes
+        one answer out of two situations that behave differently.
+
+        Measured on a live stack: with this cache serving, ``/health``
+        said ``"cache": "disabled"``, ``flask cache stats`` and
+        ``maintenance check-redis`` said ``No cache backend is
+        configured`` and ``maintenance health`` said ``Cache: not
+        configured`` -- while the same process's log carried 41
+        ``Redirect cache hit`` and 65 ``Stats cache hit`` lines in the
+        same minutes, and a link deleted in another process went on
+        redirecting for six of them.
+
+        The second question is asked separately now, by
+        ``stores_entries`` below, and the reports tell the two apart: this
+        one keeps entries and has no server, which is neither of the
+        answers a single boolean could give. ``ping`` is the same shape of
+        question as this one and has the same answer.
+
+        Returns:
+            ``False``.
+        """
         return False
+
+    def stores_entries(self) -> bool:
+        """
+        Entries are kept -- in this process, and only in this one.
+
+        What ``is_configured`` could not say, and the difference an
+        operator pays for. Measured on a live run: ``/health`` said
+        ``"cache": "disabled"`` while this cache served four redirects
+        out of memory in the same seconds; under more than one worker each
+        holds its own entries, and a link deleted through one goes on
+        redirecting through the others until the TTL runs out.
+
+        Returns:
+            ``True``.
+        """
+        return True
 
     def ping(self) -> bool:
         """A cache with nothing to connect to cannot be unreachable."""
@@ -66,7 +112,11 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
             key: Cache key.
 
         Returns:
-            True if expired or absent.
+            ``True`` once the recorded expiry is in the past. A key with
+            no expiry recorded has nothing to run out and answers
+            ``False``; the one caller asks only about keys it has just
+            found in ``_expiry``, so that is the answer for a key this
+            cache never held rather than for one whose TTL is over.
         """
         if key not in self._expiry:
             return False
@@ -84,6 +134,7 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         expired_keys = [
             key for key, expiry in self._expiry.items() if expiry < current_time
         ]
+        stats_key = self.key_gen.for_stats()
 
         for key in expired_keys:
             # Remove from all relevant dictionaries
@@ -91,13 +142,16 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
                 del self._links[key]
             if key in self._redirects:
                 del self._redirects[key]
+            # The statistics live in a field of their own rather than in
+            # one of the dictionaries, so dropping the key alone leaves
+            # them behind. This used to be asked after the loop, of an
+            # entry the loop had just deleted -- so it could not run, and
+            # ``get_cache_info`` answered ``has_stats: True`` beside
+            # ``total_keys: 0`` for as long as nothing called
+            # ``get_stats``, which is the one place that cleared them.
+            if key == stats_key:
+                self._stats = None
             del self._expiry[key]
-
-        # Also check stats separately (stored in self._stats, not in _links)
-        stats_key = self.key_gen.for_stats()
-        if stats_key in self._expiry and self._expiry[stats_key] < current_time:
-            self._stats = None
-            del self._expiry[stats_key]
 
     def clear_all(self) -> None:
         """Clear all cached data (intended for testing)."""
@@ -285,8 +339,16 @@ class InMemoryLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         if entry is None:
             return None
 
-        # Same rules as the Redis implementation: an entry that cannot
-        # vouch for itself is a miss, not an answer.
+        # An entry that cannot vouch for itself is a miss, not an answer.
+        #
+        # Stricter than the Redis implementation by one test, and the
+        # difference is worth naming rather than papering over: that one
+        # checks `is_for` and hands an expired entry back, leaving the
+        # caller to raise `LinkExpiredError` from it. Here the entry is
+        # dropped and the request falls through to L2 and the repository,
+        # which answer the same 410 by a longer road. Both are correct;
+        # only this one makes the caller's own `is_expired` branch
+        # unreachable.
         if not entry.is_for(short_code) or entry.is_expired():
             return None
 

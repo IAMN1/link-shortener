@@ -2,16 +2,16 @@ from typing import List, Optional
 
 from link_shortener.application import (
     RequestContext, DeleteLinkUseCase,
-    GetLinkInfoUseCase, GetRecentLinksUseCase
+    GetLinkInfoUseCase, GetRecentLinksUseCase, ShortLinkResponse
 )
 from link_shortener.application.use_cases.links.create_short_link import CreateShortLinkUseCase
 
-from link_shortener.domain import LinkNotFoundError, ValidationError
+from link_shortener.domain import Link, LinkNotFoundError
 
 
 def create_link(
     use_case: CreateShortLinkUseCase, url: str, context: RequestContext, code: Optional[str] = None
-) -> dict:
+) -> ShortLinkResponse:
     """
     Create a new short link.
 
@@ -22,19 +22,13 @@ def create_link(
         code: Optional custom short code.
 
     Returns:
-        Dictionary with short_code and original_url.
+        The created link as the use case describes it.
 
     Raises:
         ValidationError: If the URL or the chosen code is invalid.
         LinkCodeTakenError: If the chosen code is already in use.
     """
-    response = use_case.execute(url, context, ttl_seconds=0, custom_code=code)
-    return {
-        "short_code": response.short_code,
-        "original_url": response.original_url,
-        "short_url": response.short_url,
-        "is_new": response.is_new,
-    }
+    return use_case.execute(url, context, ttl_seconds=0, custom_code=code)
 
 
 def delete_link(
@@ -59,7 +53,7 @@ def delete_link(
 
 def get_link_info(
     use_case: GetLinkInfoUseCase, short_code: str, context: RequestContext
-) -> Optional[dict]:
+) -> Optional[ShortLinkResponse]:
     """
     Retrieve basic information about a short link.
 
@@ -69,27 +63,41 @@ def get_link_info(
         context: Request context.
 
     Returns:
-        Dictionary with link details or None if not found.
-    """
-    try:
-        response = use_case.execute(short_code, context)
+        The use case's own response, or ``None`` when no link carries that
+        code -- a code the format rules refuse included. Handed back whole
+        rather than flattened into a dictionary: the fields are already
+        named and typed, and copying them into strings only moves the
+        names somewhere a checker cannot see them.
 
-        return {
-            "short_code": response.short_code,
-            "original_url": response.original_url,
-            "clicks": response.clicks,
-            "created_at": response.created_at.isoformat(),
-            "last_accessed": response.last_accessed.isoformat() 
-                if response.last_accessed else None,
-        }
+    Raises:
+        LinkExpiredError: If a link carries the code but its lifetime is
+            over. Deliberately not flattened into ``None``: that value
+            already says "no link carries this code", and an expired link
+            is one the caller can still list and still delete. The caller
+            answers for it -- ``link info`` says so and exits 1, the way
+            the redirect and the API answer 410 rather than 404.
+    """
+    # One refusal turned into a value, because only one of the two the use
+    # case raises means "there is nothing here": ``_code_to_look_up``
+    # answers ``LinkNotFoundError`` for a malformed code as well as for an
+    # unused one, and says so in its own docstring -- "A code the format
+    # rules refuse is a code no link can carry, so the honest answer is
+    # that there is no such link".
+    #
+    # There was a second clause catching ``ValueError`` beneath this one.
+    # It could not run: ``ShortCode`` refuses a bad code with
+    # ``ValidationError``, which descends from ``DomainError`` and not
+    # from ``ValueError`` -- and the use case does not let it out anyway.
+    # What it did instead was tell the next reader that this call can fail
+    # in a way it cannot.
+    try:
+        return use_case.execute(short_code, context)
     except LinkNotFoundError:
-        return None
-    except ValueError:
         return None
 
 def list_links(
     use_case: GetRecentLinksUseCase, limit: int, context: RequestContext
-) -> List[dict]:
+) -> List[Link]:
     """
     Return a list of the most recently created links.
 
@@ -99,18 +107,9 @@ def list_links(
         context: Request context.
 
     Returns:
-        List of dictionaries, each containing short_code, original_url, clicks, created_at.
+        The links themselves, newest first. Not flattened into
+        dictionaries: the caller prints two fields of each, and turning
+        entities into strings here would put the value objects' own
+        formatting into this module.
     """
-    links = use_case.execute(limit, context)
-    
-    result = [
-        {
-            "short_code": link.short_code.value,
-            "original_url": link.original_url.value,
-            "clicks": link.clicks,
-            "created_at": link.created_at.isoformat(),
-        }
-        for link in links
-    ]
-    
-    return result
+    return use_case.execute(limit, context)

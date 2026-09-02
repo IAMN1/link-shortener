@@ -1,17 +1,21 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.auth.auth_service import AuthenticationService
+from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
-    DomainError, User,
+    DomainError, RoleNotAssignableError, User, ValidationError,
     Email, PasswordHash
 )
 from link_shortener.domain.entities.email_verification import EmailVerification
+from link_shortener.domain.i18n import N_
+from link_shortener.domain.policies.role_policy import (
+    require_roles_are_assignable,
+)
 from link_shortener.domain.value_objects.verification_token import (
     issue_token,
     token_digest,
@@ -37,45 +41,146 @@ class RegisterUseCase(BaseUseCase):
     stop registration outright, and would tell an anonymous caller that it
     is down.
 
-    An address that is already registered is not refused out loud. It used
-    to be -- 400 and "Email already registered" -- which answered, for
-    anyone who cared to ask, whether an address has an account here.
-    OWASP's Authentication Cheat Sheet lists that under *Account creation*
-    as an incorrect response, alongside a plain "Welcome! You have signed
-    up successfully."; the correct one it gives is "A link to activate
-    your account has been emailed to the address provided." Both paths now
-    return the same nothing, and the controller turns that into one
-    answer.
+    An address that is already registered is not refused out loud, since
+    a refusal answers whether an address has an account here. OWASP's
+    Authentication Cheat Sheet asks for the same answer either way: "A
+    link to activate your account has been emailed to the address
+    provided."
 
-    Equal answers are half of it. The other half is that they take the
+    Equal answers are half of it; the other half is that they take the
     same time to produce, which is what the order of operations here is
-    for. Hashing used to happen after the existence check, so a taken
-    address short-circuited before bcrypt and came back in 0.56 ms against
-    162.52 ms for a free one -- 290x, with the two ranges nowhere near
-    each other, so one request was enough to tell them apart. The hash is
-    now computed before anything is looked up, which is the shape OWASP's
-    Forgot Password Cheat Sheet asks for: "Ensure that responses return in
-    a consistent amount of time... instead of using a quick exit method."
-
-    Mail is the other half of the clock. Registration submits one message
-    either way -- a confirmation link for a free address, a notice for a
-    taken one -- because without a broker the submission happens on the
-    request thread, and a path that skipped it would be shorter by the
-    length of an SMTP exchange (13-15 ms against a local catcher; a remote
-    relay is slower). See ``SendAccountExistsEmailUseCase`` for what that
-    notice may and may not say.
+    for. The password is hashed before anything is looked up, so a taken
+    address cannot short-circuit ahead of bcrypt. Registration also
+    submits one message either way -- a confirmation link for a free
+    address, a notice for a taken one -- because without a broker the
+    submission happens on the request thread, and a path that skipped it
+    would be shorter by the length of an SMTP exchange.
 
     What stays different is the writing: a free address inserts two rows
-    and commits, a taken one does not. That is a real remainder, small
-    beside a bcrypt hash, and it is measured and written down in the
-    developer guide rather than claimed away here.
+    and commits, a taken one does not. That remainder is small beside a
+    bcrypt hash, and it is written down in the developer guide.
     """
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     authentication_service: AuthenticationService
     logger: Logger
+    audit_logger: AuditLogger
     default_role_name: str  # Role assigned to new users by default.
     task_queue: TaskQueue
     verification_ttl_hours: int
+
+
+    def _register(self, email_vo, password_hash_vo, log):
+        """
+        Do the writing half, in one transaction.
+
+        Split out so the caller can answer a lost race the way it answers
+        a taken address, without wrapping the whole method in a ``try``
+        that would also swallow refusals from the checks before it.
+
+        Args:
+            email_vo: The normalised address.
+            password_hash_vo: The hashed password.
+            log: Bound logger.
+
+        Returns:
+            A pair of the saved user and its verification token, or
+            ``(None, None)`` if the address is already registered.
+
+        Raises:
+            ValidationError: If the address was taken between the read
+                and the write.
+            DomainError: With code ``REGISTRATION_UNAVAILABLE`` if the
+                deployment has no usable default role.
+        """
+        saved_user = None
+        token = None
+        with self.uow_factory() as uow:
+
+            # Check for existing user. A taken address writes nothing and
+            # reads nothing further; what it produces -- a message to the
+            # address -- is handed off below, outside this block, for the
+            # same reason the confirmation is: without a broker the
+            # hand-off is the SMTP exchange itself, and making it here
+            # would hold a database connection open across a network call.
+            if uow.users.find_by_email(email_vo) is None:
+
+                # Retrieve default role
+                default_role = uow.roles.get_by_name(self.default_role_name)
+                if not default_role:
+                    log.error(
+                        "Default role not found", role_name=self.default_role_name
+                    )
+                    # A server failure in substance: the caller did nothing
+                    # wrong and retrying with different input will not help.
+                    # The missing role is not named -- that would tell an
+                    # anonymous caller which part of the deployment is
+                    # misconfigured.
+                    #
+                    # Its own code rather than the CONFIGURATION_ERROR it
+                    # used to share with `UserManagementService`. That one
+                    # says "Default role 'user' not found", which is a
+                    # sentence for an operator reading a log, and one code
+                    # cannot carry both audiences: whatever rule decides
+                    # whether a sentence may be shown would have to be
+                    # right about both at once, and it was not.
+                    #
+                    # The status is still 400, because the controller
+                    # answers every DomainError on this route that way --
+                    # so the code, not the status, is what distinguishes
+                    # this from a bad request.
+                    #
+                    # It is also the one place the two paths still diverge:
+                    # a deployment missing its default role answers 400 for
+                    # a free address and 202 for a taken one. That is a
+                    # deployment which cannot register anybody at all.
+                    # Marked, unlike the sentences behind a 5xx: this one
+                    # is read by whoever tried to register, which is what
+                    # `CODES_WORDED_FOR_THE_CLIENT` records.
+                    raise DomainError(
+                        N_("Registration is unavailable"),
+                        code="REGISTRATION_UNAVAILABLE",
+                    )
+
+                # A default role that exists and may not be worn is the
+                # same kind of fault as one that is missing: the caller
+                # did nothing wrong, and no retry helps. Translated into
+                # this route's own code rather than answered as it comes,
+                # because ``RoleNotAssignableError`` names the role -- and
+                # naming it tells an anonymous caller which part of the
+                # deployment is misconfigured, which is the very reason
+                # the branch above does not name the missing one either.
+                try:
+                    require_roles_are_assignable([default_role])
+                except RoleNotAssignableError:
+                    log.error(
+                        "Default role cannot be assigned to an account",
+                        role_name=self.default_role_name,
+                    )
+                    raise DomainError(
+                        N_("Registration is unavailable"),
+                        code="REGISTRATION_UNAVAILABLE",
+                    )
+
+                # Create user entity
+                user = User.create(
+                    email=email_vo,
+                    password_hash=password_hash_vo,
+                    roles=[default_role]
+                )
+
+                saved_user = uow.users.save(user)
+
+                token = issue_token()
+                uow.email_verifications.save(
+                    EmailVerification.issue(
+                        user_id=saved_user.id,
+                        token_hash=token_digest(token),
+                        ttl_hours=self.verification_ttl_hours,
+                    )
+                )
+                uow.commit()
+
+        return saved_user, token
 
     def execute(self, email: str, password: str, context: RequestContext) -> None:
         """
@@ -113,59 +218,19 @@ class RegisterUseCase(BaseUseCase):
 
         saved_user = None
         token = None
-        with self.uow_factory() as uow:
-
-            # Check for existing user. A taken address writes nothing and
-            # reads nothing further; what it produces -- a message to the
-            # address -- is handed off below, outside this block, for the
-            # same reason the confirmation is: without a broker the
-            # hand-off is the SMTP exchange itself, and making it here
-            # would hold a database connection open across a network call.
-            if uow.users.find_by_email(email_vo) is None:
-
-                # Retrieve default role
-                default_role = uow.roles.get_by_name(self.default_role_name)
-                if not default_role:
-                    log.error(
-                        "Default role not found", role_name=self.default_role_name
-                    )
-                    # A server failure in substance: the caller did nothing
-                    # wrong and retrying with different input will not help.
-                    # The message says so and no longer names the missing
-                    # role, which told an anonymous caller which part of the
-                    # deployment is misconfigured.
-                    #
-                    # The status is still 400, because the controller answers
-                    # every DomainError that way -- so the code, not the
-                    # status, is what distinguishes this from a bad request.
-                    #
-                    # It is also the one place the two paths still diverge:
-                    # a deployment missing its default role answers 400 for
-                    # a free address and 202 for a taken one. That is a
-                    # deployment which cannot register anybody at all.
-                    raise DomainError(
-                        "Registration is unavailable",
-                        code="CONFIGURATION_ERROR",
-                    )
-
-                # Create user entity
-                user = User.create(
-                    email=email_vo,
-                    password_hash=password_hash_vo,
-                    roles=[default_role]
-                )
-
-                saved_user = uow.users.save(user)
-
-                token = issue_token()
-                uow.email_verifications.save(
-                    EmailVerification.issue(
-                        user_id=saved_user.id,
-                        token_hash=token_digest(token),
-                        ttl_hours=self.verification_ttl_hours,
-                    )
-                )
-                uow.commit()
+        try:
+            saved_user, token = self._register(email_vo, password_hash_vo, log)
+        except ValidationError as clash:
+            # Somebody registered this address between the check below and
+            # the write. Answered as a taken address rather than as a
+            # failure: that is what it is, and the alternative was a 500
+            # on a public endpoint -- measured, five simultaneous
+            # registrations of one address: 202, 500, 500. The difference
+            # in answers also told a caller what the 202 is worded to
+            # withhold.
+            if clash.field != "email":
+                raise
+            log.info("Registration lost a race for the address")
 
         if saved_user is None:
             # Recorded, because a run of these is somebody walking a list
@@ -186,9 +251,24 @@ class RegisterUseCase(BaseUseCase):
             return None
 
         log.info("User registered", user_id=saved_user.id, email=email_vo.value)
+        # The security journal too, and not only this one. `application.log`
+        # keeps the whole address and is read under `logs:view`; the audit
+        # journal masks it and is read under `audit:view`, and it is the one
+        # an investigator opens to ask when an account appeared. It had no
+        # answer for an account that registered itself -- measured, 335
+        # lines before a registration and 335 after -- while the same
+        # account made by an operator wrote `USER_CREATED`.
+        audit = self._get_audit_logger(self.audit_logger, context)
+        audit.log_registered(
+            target_user_id=saved_user.id, email=email_vo.value
+        )
 
+        # The token is issued in the same branch that saves the user, so
+        # past the check above it is a string. mypy follows the two
+        # variables separately and only knows that ``saved_user`` was
+        # checked.
         if not self.task_queue.enqueue_verification_email(
-            email_vo.value, token, context
+            email_vo.value, token, context  # type: ignore[arg-type]
         ):
             # Said out loud rather than swallowed: the account exists and
             # cannot be used, and nobody will find out from the response,

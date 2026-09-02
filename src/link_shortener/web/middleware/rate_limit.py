@@ -1,8 +1,10 @@
 from flask import (
-    Flask, g, jsonify, make_response, render_template, request
+    Flask, g, jsonify, make_response, request
 )
+from flask_babel import ngettext
+
 from link_shortener.application import RateLimiter
-from link_shortener.web.responses import wants_html
+from link_shortener.web.responses import error_page, wants_html
 from link_shortener.web.schemas.error import ErrorResponse
 from link_shortener.web.security.context import get_client_ip
 from link_shortener.web.middleware.hooks import response_hook
@@ -35,47 +37,29 @@ def check_rate_limit_targets(app: Flask) -> None:
     An entry only applies if the throttle gets as far as looking it up,
     and three things stop it permanently: no route answers to that name,
     the name is exempt, or every route it answers on sits under the static
-    prefix, which is refused a line earlier. In all three the setting
-    reads like a live limit and throttles nothing -- which is how
-    ``RATE_LIMITS["health"] = (10, 5)`` lived long enough to be measured:
-    probe after probe and not one 429.
+    prefix. In all three the setting reads like a live limit and throttles
+    nothing.
 
-    A fourth way is deliberately not refused here.
-    ``RATE_LIMIT_AUTH_DISABLED`` switches every ``auth.*`` limit off at
-    run time, and it is meant to: it is how a development run stops
-    locking itself out. It is a stated choice rather than a contradiction
-    nobody noticed, and refusing it would refuse the integration and e2e
-    configurations that set it.
+    ``RATE_LIMIT_AUTH_DISABLED`` is deliberately not refused: switching
+    every ``auth.*`` limit off at run time is how a development run stops
+    locking itself out, and the integration and e2e configurations set it.
 
-    Values are checked too, and a bad one fails in three different ways.
-    A value the limiter cannot use -- ``10``, ``(5,)``, ``("5", 60)`` --
-    raises inside ``before_request`` and answers 500 to every request that
-    endpoint gets. A zero limit refuses every request forever. A negative
-    period puts the window's start in the future, so every recorded hit
-    falls outside it and nothing is throttled at all. The first two are
-    loud; the third is this defect again, written differently.
+    Values are checked too. A value the limiter cannot use -- ``10``,
+    ``(5,)``, ``("5", 60)`` -- raises inside ``before_request`` and answers
+    500 for that endpoint; a zero limit refuses every request forever; a
+    negative period puts the window's start in the future, so nothing is
+    throttled at all. ``("5", 60)`` is worth naming because it fails
+    against the in-memory limiter and not against Redis, whose script
+    coerces the number.
 
-    ``("5", 60)`` is worth naming: it is a defect against the in-memory
-    limiter and not against Redis, whose script coerces the number. A
-    setting that works in production and answers 500 in development is
-    harder to find than one that fails everywhere.
-
-    Held against the URL map rather than against the exempt list alone, so
-    a name that is merely misspelled is caught by the same check. Call it
-    once every route is registered: the middleware is installed before the
-    first blueprint, so at its own construction there is nothing yet to
-    hold the names against.
+    Held against the URL map, so a misspelled name is caught by the same
+    check. Call it once every route is registered: the middleware is
+    installed before the first blueprint.
 
     ``DEFAULT_RATE_LIMIT`` and ``DEFAULT_RATE_LIMIT_PERIOD`` are not
     checked here even though they bound every route this table does not
-    name. They are ordinary settings, and ``BaseConfig.validate`` already
-    refuses a non-positive one -- repeating it here would be a second
-    opinion in the wrong layer, free to drift from the first.
-
-    That leaves one gap, and it is not this function's to close:
-    ``create_app`` never calls ``validate`` on a configuration handed to
-    it directly, so an object built in code rather than through
-    ``ConfigFactory`` is never checked at all.
+    name -- ``BaseConfig.validate`` already refuses a non-positive one,
+    and a second opinion in another layer is free to drift from the first.
 
     Args:
         app: Flask application with every route already registered.
@@ -93,7 +77,7 @@ def check_rate_limit_targets(app: Flask) -> None:
             f"got {type(rate_limits).__name__}"
         )
 
-    routes = {}
+    routes: dict = {}
     for rule in app.url_map.iter_rules():
         routes.setdefault(rule.endpoint, []).append(rule.rule)
 
@@ -208,7 +192,7 @@ class RateLimitMiddleware:
         self.auth_disabled = app.config.get("RATE_LIMIT_AUTH_DISABLED", False)
 
         self._register_handlers()
-    
+
     def _register_handlers(self):
         """Install ``before_request`` and ``after_request`` hooks."""
         @self.app.before_request
@@ -217,7 +201,7 @@ class RateLimitMiddleware:
             Before each request: build a key, determine the appropriate limit,
             and check with the rate limiter. If limit is exceeded, abort with 429.
             """
-            
+
             # Static assets and the health probe are never throttled. The
             # probe is how the orchestrator learns whether this instance is
             # alive, and a 429 is indistinguishable from a real failure to
@@ -244,7 +228,7 @@ class RateLimitMiddleware:
             limit, period = self.rate_limits.get(
                 request.endpoint, (self.default_limit, self.default_period)
             )
-            
+
             # One call, not two. Asking for the verdict and then for the
             # remaining quota meant a second round trip on every allowed
             # request just to fill in a header -- and against a Redis that
@@ -255,7 +239,7 @@ class RateLimitMiddleware:
                 remaining = decision.remaining
                 # The same envelope every other refusal answers in, and the
                 # one the OpenAPI document declares for the 429 it merges
-                # into thirteen operations. Built by hand, this answer
+                # into every operation. Built by hand, this answer
                 # carried neither `details` nor `timestamp` while the
                 # document promised both -- and the guest-quota 429 beside
                 # it, which goes through the error handler, did carry them:
@@ -267,9 +251,18 @@ class RateLimitMiddleware:
                 # as one that reads the header.
                 body = ErrorResponse(
                     error="RATE_LIMIT_EXCEEDED",
-                    message=(
-                        f"Too many requests. Limit {limit} per {period} "
-                        f"seconds."
+                    # `ngettext` rather than `gettext`, on `period`: the
+                    # sentence ends in a count of seconds, and Russian
+                    # takes three forms for it -- "1 секунду", "3
+                    # секунды", "60 секунд". A single form gets two of
+                    # those three wrong, and 60 is the value it ships
+                    # with.
+                    message=ngettext(
+                        "Too many requests. Limit %(limit)s per %(period)s second.",
+                        "Too many requests. Limit %(limit)s per %(period)s seconds.",
+                        period,
+                        limit=limit,
+                        period=period,
                     ),
                 ).model_dump()
                 body["retry_after"] = period
@@ -284,7 +277,9 @@ class RateLimitMiddleware:
                 if wants_html():
                     try:
                         response = make_response(
-                            render_template("error.html", error=body["message"])
+                            error_page(
+                                "RATE_LIMIT_EXCEEDED", body["message"], 429
+                            )
                         )
                     except Exception as e:
                         # A page that will not render must not cost the
@@ -303,12 +298,12 @@ class RateLimitMiddleware:
                 response.headers['X-RateLimit-Remaining'] = str(remaining)
                 response.headers['Retry-After'] = str(period)
                 return response
-            
+
             # Store the limit values in the Flask global object so they can be
             # added to the response headers later.
             g.rate_limit_limit = limit
             g.rate_limit_remaining = decision.remaining
-        
+
         @self.app.after_request
         @response_hook(self.logger)
         def add_rate_limit_headers(response):

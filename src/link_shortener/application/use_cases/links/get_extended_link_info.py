@@ -1,13 +1,12 @@
 from dataclasses import dataclass
 import time
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.link import ExtendedLinkInfoResponse
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.domain import LinkExpiredError, LinkNotFoundError, ShortCode
+from link_shortener.domain import LinkExpiredError, LinkNotFoundError
 
 
 @dataclass
@@ -20,7 +19,7 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
     derived metrics.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     base_url: str
     logger: Logger
     popular_threshold: int
@@ -38,9 +37,11 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
             ExtendedLinkInfoResponse with metrics.
 
         Raises:
-            LinkNotFoundError: If link not found.
+            LinkNotFoundError: If no link carries this code -- including a
+                string the format rules refuse, which is a code no link can
+                carry. ``_code_to_look_up`` decides that, so no
+                ``ValueError`` reaches a caller for a malformed code.
             LinkExpiredError: If the link exists but has expired.
-            ValueError: If short code format is invalid.
             DomainError: If the user is not authorised.
         """
         log = self._get_logger(self.logger, context)
@@ -52,8 +53,10 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
             short_code = self._code_to_look_up(short_code_str)
 
             # Query repository -- the authority for whether the link is
-            # still there. See GetLinkInfoUseCase for why the cache is
-            # written on this path but never read.
+            # still there. This use case has no cache to consult at all:
+            # the field was dropped in 26a9339, and the comment that stood
+            # here outlived it, still saying the cache was written on this
+            # path while the line below said it deliberately was not.
             with self.uow_factory(read_only=True) as uow:
                 link = uow.links.find_by_code(short_code)
                 if not link:
@@ -70,15 +73,17 @@ class GetExtendedLinkInfoUseCase(BaseUseCase):
             log.info("Found in repository", short_code=short_code.value)
 
             return ExtendedLinkInfoResponse.from_link(
-                link, 
+                link,
                 base_url=self.base_url,
                 popular_threshold=self.popular_threshold,
                 recent_days=self.recent_days
             )
 
-        except ValueError as e:
-            log.error("Invalid short code format", short_code=short_code_str)
-            raise ValueError(f"Invalid short code: {str(e)}")
+        # No ``except ValueError`` here. A code the format rules refuse is
+        # turned into ``LinkNotFoundError`` by ``_code_to_look_up`` before
+        # this block is reached -- that is the decision recorded on it --
+        # so the branch that used to re-raise a bare ``ValueError`` was
+        # unreachable, and a second answer to a question already answered.
 
         except (LinkNotFoundError, LinkExpiredError):
             raise

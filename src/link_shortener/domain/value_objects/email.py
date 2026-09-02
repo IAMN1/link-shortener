@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import re
 
 from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.i18n import N_
 
 
 EMAIL_PATTERN = r"^[^@\s\x1c-\x1f]+@[^@\s\x1c-\x1f]+\.[^@\s\x1c-\x1f]+$"
@@ -20,10 +21,10 @@ sends, where a newline is how a header injection is spelled.
 ``\\s``. Python counts the four information separators (FS, GS, RS, US) as
 whitespace and the Rust ``regex`` crate, which validates the web schema,
 does not -- it reads ``\\s`` as ``\\p{White_Space}``, and those four are
-not in it. Measured over U+0000..U+3000: with ``\\s`` alone the schema
-accepted exactly those four where this object refused them, so an address
-carrying one passed validation and was then refused a layer deeper. They
-are the whole disagreement; naming them leaves none.
+not in it. With ``\\s`` alone the schema accepts exactly those four where
+this object refuses them, so an address carrying one passes validation and
+is refused a layer deeper. Over U+0000..U+3000 they are the whole
+disagreement; naming them leaves none.
 
 Spelled with ``$`` for the web schema: the Rust engine does not know
 ``\\Z``, and its ``$`` already means the end of the text.
@@ -39,6 +40,34 @@ the newline at the end of the string", so ``$`` alone would go on
 accepting a trailing newline no matter what the character classes refuse.
 ``\\Z`` is the end and nothing else. (``\\z``, the spelling that reads
 right, arrived after Python 3.12, which is what this runs on.)
+"""
+
+
+MAX_EMAIL_LENGTH = 254
+"""The longest an address may be, in characters.
+
+RFC 5321 section 4.5.3.1.3 caps a forward-path at 256 octets, and a path
+is written ``<address>`` -- so the address inside it has 254. The local
+part is capped at 64 by section 4.5.3.1.1, which this does not check
+separately: an address that passes both halves passes this one, and the
+whole-path limit is the one a receiving host actually enforces.
+
+Not decoration, and not a tidier document. Without it an address of any
+length reached ``users.email``, which is ``String(255)``: PostgreSQL
+refused the insert, the refusal is not a ``ValidationError``, and no
+handler on the way out knew it -- so an **unauthenticated** two-field
+body to ``POST /api/v1/auth/register`` answered ``500``. Measured on the
+production profile with a 261-character address. SQLite does not
+reproduce it: it ignores a declared width, so the suite running on SQLite
+saw the row stored and nothing wrong.
+
+254 rather than 255 leaves the column a character it can never need,
+which is the right way round: the rule is the standard's, and the column
+is wide enough to hold whatever the rule admits.
+
+This is the same shape of defect as the one ``Link.create`` records for
+``ttl_seconds`` -- a value the domain did not bound, refused instead by
+arithmetic or by a column, and reported as a fault of the service.
 """
 
 
@@ -95,12 +124,24 @@ class Email:
         Raises:
             ValidationError: If the email does not match the expected pattern.
         """
+        # Length before shape, and not for speed: the pattern is anchored
+        # and linear, so a long string costs little to match. It is that a
+        # 300-character address and a 300-character line of noise are the
+        # same fault, and the caller is better told which limit it met.
+        if len(self.value) > MAX_EMAIL_LENGTH:
+            # No length in the message and no value: the same reasoning as
+            # below -- this sentence reaches the client, and the object is
+            # also built from stored rows.
+            raise ValidationError(
+                N_("Email address is too long"), field="email"
+            )
+
         if not re.match(EMAIL_PATTERN_RE, self.value):
             # The offending value is deliberately left out: this message
             # reaches the client, and the same object is built from database
             # rows, so echoing it would reflect user input and leak stored
             # data on the read path.
-            raise ValidationError("Invalid email format", field="email")
+            raise ValidationError(N_("Invalid email format"), field="email")
 
         # object.__setattr__ because the dataclass is frozen. That call
         # would bypass frozen anywhere; what makes here the right place is
@@ -127,7 +168,7 @@ class Email:
             The normalised form of it.
         """
         return value.lower()
-    
+
     @classmethod
     def from_storage(cls, value: str) -> "Email":
         """
@@ -144,7 +185,7 @@ class Email:
         such a row in place, outside ``flask maintenance
         normalize-emails`` and outside any log; and where another account
         already held the lower-case form it hit the unique index instead
-        -- measured on confirmation: ``IntegrityError``, answered as 500,
+        -- on confirmation that means ``IntegrityError``, answered as 500,
         with the token left unspent, so the account could never be
         confirmed at all.
 

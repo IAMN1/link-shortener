@@ -5,9 +5,11 @@ Configuration classes declare their values with the helpers from this module
 instead of calling ``os.environ.get()`` directly in the class body.
 
 A direct call in a class body is evaluated at **import time**, which happens
-before ``ConfigFactory.create_config()`` calls ``load_dotenv()``. As a result
-every value coming from ``.env`` was silently ignored and the class default
-was used instead.
+before ``ConfigFactory.create_config()`` has merged the ``.env`` files into
+the environment at all. As a result every value coming from ``.env`` was
+silently ignored and the class default was used instead. (The merge is
+``dotenv_values`` plus an explicit assignment per key, not ``load_dotenv``:
+``ConfigFactory`` says why it does not use that function.)
 
 The descriptor below reads the environment at **attribute access** time, so
 the resolution order is always:
@@ -217,7 +219,10 @@ class EnvField:
             return self.default
 
         raw = os.environ.get(self.name)
-        if is_unset(raw):
+        # ``raw is None`` named alongside is_unset: the helper answers True
+        # for a blank string too, so it says "not configured" without saying
+        # "not None", and the caster below needs the second.
+        if raw is None or is_unset(raw):
             return self.default
 
         try:

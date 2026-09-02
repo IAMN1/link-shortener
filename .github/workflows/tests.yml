@@ -1,50 +1,25 @@
-# ==============================================================================
-# The suite runs twice, and the second run is hostile on purpose
-# ==============================================================================
-# A clean runner proves what a developer's machine cannot: that the suite
-# passes on a fresh clone, with no `.env` file and none of this project's
-# settings in the environment.
-#
-# It cannot prove the opposite -- that no test reads configuration it was
-# never handed -- because a clean environment has nothing to leak. The
-# hostile run supplies the leak and demands the same result. This is not a
-# hypothetical: a config test built a `development` profile, picked up an
-# exported DATABASE_URL, connected to a real outside database and wrote four
-# rows into its `roles` table. It reported two tests passed. The measurement
-# is recorded next to the fixture that now scrubs those variables, in
-# tests/unit/infrastructure/test_config/test_env_precedence.py.
-#
-# So the two runs answer different questions, and neither substitutes for
-# the other:
-#
-#   clean    does a fresh clone pass?  Nowhere else can answer it: every
-#            developer machine already has a `.env`.
-#   hostile  does a polluted machine pass the same way?  Every developer
-#            machine is polluted; this one is polluted reproducibly.
-# ==============================================================================
+# The suite is run twice: in a clean environment and in a hostile one. The
+# first answers "does a fresh clone pass", the second "does a polluted
+# machine pass the same way". The reasoning is in docs/testing.md,
+# "What CI enforces".
 
 name: tests
 
 on:
-  # Unfiltered: every branch and every tag. Work happens in feature branches
-  # that are merged locally rather than through pull requests, so the push
-  # is the only moment CI is guaranteed to see the code. Add `pull_request:`
-  # if contributions ever start arriving from forks -- pushes to a fork do
-  # not trigger this workflow.
+  # Every branch and every tag: the work happens in feature branches that
+  # are merged locally, so a push is the only guaranteed moment.
   push:
-  # Runs from the Actions tab. GitHub offers the button only for workflow
-  # files present on the default branch, so it stays absent until this file
-  # reaches master.
+  # The button appears only for files on the default branch.
   workflow_dispatch:
 
-# A newer push to the same branch makes the older run's verdict answer a
-# question nobody is asking any more.
+# A newer push turns an older run's verdict into the answer to a question
+# nobody is asking any more.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Nothing here writes anything back. Stated rather than inherited, because
-# the repository default may be read-write.
+# Nothing is written back. Declared explicitly: the repository's default may
+# be read-write.
 permissions:
   contents: read
 
@@ -52,13 +27,11 @@ jobs:
   suite:
     name: ${{ matrix.mode }}
     runs-on: ubuntu-latest
-    # The suite takes about 70 seconds locally and collection under one;
-    # the rest is checkout, dependency install and image pulls.
     timeout-minutes: 25
 
     strategy:
-      # Both modes report, always. "clean passed, hostile failed" is the
-      # diagnosis itself -- fail-fast would cancel the half that carries it.
+      # Both halves run to the end: "clean passed, hostile failed" is itself
+      # the diagnosis.
       fail-fast: false
       matrix:
         mode: [clean, hostile]
@@ -67,57 +40,35 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install uv
-        # Pinned to an exact release, unlike actions/checkout above. This
-        # action stopped publishing floating major tags after v7: the
-        # repository has v8.0.0 and v9.0.0 but no bare v8 or v9, and a tag
-        # that does not exist fails to resolve before the step runs.
-        #
-        # Note what this does not pin. The action installs the newest uv
-        # unless told otherwise, so the tool that reads uv.lock floats even
-        # though the action does not. Pin it with a `version:` input here,
-        # or with `[tool.uv] required-version` in pyproject.toml, if a uv
-        # release ever breaks a run.
+        # An exact version: after v7 the action stopped publishing floating
+        # major tags, and `v9` does not resolve.
         uses: astral-sh/setup-uv@v9.0.0
         with:
-          # Caches uv's downloads between runs. The key covers uv.lock,
-          # pyproject.toml and requirements*.txt -- setup-uv's default
-          # dependency glob is a seven-pattern list, not the lockfile alone.
           enable-cache: true
 
       - name: Install dependencies
-        # --locked, not --frozen. Both install exactly what uv.lock pins,
-        # but --frozen means "do not update the lockfile" and checks
-        # nothing: a dependency added to pyproject.toml without re-locking
-        # would simply be missing here, and CI would test a different set of
-        # packages than the one committed. --locked asserts the lockfile is
-        # already in agreement and fails when it is not.
-        run: uv sync --locked
+        # --locked, not --frozen: the first checks that uv.lock agrees with
+        # pyproject.toml, the second quietly installs whatever is there.
+        #
+        # `contract` comes along because `tests/contract` is collected by
+        # the same run as everything else, and without Schemathesis that
+        # directory fails at import -- which reads as a broken suite rather
+        # than as a missing tool. It is a group of its own, so it stays out
+        # of the runtime image the way `browser` does.
+        run: uv sync --locked --group contract
 
       - name: Guard requirements.txt against uv.lock
-        # The step above asserts pyproject.toml against uv.lock and stops
-        # there. requirements.txt is generated from that same lock and is
-        # what Dockerfile installs with pip, so a dependency added and
-        # locked but never re-exported leaves CI testing one set of packages
-        # and the image shipping another -- a drift nothing else here can
-        # see.
+        # requirements.txt is generated from the same lock file and is what
+        # pip installs into the image. Without this comparison CI tests one
+        # set of packages while the image carries another.
         #
-        # `grep -v '^#'` drops the two-line generated header, which records
-        # the exact command that produced the file including an
-        # --output-file this comparison has no use for. It drops nothing
-        # else: the 121 provenance lines are indented -- `# via pkg` and
-        # its `#   pkg` continuations -- so they stay in the comparison
-        # on both sides.
-        #
-        # --no-group browser: playwright is only for the hand-driven
-        # browser run, and this file is what the image pip-installs.
-        # Measured with it in: the image went from 532 MB to 731 MB.
-        # Redirected rather than --output-file: uv export writes the list to
-        # stdout either way, and the flag would repeat all 197 lines into
-        # the job log. --frozen so the check reads the lockfile instead of
-        # re-resolving and possibly rewriting it.
+        # `grep -v '^#'` drops the two-line header naming the command that
+        # generated the file; the provenance lines (`# via pkg`) are indented
+        # and stay in the comparison.
         run: |
           uv export --format requirements-txt --no-hashes --no-emit-project \
-            --frozen --no-group browser > "$RUNNER_TEMP/requirements.expected"
+            --frozen --no-group browser --no-group contract \
+            > "$RUNNER_TEMP/requirements.expected"
           if ! diff -u <(grep -v '^#' requirements.txt) \
                        <(grep -v '^#' "$RUNNER_TEMP/requirements.expected"); then
             echo "::error::requirements.txt is stale -- re-run the uv export"
@@ -125,60 +76,24 @@ jobs:
           fi
 
       - name: Pre-pull the test stack images
-        # Insurance, not a measurement. tests/integration/docker/conftest.py
-        # starts the stack itself and allows `compose up -d` 60 seconds; that
-        # budget was written on a laptop that already had the images.
-        # Whether a cold runner would really spend it on the pull is
-        # untested -- the two images are about 131 MB compressed -- but
-        # pulling here costs seconds, and the failure it forecloses costs
-        # the job.
-        run: docker compose -f docker-compose.test.yml pull --quiet
+        # tests/support/real_stack.py gives `compose up -d` 60 seconds. That
+        # budget was written on a machine where the images were already
+        # there.
+        run: docker compose -f dockers/docker-compose.test.yml pull --quiet
 
       - name: Pollute the environment
         if: matrix.mode == 'hostile'
-        # Two kinds of pollution, because they leak through different doors.
+        # Two channels for a leak. The profile loader reads the `.env` file
+        # for every profile but testing. Exported variables beat the file and
+        # reach the process even when there is no file at all.
         #
-        # A `.env` file: the profile loader reads it for every profile
-        # except `testing`, and `.env.example` is the file every clone
-        # starts from. The copy alone is a weak instrument, because the
-        # template mostly restates the profile defaults -- measured against
-        # `development`, only five settings differ (HOST, DATABASE_NAME,
-        # CACHE_LINK_TTL, CACHE_STATS_TTL and the BASE_URL that follows
-        # from HOST); every other value a test might read is identical to
-        # what it would see with no file at all.
+        # The values are chosen so that no profile declares any of them: a
+        # test that read one of these read this block and nothing else.
         #
-        # The appended block is what makes this channel deliberate rather
-        # than incidental. Every one of those settings is declared by a
-        # profile -- that is why writing them has any effect -- but the
-        # numbers are ones no profile declares, so a test observing any of
-        # them is observing this file and nothing else. A developer's real
-        # `.env` diverges from the template too; that is the state being
-        # reproduced.
-        #
-        # Exported variables: these outrank `.env` and reach the process
-        # even when no file exists. GUEST_LINK_LIMIT and BATCH_CREATE_LIMIT
-        # are the loud pair -- a test that reads either one sees a limit no
-        # fixture set, and says so in an assertion.
-        #
-        # DATABASE_URL is the variable the recorded leak travelled through,
-        # kept in the form the project documents. What actually stops a test
-        # that tries to use it is not the unresolvable host it looks like:
-        # SQLAlchemy maps a bare `postgresql://` to the psycopg2 dialect and
-        # this project ships psycopg 3, so create_engine() raises
-        # ModuleNotFoundError on the spot -- before a connection is opened,
-        # before DNS is consulted. Sturdier than the hostname, which a
-        # resolver with a search domain could turn into something real, and
-        # it trips earlier: at engine construction rather than at connect.
-        # A test that only reads the value and asserts on it still passes in
-        # silence; that is what the two limits above are for.
-        #
-        # The three pool sizes are exported rather than written to `.env`,
-        # and with values no profile declares, because `.env.example` sets
-        # them to exactly their defaults -- so planting the template alone
-        # left this channel carrying nothing. They are also the group
-        # BaseConfig declares as properties reading through read_env instead
-        # of as descriptors, which is how they slipped past three successive
-        # attempts to enumerate what a detached test must not see.
+        # DATABASE_URL is the channel the leak actually came through. A test
+        # that tried to use it fails at create_engine(): SQLAlchemy maps a
+        # bare `postgresql://` to the psycopg2 driver, which this project
+        # does not have.
         run: |
           cp .env.example .env
           {
@@ -202,36 +117,50 @@ jobs:
 
       - name: Guard the number of tests
         env:
-          # A floor, not an equality. Adding tests never needs a bump here;
-          # removing them has to be deliberate. Raise it when the suite
-          # genuinely grows.
-          MINIMUM_TESTS: 2289
-        # --error-for-skips closes the door marked "skipped". This closes
-        # the one beside it: a test that is never collected at all, so the
-        # run prints "N passed" and exits 0 for a smaller N. The mechanisms
-        # are quiet ones -- a file renamed out of the `python_files`
-        # pattern, a function out of `python_functions`, a `collect_ignore`
-        # in some conftest, or a directory renamed into something pytest
-        # skips by default: norecursedirs covers build, dist, venv,
-        # node_modules and anything starting with a dot, so tests/unit ->
-        # tests/build silently collects 749 instead of 2289. The tree
-        # already holds two uncollected files deliberately:
-        # tests/live/smoke_test.py and tests/live/browser_test.py.
+          # A floor, not an equality. Adding tests requires no edit here;
+          # losing them does, and that is deliberate.
+          #
+          # It follows the suite in both directions: 5210 are collected.
+          # The gap is 410. Written as a figure rather than in words,
+          # because past a hundred the words stop being read and this one
+          # is checked by a test that would have to spell every number.
+          #
+          # The floor is moved up when the suite grows by enough that the
+          # old one stops catching anything. It sat at 4200 while the suite
+          # reached 4511, which left 311 tests that could be lost in
+          # silence -- seven per cent of the run, and the whole point of
+          # the guard is that losing tests is loud. Moved with the run that
+          # added the documentation tests, not before it: a floor left
+          # above the suite fails the build for no reason at all.
+          #
+          # The 4500 was moved to 4800 by the run that closed the findings
+          # of the evaluation -- the body limit, the address bound, the
+          # per-account sign-in budget, the authority guard and the QR
+          # endpoint, with their tests. The suite went from 4941 to 5051
+          # and the old floor was 550 behind it, eleven per cent of the
+          # run: further than the 311 that prompted the move before this
+          # one, and for the same reason.
+          #
+          # The 4200 was placed when the suite stood at 4227, a hundred and
+          # sixty-one more than the run before it. The dead-code pass closed
+          # the holes a mutation probe found in domain, in parsing cache
+          # records and in the bodies of Celery tasks; the documentation
+          # pass added five -- two hold the OpenAPI document against the
+          # route table, two require a described body from every operation
+          # that reads one, and one came free, the schema check against
+          # infrastructure being parametrised by file and having picked the
+          # new one up; three hold the address the application journal
+          # writes behind a proxy; and two hold the build context clean.
+          MINIMUM_TESTS: 4800
+        # `--error-for-skips` closes the door marked "skipped". This closes
+        # the one beside it: a test that was never collected gives "N passed"
+        # and exit code 0 with a smaller N. The mechanisms are quiet -- a
+        # name outside `python_files`, a `collect_ignore` in a conftest, a
+        # directory pytest does not walk.
         #
-        # Renames to other names, and deletions of a conftest.py that
-        # something imports by path, are loud instead of quiet -- but they
-        # are loud through the exit status, not through the count, which is
-        # the other reason that status is checked below. A conftest.py that
-        # only supplies fixtures is the awkward case: deleting
-        # tests/unit/conftest.py leaves collection at 2289 and exit 0, and
-        # only the run itself goes red.
-        #
-        # The exit status is checked before the count is believed. An
-        # interrupted collection prints the items gathered up to the
-        # interrupt and exits 2 -- measured: "3 tests collected, 1 error"
-        # where five were expected. Counting that output and stopping there
-        # would report a healthy number for a suite that had just lost two
-        # tests.
+        # The return code is checked before the count is believed: an
+        # interrupted collection prints what it collected before the
+        # interruption and exits with code 2.
         run: |
           if ! listing=$(uv run pytest tests/ -o addopts="" --collect-only -q); then
             echo "::error::collection did not finish; any count from it is a lie"
@@ -246,43 +175,121 @@ jobs:
           fi
 
       - name: Run the suite
-        # -o addopts="" clears the whole addopts list from pyproject.toml.
-        # The reports are what we are after -- coverage, HTML, JUnit, none
-        # of which anything here reads. --tb=short is passed back, so a
-        # failure reads the way it reads on a laptop.
+        # `-o addopts=""` drops the whole list from pyproject.toml: it asks
+        # for coverage reports, and nobody reads them here. Strictness does
+        # not suffer -- strict_markers, strict_config and strict_xfail are
+        # declared as ini options rather than flags.
         #
-        # Nothing about strictness is passed back, because none of it lives
-        # in addopts any more: strict_markers, strict_config and
-        # strict_xfail are ini options, and clearing addopts does not touch
-        # those. This run is exactly as strict as a local one, by
-        # construction rather than by repeating flags that could drift.
-        #
-        # --error-for-skips turns a skipped test into a failure. The suite
-        # has exactly one skip branch: an unreachable Docker daemon. That is
-        # honest on a laptop, which may not have Docker, and a hole on a
-        # runner that is supposed to -- without the flag, a runner that lost
-        # it would drop 38 PostgreSQL and Redis tests and still report
-        # green.
-        #
-        # What the flag leaves open, since the enumeration matters more than
-        # the reassurance: it hooks the reporting phase, so a skip raised
-        # during collection (importorskip, skip(allow_module_level=True))
-        # passes unnoticed -- the count guard above is what catches those.
-        #
-        # And an xfail survives, for a reason worth writing down: at the
-        # report level an xfailed test IS skipped (rep.skipped is True,
-        # with wasxfail set). It escapes only because the plugin's second
-        # clause asks whether the exception was pytest.skip.Exception, and
-        # for a failing xfail it was not. Anyone replacing the plugin with
-        # a hand-rolled `if rep.skipped: rep.outcome = "failed"` would turn
-        # every xfail into a failure. strict_xfail in pyproject.toml catches
-        # the half that starts passing; one that keeps failing is invisible
-        # to both mechanisms, since it is collected and it reports. The
-        # suite has no xfail today.
-        #
-        # A test stack that fails to start is a separate matter and needs no
-        # flag: tests/integration/docker/conftest.py calls pytest.fail, not
-        # pytest.skip, for everything except the missing daemon.
+        # `--error-for-skips` turns a skip into a failure. The one branch in
+        # the suite that skips is an unreachable Docker daemon: an honest
+        # skip on a laptop and a hole on a runner, where Docker has to be
+        # there.
         run: >
           uv run pytest tests/ -q --no-cov -o addopts="" --tb=short
           --error-for-skips
+
+      - name: Guard the contract run against a missing tool
+        # `tests/contract` is not collected when Schemathesis is absent --
+        # otherwise a plain `uv sync`, which is what the quick start tells a
+        # reader to run, ends the whole suite at collection. That silence is
+        # paid for here: run on its own, an empty collection is exit code 5,
+        # so a workflow that stopped installing the group says so instead of
+        # quietly testing less.
+        run: uv run pytest tests/contract -q --no-cov
+
+      - name: Run the live surface check
+        # 159 checks over HTTP, and the only thing that walks every routing
+        # rule: the run records which rule answered each request and turns
+        # red if one was never reached. It also walks the address
+        # confirmation chain through an SMTP receiver of its own.
+        #
+        # It starts no services: the testing profile ignores the
+        # environment, so both halves of the matrix give one answer.
+        run: uv run python tests/live/smoke_test.py
+
+      - name: Install the browser
+        # On the clean half only: the browser run reads nothing from the
+        # environment, and Chromium is a hundred megabytes to download --
+        # there is no point fetching it twice for the same answer.
+        if: matrix.mode == 'clean'
+        run: |
+          uv sync --locked --group browser
+          uv run playwright install --with-deps chromium
+
+      - name: Run the browser check
+        # 71 checks in a real browser. The only thing that executes
+        # web/static/js at all: the rest of the suite drives the Flask test
+        # client, which has no engine in it, so the page scripts could be
+        # broken outright and the suite would stay green.
+        if: matrix.mode == 'clean'
+        run: uv run python tests/live/browser_test.py
+
+  # The linters as a job of their own, run once: not one of them reads the
+  # environment. The steps are separate so the summary says which tool
+  # objected.
+  #
+  # What is not here and why -- docs/testing.md, "What CI enforces".
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: flake8
+        # Configured by the .flake8 file: flake8 does not read
+        # pyproject.toml. `select` keeps defects (E9, F) and trailing
+        # rubbish (W291, W292, W293, W391), and leaves layout out.
+        run: uv run flake8 src tests
+
+      - name: pylint
+        # The `fail-under = 9.0` threshold is set in pyproject.toml.
+        run: uv run pylint src
+
+      - name: bandit
+        # src only: to bandit an `assert` is a finding, to a test it is the
+        # reason it exists. Findings that have been examined carry
+        # `# nosec`.
+        run: uv run bandit -r src -q
+
+      - name: mypy
+        # Configured by the `[tool.mypy]` section of pyproject.toml; there
+        # is no threshold, the gate stands at zero errors. Here the run is
+        # always from scratch -- a fresh clone has no cache; locally the
+        # same is had with
+        # `rm -rf .mypy_cache && uv run mypy --no-incremental src`.
+        run: uv run mypy src
+
+      - name: Guard messages.pot against the tree
+        # Every `#:` line in the template leads a translator to the place
+        # the text is written. It goes stale on any edit that moved lines,
+        # and goes stale quietly: gettext reads the `.mo`, which carries no
+        # references, so the service answers the same with correct
+        # references and with drifted ones, and the price is paid by
+        # whoever opens the catalogue to translate it.
+        #
+        # `grep -v` drops the one line that changes on every run of
+        # `extract` regardless of the tree.
+        run: |
+          # The version is read from pyproject.toml rather than written
+          # here: it goes into the `Project-Id-Version` header of every
+          # catalogue, and written in two places it would part from the
+          # project at the first release -- quietly, because nobody reads a
+          # catalogue header.
+          V=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
+          uv run pybabel extract -F babel.cfg -o "$RUNNER_TEMP/messages.expected" \
+            --project=link-shortener --version="$V" .
+          if ! diff -u <(grep -v '^"POT-Creation-Date' src/link_shortener/web/translations/messages.pot) \
+                       <(grep -v '^"POT-Creation-Date' "$RUNNER_TEMP/messages.expected"); then
+            echo "::error::messages.pot is stale -- re-run the pybabel extract, update and compile"
+            exit 1
+          fi

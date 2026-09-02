@@ -1,12 +1,8 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application import (
-    GetServiceStatsUseCase,
-    GetUserActivityStatsUseCase,
-    StatsCache,
-    Logger,
-    UnitOfWork,
+    UnitOfWorkFactory, GetServiceStatsUseCase, GetVisitStatsUseCase,
+    GetUserActivityStatsUseCase, StatsCache, Logger
 )
 
 
@@ -19,7 +15,7 @@ class StatsUseCasesComponent:
     aggregated data.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     cache: StatsCache
     base_url: str
     logger: Logger
@@ -37,7 +33,20 @@ class StatsUseCasesComponent:
             cache=self.cache,
             logger=self.logger,
         )
-    
+
+    def get_visit_stats_use_case(self) -> GetVisitStatsUseCase:
+        """
+        Return a configured ``GetVisitStatsUseCase``.
+
+        Deliberately uncached, unlike the service totals above: the figures
+        move with every redirect, and a cached chart that lags by minutes
+        is a chart nobody trusts twice.
+        """
+        return GetVisitStatsUseCase(
+            uow_factory=self.uow_factory,
+            logger=self.logger,
+        )
+
     def get_user_activity_stats_use_case(self) -> GetUserActivityStatsUseCase:
         return GetUserActivityStatsUseCase(
             uow_factory=self.uow_factory,

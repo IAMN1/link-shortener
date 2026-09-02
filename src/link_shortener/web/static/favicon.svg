@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The mark is the redirection arrow the wordmark carries, drawn rather
+       than set, so it survives at 16 pixels. It follows the reader's theme:
+       an SVG favicon may carry its own media query, and a tab strip is dark
+       on a dark desktop. -->
+  <style>
+    .ground { fill: #0d0f11; }
+    .mark { stroke: #f4f6f7; }
+    @media (prefers-color-scheme: dark) {
+      .ground { fill: #f4f6f7; }
+      .mark { stroke: #0b0c0e; }
+    }
+  </style>
+  <rect class="ground" width="32" height="32" rx="7"/>
+  <path class="mark" d="M11 10.5 17 16l-6 5.5" fill="none" stroke-width="3"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="mark" d="M20.5 21.5h1.5" fill="none" stroke-width="3"
+        stroke-linecap="round"/>
+</svg>

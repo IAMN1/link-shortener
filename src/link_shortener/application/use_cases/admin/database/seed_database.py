@@ -32,14 +32,12 @@ class SeedDatabaseUseCase(BaseUseCase):
         """
         Create `count` test links.
 
-        Links that already exist are reported separately instead of being
-        counted as created: seeding twice used to claim it had created another
-        full batch while the deduplication had simply returned the old links.
+        Links that already exist are reported separately rather than
+        counted as created: deduplication returns the stored link, and
+        counting it as new would overstate the batch.
 
-        The first failure aborts the run. Silently swallowing every exception
-        turned a hit on the guest link limit into "Created 0 test links" with a
-        success exit code, which reads like an empty database rather than a
-        rejected request.
+        The first failure aborts the run, so a rejected request is not
+        reported as an empty database.
 
         Args:
             count: Number of test links to create.
@@ -57,7 +55,13 @@ class SeedDatabaseUseCase(BaseUseCase):
         created = 0
         existing = 0
         for i in range(count):
-            url = f"https://seed-db.com{i}"
+            # A path per link, not a host per link: ``seed-db.com{i}``
+            # spelled ``seed-db.com0``, ``seed-db.com1``, ... -- a fresh
+            # hostname under a top-level domain that does not exist, once
+            # per row. They validate and they deduplicate, so the seeding
+            # worked; what it produced was not the shape of anything a
+            # deployment stores.
+            url = f"https://seed-db.example/{i}"
             try:
                 response = self.create_short_link_use_case.execute(url, context)
             except Exception as e:

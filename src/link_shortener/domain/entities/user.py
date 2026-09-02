@@ -4,6 +4,9 @@ from typing import List, Optional
 import uuid
 
 from link_shortener.domain.entities.role import Role
+from link_shortener.domain.policies.role_policy import (
+    require_roles_are_assignable,
+)
 from link_shortener.domain.value_objects.email import Email
 from link_shortener.domain.value_objects.password_hash import PasswordHash
 
@@ -66,7 +69,17 @@ class User:
 
         Returns:
             A new User instance with ``is_active=True`` and ``created_at`` set to now.
+
+        Raises:
+            RoleNotAssignableError: If one of the roles is one no account
+                may wear.
         """
+        # Asked here because this is where a user first gets roles, and
+        # registration builds the entity directly rather than through
+        # ``UserManagementService``: the rule lived in that service alone
+        # and registration walked past it.
+        require_roles_are_assignable(roles or [])
+
         return cls(
             id=str(uuid.uuid4()),
             email=email,
@@ -74,7 +87,7 @@ class User:
             roles=roles or [],
             email_verified=email_verified,
         )
-    
+
     def has_permission(self, permission_name: str) -> bool:
         """
         Check whether the user possesses a specific permission.
@@ -88,7 +101,7 @@ class User:
             True if any of the user's roles contain the given permission.
         """
         return any(role.has_permission(permission_name) for role in self.roles)
-    
+
     def __eq__(self, other: object) -> bool:
         """Equality based on user ID."""
         if not isinstance(other, User):
@@ -99,19 +112,10 @@ class User:
         """Hash based on user ID."""
         return hash(self.id)
 
-    def is_admin(self) -> bool:
-        """
-        Convenience method to check if the user has full administrative privileges.
-
-        Returns:
-            True if the ``"admin:all"`` permission is granted.
-        """
-        return self.has_permission("admin:all")
-    
     def activate(self) -> None:
         """Activate a previously deactivated user account."""
         self.is_active = True
-    
+
     def deactivate(self) -> None:
         """Deactivate the user account (soft delete)."""
         self.is_active = False

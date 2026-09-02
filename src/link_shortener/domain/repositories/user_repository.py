@@ -19,11 +19,48 @@ class UserRepository(ABC):
         """
         Persist a new or updated user.
 
+        Writes the whole account, so the entity handed in must have been
+        read inside the transaction that is about to commit it. Read in an
+        earlier one, every column it carries is stale by however long the
+        gap was, and the save puts all of them back -- see
+        ``record_login`` for what that cost when the gap was a bcrypt
+        comparison.
+
         Args:
             user: User entity to save.
 
         Returns:
             The saved User.
+        """
+        ...
+
+    @abstractmethod
+    def record_login(self, user_id: str, when: datetime) -> bool:
+        """
+        Note that an account has just signed in.
+
+        One column, by a conditional update, rather than ``save`` on an
+        entity read earlier. The rule is the one
+        ``JwtAuthenticationService.revoke_refresh_token`` already states
+        for sessions: writing back a whole entity overwrites columns
+        another transaction has changed in the meantime.
+
+        Sign-in is where that gap is widest and where it costs most. The
+        account is read to check the password, which is ~160 ms of bcrypt,
+        and only then written. Measured on both of the columns an
+        administrator is most likely to be changing in that moment: an
+        account switched off during the window came back active, and a
+        password changed during it was replaced by the old hash -- so the
+        new password stopped working and the one the change was made
+        against went on working.
+
+        Args:
+            user_id: The account that signed in.
+            when: Time of the sign-in.
+
+        Returns:
+            True if a row was updated -- False if the account is gone,
+            which is a sign-in racing a deletion and nothing to undo.
         """
         ...
 
@@ -54,22 +91,64 @@ class UserRepository(ABC):
         ...
 
     @abstractmethod
-    def list_all(self, limit: int, offset: int = 0) -> List[User]:
+    def list_all(self, limit: int = 100, offset: int = 0) -> List[User]:
         """
-        Retrieve a paginated list of users.
+        Retrieve a paginated list of users, in address order.
+
+        The order is part of what is asked for here rather than a habit of
+        one implementation. Paging an unordered listing is not paging: the
+        database is free to answer two identical windows differently, and
+        PostgreSQL does -- it falls back to where the row physically sits,
+        so any write moves an account through the listing. Measured on the
+        running stack, deactivating the account at the top of a twelve-row
+        listing put it past the end of the second page, where an operator
+        paging through saw it on neither.
+
+        By address because ``email`` is the column a caller scans a list
+        of accounts by, and the one that can carry the order without a
+        tie-break.
 
         Args:
             limit: Maximum number of users to return.
             offset: Number of users to skip (for pagination).
 
         Returns:
-            List of User entities.
+            List of User entities, ordered by address.
+        """
+        ...
+
+    @abstractmethod
+    def lock_administrator_set(self) -> None:
+        """
+        Serialise every change to who holds ``admin:all``.
+
+        Counting the administrators and then writing the change is two
+        statements, and nothing ties them together. Two administrators
+        demoting each other at the same moment each read "one other would
+        remain" and each proceed -- measured against the running stack,
+        first attempt: both answered 200 and the service was left with no
+        administrator at all, which is the state the count exists to
+        prevent.
+
+        A row lock cannot express it: each request locks the account it is
+        about, and the two never touch the same row. What has to be
+        serialised is the set, and the set is not a row.
+
+        Callers must take this inside the very transaction that both counts
+        and writes, before the count. It is released when that transaction
+        ends, whichever way it ends.
+
+        Implementations on engines without such a lock are expected to do
+        nothing and to say so -- the guard is then advisory there.
         """
         ...
 
     @abstractmethod
     def count_active_with_permission(
-        self, permission_name: str, excluding_user_id: Optional[str] = None
+        self,
+        permission_name: str,
+        excluding_user_id: Optional[str] = None,
+        excluding_role_id: Optional[str] = None,
     ) -> int:
         """
         Count active users holding a permission through any of their roles.
@@ -82,9 +161,58 @@ class UserRepository(ABC):
             permission_name: Permission to look for (e.g. ``"admin:all"``).
             excluding_user_id: User to leave out of the count -- the one the
                 operation is about, whose privileges are about to change.
+            excluding_role_id: Role to disregard, for an operation that is
+                about to stop that role granting anything -- deleting it,
+                or replacing what it carries. A user holding the permission
+                through a second role is still counted, which is the whole
+                reason this is a query and not a flag.
 
         Returns:
             Number of matching active users.
+        """
+        ...
+
+    @abstractmethod
+    def ids_with_role(self, role_id: str) -> List[str]:
+        """
+        The accounts wearing a role, active or not.
+
+        The counting sibling below exists for the audit trail. This one
+        exists because deleting a role has to put the accounts it leaves
+        bare back on the default one, and that needs their identity
+        rather than their number -- measured before it did: an account
+        whose only role was deleted signed in and was refused everything,
+        including what an anonymous caller may do.
+
+        Args:
+            role_id: The role to find the wearers of.
+
+        Returns:
+            Their ids. Empty when nobody wears it.
+        """
+        ...
+
+    @abstractmethod
+    def count_with_role(self, role_id: str) -> int:
+        """
+        Count the accounts wearing a role, active or not.
+
+        Exists for the audit trail rather than for a rule. Deleting a role
+        takes it off every account at once and replacing what it grants
+        changes what every one of them may do, and neither record said how
+        many that was -- "role removed" reads the same whether it touched
+        nobody or the whole staff.
+
+        Inactive accounts are counted too. A suspended account still wears
+        the role and still loses it here, and it can be switched back on;
+        counting only the active ones would understate what an operation
+        reached.
+
+        Args:
+            role_id: The role to count the wearers of.
+
+        Returns:
+            How many accounts hold it.
         """
         ...
 

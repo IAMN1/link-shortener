@@ -1,8 +1,10 @@
 """
 Redis-backed cache with automatic reconnection and graceful degradation.
 
-Implements LinkCache, RedirectCache, and StatsCache. Falls back silently
-when Redis is unavailable.
+Implements every role ``ServiceCache`` names. A Redis that cannot be
+reached turns every read into a miss rather than failing the request, and
+both the failure and the recovery are logged -- degrading quietly for the
+caller is not the same as degrading without a word.
 """
 
 from datetime import datetime, timezone
@@ -12,8 +14,7 @@ from threading import Lock
 from typing import Any, Dict, List, Optional
 
 from link_shortener.application import (
-    CachedRedirect, CacheHealth, LinkCache, RedirectCache, StatsCache, Logger,
-    CacheKeyBuilder
+    CachedRedirect, ServiceCache, Logger, CacheKeyBuilder
 )
 from link_shortener.domain import DedupScope, Link, OriginalUrl, ShortCode, UrlHash
 from link_shortener.domain.value_objects.owner_id import OwnerID
@@ -22,9 +23,9 @@ from link_shortener.infrastructure.cache.signing import seal, unseal
 import redis
 
 
-class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
+class RedisLinkCache(ServiceCache):
     """
-    Redis implementation of all three cache interfaces.
+    Redis implementation of every cache role ``ServiceCache`` names.
 
     Stores link data as JSON and uses pipelines for batch operations.
     Implements a reconnection strategy to tolerate transient Redis failures.
@@ -63,7 +64,10 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
 
         # Internal state for failover
         self._reconnect_lock = Lock()
-        self._client = None
+        # Annotated rather than inferred from this assignment: the attribute
+        # holds None until ``_connect`` builds a client, and again whenever
+        # a failure drops it.
+        self._client: Optional[redis.Redis] = None
         self._available = False
         self._last_attempt = 0.0
 
@@ -73,13 +77,13 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         """Establish initial connection to Redis."""
         try:
             self._client = redis.from_url(
-                self.redis_url, 
-                socket_connect_timeout=self.connect_timeout, 
+                self.redis_url,
+                socket_connect_timeout=self.connect_timeout,
                 socket_timeout=self.socket_timeout
             )
             self._client.ping()
             self._available = True
-            
+
             self.logger.info("Redis connected successfully.")
         except redis.RedisError as e:
             self.logger.error(
@@ -89,7 +93,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
             )
             self._available = False
             self._client = None
-    
+
     def _ensure_connection(self) -> bool:
         """
         Report whether a connection is available, reconnecting if it is not.
@@ -161,11 +165,22 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         This helper ensures the application does not crash if Redis is down.
 
         The live client is handed to the operation rather than captured by
-        the caller. Passing a bound method such as ``self._client.get``
-        instead would dereference the client while building the arguments --
-        that is, before this method gets a chance to run -- and a client set
-        to None by an earlier failure would raise ``AttributeError`` right
-        past all of this error handling.
+        the caller: a bound method such as ``self._client.get`` would
+        dereference the client while building the arguments, before this
+        method runs, so a client set to None by an earlier failure would
+        raise past all of this error handling.
+
+        Read once into a local and checked, because moving the dereference
+        inside the ``try`` was not enough on its own: the clauses below
+        catch ``redis.*`` and nothing else, so ``None.get`` came out as an
+        ``AttributeError`` and left the cache the same way it would have
+        before. ``_mark_unavailable`` sets the attribute to ``None`` on any
+        connection-level failure, and this class is built for several
+        threads -- ``_ensure_connection`` takes a lock for exactly that
+        reason -- so a caller that passed the check a moment before the
+        outage reached this line holding nothing. On the redirect path that
+        is a 500 out of a cache the module docstring promises will answer a
+        miss instead.
 
         Args:
             operation: Callable taking the Redis client and returning a value.
@@ -175,8 +190,15 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         """
         if not self._ensure_connection():
             return None
+
+        client = self._client
+        if client is None:
+            # Lost between the check above and this line. A miss is the
+            # right answer and the one every other failure here gives.
+            return None
+
         try:
-            return operation(self._client)
+            return operation(client)
         except redis.ResponseError as e:
             # The server answered -- it just refused this command, typically
             # WRONGTYPE on a key someone else wrote. The connection is fine,
@@ -196,7 +218,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
             )
             self._mark_unavailable()
             return None
-    
+
     def _execute_write(self, operation) -> bool:
         """
         Execute a Redis write operation, reporting whether it happened.
@@ -218,8 +240,14 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         """
         if not self._ensure_connection():
             return False
+
+        client = self._client
+        if client is None:
+            # See ``_execute_read``: the same window, and the same answer.
+            return False
+
         try:
-            operation(self._client)
+            operation(client)
             return True
         except redis.ResponseError as e:
             # Rejected command, live connection -- see _execute_read.
@@ -265,6 +293,10 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         Returns:
             ``True``.
         """
+        return True
+
+    def stores_entries(self) -> bool:
+        """Entries are kept, in a server every worker shares."""
         return True
 
     def ping(self) -> bool:
@@ -402,7 +434,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
 
                 if last_accessed.tzinfo is None:
                     last_accessed = last_accessed.replace(tzinfo=timezone.utc)
-            
+
             expires_at = None
             if data_dict.get("expires_at"):
                 expires_at = datetime.fromisoformat(data_dict["expires_at"])
@@ -463,7 +495,7 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
             if keys:
                 client.delete(*keys)
         self._execute_write(_clear)
-    
+
     # ------------------------------------------------------------------
     # LinkCache methods
     # ------------------------------------------------------------------
@@ -598,10 +630,10 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
     def delete(self, link: Link) -> bool:
         """Remove every key written for a link.
 
-        All three keys are named from the entity. Reading the code entry to
-        discover the hash key -- the previous approach -- left an orphan
-        whenever that entry had been evicted first, and the orphan went on
-        answering deduplication lookups with a code that no longer resolves.
+        All three keys are named from the entity rather than discovered by
+        reading the code entry, which leaves an orphan whenever that entry
+        was evicted first -- and the orphan goes on answering deduplication
+        lookups with a code that no longer resolves.
 
         Returns:
             ``True`` if Redis carried the deletion out.
@@ -629,9 +661,14 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         """
         Work out how long a redirect entry may live.
 
-        Capped at the time left on the link itself, so an expired entry
-        cannot outlive the link it points at -- it disappears by
-        construction rather than by anyone remembering to check.
+        Capped at the time left on the link itself, so an entry does not
+        outlive the link it points at by more than the floor below: a link
+        with four-tenths of a second left is stored for one, because
+        ``SETEX`` refuses a zero TTL and rounding a live link down to
+        nothing would drop a perfectly good entry. Within that second the
+        caller's own ``is_expired`` is what answers -- which is why
+        ``RedirectLinkUseCase`` keeps that branch, and calls it belt and
+        braces rather than decoration.
 
         Args:
             expires_at: When the link expires, or ``None`` if never.
@@ -795,10 +832,9 @@ class RedisLinkCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
             self.logger.error("Corrupted stats cache entry", key=key)
             return None
 
-        # Shape is checked as well as signature. A JSON document that parses
-        # but is not an object used to reach the caller, which read missing
-        # fields as zeroes and published them: "0 links, 0 clicks" served
-        # with a 200 over a database holding six.
+        # Shape is checked as well as signature: a JSON document that parses
+        # but is not an object would reach the caller, which reads missing
+        # fields as zeroes and publishes them.
         if not isinstance(payload, dict):
             self.logger.error("Stats cache entry is not an object", key=key)
             return None

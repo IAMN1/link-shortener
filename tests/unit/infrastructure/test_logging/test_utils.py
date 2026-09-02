@@ -1,10 +1,11 @@
 """Tests for logging helpers.
 
 ``mask_url`` is what stands between a stored URL and the audit log, so what
-it does and does not do is worth stating explicitly.
+it does and does not do is worth stating explicitly. ``mask_email`` stands
+in the same place for the address of an account.
 """
 
-from link_shortener.infrastructure.logging.utils import mask_url
+from link_shortener.infrastructure.logging.utils import mask_email, mask_url
 
 
 class TestMaskUrl:
@@ -44,8 +45,8 @@ class TestMaskUrl:
         """The case the length rule could never have caught.
 
         This URL is 45 characters, so truncation leaves it whole -- and
-        secrets are short by nature. It used to reach the audit log with
-        the password in it, which is what this test asserted before.
+        secrets are short by nature. Without removal it reaches the audit
+        log with the password in it.
         """
         url = "https://user:s3cret@example.com/?token=abc123"
         assert len(url) < 100
@@ -63,8 +64,8 @@ class TestMaskUrl:
         50 characters, the ``@`` survives inside them, and removal still
         finds an authority to clean. Past about 42 characters of userinfo
         the cut lands before the ``@`` -- and then cutting first hands
-        back the head of the password verbatim. Measured on this input:
-        37 of its 60 characters.
+        back the head of the password verbatim: on this input, 37 of its
+        60 characters.
         """
         password = "S" * 60
         url = f"https://user:{password}@example.com/" + "d" * 200
@@ -281,8 +282,8 @@ class TestMaskUrl:
 
         The secret sits past character 50 and before the last 20, so
         truncation alone hides it -- and would keep hiding it right up
-        until a shorter outer URL put it back in view. Measured against
-        cutting first: the head of the password survives.
+        until a shorter outer URL puts it back in view. Cutting first
+        leaves the head of the password intact.
         """
         password = "S" * 60
         url = (
@@ -324,3 +325,47 @@ class TestMaskUrl:
         masked = mask_url("https://example.com/?token=abc123")
 
         assert "token=abc123" in masked
+
+
+class TestMaskEmail:
+    """What survives of an address written into the audit journal.
+
+    Enough to ask the questions the journal is read with -- is one account
+    being guessed at, or many; is the domain one that belongs here -- and
+    not enough to be a list of this service's users. The whole address is
+    still in ``application.log``, which is read under a different
+    permission.
+    """
+
+    def test_the_local_part_is_reduced_to_one_character(self):
+        assert mask_email("ivanov@example.com") == "i***@example.com"
+
+    def test_the_domain_survives_whole(self):
+        """The domain is the half an operator reasons about."""
+        assert mask_email("a.very.long.name@mail.example.org").endswith(
+            "@mail.example.org"
+        )
+
+    def test_two_addresses_on_one_domain_stay_distinguishable(self):
+        """One character is little, but it is not nothing."""
+        assert mask_email("alice@example.com") != mask_email("bob@example.com")
+
+    def test_the_same_address_masks_the_same_way(self):
+        """Repeated failures against one account have to look repeated."""
+        assert mask_email("ivanov@example.com") == mask_email("ivanov@example.com")
+
+    def test_a_string_that_is_not_an_address_is_masked_whole(self):
+        """Nothing is known about it except where it was put."""
+        assert mask_email("not-an-address") == "***"
+
+    def test_an_empty_local_part_leaves_nothing_to_show(self):
+        assert mask_email("@example.com") == "***@example.com"
+
+    def test_the_domain_is_taken_after_the_last_at(self):
+        """A quoted local part may hold an ``@``; a domain may not."""
+        assert mask_email('"odd@name"@example.com') == '"***@example.com'
+
+    def test_the_address_never_survives_in_full(self):
+        address = "ivanov@example.com"
+
+        assert address not in mask_email(address)

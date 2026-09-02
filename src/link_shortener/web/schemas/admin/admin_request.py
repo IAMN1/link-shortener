@@ -1,5 +1,11 @@
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from link_shortener.web.schemas.strict import (
+    A_PASSWORD,
+    AN_ADDRESS,
+    StrictRequest,
+)
 
 from link_shortener.domain.policies.password_policy import MIN_PASSWORD_LENGTH
 from link_shortener.domain.policies.role_policy import (
@@ -9,12 +15,18 @@ from link_shortener.domain.policies.role_policy import (
 from link_shortener.domain.value_objects.email import EMAIL_PATTERN
 
 
-class CreateUserRequest(BaseModel):
+class CreateUserRequest(StrictRequest):
     """Request schema for creating a new user."""
     email: str = Field(
         ...,
         pattern=EMAIL_PATTERN,
-        description="User Email"
+        description="User Email",
+        # What the document says an address is, from the one place that
+        # says it: a reader of this operation learns what a reader of
+        # sign-in does, and a client generator that understands `format`
+        # gets the hint here too. `pattern` is in it as well, the same
+        # expression this field validates with.
+        json_schema_extra=AN_ADDRESS,
     )
     """The shape comes from the value object every path builds afterwards.
 
@@ -28,6 +40,12 @@ class CreateUserRequest(BaseModel):
     password: str = Field(
         ...,
         min_length=MIN_PASSWORD_LENGTH,
+        # The length the document states, from the one place that states
+        # it. The ceiling is in the document only and not as a second
+        # gate: the policy already refuses a longer password, and a schema
+        # that refused it first would answer with Pydantic's sentence
+        # where every other password rule answers with the policy's.
+        json_schema_extra=A_PASSWORD,
         description=(
             f"User password (min {MIN_PASSWORD_LENGTH} characters, and not "
             f"one attackers already have)"
@@ -42,11 +60,11 @@ class CreateUserRequest(BaseModel):
     the shape a hole arrives in later.
     """
     is_active: bool = Field(
-        True, 
+        True,
         description="Whether the account is active"
     )
     roles: Optional[List[str]] = Field(
-        None, 
+        None,
         description="Optional list of role names; if missing the default role is used"
     )
 
@@ -62,11 +80,11 @@ class CreateUserRequest(BaseModel):
     )
 
 
-class UpdateUserRolesRequest(BaseModel):
+class UpdateUserRolesRequest(StrictRequest):
     """Request schema for replacing a user's roles."""
     roles: List[str] = Field(
-        ..., 
-        min_length=1, 
+        ...,
+        min_length=1,
         description="New list of role names"
     )
 
@@ -79,7 +97,7 @@ class UpdateUserRolesRequest(BaseModel):
     )
 
 
-class CreateRoleRequest(BaseModel):
+class CreateRoleRequest(StrictRequest):
     """Request schema for creating a new role."""
     name: str = Field(
         ...,
@@ -101,8 +119,8 @@ class CreateRoleRequest(BaseModel):
         description="Human-readable description"
     )
     permissions: List[str] = Field(
-        ..., 
-        min_length=1, 
+        ...,
+        min_length=1,
         description="List of permission names"
     )
 
@@ -117,11 +135,11 @@ class CreateRoleRequest(BaseModel):
     )
 
 
-class UpdateRolePermissionsRequest(BaseModel):
+class UpdateRolePermissionsRequest(StrictRequest):
     """Request schema for updating role permissions (full replacement)."""
     permissions: List[str] = Field(
-        ..., 
-        min_length=1, 
+        ...,
+        min_length=1,
         description="New list of permission names"
     )
 

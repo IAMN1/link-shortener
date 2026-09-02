@@ -1,9 +1,9 @@
 """Tests for the rate limiting middleware."""
 from pathlib import Path
-from unittest.mock import MagicMock, Mock
+from unittest.mock import Mock
 
 import pytest
-from flask import Flask, g
+from flask import Flask
 
 from link_shortener.application.ports.rate_limiter import RateLimitDecision
 from link_shortener.infrastructure.configs.app.base import BaseConfig
@@ -35,6 +35,28 @@ def _limiter(allowed=True, remaining=4):
     return limiter
 
 
+def _with_babel(app):
+    """
+    Give a hand-built app the extension the real factory always wires.
+
+    Only what the throttle's own sentence needs: the catalogues are not
+    the point here, and English is what an untranslated ``ngettext``
+    answers anyway. What this buys is that the call works at all.
+
+    Args:
+        app: The application to wire Babel into.
+
+    Returns:
+        The same application.
+    """
+    from link_shortener.web.i18n import init_babel
+
+    app.config.setdefault("SUPPORTED_LANGUAGES", ["en"])
+    app.config.setdefault("DEFAULT_LANGUAGE", "en")
+    init_babel(app)
+    return app
+
+
 TEMPLATES = Path(__file__).resolve().parent / "_stub_templates"
 """A one-line ``error.html``, for the page the throttle now renders.
 
@@ -61,6 +83,12 @@ class TestRateLimitMiddleware:
 
         app = Flask(__name__, template_folder=str(TEMPLATES))
         app.config["TESTING"] = True
+        # The throttle's sentence is translated like every other refusal,
+        # and `ngettext` reads the extension out of `app.extensions`. The
+        # real factory wires Babel before any middleware, so an app built
+        # by hand here without it is the odd one out -- and what it
+        # measures is `KeyError: 'babel'` rather than a limit.
+        _with_babel(app)
         app.config["DEFAULT_RATE_LIMIT"] = 5
         app.config["DEFAULT_RATE_LIMIT_PERIOD"] = 60
         app.config["RATE_LIMIT_AUTH_DISABLED"] = auth_disabled
@@ -173,6 +201,7 @@ class TestRateLimitMiddleware:
         limiter = _limiter()
         app = Flask(__name__)
         app.config["TESTING"] = True
+        _with_babel(app)
         RateLimitMiddleware(app, limiter)
 
         @app.route("/test")
@@ -235,7 +264,7 @@ class TestRateLimitMiddleware:
 
         app, _ = self._make_app(rate_limiter=limiter)
         with app.test_client() as client:
-            response = client.get("/test")
+            client.get("/test")
             call_args = limiter.check.call_args
             key = call_args[0][0]
             # Should not contain "user:" prefix
@@ -369,8 +398,8 @@ class TestRateLimitMiddleware:
 
         Putting request.path into the key turns "two hundred redirects a
         minute" into "two hundred per short code", which is no limit at all
-        against somebody walking the code space. Measured: two hundred and
-        fifty requests to two hundred and fifty codes, not one refusal.
+        against somebody walking the code space: two hundred and fifty
+        requests to two hundred and fifty codes, not one refusal.
         `test_key_includes_endpoint` cannot see it -- the endpoint is still
         in the key, with the path beside it.
         """
@@ -643,9 +672,9 @@ class TestRateLimitTargets:
 
     def test_none_means_no_per_endpoint_limits_to_both_halves(self):
         """
-        The two readers of this setting used to disagree about None.
+        The two readers of this setting must agree about None.
 
-        The check normalised it to an empty mapping, so startup passed; the
+        With the check normalising it to an empty mapping, startup passes; the
         middleware read `... .get(key, {})`, got None back, and failed on
         the lookup -- a 500 from whichever endpoint was asked for first,
         one request after the setting that caused it.
@@ -675,4 +704,3 @@ class TestRateLimitTargets:
         needs a URL map, which this test has no business building.
         """
         assert not set(BaseConfig.RATE_LIMITS) & EXEMPT_ENDPOINTS
-

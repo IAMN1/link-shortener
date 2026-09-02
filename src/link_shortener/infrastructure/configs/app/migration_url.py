@@ -3,18 +3,12 @@ How a migration decides which database to open.
 
 ``alembic`` is handed one string and reads nothing else of the
 application's configuration, so this module produces that string without
-demanding a configuration the application could start on. Building the
-full one was not a theoretical cost: with ``DATABASE_URL`` already set, a
-bare ``alembic upgrade head`` under the ``production`` profile was
-measured refusing four times in a row -- for ``SECRET_KEY``,
-``SHORT_CODE_PEPPER``, ``REDIS_URL`` and ``DOMAIN`` -- none of which a
-migration reads. Mail and ``MAX_URL_LENGTH`` stopped it just as
-effectively. The docker stack had already worked around this by handing
-its migration service the whole application environment.
+demanding a configuration the application could start on -- secrets, the
+domain and the mail settings would each otherwise stop a migration that
+reads none of them.
 
 Lives in ``src`` rather than in ``migrations/env.py`` so that it can be
-tested: ``env.py`` is executed by alembic in a subprocess, and the branch
-that resolves a URL without a handoff had no test at all.
+tested: ``env.py`` is executed by alembic in a subprocess.
 """
 
 import os
@@ -22,7 +16,9 @@ from typing import Optional
 
 from sqlalchemy.engine import make_url
 
-from link_shortener.infrastructure.configs.app.base import BaseConfig, display_url
+from link_shortener.infrastructure.configs.app.base import (
+    BaseConfig, display_url, normalise_backend
+)
 from link_shortener.infrastructure.configs.app.env import is_unset, read_env_for
 from link_shortener.infrastructure.configs.app.factory import ConfigFactory
 from link_shortener.infrastructure.database.manager import (
@@ -68,10 +64,19 @@ def handed_over_url() -> Optional[str]:
     # with a trailing newline is a *different* database -- one run created
     # a SQLite file whose name ended in "\n". ``get_database_url`` strips
     # its own side for the same reason, so the two agree.
-    if is_unset(handed_over):
+    # ``handed_over is None`` is named alongside ``is_unset`` rather than
+    # left to it: is_unset answers True for a blank string too, so it states
+    # "not configured" without stating "not None", and the strip below needs
+    # the second.
+    if handed_over is None or is_unset(handed_over):
         return None
 
-    return handed_over.strip()
+    # The ``postgres://`` alias is normalised on this path too, not only in
+    # ``get_database_url``. This is the one way past every check below, so
+    # a caller reaching for it is usually the operator whose hosting
+    # provider printed that spelling in the first place, and alembic would
+    # meet the same NoSuchModuleError the application does.
+    return normalise_backend(handed_over.strip())
 
 
 # ==========================================================================
@@ -83,7 +88,7 @@ PROFILES_ALLOWED_A_DEFAULT_DATABASE = ("development",)
 Everywhere else that database is a mistake with no symptom.
 ``DATABASE_TYPE`` defaults to ``sqlite`` and ``DATABASE_NAME`` to
 ``db_shortener``, so a deployment that configured neither gets a migration
-that succeeds against a brand-new empty file in the project root, and a
+that succeeds against a brand-new empty file under ``DATABASE_DIR``, and a
 service that then starts on it and answers as if the data had never
 existed. Refusing costs an operator who genuinely wants SQLite one
 explicit ``DATABASE_URL``; not refusing costs the other one their data.
@@ -137,9 +142,51 @@ def resolve_database_url(env: Optional[str] = None) -> str:
         config.validate_database()
 
     url = config.get_database_url()
-    _refuse_a_database_a_migration_should_not_touch(profile, named, config, url)
+    refuse_a_target_a_migration_should_not_touch(config, url, env)
 
     return url
+
+
+def refuse_a_target_a_migration_should_not_touch(
+    config: BaseConfig, url: str, env: Optional[str] = None
+) -> None:
+    """
+    Apply both refusals to a target somebody else resolved.
+
+    ``resolve_database_url`` above is only reached when nothing handed a
+    URL over -- a bare ``alembic`` from a shell. The path this project
+    documents, ``flask alembic``, resolves the URL from the running
+    application and hands it to the subprocess through
+    ``ALEMBIC_DATABASE_URL``, so it returned at the first line of that
+    function and neither refusal was ever asked.
+
+    Measured on a clean checkout with no ``.env`` and no ``FLASK_ENV``::
+
+        flask alembic upgrade head
+        Database: sqlite:////.../datas/databases/db_shortener
+        INFO  [alembic.runtime.migration] Running upgrade  -> 0001
+
+    A new empty file, created in silence -- the outcome "nothing names a
+    profile" exists to prevent -- while the troubleshooting tables of both
+    guides tell the reader that message is what they will meet. The guard
+    stood on the path the guides tell people not to use.
+
+    The quick start is unaffected: ``cp .env.example .env`` names the
+    profile, and the refusal only fires when nothing does.
+
+    Args:
+        config: The configuration the URL came from.
+        url: The URL about to be migrated.
+        env: Explicit profile name, or ``None`` to resolve it the way the
+            application does.
+
+    Raises:
+        ValueError: If the target is one a migration should not touch.
+    """
+    named = ConfigFactory.named_env(env)
+    profile = ConfigFactory.resolve_env(named)
+    _refuse_a_database_a_migration_should_not_touch(profile, named, config, url)
+    _refuse_a_database_nobody_named(profile, config)
 
 
 def migration_connect_args(url: str) -> dict:
@@ -147,17 +194,14 @@ def migration_connect_args(url: str) -> dict:
     Return the driver arguments a migration should connect with.
 
     The migration builds its own engine from the ``[alembic]`` section,
-    which holds nothing but the URL, so none of the bounds the application
-    connects under reached it: measured against an unreachable server with
-    ``DATABASE_CONNECT_TIMEOUT=3``, the application gave up after 3.6
-    seconds and the migration had not given up after 60 -- with ``app``
-    waiting on it, because the stack starts the two in that order.
+    which holds nothing but the URL, so without this it would wait on an
+    unreachable server far longer than the application does -- with the
+    application waiting on it, since the stack starts the two in order.
 
     Read from ``BaseConfig`` rather than from the selected profile, since
-    a handed-over URL comes with no profile at all and the answer must not
-    depend on which of the two paths asked. No profile overrides either
-    setting, so the values are the same ones the application connects
-    under.
+    a handed-over URL comes with no profile at all. No profile overrides
+    either setting, so the values are the same ones the application
+    connects under.
 
     Args:
         url: URL the migration is about to open.
@@ -173,6 +217,43 @@ def migration_connect_args(url: str) -> dict:
         BaseConfig.DATABASE_CONNECT_TIMEOUT,
         BaseConfig.DATABASE_STATEMENT_TIMEOUT,
     )
+
+
+def _refuse_a_database_nobody_named(profile: str, config: BaseConfig) -> None:
+    """
+    Refuse the PostgreSQL equivalent of the default SQLite file.
+
+    ``DATABASE_HOST`` defaults to ``localhost`` and ``DATABASE_NAME`` to
+    ``db_shortener``, so a deployed profile that set only
+    ``DATABASE_TYPE=postgresql`` and a user builds a perfectly valid URL
+    to a server and a database nobody chose. The application refuses that
+    -- ``staging`` and ``production`` demand both parts explicitly -- and
+    a migration that succeeds against the wrong database is worse than
+    one that refuses.
+
+    Args:
+        profile: Resolved profile name.
+        config: Configuration the URL was built from.
+
+    Raises:
+        ValueError: If a deployed profile left either part at its default.
+    """
+    if profile in PROFILES_ALLOWED_A_DEFAULT_DATABASE:
+        return
+
+    if config.DATABASE_URL or config.DATABASE_TYPE != "postgresql":
+        return
+
+    for name in ("DATABASE_HOST", "DATABASE_NAME"):
+        default = vars(BaseConfig)[name].default
+        if getattr(config, name) == default and is_unset(
+            read_env_for(config, name)
+        ):
+            raise ValueError(
+                f"the {profile!r} profile would migrate a database nobody "
+                f"named: {name} is still {default!r}, its built-in default. "
+                f"Name it, or give the whole connection URL in DATABASE_URL."
+            )
 
 
 def _refuse_a_database_a_migration_should_not_touch(

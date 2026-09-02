@@ -2,14 +2,14 @@
 Which backend each profile may run on.
 
 ``DATABASE_TYPE`` defaults to ``sqlite`` and ``DATABASE_NAME`` to
-``db_shortener``, so a deployment that configured neither used to start
-without a word on a new empty file in the project root: measured under
-``production`` with everything else it demands settled -- ``SECRET_KEY``,
+``db_shortener``, so without this rule a deployment that configured
+neither starts without a word on a new empty file under ``DATABASE_DIR`` --
+under ``production`` with everything else it demands settled: ``SECRET_KEY``,
 ``SHORT_CODE_PEPPER``, ``DOMAIN``, and ``REDIS_ENABLED`` off -- the
 configuration validated clean and opened
-``sqlite:////<root>/db_shortener``. The service then answers as if the
-data had never existed, and nothing in the startup line reads as a
-failure.
+``sqlite:////<root>/datas/databases/db_shortener``. The service then
+answers as if the data had never existed, and nothing in the startup line
+reads as a failure.
 
 The rule is the backend rather than the omission, because SQLite is
 reached by several roads and each ends the same way: an unnamed file is
@@ -273,9 +273,9 @@ class TestADeployedProfileRefusesEverythingButPostgresql:
     ):
         """An operator who set nothing has nothing to search for.
 
-        Measured against the URL the profile would really have opened,
-        asked of ``get_database_url`` rather than spelled out here: a
-        refusal naming the bare default, without the path that makes it
+        Checked against the URL the profile would really open, asked of
+        ``get_database_url`` rather than spelled out here: a refusal naming
+        the bare default, without the path that makes it
         findable, has to fail this.
         """
         profile = config(profile_cls, **SATISFIED_ELSEWHERE)
@@ -305,9 +305,9 @@ class TestADeployedProfileRefusesEverythingButPostgresql:
     def test_the_remedy_fits_a_database_named_in_the_url(self):
         """Advice that cannot work is worse than none.
 
-        Measured before the message was split in two: told to set
-        ``DATABASE_TYPE`` and the parts while a SQLite ``DATABASE_URL``
-        was in place, an operator following it exactly got the same
+        With one message for both cases: told to set ``DATABASE_TYPE``
+        and the parts while a SQLite ``DATABASE_URL`` is in place, an
+        operator following it exactly gets the same
         refusal, because the URL is returned before a part is read.
         """
         errors = validation_errors(
@@ -371,18 +371,24 @@ class TestAConfigurationThatCannotBuildAUrl:
             f"{errors!r}"
         )
 
-    def test_production_still_reports_the_missing_parts(self):
+    @pytest.mark.parametrize("name, profile_cls", DEPLOYED_PROFILES.items())
+    def test_a_deployed_profile_still_reports_the_missing_parts(
+        self, name, profile_cls
+    ):
         """And the real complaint has to survive, not be swallowed.
 
-        Pinned against ``production`` alone: it is the profile whose
-        ``validate`` forces the URL to be built. ``staging`` does not,
-        which is a gap of its own and not this rule's to close.
+        Both deployed profiles force the URL to be built, so both reach
+        the complaint. ``staging`` did not until it gained a ``validate``
+        of its own: it passed this configuration and failed at the first
+        connection instead.
         """
         errors = validation_errors(
-            ProductionConfig, DATABASE_TYPE="postgresql", DATABASE_USER=""
+            profile_cls, DATABASE_TYPE="postgresql", DATABASE_USER=""
         )
 
-        assert "PostgreSQL connection requires" in errors
+        assert "PostgreSQL connection requires" in errors, (
+            f"profile {name} swallowed the missing parts: {errors!r}"
+        )
 
 
 class TestTheLocalProfilesKeepBothBackends:
@@ -420,8 +426,7 @@ class TestTheRuleHoldsThroughTheEnvironment:
     Everything above pins settings as class attributes on a detached
     profile. That leaves one way to narrow the check invisibly: excuse
     whatever the operator wrote in the environment, which no detached
-    profile reads. Measured -- two such rewrites left the whole suite
-    green before these two tests existed.
+    profile reads. Two such rewrites pass everything else in the suite.
     """
 
     @pytest.fixture(autouse=True)
@@ -467,9 +472,9 @@ class TestTheRuleHoldsThroughTheEnvironment:
 
         Every part points at a real PostgreSQL host and only
         ``DATABASE_TYPE`` was forgotten, so the parts are never read and
-        the profile opens a file. Measured: a check excused by "an
-        operator who exported DATABASE_HOST clearly configured a server"
-        left the whole suite green while production started on SQLite.
+        the profile opens a file. A check excused by "an operator who
+        exported DATABASE_HOST clearly configured a server" passes
+        everything else while production starts on SQLite.
         """
         monkeypatch.setenv("DATABASE_HOST", "db.internal")
         monkeypatch.setenv("DATABASE_USER", "shortener")
@@ -498,8 +503,8 @@ class TestTheRuleHoldsThroughTheEnvironment:
 
         The finder is stubbed as well as the global it filled. Asking
         ``_find_project_root()`` again instead of reading ``PROJECT_ROOT``
-        is the same excuse spelled differently, and it was measured
-        slipping past a version of this test that pinned only the global.
+        is the same excuse spelled differently, and it slips past a version
+        of this test that pins only the global.
         """
         monkeypatch.setattr(base, "PROJECT_ROOT", None)
         monkeypatch.setattr(base, "_find_project_root", lambda: None)

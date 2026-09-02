@@ -1,0 +1,39 @@
+# flake8's configuration.
+#
+# In a file of its own: flake8 does not read pyproject.toml, and a
+# [tool.flake8] section there has no effect.
+#
+# select keeps two families of defect:
+#   F   pyflakes -- an unused import, an unused variable, an unknown name,
+#       a redefinition
+#   E9  syntax, and failures to read the file at all
+#
+# And four codes for trailing rubbish -- whitespace nobody wrote on purpose:
+#   W291  whitespace at the end of a line
+#   W292  a file with no final newline
+#   W293  a blank line carrying whitespace
+#   W391  a blank line at the end of a file
+#
+# Those four are not here for strictness but because autopep8 reads this same
+# select: one list makes flake8 the guard and the formatter the one who
+# repairs. Until they were added, autopep8 inherited select = E9,F and said
+# nothing: trailing rubbish had built up across 65 files and no run had ever
+# named it.
+#
+# Layout (E1, E2, E3, E5, W5) stays out of select and belongs to the owner of
+# the project: under it autopep8 would rewrite the tree rather than repair it.
+#
+# max-line-length and extend-ignore have no effect under this select: neither
+# E501 nor E203 nor W503 belongs to a chosen family. They are kept as a guide
+# for a manual run with a wider select.
+
+[flake8]
+select = E9,F,W291,W292,W293,W391
+max-line-length = 88
+extend-ignore = E203,W503
+exclude =
+    .git,
+    .venv,
+    __pycache__,
+    htmlcov,
+    migrations/versions

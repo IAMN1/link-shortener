@@ -1,10 +1,8 @@
 from unittest.mock import Mock, MagicMock
-from contextlib import contextmanager
 
 from link_shortener.application.context import RequestContext
-from link_shortener.application.dtos.current_user_info import CurrentUserInfo
 from link_shortener.application.use_cases.links.create_short_link import CreateShortLinkUseCase
-from link_shortener.domain import Link, ShortCode, UrlHash, OriginalUrl, OwnerID
+from link_shortener.domain import Link, ShortCode, UrlHash, OriginalUrl
 from link_shortener.domain import GuestLinkLimitExceededError, ValidationError
 import pytest
 
@@ -152,3 +150,25 @@ class TestCreateShortLinkGuest:
     ):
         with pytest.raises(ValidationError):
             use_case.execute("not-a-url", guest_context)
+
+    def test_a_negative_lifetime_is_refused_rather_than_read_as_forever(
+        self, use_case, mock_uow_factory, mock_cache, guest_context
+    ):
+        """
+        The guest ceiling is applied with ``min()``, and ``Link.create``
+        gives an expiry only for ``ttl_seconds > 0`` -- so a negative
+        number walked past both and bought a guest a link that never
+        expires, the same hole a very large number opened from the other
+        side. ``CreateShortLinkRequest`` refuses it with ``ge=0`` at the
+        HTTP door; this holds the use case itself, which ``flask link
+        create`` and ``flask db seed`` reach without that schema.
+        """
+        factory, uow = mock_uow_factory
+        mock_cache.get_by_hash.return_value = None
+        uow.links.find_live_by_hash.return_value = None
+
+        with pytest.raises(ValidationError) as refusal:
+            use_case.execute("https://example.com", guest_context, ttl_seconds=-1)
+
+        assert refusal.value.field == "ttl_seconds"
+        uow.links.save.assert_not_called()

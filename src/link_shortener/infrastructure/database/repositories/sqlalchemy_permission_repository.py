@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 from sqlalchemy.orm import Session
 
 from link_shortener.infrastructure.database.models.permission_model import PermissionModel
@@ -33,58 +33,12 @@ class SQLAlchemyPermissionRepository(PermissionRepository):
         """
         if not names:
             return []
-        
+
         models = self.session.query(PermissionModel).filter(
             PermissionModel.name.in_(names)
         ).all()
-        
+
         return [self._to_domain(m) for m in models]
-
-    def get_by_name(self, name: str) -> Optional[Permission]:
-        """
-        Retrieve a single permission by name.
-
-        Args:
-            name: Exact permission name.
-
-        Returns:
-            Permission entity if found, else ``None``.
-        """
-        model = self.session.query(PermissionModel).filter_by(name=name).first()
-        
-        return self._to_domain(model) if model else None
-
-    def save(self, permission: Permission) -> Permission:
-        """
-        Insert or update a permission.
-
-        Args:
-            permission: Domain Permission entity.
-
-        Returns:
-            The same Permission entity (the ORM model is updated in place).
-        """
-        model = self.session.query(PermissionModel).filter_by(id=permission.id).first()
-        
-        if not model:
-            model = PermissionModel(id=permission.id)
-            self.session.add(model)
-        
-        self._update_model(model, permission)
-        self.session.flush()
-        
-        return self._to_domain(model)
-
-    def list_all(self) -> List[Permission]:
-        """
-        Return all permissions in the system.
-
-        Returns:
-            List of all Permission entities.
-        """
-        models = self.session.query(PermissionModel).all()
-        return [self._to_domain(m) for m in models]
-
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -106,16 +60,3 @@ class SQLAlchemyPermissionRepository(PermissionRepository):
             action=model.action,
             description=model.description
         )
-
-    def _update_model(self, model: PermissionModel, domain: Permission):
-        """
-        Copy fields from domain Permission to the ORM model in-place.
-
-        Args:
-            model: Existing PermissionModel instance.
-            domain: Domain Permission with new values.
-        """
-        model.name = domain.name
-        model.resource = domain.resource
-        model.action = domain.action
-        model.description = domain.description

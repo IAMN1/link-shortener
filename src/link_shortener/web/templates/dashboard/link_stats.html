@@ -1,0 +1,94 @@
+{% extends "dashboard/base.html" %}
+{% import "dashboard/_visit_charts.html" as charts %}
+{% block title %}{{ _('Link %(code)s — MaizLink', code=short_code) }}{% endblock %}
+{% block dashboard_content %}
+
+{# The code is the name of this page, so it is set in the face the rest of
+   the interface uses for data: a short code is a string compared by eye. #}
+<div class="dash-head">
+    <h1 class="dash-title">{{ _('Link') }} <span class="mono">{{ short_code }}</span></h1>
+    <a href="{{ url_for('dashboard.my_links') }}" class="btn btn--sm btn--ghost">{{ _('All links') }}</a>
+</div>
+
+<div class="alert alert--error hidden mb-2" id="link-error"></div>
+
+{# Where it goes, filled in by the page. Not rendered by the server: the
+   address belongs to the link rather than to the request, and this page is
+   a shell like the ones around it -- one place decides who may see a
+   link's figures, and it is the endpoint. #}
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">{{ _('Destination') }}</span>
+    </div>
+    <p class="mono truncate" id="link-destination">&mdash;</p>
+</div>
+
+{# The code as a square, and the one thing on this page the server can
+   fill in: it is a function of the short code alone, which is already in
+   the address of this page. Everything around it is fetched, because it
+   depends on who is asking; this does not.
+
+   An `<img>` rather than the SVG inlined: the endpoint is public and
+   cacheable, so a second visit costs nothing, and the browser gets to
+   decide when to fetch it. The width is set here and the document scales
+   to it -- that is what the viewBox in it is for. #}
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">{{ _('QR code') }}</span>
+        <a class="btn btn--ghost btn--sm"
+           href="{{ url_for('api.get_link_qr', short_code=short_code) }}"
+           target="_blank" rel="noopener noreferrer">{{ _('Open') }}</a>
+    </div>
+    <img src="{{ url_for('api.get_link_qr', short_code=short_code) }}"
+         alt="{{ _('QR code for %(code)s', code=short_code) }}"
+         width="180" height="180" loading="lazy">
+</div>
+
+<div class="stats-grid stats-grid--four mb-2">
+    <div class="stat-card">
+        <span class="stat-label">{{ _('Total Clicks') }}</span>
+        <span class="stat-value" id="link-clicks">&mdash;</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">{{ _('Clicks/Day') }}</span>
+        <span class="stat-value" id="link-per-day">&mdash;</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">{{ _('Created') }}</span>
+        <span class="stat-value" id="link-created">&mdash;</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">{{ _('Last Access') }}</span>
+        <span class="stat-value" id="link-last">&mdash;</span>
+    </div>
+</div>
+
+{# The scope follows what this reader is entitled to, because the tiles
+   above already do. They come from `/links/<code>/extended`, which answers
+   the link's owner, an administrator and a holder of `stats:view_any` --
+   and asked with `mine` for all three, the charts beneath those tiles told
+   the third of them that a link they had just been shown five visits for
+   had none. One screen, two answers, and nothing on it to say which was
+   the true one.
+
+   Everybody else keeps `mine` beside the code. The endpoint refuses a
+   stranger's code on its own -- `require_can_view_link_details`, the same
+   gate the tiles pass through -- so the owner condition is a second lock
+   rather than the only one, and it is worth having on an address that
+   carries a short code: short codes are guessable by construction. #}
+{% if can('stats:view_any') %}
+{{ charts.visit_charts('service', short_code) }}
+{% else %}
+{{ charts.visit_charts('mine', short_code) }}
+{% endif %}
+
+{% endblock %}
+{% block extra_head %}
+    {{ super() }}
+    {# In the head, for the reason written out in `my_stats.html`: this
+       file owns the polling timer. #}
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+{% endblock %}
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/pages/link_stats.js') }}" defer></script>
+{% endblock %}

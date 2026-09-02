@@ -1,23 +1,108 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Health – Linkr{% endblock %}
+{% block title %}{{ _('Health — MaizLink') }}{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">Service Health</h1>
+<h1 class="dash-title">{{ _('Service Health') }}</h1>
 
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-value" id="health-db">-</div>
-        <div class="stat-label">Database</div>
+<div id="health-error" class="alert alert--error hidden mb-2"></div>
+
+{# These were three figure tiles: a word like "healthy" set in the 22-pixel
+   monospace meant for counts, with nothing in the markup to tell an
+   answering service from a failing one. A state is a state -- it gets a
+   shape and a colour, and the shape is what carries it if the colour is
+   lost to a screenshot or to colour blindness. #}
+<div class="card narrow">
+    <div class="status-row">
+        <span><span class="dot" id="dot-db"></span>{{ _('Database') }}</span>
+        <em id="health-db">&mdash;</em>
     </div>
-    <div class="stat-card">
-        <div class="stat-value" id="health-redis">-</div>
-        <div class="stat-label">Redis</div>
+    <div class="status-row">
+        <span><span class="dot" id="dot-redis"></span>Redis</span>
+        <em id="health-redis">&mdash;</em>
     </div>
-    <div class="stat-card">
-        <div class="stat-value" id="health-celery">-</div>
-        <div class="stat-label">Task Queue</div>
+    <div class="status-row">
+        <span><span class="dot" id="dot-celery"></span>{{ _('Task queue') }}</span>
+        <em id="health-celery">&mdash;</em>
+    </div>
+    {# The one that fails open. With its backend gone the limiter stops
+       enforcing and every request goes through -- the sign-in endpoints
+       included -- while the service answers normally. No error, no
+       refusal, nothing in a log: this row is where it shows. #}
+    <div class="status-row">
+        <span><span class="dot" id="dot-limiter"></span>{{ _('Rate limiter') }}</span>
+        <em id="health-limiter">&mdash;</em>
     </div>
 </div>
+
+{# What `FailoverService` counted and nobody read. A logging chain that
+   fell back, or dropped records outright, looked from every other surface
+   exactly like one that was fine -- which for the audit trail is the
+   difference between having evidence and believing you have it. #}
+<div class="card narrow mt-2">
+    <p class="lab mb-1">{{ _('Logging') }}</p>
+    {# Which process the counters below came from. They are kept in one
+       worker's memory and a deployment runs several, so the same service
+       in the same state answers different numbers depending on which
+       worker took the request. Unlabelled, the number read as the
+       service's -- which is the "everything is fine" this block exists to
+       end. #}
+    <div class="status-row">
+        <span>{{ _('Counters from') }}</span>
+        <em id="logging-worker">&mdash;</em>
+    </div>
+    {# The implementation doing the work, and what the last background
+       round found it to be. The name alone was the whole report, and a
+       chain can report itself unwell for as long as nothing is written
+       through it without the name moving or a counter below rising: with
+       `audit.log` replaced by a directory on a running application, the
+       round said "structlog_audit reports itself unhealthy" eight times
+       in ninety seconds under an unchanged name and three zeroes. #}
+    <div class="status-row">
+        <span><span class="dot" id="dot-logger"></span>{{ _('Application log') }}</span>
+        <em id="logging-logger">&mdash;</em>
+    </div>
+    <div class="status-row">
+        <span><span class="dot" id="dot-audit"></span>{{ _('Audit log') }}</span>
+        <em id="logging-audit">&mdash;</em>
+    </div>
+    {# The row the counters above cannot fill. A journal whose file would
+       not open has no handler, so nothing is dropped, nothing is lost and
+       nothing failed a check -- every number reads zero while the file is
+       written by nobody. Measured with `application.log` replaced by a
+       directory: the service did not start at all, and once it did, this
+       is the only surface that says which of the three is missing. #}
+    <div class="status-row">
+        <span><span class="dot" id="dot-journals"></span>{{ _('Journal files') }}</span>
+        <em id="logging-journals">&mdash;</em>
+    </div>
+</div>
+
+<div class="card narrow mt-2">
+    <p class="lab mb-1">{{ _('Records that did not survive') }}</p>
+    <div class="status-row">
+        <span>{{ _('Calls dropped') }}</span>
+        <em><span id="logger-dropped_calls">&mdash;</span> ·
+            <span id="audit-dropped_calls">&mdash;</span></em>
+    </div>
+    <div class="status-row">
+        <span>{{ _('Health checks that failed') }}</span>
+        <em><span id="logger-failed_checks">&mdash;</span> ·
+            <span id="audit-failed_checks">&mdash;</span></em>
+    </div>
+    <div class="status-row">
+        <span>{{ _('Lines lost') }}</span>
+        <em><span id="logger-lost_log_lines">&mdash;</span> ·
+            <span id="audit-lost_log_lines">&mdash;</span></em>
+    </div>
+    <p class="text-xs text-muted mt-1">
+        {{ _('Application log · audit log.') }}
+    </p>
+</div>
+
+<p class="text-xs text-muted mt-2">
+    {%- set endpoint %}<code>GET /api/v1/admin/health</code>{% endset -%}
+    {% trans name=endpoint %}Reported by {{ name }}, read once when this page opens.{% endtrans %}
+</p>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/health.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/health.js') }}" defer></script>
 {% endblock %}

@@ -1,4 +1,10 @@
+from typing import Optional
+
 from link_shortener.application import Logger
+from link_shortener.application.ports.logging_status import (
+    ChainStatus, NOT_STARTED,
+)
+from link_shortener.infrastructure.failover.failover_service import CheckOutcome
 from link_shortener.infrastructure.logging.managers.logger_manager import LoggerManager
 
 
@@ -22,7 +28,10 @@ class LoggerComponent:
         self.logging_enabled = logging_enabled
         self.logger_type = logger_type
         self.failover_check_interval = failover_check_interval
-        self._manager = None
+        # Annotated Optional rather than inferred from this assignment: the
+        # attribute holds None until the first call builds it, and a checker
+        # told otherwise reports both the assignment and the return as errors.
+        self._manager: Optional[LoggerManager] = None
 
     def get_logger(self, module_name: str) -> Logger:
         """
@@ -44,6 +53,43 @@ class LoggerComponent:
             )
         return self._manager.get_logger(module_name)
 
+    def chain_status(self) -> ChainStatus:
+        """
+        Report the chain without building it.
+
+        Here rather than at the reader that publishes it: that reader took
+        ``self._manager`` off this object directly -- a private attribute
+        of somebody else's -- and worked out from it both the name and the
+        counters, which is this component's own business and was already
+        half-written here. Renaming the attribute would have broken
+        ``/api/v1/admin/health`` with an ``AttributeError`` and nothing
+        would have said so until a request arrived.
+
+        Asking must not be what starts the chain: a manager is built on
+        the first logger somebody wants, and a health check is not that.
+
+        Returns:
+            The chain's state -- or ``NOT_STARTED``, zeroes and a check
+            that has not run, where no manager has been built.
+        """
+        if self._manager is None:
+            return ChainStatus(
+                active=NOT_STARTED,
+                dropped_calls=0,
+                failed_checks=0,
+                lost_log_lines=0,
+                last_check=CheckOutcome.NOT_RUN.value,
+            )
+
+        dropped, failed, lost = self._manager.counters()
+        return ChainStatus(
+            active=self._manager.get_active_logger_name(),
+            dropped_calls=dropped,
+            failed_checks=failed,
+            lost_log_lines=lost,
+            last_check=self._manager.last_check(),
+        )
+
     def get_active_logger_name(self) -> str:
         """
         Return the name of the currently active logger implementation.
@@ -52,11 +98,9 @@ class LoggerComponent:
 
         Returns:
             One of ``"structlog"``, ``"standard"``, ``"null"``, or
-            ``"unknown"``.
+            ``NOT_STARTED``.
         """
-        if self._manager:
-            return self._manager.get_active_logger_name()
-        return "unknown"
+        return self.chain_status().active
 
     def shutdown(self):
         """Stop background failover checks and release resources."""

@@ -31,6 +31,35 @@ class IntegrationTestConfig(TestingConfig):
     COOKIE_SECURE = False
     RATE_LIMIT_AUTH_DISABLED = True
 
+    GUEST_LINK_LIMIT = 20
+    """Raised from the default ten, because the suite shares one allowance.
+
+    The ``app`` fixture is session-scoped, a guest's allowance is counted
+    per address, and every test that shortens without naming an address
+    spends from the same pool. At the default the pool for ``127.0.0.1`` is
+    spent to its last unit, so one further guest creation anywhere in
+    ``tests/integration`` reddens an unrelated CSRF test with
+    429 -- a failure that names neither the quota nor the test that took
+    the last one.
+
+    Twenty rather than something larger: the throttle on
+    ``api.create_short_link`` is 30 requests a minute, and a quota at or
+    above it is reached second, so a test that spends its allowance to ask
+    what a refusal says measures the throttle instead -- ``Retry-After:
+    60`` where the quota says 86400, with the throttle's counters attached.
+    At 30 three tests fail that way, at 29 none do. They are the tests that
+    name their own address, which keeps them clear of this
+    pool but not of this number: they spend ``limit + 1`` requests to reach
+    a refusal, so raising the quota raises what they send.
+
+    This is a wider allowance, not an isolated one, and the room it buys is
+    finite: measured, the suite spends 10 of the 20, so ten further guest
+    creations on the shared address pass and the eleventh reddens that same
+    CSRF test again. A test that cares about the quota -- or that creates
+    guest links in any number -- should name its own address, as the ones
+    in ``test_link_creation_limits.py`` do.
+    """
+
 
 @pytest.fixture(scope="session")
 def app():
@@ -64,13 +93,6 @@ def db(app):
         yield app.container.get_db_manager()
 
 
-@pytest.fixture()
-def app_context(app):
-    """Flask app context for tests that need it."""
-    with app.app_context():
-        yield app
-
-
 def confirm_email(app, email):
     """
     Mark a registered address as confirmed, as following the link would.
@@ -90,11 +112,15 @@ def confirm_email(app, email):
 
     with app.app_context():
         with app.container.get_db_manager().session() as session:
+            # ``True``, not ``1``: SQLite takes either, PostgreSQL refuses
+            # the integer for a boolean column, so the literal form worked
+            # for as long as no test ran against a real database.
             session.execute(
                 text(
-                    "UPDATE users SET email_verified = 1 WHERE email = :email"
+                    "UPDATE users SET email_verified = :verified "
+                    "WHERE email = :email"
                 ),
-                {"email": email},
+                {"email": email, "verified": True},
             )
             session.commit()
 
@@ -119,6 +145,38 @@ def auth_headers(token):
     return {}
 
 
+def only_this_role(app, user_id, role_name):
+    """
+    Leave the account holding one role.
+
+    ``account_with_permissions`` adds a role to the default ``user`` one
+    rather than replacing it, so an account built to lack a permission
+    holds it anyway -- and a check that something is refused would pass or
+    fail for the wrong reason.
+
+    Here rather than in one test file because two of them need it: what
+    one permission opens is a question about the account holding exactly
+    it, and the default role carries four permissions of its own.
+
+    Args:
+        app: The application under test.
+        user_id: Account to strip.
+        role_name: The single role it is to keep.
+    """
+    from sqlalchemy import text
+
+    with app.app_context():
+        with app.container.get_db_manager().session() as session:
+            session.execute(
+                text(
+                    "DELETE FROM user_roles WHERE user_id = :uid AND role_id IN "
+                    "(SELECT id FROM roles WHERE name != :keep)"
+                ),
+                {"uid": user_id, "keep": role_name},
+            )
+            session.commit()
+
+
 def account_with_permissions(app, email, password, role_name, permissions):
     """
     Register an account and add a role holding these permissions.
@@ -129,9 +187,9 @@ def account_with_permissions(app, email, password, role_name, permissions):
     test meant.
 
     *Added*, not "given only": registration grants the default role as
-    well, so the account ends up with two roles. Measured on an account
-    built with ``["admin:view_system_health"]`` alone: roles ``only-probe``
-    and ``user``, permissions ``admin:view_system_health``,
+    well, so the account ends up with two roles. An account built with
+    ``["admin:view_system_health"]`` alone carries roles ``only-probe`` and
+    ``user``, permissions ``admin:view_system_health``,
     ``link:create``, ``link:delete_own``, ``link:view_own`` and
     ``stats:view_basic``. None of the default four is administrative --
     ``test_every_admin_route_is_guarded`` is what holds that -- so a
@@ -279,3 +337,64 @@ def ensure_user(session, user_id):
         )
     )
     session.flush()
+
+
+@pytest.fixture()
+def events(app):
+    """Counts rows in the security journal, by kind.
+
+    Here rather than in each file that needs it: three copies of this
+    stood in three test modules, spelling ``security_events`` and
+    ``event_type`` three times. A rename of either would have been three
+    edits, and the one that got missed would have failed a test that says
+    nothing about the schema.
+
+    Args:
+        app: The application under test.
+
+    Returns:
+        A callable taking an event type and returning how many rows carry
+        it.
+    """
+    from sqlalchemy import text
+
+    def read(event_type: str) -> int:
+        with app.app_context():
+            with app.container.get_db_manager().session() as session:
+                return session.execute(
+                    text(
+                        "SELECT count(*) FROM security_events "
+                        "WHERE event_type = :t"
+                    ),
+                    {"t": event_type},
+                ).scalar_one()
+
+    return read
+
+
+def a_guest(app, address: str):
+    """A client the service counts as a guest of its own.
+
+    The quota is counted per address, so the shared ``client`` fixture is
+    one guest for every test that uses it, and every test that spends the
+    allowance from it spends one a later test was counting on. Both
+    failures have been measured here: deduplication tests two files away
+    began failing in a full run and passing alone, and a test written
+    without this read ``deletion_token`` off a ``429`` and got ``None``.
+    It is the same trap the live runs met, where every agent on the
+    machine reached the container as one gateway address.
+
+    Three files kept their own copy of these four lines. The address is
+    still each test's to choose -- that is the argument -- but the way to
+    become a guest of one's own is written once.
+
+    Args:
+        app: The application under test.
+        address: The address the requests appear to come from.
+
+    Returns:
+        A Flask test client bound to that address.
+    """
+    client = app.test_client()
+    client.environ_base["REMOTE_ADDR"] = address
+    return client

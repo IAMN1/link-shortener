@@ -2,6 +2,7 @@ import re
 from dataclasses import dataclass
 
 from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.i18n import N_
 
 
 MIN_LENGTH = 6
@@ -50,24 +51,21 @@ class ShortCode:
 
         if not CODE_PATTERN.fullmatch(self.value):
             raise ValidationError(
-                f"Invalid short code format: {self.value}. "
-                f"Must be {MIN_LENGTH}-{MAX_LENGTH} alphanumeric characters, "
-                f"underscore, or hyphen.",
-                field="short_code",
-            )
+                      f"Invalid short code format: {self.value}. "
+                      f"Must be {MIN_LENGTH}-{MAX_LENGTH} alphanumeric characters, "
+                      f"underscore, or hyphen.",
+                      field="short_code",
+                      template=N_(
+                          "Invalid short code format: %(value)s. Must be "
+                          "%(min)s-%(max)s alphanumeric characters, underscore, "
+                          "or hyphen."
+                      ),
+                      params={
+                          "value": self.value,
+                          "min": MIN_LENGTH,
+                          "max": MAX_LENGTH,
+                      },
+                  )
 
     def __str__(self) -> str:
         return self.value
-
-    @classmethod
-    def create(cls, value: str) -> "ShortCode":
-        """
-        Factory method with explicit validation (alternative to constructor).
-
-        Args:
-            value: Short code string.
-
-        Returns:
-            ShortCode instance.
-        """
-        return cls(value)

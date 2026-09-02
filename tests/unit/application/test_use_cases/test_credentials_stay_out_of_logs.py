@@ -36,9 +36,9 @@ SECRET = "pw1"
 
 A long distinctive password sitting past character 30 is hidden by any
 truncation, so a line that writes ``url[:25]`` -- unchecked input, just
-less of it -- passes a test built on one. Measured with a 19-character
-secret at offset 14: ``url_head=url[:25]`` survived the whole suite while
-putting ``https://a:hunter2@example`` in application.log. Three
+less of it -- passes a test built on one. With a 19-character secret at
+offset 14, ``url_head=url[:25]`` passes everything else while putting
+``https://a:hunter2@example`` in application.log. Three
 characters after ``https://a:`` cannot hide behind any slice worth
 taking.
 """
@@ -50,7 +50,7 @@ BREAKS_NFKC = f"https://a:{SECRET}@exa℀mple.com/"
 """Refused by ``urlparse`` itself, whose error text quotes the netloc.
 
 U+2100 (ACCOUNT OF) is one of the code points CPython's NFKC check
-refuses in an authority, so this is the input that used to put the
+refuses in an authority, so this is the input whose error text carries the
 password into ``error.log`` and into the 400 body.
 """
 
@@ -319,18 +319,23 @@ class TestGroupingABatch:
         """The line has to stay findable against the response.
 
         The caller is told which URL failed -- ``BatchItemResponse`` echoes
-        it back -- so the log needs the key that ties the two together, not
-        the address.
+        it back -- so the log needs what ties the two together, not the
+        address.
+
+        Where it sat in the request, which is what a reader holding the
+        request can look up. Counting refusals instead, as this line used
+        to, made the second URL of a batch ``invalid_0`` and pointed at the
+        first.
         """
-        groups = grouper.group(["https://example.com/ok", WITH_CREDENTIALS])
+        _, rejected = grouper.group(["https://example.com/ok", WITH_CREDENTIALS])
 
         warnings = [
             call for call in logger.method_calls
             if call.args and call.args[0] == "Invalid URL in batch"
         ]
         assert len(warnings) == 1
-        assert warnings[0].kwargs["item"] == "invalid_0"
-        assert "invalid_0" in groups
+        assert warnings[0].kwargs["item"] == 1
+        assert [item.url for item in rejected] == [WITH_CREDENTIALS]
 
     def test_what_goes_back_to_the_caller_carries_no_secret_either(
         self, grouper
@@ -338,9 +343,20 @@ class TestGroupingABatch:
         """The per-item error is a response field, not only a log field.
 
         The URL beside it is the caller's own, so echoing that reveals
-        nothing new -- but the error text used to quote ``urlparse``, and
-        a batch response travels further than the request did.
-        """
-        groups = grouper.group([BREAKS_NFKC])
+        nothing new -- but ``urlparse`` quotes the netloc in its message,
+        and a batch response travels further than the request did.
 
-        assert SECRET not in groups["invalid_0"]["error"]
+        Read off the whole refusal rather than off one field of it: the
+        item now carries a ``Refusal`` -- code, sentence, msgid and values
+        -- so a secret could hide in the values where a check on the
+        sentence alone would not look, and a field added later is covered
+        by this without anybody remembering to come back here.
+        """
+        _, rejected = grouper.group([BREAKS_NFKC])
+
+        refusal = rejected[0].refusal
+
+        assert SECRET not in str(refusal)
+        assert SECRET not in refusal.message
+        assert SECRET not in refusal.template
+        assert SECRET not in str(refusal.params)

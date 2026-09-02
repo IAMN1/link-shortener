@@ -1,56 +1,204 @@
+{# The theme is read from a cookie here rather than applied by a script
+   after the page loads, the same way the collapsed sidebar already is. A
+   cookie is on the request, so the page is painted in the chosen theme from
+   the first frame; the same choice restored from localStorage paints the
+   other theme first and swaps it a moment later, on every page.
+
+   Absent the cookie nothing is stamped, and the stylesheet falls through to
+   `prefers-color-scheme` -- which is the third state, and the one most
+   visitors are in. #}
+{% set theme = request.cookies.get('theme') %}
+{# `current_language` comes from the same function that chose the catalogue
+   -- see web/i18n.py. Not read from the cookie here the way the theme is:
+   the language is negotiated from `Accept-Language` when no cookie was
+   sent, so the cookie is one of three answers rather than the answer, and
+   a second reading of it here would name a different language from the one
+   the page is actually written in. #}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language }}"{% if theme in ('light', 'dark') %} data-theme="{{ theme }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Link Shortener{% endblock %}</title>
+    <title>{% block title %}MaizLink{% endblock %}</title>
+    {# A link to a link shortener used to unfurl as an empty card, which for
+       this service of all services is a poor advertisement. #}
+    <meta name="description" content="{% block description %}MaizLink turns a long address into a short code you can read out loud. Everything the interface does is also an API call.{% endblock %}">
+    <meta name="color-scheme" content="light dark">
+    {# Turbo paints a returning page twice by default: the cached snapshot
+       first, the fresh response second. The body scripts run on both
+       renders, so every repeat visit asked the API for its data twice --
+       measured: one HTML request, two API calls -- and the table showed
+       the previous visit's figures for a moment before correcting itself.
+
+       `no-preview` keeps the snapshot for what it is worth elsewhere and
+       drops that first paint. It costs little here because hovering a
+       link already fetches the page before the click lands. #}
+    <meta name="turbo-cache-control" content="no-preview">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+    {# Preloaded because it is the face the whole page is set in: without
+       this the browser only discovers it after the stylesheet parses. #}
+    <link rel="preload" href="{{ url_for('static', filename='fonts/inter-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    {# Navigation without a reload. Turbo intercepts a link, fetches the
+       page, merges the `<head>` and swaps the `<body>`, so the stylesheet
+       and the fonts are parsed once per visit instead of once per page.
+
+       Vendored rather than pulled from a CDN: the service is served by
+       gunicorn with nothing in front of it, and a third-party origin is one
+       more thing that can be down, be slow, or watch who reads this site.
+       The version is in the filename and the file's checksum is held by
+       `tests/unit/web/test_static/test_vendored_turbo.py`.
+
+       In `<head>` with `defer`, and this matters for more than speed: Turbo
+       merges the head across navigations and leaves a script it already has
+       alone. A script here therefore runs exactly once per tab. `main.js`
+       binds its listeners to `document`, which survives the body swap, so
+       loaded at the end of `<body>` it would be re-executed on every
+       navigation and each pass would leave another copy of every handler
+       behind. `dashboard.js` is in the head for the same reason, added by
+       `dashboard/base.html`; the page scripts are not, and are meant to run
+       again each time. #}
+    <script src="{{ url_for('static', filename='vendor/turbo-8.0.23.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
     <header class="header">
         <div class="container header-inner">
-            <a href="{{ url_for('frontend.index') }}" class="logo">&#128279; Linkr</a>
+            <a href="{{ url_for('frontend.index') }}" class="logo">maizlink</a>
+
+            {# The dashboard overrides this: its own sidebar already carries
+               every destination, and the header used to repeat them, so one
+               address was reachable by two controls on one screen. #}
+            {% block header_nav %}
             <div class="header-right">
+                <a href="{{ url_for('frontend.api_docs') }}" class="header-link">API</a>
+                {% include "layout/_language_switch.html" %}
+                {% include "layout/_theme_button.html" %}
                 {% if g.current_user %}
-                    <a href="{{ url_for('dashboard.home') }}" class="btn btn--ghost btn--sm">Dashboard</a>
-                    <div class="dropdown" id="user-dropdown">
-                        <button class="dropdown-trigger" id="dropdown-toggle">
+                    <a href="{{ url_for('dashboard.home') }}" class="header-link">{{ _('Dashboard') }}</a>
+                    <div class="dropdown">
+                        <button class="dropdown-trigger" id="dropdown-toggle" aria-expanded="false" aria-haspopup="true">
                             <span class="avatar">{{ g.current_user.email[0]|upper }}</span>
                             <span class="dropdown-name">{{ g.current_user.email }}</span>
-                            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
                         </button>
                         <div class="dropdown-menu" id="dropdown-menu">
                             <div class="dropdown-label">{{ g.current_user.email }}</div>
-                            <div class="dropdown-label text-xs text-muted">{{ g.current_user.roles|join(', ') }}</div>
+                            <div class="dropdown-label mono">{{ g.current_user.roles|join(', ') }}</div>
                             <hr class="dropdown-divider">
-                            <a href="{{ url_for('dashboard.home') }}" class="dropdown-item">Dashboard</a>
-                            <a href="{{ url_for('dashboard.my_links') }}" class="dropdown-item">My Links</a>
-                            <a href="{{ url_for('dashboard.create_link_form') }}" class="dropdown-item">Create Link</a>
+                            <a href="{{ url_for('dashboard.home') }}" class="dropdown-item">{{ _('Dashboard') }}</a>
                             <hr class="dropdown-divider">
-                            <a href="#" id="logout-link" class="dropdown-item dropdown-item--danger">Logout</a>
+                            {# `href="#"` because this is a control drawn as a
+                               menu entry, not a destination. It needs no
+                               `data-turbo="false"`: Turbo decides about a
+                               click in a bubbling listener that it moves to
+                               the end of the queue on every press, and it
+                               skips any event whose `defaultPrevented` is
+                               set -- so the handler in `main.js`, bound
+                               earlier, speaks first. Measured both ways:
+                               with the attribute and without it, the press
+                               logs out, nothing navigates, and hovering
+                               sends no request. #}
+                            <a href="#" id="logout-link" class="dropdown-item dropdown-item--danger">{{ _('Log out') }}</a>
                         </div>
                     </div>
                 {% else %}
-                    <a href="{{ url_for('frontend.login_page') }}" class="btn btn--ghost btn--sm">Login</a>
-                    <a href="{{ url_for('frontend.register_form') }}" class="btn btn--primary btn--sm">Sign Up</a>
+                    <a href="{{ url_for('frontend.login_page') }}" class="header-link">{{ _('Log in') }}</a>
+                    {# Outlined, not filled. The filled control on a page is
+                       the page's own job, and this page's job is shortening
+                       a link -- the two used to be the same green slab. #}
+                    <a href="{{ url_for('frontend.register_form') }}" class="btn btn--ghost btn--sm">{{ _('Sign up') }}</a>
                 {% endif %}
-                <button class="nav-toggle" id="nav-toggle" aria-label="Menu">
-                    <span></span><span></span><span></span>
-                </button>
+                {# The hamburger that stood here was drawn `display: none`
+                   with no media query anywhere to show it, and its handler
+                   opened the account menu -- which a signed-out visitor
+                   does not have. It was dead in both directions. On a
+                   narrow screen the header now drops the address beside the
+                   avatar and keeps every control reachable. #}
             </div>
+            {% endblock %}
         </div>
     </header>
 
-    <main class="main">
+    <main class="main{% block main_class %}{% endblock %}">
         {% block content %}{% endblock %}
     </main>
 
+    {% block footer %}
     <footer class="footer">
-        <div class="container">&copy; 2026 Linkr &mdash; Link Shortener</div>
-    </footer>
+        <div class="container footer-inner">
+            <span>&copy; 2026 MaizLink</span>
+            <a href="{{ url_for('frontend.api_docs') }}">API</a>
+            <a href="{{ url_for('frontend.openapi') }}">openapi.json</a>
+            {# `rel="noopener"` on anything opening a new tab: without it the
+               page that opens can reach back through `window.opener`. #}
+            <a href="https://github.com/IAMN1" target="_blank" rel="noopener noreferrer">GitHub</a>
 
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+            {# One sentence, not three fragments. Split into "powered by",
+               the name, "with" and the heart, a translator can only fill in
+               the pieces in the order English puts them -- and the order is
+               the part that changes between languages. As one string with
+               two substitutions, the whole line can be rearranged. #}
+            {%- set author %}<a href="https://github.com/IAMN1" target="_blank" rel="noopener noreferrer">Maizekeen</a>{% endset -%}
+            {%- set heart %}<svg class="heart" viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="{{ _('love') }}"><path d="M8 13.9 2.9 8.7a3.2 3.2 0 0 1 4.5-4.5L8 4.8l.6-.6a3.2 3.2 0 0 1 4.5 4.5Z"/></svg>{% endset -%}
+            <span class="footer-sign">
+                {% trans author=author, heart=heart %}powered by {{ author }} with {{ heart }}{% endtrans %}
+            </span>
+        </div>
+    </footer>
+    {% endblock %}
+
+    {# A page's own script goes here. Two rules hold for every one of them,
+       and this is the one place they are written out -- the scripts
+       themselves carry a pointer back here rather than a copy.
+
+       1. It carries `defer`, which is not optional and is not about speed.
+       An ordinary `<script src>` at the end of the body is fetched and run
+       while the document is still being parsed, so it would run *before*
+       the deferred `main.js` in the head, and page scripts call `apiFetch`,
+       `escapeHtml` and `showLoadError` from that file. Without `defer` the
+       first call threw a ReferenceError, the `catch` beneath it called
+       `showLoadError` and threw a second one, and the table sat on
+       "Loading..." for good -- with nothing in the console, because an
+       unhandled rejection is not a page error. Deferred scripts run after
+       parsing, in document order, so this one runs after the head's.
+
+       2. The script's body is wrapped in a function it calls itself,
+       rather than waiting for `DOMContentLoaded`. Turbo swaps the body
+       long after that event has fired, so a script waiting for it would
+       never run again after the first navigation. Here, Turbo re-executes
+       the script on each navigation, by which time its elements are on the
+       page. The wrapper is also what keeps an early `return` legal and
+       keeps the variables off `window`, which twenty-three page scripts
+       otherwise share. #}
+    {# The sentences a script writes onto the page after it arrives.
+
+       A page script runs in the browser, where `gettext` has long since
+       had its turn, so a string typed into a `.js` file is in the language
+       it was typed in and no catalogue can reach it. The page came in
+       Russian and the script wrote English into it -- and every run stayed
+       green, because nothing but a browser executes these files at all.
+
+       Translated on the server, where the language is known, and carried
+       in with the page rather than fetched: a second request would arrive
+       after the first "Working…" was already on screen, and would need a
+       cache keyed on the language cookie to be worth making.
+
+       `application/json` rather than a `window.I18N = {...}` literal. The
+       browser does not execute this block, so a translated sentence is
+       data here and never code -- and a `.po` file is something an
+       operator edits, so a stray quote in one should spoil a sentence
+       rather than the page. `tojson` escapes `<` as well, so no
+       translation can close this tag early.
+
+       The list lives in `web/i18n.py:script_strings`, not here: the
+       scripts ask for keys, and a second copy of the keys in this file is
+       a second thing to keep in step. #}
+    {# Carries the nonce the response's `Content-Security-Policy` names.
+       A data block is not executed and most browsers do not check it
+       against `script-src`, but the ones that do would drop the strings
+       and leave every sentence a script writes in its key form. #}
+    <script id="script-strings" type="application/json" nonce="{{ csp_nonce }}">{{ script_strings()|tojson }}</script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

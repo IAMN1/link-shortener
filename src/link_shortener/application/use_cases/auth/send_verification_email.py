@@ -8,8 +8,23 @@ from link_shortener.application.ports.mailer import Mailer, MailDeliveryError
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
 
-VERIFY_PATH = "/auth/verify"
-"""Path the confirmation link points at."""
+VERIFY_PATH = "/verify"
+"""Path the confirmation link points at.
+
+A page, not the API endpoint. What arrives in a mailbox is opened by a
+browser, and the endpoint answers ``application/json``: the person who did
+what the message asked was shown ``{"message": "Email confirmed..."}`` and
+left to work out where to sign in.
+
+The page also decides when the token is spent. Confirming from a link the
+mail client fetched is a state change behind a GET, and scanners that
+follow links spend the token before its owner opens the message -- who
+then reads that their confirmation is invalid. The page asks for a click,
+and that click is the POST.
+
+The endpoint still answers GET, so links mailed before this change go on
+working.
+"""
 
 
 @dataclass
@@ -69,7 +84,12 @@ class SendVerificationEmailUseCase(BaseUseCase):
             f"{self.base_url.rstrip('/')}{VERIFY_PATH}?token={quote(token, safe='')}"
         )
         subject, body = self.templates.verification_email(
-            confirm_url=confirm_url, ttl_hours=self.ttl_hours
+            confirm_url=confirm_url,
+            ttl_hours=self.ttl_hours,
+            # The language the registration was answered in, carried on
+            # the context because this runs in a worker where the request
+            # is long over.
+            language=context.language,
         )
 
         try:

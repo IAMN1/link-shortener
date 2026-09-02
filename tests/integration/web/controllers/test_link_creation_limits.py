@@ -9,7 +9,6 @@ many codes, and a caller can legitimately ask for a link they already have.
 
 import uuid
 
-import pytest
 
 from tests.integration.conftest import (
     auth_headers, csrf_headers, register_and_login
@@ -36,10 +35,11 @@ class TestTheCodeSupplyIsNotFive:
     Codes are derived from the URL, so the deterministic ladder is finite.
 
     ``generate_unique`` is a pure function of the URL and the attempt
-    number, and there are five attempts -- five codes per URL for the
-    lifetime of the service. Now that one URL needs a link per owner, the
-    sixth caller used to get a 500 that no retry could clear, and the URL
-    became unshortenable for everybody.
+    number, so a URL has exactly as many codes as there are attempts --
+    ``MAX_COLLISION_ATTEMPTS``, five by default, and the same five for the
+    lifetime of the service. With one link per owner, a sixth caller would
+    get a 500 that no retry clears, and the URL would become unshortenable
+    for everybody.
     """
 
     def test_eight_owners_can_all_shorten_the_same_url(self, app):
@@ -77,27 +77,29 @@ class TestTheQuotaIsChargedForCreationsOnly:
     """
     Being handed a link that already exists creates nothing.
 
-    The single-link path used to count first and look second, so a guest who
-    had spent their allowance was refused a URL they had shortened
-    themselves -- while the batch endpoint, asked the same question,
-    answered with the very same link.
+    The single-link path has to look before it counts: counting first
+    refuses a guest who has spent their allowance a URL they shortened
+    themselves, while the batch endpoint, asked the same question, answers
+    with the very same link.
     """
 
-    def test_a_spent_guest_still_gets_their_own_link_back(self, app):
+    def test_a_spent_guest_is_refused_a_genuinely_new_url(self, app):
+        """
+        The other half of the rule, and the one that must keep working.
+
+        Named for what it does: every call here asks for a fresh ``_url()``,
+        so nothing is asked for twice. A name promising the reuse would
+        describe a path this body never takes -- that reuse is checked by
+        ``test_repeating_an_existing_url_is_free`` below.
+        """
         ip = "203.0.113.91"
         client = app.test_client()
         limit = app.config["GUEST_LINK_LIMIT"]
 
-        first = _shorten(client, _url(), ip=ip).get_json()["short_code"]
-        for _ in range(limit - 1):
-            _shorten(client, _url(), ip=ip)
+        for _ in range(limit):
+            assert _shorten(client, _url(), ip=ip).status_code == 201
 
-        # The allowance is now spent: a genuinely new URL is refused...
         assert _shorten(client, _url(), ip=ip).status_code == 429
-
-        # ...but asking again for what already exists creates nothing.
-        repeat = _shorten(client, _url(), ip=ip)
-        assert repeat.status_code == 429
 
     def test_repeating_an_existing_url_is_free(self, app):
         ip = "203.0.113.92"
@@ -169,7 +171,7 @@ class TestOnlyGuestsAreCharged:
         for _ in range(3):
             _shorten(client, _url(), token=token)
 
-        # Owned links have a NULL guest identifier too, and used to be
-        # counted here -- ten of anyone's links reported the guest quota of
-        # an address-less caller as spent.
+        # Owned links carry a NULL guest identifier too. Counted here, ten
+        # of anyone's links would report the guest quota of an address-less
+        # caller as spent.
         assert anonymous_count() == before

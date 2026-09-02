@@ -49,6 +49,20 @@ class BaseUseCase(ABC):
         """
         Create a logger with bound request context and extra data.
 
+        The use case's own module is bound as well, and that is the one
+        field a journal line carries about where a record came from. The
+        logger arrives from the DI container, which fetched it under its
+        own ``__name__`` -- so every line an application-layer use case
+        wrote was filed under
+        ``link_shortener.infrastructure.di.container``, and a reader
+        filtering the journal by source found the wiring rather than the
+        work. Measured on the running stack: ``Journal read refused``,
+        written from ``ReadJournalUseCase``, arrived under the container's
+        name.
+
+        Bound rather than passed per call, because it is a property of the
+        writer and not of the line.
+
         Args:
             logger: Raw logger instance.
             context: Request context.
@@ -58,9 +72,10 @@ class BaseUseCase(ABC):
             A logger with bound fields.
         """
         ctx = context.for_logging()
+        ctx["module"] = type(self).__module__
         ctx.update(extra)
         return logger.bind(**ctx)
-    
+
     def _get_audit_logger(self, audit_logger: AuditLogger, context: RequestContext, **extra) -> AuditLogger:
         """
         Create an audit logger with bound request context.

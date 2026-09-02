@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 
 from link_shortener.application.use_cases.batch.creator import BatchLinkCreator
+from link_shortener.application.use_cases.batch.groups import UrlGroup
 from link_shortener.domain import (
     Link, OriginalUrl, OwnerID, ShortCode, UrlHash
 )
@@ -22,12 +23,11 @@ FREE = ShortCode("free01")
 
 def _group(hash_char, url):
     """Build one grouper output entry."""
-    return {
-        "hash": UrlHash(hash_char * 64),
-        "original_url": OriginalUrl(url),
-        "urls": [url],
-        "is_valid": True,
-    }
+    return UrlGroup(
+        hash=UrlHash(hash_char * 64),
+        original_url=OriginalUrl(url),
+        urls=[url],
+    )
 
 
 def _stored(code, url_hash, owner="user-a"):
@@ -65,14 +65,14 @@ class TestACodeInUseIsNeverReissued:
         The link found belongs to another owner.
 
         Deduplication is per owner, so a link for this very URL can exist
-        and still not be the caller's. Creation then proceeds against a code
-        that is already occupied -- which used to be treated as "the same
+        and still not be the caller's. Creation then proceeds against a
+        code that is already occupied, which must not be read as "the same
         URL, reuse it".
         """
         group = _group("a", "https://example.com/same")
         repository = Mock()
         repository.find_by_codes.return_value = {
-            TAKEN: _stored(TAKEN, group["hash"])
+            TAKEN: _stored(TAKEN, group.hash)
         }
 
         links = creator.create_new_links(repository, [group])
@@ -123,7 +123,7 @@ class TestACodeInUseIsNeverReissued:
 
         def find_by_codes(codes):
             return {
-                code: (_stored(code, group["hash"]) if code in stored_codes else None)
+                code: (_stored(code, group.hash) if code in stored_codes else None)
                 for code in codes
             }
 
@@ -147,14 +147,14 @@ class TestACodeInUseIsNeverReissued:
         """
         The ladder is a pure function of the URL, so it is finite.
 
-        Once every rung is taken -- which per-owner deduplication and expiry
-        make an ordinary event -- the item used to be dropped from the batch.
-        Entropy has to take over instead.
+        Once every rung is taken -- which per-owner deduplication and
+        expiry make an ordinary event -- entropy has to take over, rather
+        than the item being dropped from the batch.
         """
         group = _group("d", "https://example.com/laddered")
         repository = Mock()
         repository.find_by_codes.return_value = {
-            TAKEN: _stored(TAKEN, group["hash"])
+            TAKEN: _stored(TAKEN, group.hash)
         }
         creator.code_generator.generate_unique.side_effect = (
             lambda url, attempt: TAKEN
@@ -172,7 +172,7 @@ class TestACodeInUseIsNeverReissued:
         group = _group("e", "https://example.com/hopeless")
         repository = Mock()
         repository.find_by_codes.return_value = {
-            TAKEN: _stored(TAKEN, group["hash"])
+            TAKEN: _stored(TAKEN, group.hash)
         }
         creator.code_generator.generate_unique.side_effect = (
             lambda url, attempt: TAKEN

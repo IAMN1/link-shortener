@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import time
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 
 from link_shortener.application.context import RequestContext
@@ -11,15 +11,21 @@ from link_shortener.application.ports.cache.link_service_stats_cache import (
 )
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import (
+    UnitOfWork, UnitOfWorkFactory,
+)
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
     DedupScope, Link, OriginalUrl, ShortCode, UrlHash,
     HashCalculator, CodeGenerator, OwnerID,
     ValidationError, CodeGenerationError, LinkCodeTakenError,
-    LinkConflictError, GuestLinkLimitExceededError
+    LinkConflictError
+)
+from link_shortener.domain.policies.guest_quota_policy import (
+    guest_allowance, guest_quota_spent,
 )
 from link_shortener.domain.policies.reserved_codes import is_reserved
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -59,7 +65,7 @@ class CreateShortLinkUseCase(BaseUseCase):
         max_collision_attempts: Maximum tries to generate a unique code.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     cache: LinkCache
     stats_cache: StatsCache
     hash_calculator: HashCalculator
@@ -105,9 +111,9 @@ class CreateShortLinkUseCase(BaseUseCase):
         start_time = time.perf_counter()
         # The URL itself is not written here. This line runs before any
         # validation, so what it would write is whatever the caller sent --
-        # and nine lines later that can be an address rejected for holding
-        # credentials in front of the host, by which point the password is
-        # already in application.log. OWASP's Logging Cheat Sheet lists
+        # and a few lines below it that can be an address rejected for
+        # holding credentials in front of the host, by which point the
+        # password is already in application.log. OWASP's Logging Cheat Sheet lists
         # authentication passwords among the data that "should usually not
         # be recorded directly in the logs". The address does get logged,
         # once it has been checked: ``audit.log_url_created`` masks it.
@@ -183,18 +189,17 @@ class CreateShortLinkUseCase(BaseUseCase):
                 "Failed to store a short link: every attempt lost a race "
                 "with a concurrent creation"
             )
-        # There is deliberately no ``except ValueError`` here. It used to
-        # wrap this whole body -- the cache read, the repository, the unit
-        # of work -- and answer 400 with ``f"Invalid URL {e}"``. Two things
-        # went wrong at once: a failure of the service was reported as the
-        # caller's mistake and so stayed out of error monitoring, and the
-        # text of an internal exception went out in the response body.
-        # ``JSONDecodeError`` and ``UnicodeDecodeError`` are ``ValueError``
-        # subclasses, so a corrupted cache entry was enough to reach it.
+        # There is deliberately no ``except ValueError`` here. Wrapping
+        # this body -- the cache read, the repository, the unit of work --
+        # and answering 400 would report a failure of the service as the
+        # caller's mistake and put the text of an internal exception in
+        # the response body. ``JSONDecodeError`` and ``UnicodeDecodeError``
+        # are ``ValueError`` subclasses, so a corrupted cache entry alone
+        # would reach it.
         # Everything the caller can actually get wrong raises
         # ``ValidationError``, which is not a ``ValueError`` and is answered
-        # 400 by the handler; ``OriginalUrl`` no longer lets a bare
-        # ``ValueError`` out of ``urlparse`` either.
+        # 400 by the handler; ``OriginalUrl`` keeps a bare ``ValueError``
+        # from ``urlparse`` inside as well.
         except Exception as e:
             log.error("Error creating short link", error=str(e))
             raise e
@@ -225,10 +230,15 @@ class CreateShortLinkUseCase(BaseUseCase):
             # Not a hijack -- the router prefers its own static rule -- but
             # a link that never resolves, handed over as if it worked.
             raise ValidationError(
-                f"'{code.value}' is reserved by the service and cannot be "
-                f"used as a short code",
-                field="code",
-            )
+                      f"'{code.value}' is reserved by the service and cannot be "
+                      f"used as a short code",
+                      field="code",
+                      template=N_(
+                          "'%(code)s' is reserved by the service and cannot be used "
+                          "as a short code"
+                      ),
+                      params={"code": code.value},
+                  )
         return code
 
     def _validate_ttl(self, ttl_seconds: int) -> None:
@@ -241,17 +251,38 @@ class CreateShortLinkUseCase(BaseUseCase):
         ``ValueError``, so nothing on the way out caught it and an
         unauthenticated caller got a 500 out of a one-line request body.
 
+        The lower end is bounded here too, and it is the guest ceiling that
+        needs it. ``Link.create`` gives an expiry only for ``ttl_seconds >
+        0``, so a negative number means forever -- and the ceiling a few
+        lines below is applied with ``min()``, which a negative value walks
+        straight past. A guest asking for ``-1`` got a link that never
+        expires, which is the same hole ``10**9`` opened from the other
+        side. ``CreateShortLinkRequest`` already refuses it with ``ge=0``,
+        and that is the reason the rule is stated twice rather than once:
+        the schema guards the HTTP door, and this use case is also reached
+        from ``flask link create`` and from ``flask db seed``, which never
+        meet it.
+
         Args:
             ttl_seconds: Lifetime asked for, 0 meaning forever.
 
         Raises:
-            ValidationError: If the lifetime exceeds ``MAX_TTL_SECONDS``.
+            ValidationError: If the lifetime is negative or exceeds
+                ``MAX_TTL_SECONDS``.
         """
-        if ttl_seconds > self.max_ttl_seconds:
+        if ttl_seconds < 0:
             raise ValidationError(
-                f"ttl_seconds must not exceed {self.max_ttl_seconds}",
+                N_("ttl_seconds must not be negative"),
                 field="ttl_seconds",
             )
+
+        if ttl_seconds > self.max_ttl_seconds:
+            raise ValidationError(
+                      f"ttl_seconds must not exceed {self.max_ttl_seconds}",
+                      field="ttl_seconds",
+                      template=N_("ttl_seconds must not exceed %(max)s"),
+                      params={"max": self.max_ttl_seconds},
+                  )
 
     def _find_or_create(
         self,
@@ -281,12 +312,17 @@ class CreateShortLinkUseCase(BaseUseCase):
             ttl_seconds: Time-to-live for a new link.
             log: Bound logger.
             audit: Bound audit logger.
+            chosen_code: The code the caller asked for, or ``None`` to let
+                the generator pick one.
 
         Returns:
             ShortLinkResponse DTO.
 
         Raises:
             LinkConflictError: If storing lost a race.
+            LinkCodeTakenError: If ``chosen_code`` is one another link
+                already carries. Not retried around: whoever asked for that
+                code asked for that one.
             GuestLinkLimitExceededError: If the guest link limit is exceeded.
             CodeGenerationError: If no unique code could be generated.
         """
@@ -331,20 +367,16 @@ class CreateShortLinkUseCase(BaseUseCase):
             # while the batch endpoint, asked the same question, answered
             # 200 with the very same link.
             if guest_id is not None:
-                # Serialised first: counting and inserting are two
-                # statements, and without this every simultaneous request
-                # from the same guest reads the same allowance and spends
-                # it in full.
-                uow.links.lock_guest_quota(guest_id)
-                count = uow.links.count_guest_links_by_identifier(
-                    guest_id, self.guest_link_window_days
-                )
-                if count >= self.guest_link_limit:
-                    raise GuestLinkLimitExceededError(
-                        f"Guest link limit of {self.guest_link_limit} exceeded.",
-                        retry_after_seconds=(
-                            self.guest_link_window_days * 24 * 3600
-                        ),
+                # One link is wanted, so any allowance at all is enough.
+                # The batch path asks the same question and reads the
+                # number instead, which is why the locking and the counting
+                # behind it live on ``guest_allowance`` rather than here.
+                if not guest_allowance(
+                    uow.links, guest_id, self.guest_link_limit,
+                    self.guest_link_window_days,
+                ):
+                    raise guest_quota_spent(
+                        self.guest_link_limit, self.guest_link_window_days
                     )
 
             # ---- Pick a code and store -----------------------
@@ -458,8 +490,8 @@ class CreateShortLinkUseCase(BaseUseCase):
 
             log.debug("Code collision, retrying", attempt=attempt + 1, code=code.value)
 
-        # The deterministic ladder is finite -- the same five codes for a
-        # given URL, forever. One link per URL made that limit unreachable;
+        # The deterministic ladder is finite -- a URL has exactly as many
+        # codes as there are attempts, and the same ones forever. One link per URL made that limit unreachable;
         # per-owner deduplication and expiry do not, so running out of rungs
         # is now an ordinary event and must not be a dead end.
         for attempt in range(self.max_collision_attempts):

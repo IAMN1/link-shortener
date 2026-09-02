@@ -1,31 +1,43 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Create Role – Linkr{% endblock %}
+{% import "dashboard/_perms.html" as perms %}
+{% block title %}{{ _('Create Role — MaizLink') }}{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">Create Role</h1>
+<div class="dash-head">
+    <h1 class="dash-title">{{ _('Create Role') }}</h1>
+    <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost btn--sm">{{ _('Cancel') }}</a>
+</div>
 
-<div class="card" style="max-width:480px;">
+<div class="card">
     <form id="create-role-form">
-        <div class="form-group">
-            <label class="form-label" for="name">Name</label>
-            <input type="text" id="name" class="form-input" required minlength="2" placeholder="e.g. editor">
+        <div class="form-group narrow">
+            <label class="form-label" for="name">{{ _('Name') }}</label>
+            {# The whole of the server's rule, not a third of it. `pattern`
+               and `maxlength` mirror `role_policy.ROLE_NAME_PATTERN` and
+               `ROLE_NAME_MAX_LENGTH`, which the admin schema is also built
+               from -- the same arrangement the short-code fields on the
+               landing page use. With only `minlength` here, "my role" left
+               the browser happy and came back 400. #}
+            <input type="text" id="name" class="form-input" required
+                   minlength="{{ role_name_min_length }}"
+                   maxlength="{{ role_name_max_length }}"
+                   pattern="{{ role_name_pattern }}"
+                   title="{{ _('Letters, digits, hyphen or underscore') }}"
+                   placeholder="editor" spellcheck="false">
         </div>
-        <div class="form-group">
-            <label class="form-label" for="description">Description</label>
-            <input type="text" id="description" class="form-input" placeholder="Optional description">
+        <div class="form-group narrow">
+            <label class="form-label" for="description">{{ _('Description') }}</label>
+            <input type="text" id="description" class="form-input" placeholder="{{ _('What this role is for') }}">
         </div>
-        <div class="form-group">
-            <label class="form-label">Permissions</label>
-            {% for perm in permissions %}
-            <label style="display:block; margin-bottom:0.25rem;">
-                <input type="checkbox" name="permissions" value="{{ perm }}"> {{ perm }}
-            </label>
-            {% endfor %}
-        </div>
-        <div id="create-role-error" class="form-error hidden"></div>
-        <button type="submit" class="btn btn--primary btn--block mt-1">Create Role</button>
+
+        <span class="form-label">{{ _('Permissions') }}</span>
+        <span class="form-hint mb-1">{{ _('Grouped by what they act on. The whole set used to be one flat column of ticks.') }}</span>
+        {{ perms.checks(permissions, 'permissions') }}
+
+        <div id="create-role-error" class="form-error hidden mt-2"></div>
+        <button type="submit" class="btn btn--primary mt-2">{{ _('Create role') }}</button>
     </form>
 </div>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/create_role.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/create_role.js') }}" defer></script>
 {% endblock %}

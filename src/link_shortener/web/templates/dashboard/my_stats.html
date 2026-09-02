@@ -1,37 +1,61 @@
 {% extends "dashboard/base.html" %}
-{% block title %}My Stats – Linkr{% endblock %}
+{% import "dashboard/_visit_charts.html" as charts %}
+{% block title %}{{ _('My Stats — MaizLink') }}{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">My Stats</h1>
+<h1 class="dash-title">{{ _('My Stats') }}</h1>
+
+<div id="stats-error" class="alert alert--error hidden mb-2"></div>
 
 <div class="stats-grid mb-2">
     <div class="stat-card">
-        <div class="stat-value" id="stat-total-links">-</div>
-        <div class="stat-label">Total Links</div>
+        <span class="stat-label">{{ _('Total Links') }}</span>
+        <span class="stat-value" id="stat-total-links">&mdash;</span>
     </div>
     <div class="stat-card">
-        <div class="stat-value" id="stat-total-clicks">-</div>
-        <div class="stat-label">Total Clicks</div>
+        <span class="stat-label">{{ _('Total Clicks') }}</span>
+        <span class="stat-value" id="stat-total-clicks">&mdash;</span>
     </div>
     <div class="stat-card">
-        <div class="stat-value" id="stat-avg">-</div>
-        <div class="stat-label">Avg Clicks/Link</div>
+        <span class="stat-label">{{ _('Avg per Link') }}</span>
+        <span class="stat-value" id="stat-avg">&mdash;</span>
     </div>
 </div>
 
-<div class="card">
+{# The counters above are lifetime totals; the charts below are a span the
+   reader chooses. `mine` narrows every figure to this account's own links,
+   and is opened by `link:view_own` -- the permission this page itself is
+   behind, and the one `/stats/mine` above asks for. It used to be served
+   under `stats:view_basic`, which is the service-wide count's permission,
+   so a reader holding what this page needs was shown the page, given its
+   tiles, and refused both charts on it. #}
+{{ charts.visit_charts('mine') }}
+
+<div class="card card--flush">
     <div class="card-header">
-        <span class="card-title">Recent Links</span>
+        <span class="card-title">{{ _('Recent Links') }}</span>
     </div>
     <div class="table-wrap">
         <table class="table">
             <thead>
-                <tr><th>Short URL</th><th>Original</th><th>Clicks</th><th>Created</th></tr>
+                <tr><th>{{ _('Code') }}</th><th>{{ _('Destination') }}</th><th>{{ _('Clicks') }}</th><th>{{ _('Created') }}</th></tr>
             </thead>
-            <tbody id="recent-tbody"><tr><td colspan="4" class="text-muted text-center">Loading...</td></tr></tbody>
+            <tbody id="recent-tbody">
+                <tr><td colspan="4" class="loading">{{ _('Loading…') }}</td></tr>
+            </tbody>
         </table>
     </div>
 </div>
 {% endblock %}
+{# `charts.js` goes in the head rather than here, and this is not a
+   preference. It owns the polling timer and the `turbo:before-cache`
+   listener that stops it; the head is merged across navigations, so a
+   script in it runs once per tab, while a page script is re-executed on
+   every navigation -- which would register another listener each time and
+   cause the very pile-up the listener exists to prevent. #}
+{% block extra_head %}
+    {{ super() }}
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+{% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/my_stats.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/my_stats.js') }}" defer></script>
 {% endblock %}

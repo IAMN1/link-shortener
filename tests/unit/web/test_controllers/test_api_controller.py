@@ -1,10 +1,8 @@
 """Tests for the REST API controller."""
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock
 
-from link_shortener.application.dtos.link import ShortLinkResponse, ExtendedLinkInfoResponse
-from link_shortener.application.dtos.batch import BatchCreateResponse, BatchItemResponse
-from link_shortener.application.dtos.stats import ServiceStatsResponse
+from link_shortener.application.dtos.link import ShortLinkResponse
 
 
 class TestApiController:

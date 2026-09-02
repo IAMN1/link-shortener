@@ -95,7 +95,7 @@ class TestTheStoredDigest:
 
     def test_the_declared_width_is_what_the_column_must_hold(self):
         """The width lives in three places -- this rule, the ORM model and
-        the migration. Measured against a real digest, so the constant
+        the migration. Checked against a real digest, so the constant
         cannot drift away from what it describes."""
         assert DIGEST_LENGTH == 64
         assert len(token_digest(issue_token())) == DIGEST_LENGTH

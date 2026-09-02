@@ -25,9 +25,14 @@ def _is_own(record: logging.LogRecord) -> bool:
     return record.name.split(".")[0] in OWN_LOGGER_NAMES
 
 
-class _RaisesForOwnRecords:
+class _RaisesForOwnRecords(logging.Handler):
     """
     Let a failed write reach the caller instead of dying on stderr.
+
+    Declared over ``logging.Handler`` rather than as a bare mixin: the
+    override below calls ``super().handleError``, which only exists because
+    whatever this is mixed into is a handler. Saying so is what the two
+    classes at the bottom of this file already assume.
 
     ``logging.Handler.handleError`` swallows the failure: with
     ``logging.raiseExceptions`` true -- the default -- it prints to
@@ -36,7 +41,7 @@ class _RaisesForOwnRecords:
     asked for the write. That is the right default for a library, and the
     wrong one here: the whole point of ``FailoverService`` is to move work
     off an implementation that cannot write, and it decides by catching
-    exceptions from the call. Measured before this existed -- a stream
+    exceptions from the call. Without it -- a stream
     whose ``write`` raises ``OSError(ENOSPC)``, which is a full disk or a
     volume that went away:
     three audit records were lost, ``dropped_calls`` stayed at zero,

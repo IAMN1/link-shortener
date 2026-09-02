@@ -27,7 +27,7 @@ class TestLink:
 
     def test_create_with_custom_id(self, valid_url_hash, valid_short_code, valid_original_url):
         """Should create link with custom ID when provided."""
-        
+
         custom_id = 'custom-123'
         link = Link.create(
             url_hash=valid_url_hash,
@@ -40,8 +40,8 @@ class TestLink:
     def test_create_link_sets_defaults(
         self,
         sample_link: Link,
-        valid_url_hash: UrlHash, 
-        valid_short_code: ShortCode, 
+        valid_url_hash: UrlHash,
+        valid_short_code: ShortCode,
         valid_original_url: OriginalUrl
     ):
         """
@@ -106,8 +106,8 @@ class TestLink:
         assert sample_link.last_accessed is not None
         assert sample_link.last_accessed != old_last_accessed
         assert datetime.now(timezone.utc) - sample_link.last_accessed < timedelta(seconds=1)
-    
-    
+
+
     @pytest.mark.parametrize('clicks, threshold, expected', [
         (150, 100, True),
         (99, 100, False),
@@ -115,13 +115,13 @@ class TestLink:
     ])
     def test_is_popular(self, clicks, threshold, expected, sample_link: Link):
         """
-        Should correctly determine if a link is popular based on click threshold. 
+        Should correctly determine if a link is popular based on click threshold.
         """
         sample_link.clicks = clicks
 
         assert sample_link.is_popular(threshold) == expected
-    
-    
+
+
     @pytest.mark.parametrize('days_ago, days, expected', [
         (3, 7, True),
         (10, 7, False),
@@ -134,13 +134,33 @@ class TestLink:
         sample_link.created_at = datetime.now(timezone.utc) - timedelta(days=days_ago)
 
         assert sample_link.is_recent(days) == expected
-    
-    
+
+
+    def test_a_stored_timestamp_without_a_zone_is_read_as_utc(self, sample_link: Link):
+        """
+        SQLite hands back naive datetimes, which is why ``RefreshSession``
+        and ``EmailVerification`` each attach UTC inside their own
+        ``is_usable``. This entity left it to whoever built it -- three
+        columns in the SQLAlchemy adapter and two in the Redis one -- so a
+        ``Link`` reaching ``is_expired`` with a naive ``expires_at`` raised
+        ``TypeError: can't compare offset-naive and offset-aware
+        datetimes``, on the redirect path, where it is answered 500.
+        """
+        sample_link.expires_at = datetime(2020, 1, 1)
+        assert sample_link.is_expired() is True
+
+        sample_link.expires_at = datetime(2999, 1, 1)
+        assert sample_link.is_expired() is False
+
+        sample_link.created_at = datetime(2020, 1, 1)
+        assert sample_link.is_recent(5) is False
+
+
     def test_equality_based_on_id(
         self, valid_url_hash, valid_short_code, valid_original_url
     ):
         """Should consider links equal if they have the same ID."""
-        
+
         link1 = Link.create(
             url_hash=valid_url_hash,
             short_code=valid_short_code,
@@ -151,18 +171,18 @@ class TestLink:
             short_code=valid_short_code,
             original_url=valid_original_url
         )
-        
+
         link2.id = link1.id  # force ids to match
-        
+
         assert link1 == link2
         assert hash(link1) == hash(link2)
 
-    
+
     def test_inequality_different_ids(
         self, valid_url_hash, valid_short_code, valid_original_url
     ):
         """Should consider links different if they have different IDs."""
-        
+
         link1 = Link.create(
             url_hash=valid_url_hash,
             short_code=valid_short_code,
@@ -174,3 +194,72 @@ class TestLink:
             original_url=valid_original_url
         )
         assert link1 != link2
+
+
+class TestTheMomentOfExpiryItself:
+    """Expiry is inclusive: at the stroke, the link is already gone.
+
+    The comparison is ``>=``, and the only clock reading that tells that
+    from ``>`` is the expiry itself. Measured before this test: flipping
+    it left the whole suite green, so a link would have gone on
+    redirecting for as long as the two stamps were equal.
+    """
+
+    def _at(self, monkeypatch, moment):
+        """Make ``datetime.now`` inside the entity answer ``moment``."""
+        import link_shortener.domain.entities.link as module
+
+        class FixedClock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return moment
+
+        monkeypatch.setattr(module, "datetime", FixedClock)
+
+    def test_a_link_whose_expiry_is_now_has_expired(
+        self, monkeypatch, sample_link: Link
+    ):
+        expiry = datetime(2026, 8, 27, 12, 0, tzinfo=timezone.utc)
+        sample_link.expires_at = expiry
+        self._at(monkeypatch, expiry)
+
+        assert sample_link.is_expired() is True
+
+    def test_one_microsecond_earlier_it_has_not(
+        self, monkeypatch, sample_link: Link
+    ):
+        expiry = datetime(2026, 8, 27, 12, 0, tzinfo=timezone.utc)
+        sample_link.expires_at = expiry
+        self._at(monkeypatch, expiry - timedelta(microseconds=1))
+
+        assert sample_link.is_expired() is False
+
+    def test_a_link_with_no_expiry_never_expires(
+        self, monkeypatch, sample_link: Link
+    ):
+        sample_link.expires_at = None
+        self._at(monkeypatch, datetime(2099, 1, 1, tzinfo=timezone.utc))
+
+        assert sample_link.is_expired() is False
+
+
+class TestComparedWithSomethingThatIsNotALink:
+    """``__eq__`` answers False rather than raising or deferring.
+
+    The branch was unreached: every equality test above compares two
+    links. Written to return ``NotImplemented``, or to read ``.id`` off
+    whatever it was handed, this raises instead -- and the caller is
+    ``in`` on a list, where an exception is not the answer anybody wants.
+    """
+
+    @pytest.mark.parametrize(
+        "other", ["not-a-link", 42, None, object()],
+        ids=["a string", "a number", "nothing", "a bare object"],
+    )
+    def test_it_is_not_equal_and_does_not_raise(self, sample_link: Link, other):
+        assert sample_link != other
+        assert (sample_link == other) is False
+
+    def test_a_link_is_still_findable_among_them(self, sample_link: Link):
+        """The caller this protects: a membership test over a mixed list."""
+        assert sample_link in ["not-a-link", 42, sample_link]

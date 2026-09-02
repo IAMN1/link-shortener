@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.ports.cache.link_cache import LinkCache
@@ -9,11 +8,12 @@ from link_shortener.application.ports.cache.link_service_stats_cache import (
 from link_shortener.application.ports.cache.redirect_cache import RedirectCache
 from link_shortener.application.ports.logger.audit import AuditLogger
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.services.user_management_service import UserManagementService
 from link_shortener.application.use_cases.admin.privilege_guard import (
     is_administrator,
     require_administrator_remains,
+    require_may_act_on_user,
 )
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
@@ -25,12 +25,11 @@ class DeleteUserUseCase(BaseUseCase):
 
     Requires ``admin:manage_users`` permission.
 
-    The links go with the account, by decision of the owner of this project.
-    ``urls.owner_id`` used to be cleared instead (``ondelete="SET NULL"``),
-    which left the links working, redirecting and belonging to nobody: their
-    creator was gone, so only a holder of ``link:delete_any`` could ever take
-    them down, and nothing said they existed. Deleting them is not
-    reversible and is not meant to be.
+    The links go with the account, by decision of the owner of this
+    project. Clearing ``urls.owner_id`` instead would leave them working,
+    redirecting and belonging to nobody -- only a holder of
+    ``link:delete_any`` could take them down, and nothing would say they
+    exist. Deleting them is not reversible and is not meant to be.
 
     They are deleted here rather than left to the foreign key, because a row
     that disappears behind the application leaves its cache entries behind:
@@ -49,7 +48,7 @@ class DeleteUserUseCase(BaseUseCase):
         audit_logger: Audit logger for significant events.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     user_service: UserManagementService
     cache: LinkCache
     redirect_cache: RedirectCache
@@ -76,6 +75,11 @@ class DeleteUserUseCase(BaseUseCase):
         audit = self._get_audit_logger(self.audit_logger, context)
 
         with self.uow_factory() as uow:
+            # Before anything is counted or removed: a caller who may not
+            # reach this account should not learn whether removing it would
+            # have left the system without an administrator.
+            require_may_act_on_user(context, uow, user_id)
+
             if is_administrator(uow, user_id):
                 require_administrator_remains(uow, user_id)
 
@@ -107,6 +111,14 @@ class DeleteUserUseCase(BaseUseCase):
             "User deleted",
             target_user_id=user_id,
             links_deleted=len(deleted_links),
+        )
+        # After the per-link records, and in addition to them. The links
+        # are the trail of what was destroyed; this is the trail of the
+        # account itself, and searching for one must not require reading
+        # the other -- an account deleted while it owned nothing writes no
+        # link records at all.
+        audit.log_user_deleted(
+            target_user_id=user_id, links_deleted=len(deleted_links)
         )
         return True
 

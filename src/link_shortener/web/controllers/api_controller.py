@@ -7,12 +7,20 @@ Access rules:
   - POST /api/v1/batch/shorten – same as above.
   - GET /api/v1/links/<code> – everyone. The owner's identifier and the
     click counters are included only for those entitled to them: the link's
-    owner, an admin, or a holder of 'stats:view_any'.
-  - GET /api/v1/links/<code>/extended – the same three. Every field it adds
+    owner, an admin, a holder of 'stats:view_any', or whoever presents that
+    link's deletion token, which is what a guest holds in place of an owner.
+  - GET /api/v1/links/<code>/extended – the same four. Every field it adds
     is computed from the counters above, so the two endpoints withhold from
     the same people or neither withholds anything.
+  - GET /api/v1/links/<code>/qr – everyone, and it withholds nothing,
+    because there is nothing to withhold: the image encodes the short
+    address, which is what the caller already typed to ask for it.
   - GET /api/v1/stats – roles with 'stats:view_basic'; the popular-links
     breakdown additionally needs 'stats:view_full'.
+  - GET /api/v1/stats/visits and /stats/visits/daily – 'stats:view_basic'
+    for the service-wide answer, 'link:view_own' for 'scope=mine'. A
+    named '?code=' is checked against the link's own owner on top of
+    either. The top-links table needs 'stats:view_full'.
   - GET /api/v1/links/mine – 'link:view_own'.
   - GET /api/v1/stats/mine – 'link:view_own'.
   - DELETE /api/v1/links/<code> – 'link:delete_own' for one's own link,
@@ -20,66 +28,36 @@ Access rules:
     against the stored row.
 """
 
-from flask import Blueprint, current_app, g, jsonify, request
+from flask import Blueprint, Response, current_app, g, jsonify, request
 
 from link_shortener.domain import (
-    LinkNotFoundError, SystemPermissions, ValidationError
+    DomainError, LinkNotFoundError, PermissionDeniedError, SystemPermissions
 )
 from link_shortener.application import LinkService, AdminService, AuthorizationService
+from link_shortener.web.qr import render_svg
 from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.link import ExtendedLinkInfoResponse, ShortLinkResponse
 from link_shortener.web.schemas.requests import BatchCreateLinkRequest, CreateShortLinkRequest
-from link_shortener.web.schemas.stats import ServiceStatsResponse
+from link_shortener.web.schemas.stats import (
+    MyStatsResponse, ServiceStatsResponse,
+)
+from link_shortener.web.schemas.visit_stats import (
+    DailyVisitsResponse, VisitStatsResponse,
+)
 from link_shortener.web.security.authorization import (
     can_view_link_details,
+    made_this_link,
+    presented_link_id,
     require_can_view_link_details,
 )
 from link_shortener.web.security.context import create_request_context
-from link_shortener.web.security.deletion_token import (
-    issue as issue_deletion_token,
-    link_id_from,
+from link_shortener.web.security.deletion_token import issue as issue_deletion_token
+from link_shortener.web.paging import window_from_query
+from link_shortener.web.request_body import json_object
+from link_shortener.web.security.decorators import (
+    login_required, require_any_permission, require_permission,
 )
-from link_shortener.web.security.decorators import login_required, require_permission
-
-def _read_json_object() -> dict:
-    """
-    Read the request body as a JSON object.
-
-    Guards the *shape* of the body, which the request schemas cannot: they
-    are handed the body as keyword arguments, and ``**`` on anything but a
-    mapping raises ``TypeError`` before Pydantic is reached. A body of
-    ``[1, 2]``, ``"text"``, ``5`` or ``true`` therefore answered 500, on
-    both creation endpoints, without authentication. The same hole was
-    closed for the auth controller in its own block and left open here.
-
-    Returns:
-        The decoded object, or an empty one when the body is absent, so
-        that a missing field is reported as the missing field it is.
-
-    Raises:
-        ValidationError: If the body is not a JSON object, or is nested too
-            deeply to decode.
-    """
-    try:
-        data = request.get_json()
-    except RecursionError:
-        # ``"[" * 10000`` is twenty kilobytes and decodes recursively, so
-        # the decoder runs out of stack. Werkzeug turns a ``ValueError``
-        # from the decoder into 400 and a ``RecursionError`` is not one, so
-        # it went past every handler here into the catch-all: 500, from an
-        # unauthenticated request, on every endpoint that reads a body.
-        raise ValidationError(
-            "Request body is nested too deeply", field="body"
-        )
-
-    if data is None:
-        return {}
-    if not isinstance(data, dict):
-        raise ValidationError(
-            "Request body must be a JSON object", field="body"
-        )
-    return data
-
+from link_shortener.domain.i18n import N_
 
 class ApiController:
     """Controller for REST API endpoints (JSON)."""
@@ -95,11 +73,14 @@ class ApiController:
         self.bp.add_url_rule('/shorten', view_func=self.create_short_link, methods=['POST'])
         self.bp.add_url_rule('/links/<short_code>', view_func=self.get_link_info, methods=['GET'])
         self.bp.add_url_rule('/links/<short_code>/extended', view_func=self.get_extended_link_info, methods=['GET'])
+        self.bp.add_url_rule('/links/<short_code>/qr', view_func=self.get_link_qr, methods=['GET'])
         self.bp.add_url_rule('/batch/shorten', view_func=self.batch_create, methods=['POST'])
         self.bp.add_url_rule('/stats', view_func=self.get_stats, methods=['GET'])
         self.bp.add_url_rule('/links/mine', view_func=self.get_my_links, methods=['GET'])
         self.bp.add_url_rule('/links/<short_code>', view_func=self.delete_link, methods=['DELETE'])
         self.bp.add_url_rule('/stats/mine', view_func=self.get_my_stats, methods=['GET'])
+        self.bp.add_url_rule('/stats/visits', view_func=self.get_visit_stats, methods=['GET'])
+        self.bp.add_url_rule('/stats/visits/daily', view_func=self.get_daily_visits, methods=['GET'])
 
     # ------------------------------------------------------------------
     # POST /api/v1/shorten
@@ -112,7 +93,7 @@ class ApiController:
         Accepts JSON with ``url`` and optional ``ttl_seconds``.
         Returns 201 if new, 200 if existing.
         """
-        data = _read_json_object()
+        data = json_object()
         validated = CreateShortLinkRequest(**data)
         context = create_request_context()
         ttl = validated.ttl_seconds if validated.ttl_seconds is not None else 0
@@ -125,11 +106,10 @@ class ApiController:
         # returned here and nowhere else.
         #
         # Only for a link this request created. Guests deduplicate by
-        # address, so a second caller behind the same NAT asking for the
-        # same URL gets the first one's link back -- and used to get the
-        # first one's token with it, which is exactly the "same address is a
-        # different person" case the token exists to avoid relying on. The
-        # token is issued once, to whoever created the row.
+        # address, so a second caller behind the same NAT asking for the same
+        # URL gets the first one's link back; issuing the token again would
+        # hand it their handle. The token goes once, to whoever created the
+        # row.
         if result_dto.is_new and result_dto.owner_id is None and result_dto.link_id:
             response_data.deletion_token = issue_deletion_token(
                 current_app.config["SECRET_KEY"], result_dto.link_id
@@ -159,11 +139,85 @@ class ApiController:
         context = create_request_context()
         result_dto = self.link_service.get_link_info(short_code, context)
         response_data = ShortLinkResponse.from_dto(result_dto)
-        if not can_view_link_details(result_dto.owner_id, self.authorization_service):
+
+        # The token is the only thing a guest link has in place of an
+        # owner, and it is what the delete route already accepts as proof.
+        # Without this the promise made on the landing page and in the
+        # guide -- "its click counters are shown only to whoever made the
+        # link" -- was true of nobody for a guest link: `owner_id` is
+        # null, so the check below withheld the counters from the person
+        # who made it as firmly as from a stranger. Measured: a guest was
+        # handed `clicks: 0` in the answer that created the link and
+        # `clicks: null` on every look at it afterwards.
+        #
+        # It widens nothing. The token is signed with `SECRET_KEY` and
+        # names the row rather than the code, so it proves this caller
+        # made *this* link and stops proving anything the moment the link
+        # is deleted and its code handed out again.
+        made_it = made_this_link(result_dto.link_id)
+        if not made_it and not can_view_link_details(
+            result_dto.owner_id, self.authorization_service
+        ):
             response_data.owner_id = None
             response_data.clicks = None
             response_data.last_accessed = None
+
+        # `Vary: X-Deletion-Token` and, when the token matched, `no-store`
+        # are not set here: `presented_link_id` marked the request and
+        # `PrivateCacheMiddleware` marks the answer. This route had those
+        # two lines and its `/extended` neighbour, reading the same header
+        # for the same decision, did not.
         return jsonify(response_data.model_dump())
+
+    # ------------------------------------------------------------------
+    # GET /api/v1/links/<short_code>/qr
+    # ------------------------------------------------------------------
+    def get_link_qr(self, short_code: str):
+        """
+        Serve the short link as a QR code. Public endpoint.
+
+        Public in the strongest sense the service has: unlike its two
+        neighbours, this one withholds nothing, because the image carries
+        only the short address -- which the caller had to know in order to
+        ask for it. There is no owner, no counter and no destination in
+        it.
+
+        The address encoded is the **short** one. Putting the destination
+        in the square would produce a code that works and a link that does
+        not: no click recorded, no expiry honoured, and deleting the link
+        would leave every printed copy pointing at the target for good.
+
+        The link is resolved first, through the same use case the basic
+        endpoint uses, so an unknown or expired code answers the same
+        ``404`` here as there rather than handing back a square that
+        leads to one.
+
+        Args:
+            short_code: The code to draw.
+
+        Returns:
+            An ``image/svg+xml`` response.
+        """
+        context = create_request_context()
+        result_dto = self.link_service.get_link_info(short_code, context)
+
+        # `short_url` from the DTO rather than assembled here: it is built
+        # from `BASE_URL` by the same helper that fills the creation
+        # response, so the address in the square and the address the API
+        # hands out cannot come to differ.
+        document = render_svg(result_dto.short_url, title=result_dto.short_code)
+
+        answer = Response(document, mimetype="image/svg+xml")
+
+        # The square is a function of the code and `BASE_URL`, and neither
+        # moves. Nothing about the caller is in it -- which is what makes
+        # a shared cache correct here and wrong on the endpoints beside
+        # it. Kept short all the same: `BASE_URL` does move when a
+        # deployment is renamed, and an hour is how long the old address
+        # would go on being handed out afterwards.
+        answer.headers["Cache-Control"] = "public, max-age=3600"
+
+        return answer
 
     # ------------------------------------------------------------------
     # GET /api/v1/links/<short_code>/extended
@@ -172,9 +226,10 @@ class ApiController:
         """
         Get extended information about a link.
 
-        Restricted to the link's owner, an admin, or a holder of
-        ``stats:view_any`` -- the same three the basic endpoint shows
-        counters to, and not by coincidence. Every field here is a pure
+        Restricted to the link's owner, an admin, a holder of
+        ``stats:view_any``, or whoever presents the deletion token of this
+        link -- the same four the basic endpoint shows counters to, and
+        not by coincidence. Every field here is a pure
         function of ``clicks``, ``created_at`` and ``last_accessed`` plus
         two configuration constants, so while those were public this
         restriction was a formality: an anonymous caller could recompute
@@ -186,7 +241,17 @@ class ApiController:
         """
         context = create_request_context()
         result_dto = self.link_service.get_extended_link_info(short_code, context)
-        require_can_view_link_details(result_dto.owner_id, self.authorization_service)
+
+        # The same proof the basic endpoint takes, and for the same
+        # reason: every field here is arithmetic on `clicks`,
+        # `created_at` and `last_accessed`, which the holder of this token
+        # is already shown there. Refusing them the derived figures while
+        # handing them the inputs is the "formality" this docstring
+        # objects to, arriving from the other side.
+        if not made_this_link(result_dto.link_id):
+            require_can_view_link_details(
+                result_dto.owner_id, self.authorization_service
+            )
         response_data = ExtendedLinkInfoResponse.from_dto(result_dto)
         return jsonify(response_data.model_dump())
 
@@ -196,7 +261,7 @@ class ApiController:
     @require_permission(SystemPermissions.LINK_CREATE.value)
     def batch_create(self):
         """Batch create short links."""
-        data = _read_json_object()
+        data = json_object()
         validated = BatchCreateLinkRequest(**data)
         context = create_request_context()
         result_dto = self.link_service.batch_create_short_links(validated.urls, context)
@@ -237,6 +302,214 @@ class ApiController:
             response_data.popular_links = []
         return jsonify(response_data.model_dump())
 
+    def _require(self, permission: str) -> None:
+        """
+        Refuse this request unless the caller holds one named permission.
+
+        For the checks a decorator cannot make because the answer depends
+        on what the request asked for: one address here serves both the
+        service-wide counts and the caller's own, and the two are opened
+        by different permissions. The decorator lets a holder of either
+        through, and this decides which one this particular request needed.
+
+        Args:
+            permission: What the caller has to hold.
+
+        Raises:
+            PermissionDeniedError: When they do not. It carries the
+                permission that was wanted, so the refusal recorded in the
+                audit journal names it.
+        """
+        if not self.authorization_service.is_allowed(
+            g.get('_domain_user'), permission
+        ):
+            raise PermissionDeniedError(
+                N_("Not authorized"), required=[permission]
+            )
+
+    def _require_may_read_one_links_traffic(self, short_code, context):
+        """
+        Check that this caller may see the traffic of one named link.
+
+        ``scope=mine`` is scoped by the account behind the request, and a
+        service-wide answer is a count nobody owns -- but a ``code``
+        names somebody's link, and its traffic is that link's private
+        detail in exactly the sense ``can_view_link_details`` was written
+        for. Without this the two endpoints below handed an anonymous
+        caller the totals, the timeline and the device split of any code
+        they could guess, while the neighbouring endpoints refused the
+        same caller the same figures: ``/links/<code>`` nulls its
+        counters and ``/links/<code>/extended`` answers 401.
+
+        The lookup happens before the check, so a refusal tells the
+        caller the code exists -- which the redirect and the basic
+        endpoint already answer publicly, and which is the same trade
+        ``/extended`` makes.
+
+        The link it looked up is handed back rather than dropped. Both
+        endpoints below need that link's id to read its traffic, and
+        finding it a second time meant the same
+        ``SELECT ... FROM urls`` ran twice for every request -- measured,
+        two identical selects and four pool checkouts per call, on an
+        endpoint the chart polls every ten seconds.
+
+        Args:
+            short_code: The code named in the query string, or ``None``.
+            context: The request context to look the link up with.
+
+        Returns:
+            The link, or ``None`` when no code was named.
+
+        Raises:
+            DomainError: ``UNAUTHENTICATED`` or ``FORBIDDEN`` when the
+                caller may not see that link's details, and whatever the
+                lookup raises when no such link exists.
+        """
+        if not short_code:
+            return None
+
+        link = self.link_service.get_link_info(short_code, context)
+        require_can_view_link_details(link.owner_id, self.authorization_service)
+        return link
+
+    # ------------------------------------------------------------------
+    # GET /api/v1/stats/visits
+    # ------------------------------------------------------------------
+    @require_any_permission(
+        SystemPermissions.LINK_VIEW_OWN.value,
+        SystemPermissions.STATS_VIEW_BASIC.value,
+    )
+    def get_visit_stats(self):
+        """
+        Recorded visits over a span, for the service or for the caller.
+
+        Two questions behind one address, and they are not opened by the
+        same permission. The service-wide answer is a count nobody owns
+        and needs ``stats:view_basic``, which the seeded ``guest`` role
+        carries. ``scope=mine`` is the caller's own traffic and needs
+        ``link:view_own`` -- the permission the rest of that account's own
+        material is behind, including the page these charts are drawn on
+        and ``/stats/mine`` beside them.
+
+        Asked for under ``stats:view_basic`` alone, ``scope=mine`` made
+        seeing one's own statistics depend on a permission whose own
+        description is "basic *service* statistics", and the dashboard page
+        said so in three places while the route did the opposite: measured,
+        a role holding ``link:view_own`` opened ``/dashboard/stats``, was
+        served its tiles, and got 403 from both charts on it.
+
+        A named ``?code=`` is a third question and carries its own door:
+        ``require_can_view_link_details``, against that link's owner. It
+        does not additionally need ``stats:view_basic``, which is the
+        permission for a count of everything -- and requiring it anyway
+        shut a holder of ``stats:view_any`` out of the page written for
+        exactly that holder: measured, ``/dashboard/links/<code>/stats``
+        answered 200 and the charts on it 403.
+
+        The decorator lets either through and the checks below pick the
+        one this request actually needs -- the arrangement the journal
+        page uses, where a permission opens the door and the endpoint
+        behind each panel enforces its own.
+
+        The top-links table needs ``stats:view_full`` on top of either: a
+        short code is somebody's link, which is a different disclosure than
+        a count.
+        """
+        context = create_request_context()
+        scope = request.args.get("scope", "service")
+        period = request.args.get("period", "7d")
+
+        # The named code first, because whether it was named is what
+        # decides which permission the rest of this needs.
+        named = self._require_may_read_one_links_traffic(
+            request.args.get("code"), context
+        )
+
+        owner_id = None
+        if scope == "mine":
+            if not g.get("current_user"):
+                raise DomainError(
+                    N_("Sign in to see your own statistics"), code="UNAUTHENTICATED"
+                )
+            self._require(SystemPermissions.LINK_VIEW_OWN.value)
+            owner_id = g.current_user.id
+        elif named is None:
+            self._require(SystemPermissions.STATS_VIEW_BASIC.value)
+
+        summary = self.link_service.get_visit_stats(
+            context,
+            period=period,
+            link_id=named.link_id if named else None,
+            owner_id=owner_id,
+        )
+        response = VisitStatsResponse.from_domain(summary)
+        if owner_id is None and not self.authorization_service.is_allowed(
+            g.get('_domain_user'), SystemPermissions.STATS_VIEW_FULL.value
+        ):
+            response.top_links = []
+        return jsonify(response.model_dump(mode="json"))
+
+    # ------------------------------------------------------------------
+    # GET /api/v1/stats/visits/daily
+    # ------------------------------------------------------------------
+    @require_any_permission(
+        SystemPermissions.LINK_VIEW_OWN.value,
+        SystemPermissions.STATS_VIEW_BASIC.value,
+    )
+    def get_daily_visits(self):
+        """
+        Visits per day, reaching past the raw rows into the roll-up.
+
+        Same scoping as ``/stats/visits``, and the same two permissions
+        behind it: ``link:view_own`` for one's own, ``stats:view_basic``
+        for the service-wide count. The two endpoints are drawn on one
+        page by one script, so a caller entitled to one chart and refused
+        the other would read half a screen.
+
+        Separate endpoint rather than a ``granularity`` parameter because
+        it answers from a different pair of tables and takes a different
+        bound: a year of days is a fine question, a year of hours is not.
+        """
+        context = create_request_context()
+        scope = request.args.get("scope", "service")
+
+        # What is wrong with the request, before who is asking -- the order
+        # `decisions.md` settles for the administrative routes, and there
+        # is no reason for this one to answer in a different order. A
+        # mistyped `days` beside a code somebody may not read should say
+        # which of the two to fix first, and it is the one the caller can.
+        try:
+            days = int(request.args.get("days", 90))
+        except ValueError as invalid:
+            raise DomainError(
+                N_("days must be a whole number"), code="VALIDATION_ERROR"
+            ) from invalid
+
+        named = self._require_may_read_one_links_traffic(
+            request.args.get("code"), context
+        )
+
+        owner_id = None
+        if scope == "mine":
+            if not g.get("current_user"):
+                raise DomainError(
+                    N_("Sign in to see your own statistics"), code="UNAUTHENTICATED"
+                )
+            self._require(SystemPermissions.LINK_VIEW_OWN.value)
+            owner_id = g.current_user.id
+        elif named is None:
+            self._require(SystemPermissions.STATS_VIEW_BASIC.value)
+
+        buckets = self.link_service.get_daily_visits(
+            context,
+            days=days,
+            link_id=named.link_id if named else None,
+            owner_id=owner_id,
+        )
+        return jsonify(
+            DailyVisitsResponse.from_domain(buckets).model_dump(mode="json")
+        )
+
     # ------------------------------------------------------------------
     # DELETE /api/v1/links/<short_code>
     # ------------------------------------------------------------------
@@ -254,10 +527,9 @@ class ApiController:
         a token is still refused, by the use case, with the same 401 as
         before.
 
-        The ownership question is not asked here either. It used to be,
-        through a ``get_link_info`` call whose answer could come from an
-        unconfirmed cache entry, which made "is this yours" only as reliable
-        as whatever was in Redis. The use case decides it from the row it
+        The ownership question is not asked here either: asking it through
+        ``get_link_info`` would make "is this yours" only as reliable as
+        whatever is in the cache. The use case decides it from the row it
         deletes, in the same transaction.
         """
         context = create_request_context()
@@ -265,10 +537,7 @@ class ApiController:
         # the row, not the code: codes are freed by deletion and issued
         # again, so a token naming one would go on deleting whatever link
         # took it next.
-        authorized_link_id = link_id_from(
-            current_app.config["SECRET_KEY"],
-            request.headers.get("X-Deletion-Token"),
-        )
+        authorized_link_id = presented_link_id()
         deleted = self.link_service.delete_link(
             short_code,
             context,
@@ -288,10 +557,7 @@ class ApiController:
         """Get links created by the current user with pagination."""
         user = g.current_user
         context = create_request_context()
-        offset = request.args.get("offset", 0, type=int)
-        limit = request.args.get("limit", 50, type=int)
-        offset = max(0, offset)
-        limit = max(1, min(limit, 200))
+        limit, offset = window_from_query(default_limit=50)
         links = self.link_service.get_user_links(user.id, context, offset=offset, limit=limit)
         return jsonify([ShortLinkResponse.from_dto(link).model_dump() for link in links])
 
@@ -305,9 +571,4 @@ class ApiController:
         user = g.current_user
         context = create_request_context()
         stats = self.admin_service.get_user_activity_stats(user.id, context)
-        return jsonify({
-            "total_links": stats.total_links,
-            "total_clicks": stats.total_clicks,
-            "avg_clicks_per_link": stats.avg_clicks_per_link,
-            "recent_links": [ShortLinkResponse.from_dto(link).model_dump() for link in stats.recent_links]
-        })
+        return jsonify(MyStatsResponse.from_dto(stats).model_dump())

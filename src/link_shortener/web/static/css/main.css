@@ -1,325 +1,1220 @@
-/* Linkr – Design System */
+/* ==========================================================================
+   MaizLink — design system
 
-:root {
-    --c-bg: #fafafa;
-    --c-surface: #ffffff;
-    --c-border: #e5e7eb;
-    --c-text: #111827;
-    --c-text-2: #6b7280;
-    --c-primary: #2563eb;
-    --c-primary-hover: #1d4ed8;
-    --c-success: #059669;
-    --c-danger: #dc2626;
-    --radius: 8px;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
-    --shadow: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
-    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -2px rgba(0,0,0,.05);
-    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --mono: 'SF Mono', 'Fira Code', monospace;
+   The look is an instrument, not a shopfront. Three rules hold the whole
+   thing together, and everything below is a consequence of one of them.
+
+   1. There is no accent colour. The primary action is the surface turned
+      inside out: a white button on the dark theme, a black one on the
+      light. The colour that frees up is given to state -- healthy, warning,
+      refused -- and because nothing else competes for it, state is finally
+      audible.
+   2. Borders instead of shadows. A hairline is cheaper than a shadow and
+      does not lie about height: nothing floats above anything on a flat
+      screen.
+   3. Monospace where the data is. A short code, a count, an API path, the
+      name of a permission -- these are strings compared by eye, and an eye
+      comparing strings wants a grid.
+
+   The public pages and the dashboard are one system at two densities. There
+   is not a single rule below of the form "but in the dashboard it is
+   different": only the five numbers in --d-* change.
+   ========================================================================== */
+
+/* Subset to the scripts the interface is written in. Latin is 47 KB and
+   Cyrillic 18 KB, and each covers the whole 400-700 weight range in one
+   variable file -- the browser fetches only the script it needs. Chinese is
+   deliberately absent: a CJK face is 29 000 glyphs and megabytes, so it
+   comes from the system, which is also why this design puts its character
+   in density and rules rather than in a typeface. */
+@font-face {
+    font-family: Inter;
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url("../fonts/inter-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+        U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+        U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+    font-family: Inter;
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url("../fonts/inter-cyrillic.woff2") format("woff2");
+    unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
 }
 
+/* ===== Theme =====
+
+   Three states, not two. An explicit choice stamps `data-theme` on the
+   root; the default setting stamps nothing, and there only the media query
+   separates light from dark. The bare :root therefore carries the complete
+   light palette, and both of the other blocks redefine tokens only -- no
+   component ever declares a colour inside a media query, because a colour
+   defined only there never applies in the unstamped state.
+
+   The previous stylesheet had the dark palette solely inside the media
+   query, which is why no switch could ever reach it. */
+:root {
+    --c-bg: #ffffff;
+    --c-surface: #ffffff;
+    --c-surface-2: #f5f6f8;
+    /* Two weights of rule, and they are held to different standards.
+       `--c-line` separates -- a table row from the next, a panel from the
+       page -- and carries no information, so it may be faint. `--c-line-2`
+       is the *only* thing that says where a text field ends and the page
+       begins, which makes it information: WCAG 1.4.11 asks 3:1 of it, and
+       at #ccd1d6 it was 1.42:1. A field whose edge nobody can see is a
+       field nobody can find. */
+    --c-line: #e4e7ea;
+    --c-line-2: #8a8f94;
+
+    --c-text: #0d0f11;
+    --c-text-2: #59616a;
+    /* 3.11:1 before, on twenty-seven places set between 10px and 13px --
+       column headings, hints, placeholders, the footer, every eyebrow. The
+       threshold for text that small is 4.5:1, not 3:1. */
+    --c-text-3: #6a727b;
+
+    /* The primary action, and the ink that reads on it. */
+    --c-action: #0d0f11;
+    --c-action-ink: #ffffff;
+
+    /* State. The only hues in the system. */
+    --c-ok: #16794f;
+    --c-warn: #8a6212;
+    --c-danger: #b23a2e;
+    /* Values, as opposed to instructions. Today that is the literals in a
+       code block; when the charts arrive it will be their lines and fills
+       as well. Not an accent -- it never appears on a control. */
+    --c-data: #12796a;
+    /* Writing. Deliberately outside the state palette: an HTTP verb is not
+       a state, and colouring POST green would make the word "success" mean
+       two different things on one page. One hue, one meaning -- this one
+       says "this call changes something". */
+    --c-write: #2a5aa0;
+
+    /* A wash used for hover and for the faint fill under a chart. Given as
+       a colour rather than an opacity so it can invert with the theme. */
+    --c-wash: rgba(13, 15, 17, .045);
+
+    /* ===== The charts =====
+
+       People and robots are two steps of one hue rather than two hues: a
+       robot visit is part of the same count, not a neighbouring category,
+       and a stacked column reads that way round. Both steps were run
+       through a validator rather than picked by eye -- monotone lightness,
+       a step of at least 0.06 between them, and a pale end that still
+       clears the surface it sits on (2.38:1 here, 2.48:1 on the dark one).
+
+       The categories -- device classes, browser families -- get three hues
+       and a grey tail, and the count is a measurement, not a taste. A
+       fourth hue cannot be added: on the dark surface every candidate for
+       it collapses into one of the first three under colour blindness
+       (blue against violet: OKLab ΔE 2.3, where 8 is the floor), and two
+       indistinguishable slices are worse than an honest "Other". Red and
+       yellow are excluded on top of that -- in this system they mean
+       refused and warning, so a browser drawn in red would read as a
+       fault. Whatever does not fit goes into `--c-cat-other`.
+
+       Colour belongs to the category, not to its rank, so the same row is
+       the same colour in the ring and in the bars: switching the shape
+       must not repaint the data. */
+    --c-humans: #12796a;
+    --c-bots: #5ab8a6;
+    --c-cat-1: #12796a;
+    --c-cat-2: #4a3aa7;
+    --c-cat-3: #c25a1e;
+    --c-cat-other: #5c636b;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --c-bg: #0b0c0e;
+        --c-surface: #121417;
+        --c-surface-2: #16191d;
+        --c-line: #24282e;
+        --c-line-2: #60666e;
+
+        --c-text: #f4f6f7;
+        --c-text-2: #9aa3ac;
+        --c-text-3: #7a828b;
+
+        --c-action: #f4f6f7;
+        --c-action-ink: #0b0c0e;
+
+        --c-ok: #3fb27f;
+        --c-warn: #d9a441;
+        --c-danger: #e0655a;
+        --c-data: #3fb8a0;
+        --c-write: #7fb0f0;
+
+        --c-wash: rgba(255, 255, 255, .045);
+
+        /* Stepped for this surface, not flipped from the light values:
+           the pale end of a ramp has to be the *dark* one here, or the
+           robots' share would glow brighter than the visits it is part
+           of. Validated against #121417, the panel colour. */
+        --c-humans: #3fb8a0;
+        --c-bots: #1c5f57;
+        --c-cat-1: #3fb8a0;
+        --c-cat-2: #9085e9;
+        --c-cat-3: #e0803f;
+        --c-cat-other: #8d959e;
+    }
+}
+
+:root[data-theme="dark"] {
+    --c-bg: #0b0c0e;
+    --c-surface: #121417;
+    --c-surface-2: #16191d;
+    --c-line: #24282e;
+    --c-line-2: #60666e;
+
+    --c-text: #f4f6f7;
+    --c-text-2: #9aa3ac;
+    --c-text-3: #7a828b;
+
+    --c-action: #f4f6f7;
+    --c-action-ink: #0b0c0e;
+
+    --c-ok: #3fb27f;
+    --c-warn: #d9a441;
+    --c-danger: #e0655a;
+    --c-data: #3fb8a0;
+    --c-write: #7fb0f0;
+
+    --c-wash: rgba(255, 255, 255, .045);
+
+    --c-humans: #3fb8a0;
+    --c-bots: #1c5f57;
+    --c-cat-1: #3fb8a0;
+    --c-cat-2: #9085e9;
+    --c-cat-3: #e0803f;
+    --c-cat-other: #8d959e;
+}
+
+/* ===== Density =====
+
+   The whole difference between the shopfront and the dashboard. Set on
+   `.dash` rather than on the body, so a page can hold both -- which the
+   dashboard does: its header is public density, its content is not. */
+:root {
+    --d-fs: 15px;      /* body size */
+    --d-row: 44px;     /* height of a control and of a table row */
+    --d-pad: 16px;     /* padding inside a panel */
+    --d-gap: 16px;     /* space between blocks */
+    --d-title: 30px;   /* the heading of a screen */
+}
+
+[data-density="panel"] {
+    --d-fs: 13px;
+    --d-row: 34px;
+    --d-pad: 12px;
+    --d-gap: 10px;
+    --d-title: 20px;
+}
+
+/* ===== Geometry and type ===== */
+:root {
+    --r: 4px;
+    --r-lg: 6px;
+    --edge: 1px solid var(--c-line);
+
+    --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+        Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+        "Liberation Mono", monospace;
+    /* Appended to the sans stack rather than switched to: a Russian page
+       with one Chinese name in it should not change typeface wholesale. */
+    --cjk: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+        "Noto Sans CJK SC", sans-serif;
+}
+
+/* ===== Base ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html { -webkit-text-size-adjust: 100%; }
+
 body {
-    font-family: var(--font);
+    font-family: var(--sans), var(--cjk);
+    font-size: var(--d-fs);
+    line-height: 1.55;
     color: var(--c-text);
     background: var(--c-bg);
-    line-height: 1.5;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--c-primary); text-decoration: none; }
-a:hover { text-decoration: underline; }
+a { color: inherit; text-underline-offset: 2px; text-decoration-color: var(--c-line-2); }
+a:hover { text-decoration-color: currentColor; }
+
+/* In a system with no accent, the focus ring takes the text colour: it is
+   already the most contrasting thing on the surface. */
+:focus-visible {
+    outline: 2px solid var(--c-text);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+img, svg { display: block; max-width: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+    }
+}
+
+/* ===== Type ===== */
+h1, h2, h3 {
+    font-weight: 620;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    color: var(--c-text);
+    text-wrap: balance;
+}
+h1 { font-size: var(--d-title); }
+h2 { font-size: 1.15rem; }
+h3 { font-size: 1rem; font-weight: 600; }
+
+code, .mono { font-family: var(--mono); }
+code {
+    font-size: 0.9em;
+    background: var(--c-surface-2);
+    border: var(--edge);
+    border-radius: 3px;
+    padding: 0.05em 0.3em;
+}
+
+/* The system's smallest voice: a label that names a thing without being
+   read as content. Used for eyebrows, column groups and panel headings. */
+.lab {
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1.5;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-3);
+}
 
 /* ===== Layout ===== */
-.container { max-width: 960px; margin: 0 auto; padding: 0 1rem; width: 100%; }
+.container { max-width: 1080px; margin: 0 auto; padding: 0 24px; width: 100%; }
+
+.main { flex: 1; padding: 40px 0 56px; }
 
 .header {
-    background: var(--c-surface);
-    border-bottom: 1px solid var(--c-border);
+    border-bottom: var(--edge);
+    background: var(--c-bg);
     position: sticky;
     top: 0;
     z-index: 100;
 }
-.header-inner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 56px;
-}
-.header-right {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
+.header-inner { display: flex; align-items: center; gap: 20px; height: 52px; }
+.header-right { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 
+/* The mark is a redirection arrow set in the same face the codes are set
+   in, rather than a picture: the product and the thing it makes are one
+   family because they are literally the same typeface. */
 .logo {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--c-text);
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
     text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
 }
-.logo:hover { text-decoration: none; color: var(--c-primary); }
+.logo::before { content: ">"; color: var(--c-text-3); }
 
-.main { flex: 1; padding: 2rem 0; }
-
-.footer {
-    border-top: 1px solid var(--c-border);
-    padding: 1rem;
-    text-align: center;
+.header-link {
+    font-size: 13px;
     color: var(--c-text-2);
-    font-size: 0.8rem;
+    text-decoration: none;
+    padding: 6px 9px;
+    border-radius: var(--r);
+    white-space: nowrap;
+}
+.header-link:hover { background: var(--c-wash); color: var(--c-text); }
+
+/* Who is signed in. A label, so it takes the padding of the links beside it
+   and none of their behaviour. */
+.header-who { font-size: 12px; color: var(--c-text-3); padding: 6px 9px; white-space: nowrap; }
+
+.footer { border-top: var(--edge); padding: 22px 0 32px; }
+.footer-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 20px;
+    font-size: 12px;
+    color: var(--c-text-3);
+}
+.footer a { color: var(--c-text-3); text-decoration: none; }
+.footer a:hover { color: var(--c-text-2); text-decoration: underline; }
+
+/* The signature sits at the far end, away from the service's own links, so
+   it reads as a byline rather than as one more destination. */
+.footer-sign { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; }
+.footer-sign a { color: var(--c-text-2); }
+
+/* Drawn rather than typed. U+2665 is outside the subset this page carries,
+   so it would fall through to a system font -- and on most of them it
+   arrives as a full-colour emoji, which is the one thing on the page that
+   no theme can touch and nothing else looks like. A path takes
+   `currentColor` and stays the size it was given. */
+/* The one decorative use of a state colour in the system, and it is written
+   down here rather than pretended away. A red heart eleven pixels across in
+   a byline is not going to be read as a failure by anybody. */
+.heart { width: 11px; height: 11px; color: var(--c-danger); flex: none; }
+
+/* ===== Language switch =====
+
+   One segment per language rather than a menu: there are three of them and
+   each label is two characters, so the whole control is narrower than the
+   account menu beside it and needs no open state to keep in step with
+   `aria-expanded`.
+
+   Set in the mono face, like the short codes and the logo: these are tags,
+   not words, and reading them as tags is what tells a visitor they are
+   picking a language rather than following a link. */
+.lang-switch {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    border: var(--edge);
+    border-radius: var(--r);
+    overflow: hidden;
 }
 
-/* ===== Dropdown ===== */
-.dropdown { position: relative; }
-.dropdown-trigger {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+.lang-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1;
+    padding: 0 7px;
+    height: 30px;
+    border: none;
+    /* Only between segments, so the group keeps the one outer border the
+       theme button beside it has. */
+    border-left: var(--edge);
     background: none;
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    padding: 0.3rem 0.6rem 0.3rem 0.3rem;
+    color: var(--c-text-3);
     cursor: pointer;
-    font-family: var(--font);
-    font-size: 0.8rem;
-    color: var(--c-text);
-    transition: border-color .15s;
 }
-.dropdown-trigger:hover { border-color: #d1d5db; }
-.dropdown-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: var(--c-primary);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
+
+.lang-btn:first-child { border-left: none; }
+.lang-btn:hover { background: var(--c-wash); color: var(--c-text); }
+
+/* The one in force. It stays focusable and stays pressable -- a disabled
+   segment leaves the tab order, and then a person moving by keyboard has no
+   way to find out which language they are already in. The press is refused
+   in the handler instead, where refusing costs nothing; refusing here would
+   cost a full page load to end up where you started. */
+.lang-btn--on {
+    background: var(--c-wash);
+    color: var(--c-text);
     font-weight: 600;
 }
-.dropdown-menu {
-    display: none;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
-    background: var(--c-surface);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-lg);
-    min-width: 200px;
-    z-index: 200;
-    padding: 0.25rem 0;
-}
-.dropdown-menu.active { display: block; }
-.dropdown-item {
-    display: block;
-    padding: 0.5rem 0.75rem;
-    color: var(--c-text);
-    font-size: 0.85rem;
-    text-decoration: none;
-    transition: background .1s;
-}
-.dropdown-item:hover { background: #f3f4f6; text-decoration: none; }
-.dropdown-item--danger { color: var(--c-danger); }
-.dropdown-item--danger:hover { background: #fef2f2; }
-.dropdown-label {
-    padding: 0.35rem 0.75rem;
-    font-size: 0.8rem;
-    color: var(--c-text-2);
-}
-.dropdown-divider {
-    border: none;
-    border-top: 1px solid var(--c-border);
-    margin: 0.25rem 0;
-}
 
-/* ===== Nav toggle (mobile) ===== */
-.nav-toggle {
-    display: none;
-    flex-direction: column;
-    gap: 4px;
+/* ===== Theme switch =====
+
+   The state rides on a cookie the server reads at render time, the way the
+   collapsed sidebar already does, so the page is painted in the chosen
+   theme from the first frame instead of flashing the other one. */
+.theme-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex: none;
+    border: var(--edge);
+    border-radius: var(--r);
     background: none;
-    border: none;
+    color: var(--c-text-2);
     cursor: pointer;
-    padding: 4px;
 }
-.nav-toggle span {
-    display: block;
-    width: 18px;
-    height: 2px;
-    background: var(--c-text);
-    border-radius: 1px;
-}
+.theme-btn:hover { background: var(--c-wash); color: var(--c-text); }
+/* The glyph offers the theme the press will give you, not the one already
+   on screen: a moon while it is light, a sun while it is dark.
 
-@media (max-width: 640px) {
-    .nav-toggle { display: flex; }
-    .dropdown-name { display: none; }
-    .dropdown-trigger svg { display: none; }
-    .header-right .btn { display: none; }
+   Written as the exact mirror of the palette above -- base, then the media
+   query guarded by `:not([data-theme="light"])`, then the explicit stamp --
+   because any other arrangement disagrees with itself somewhere. The first
+   version keyed the unstamped state on `:not([data-theme])` with the two
+   rules the wrong way round, so on a light system the button showed a moon
+   before the first press and a moon after it: the page turned dark and the
+   control looked like it had done nothing. */
+.theme-btn .i-sun { display: none; }
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme-btn .i-sun { display: block; }
+    :root:not([data-theme="light"]) .theme-btn .i-moon { display: none; }
 }
+:root[data-theme="dark"] .theme-btn .i-sun { display: block; }
+:root[data-theme="dark"] .theme-btn .i-moon { display: none; }
 
 /* ===== Buttons ===== */
 .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 0.6rem 1.25rem;
-    border-radius: var(--radius);
-    font-size: 0.875rem;
-    font-weight: 500;
+    gap: 6px;
+    height: calc(var(--d-row) - 10px);
+    padding: 0 14px;
     border: 1px solid transparent;
-    cursor: pointer;
-    transition: background .15s, box-shadow .15s;
+    border-radius: var(--r);
+    background: none;
+    color: var(--c-text);
+    font: inherit;
+    font-size: calc(var(--d-fs) - 1px);
+    font-weight: 550;
+    line-height: 1;
+    white-space: nowrap;
     text-decoration: none;
-    line-height: 1.4;
-    font-family: var(--font);
+    cursor: pointer;
+    transition: background-color .12s, border-color .12s, opacity .12s;
 }
 .btn:hover { text-decoration: none; }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
 
-.btn--primary { background: var(--c-primary); color: #fff; }
-.btn--primary:hover { background: var(--c-primary-hover); }
+/* Rule 1, in one declaration: the primary action is the surface inverted.
+   No hue is spent on it, so every hue that remains means state. */
+.btn--primary { background: var(--c-action); color: var(--c-action-ink); font-weight: 600; }
+.btn--primary:hover:not(:disabled) { opacity: .86; }
 
-.btn--danger { background: var(--c-danger); color: #fff; }
+.btn--ghost { border-color: var(--c-line-2); }
+.btn--ghost:hover:not(:disabled) { background: var(--c-wash); }
 
-.btn--ghost { background: transparent; color: var(--c-text-2); border-color: var(--c-border); }
-.btn--ghost:hover { background: #f3f4f6; color: var(--c-text); }
+.btn--danger { color: var(--c-danger); }
+.btn--danger:hover:not(:disabled) { background: var(--c-wash); border-color: var(--c-danger); }
 
-.btn--sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
+/* A floor, not just a subtraction. The absolute 16px came off the panel's
+   34px row and left an 18px button -- "Edit", "Stats", "Delete" on every
+   admin table -- under the 24px WCAG 2.2 asks of a pointer target. */
+.btn--sm {
+    height: max(24px, calc(var(--d-row) - 16px));
+    padding: 0 9px;
+    font-size: calc(var(--d-fs) - 2px);
+}
 .btn--block { width: 100%; }
 
+/* A button that holds a choice rather than performing an action -- which
+   span a chart shows, how often it refreshes. Pressed, it takes the same
+   inversion the primary action takes, because there is no accent colour to
+   mark it with and rule 1 says there will not be one.
+
+   Keyed on `aria-pressed`, so the state a screen reader is told is the
+   state the eye is shown; a class here could drift from the attribute, and
+   the attribute is the one that has to be right. */
+.btn[aria-pressed="true"] {
+    background: var(--c-action);
+    color: var(--c-action-ink);
+    border-color: var(--c-action);
+}
+.btn[aria-pressed="true"]:hover:not(:disabled) { opacity: .86; }
+/* Unpressed, it still has to look like a control: without an edge a row of
+   them reads as a line of text with one dark chip in it. */
+.btn[aria-pressed="false"] { border-color: var(--c-line); }
+.btn[aria-pressed="false"]:hover:not(:disabled) { background: var(--c-wash); }
+
+.kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1;
+    padding: 4px 5px;
+    border: 1px solid var(--c-line-2);
+    border-radius: 3px;
+    color: var(--c-text-3);
+    background: var(--c-surface-2);
+    white-space: nowrap;
+}
+
 /* ===== Forms ===== */
-.form-group { margin-bottom: 1rem; }
+.form-group { margin-bottom: var(--d-gap); }
 .form-label {
     display: block;
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: var(--c-text-2);
-    margin-bottom: 0.25rem;
+    font-size: calc(var(--d-fs) - 1px);
+    font-weight: 600;
+    margin-bottom: 5px;
 }
 .form-input {
     width: 100%;
-    padding: 0.6rem 0.75rem;
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    font-size: 0.875rem;
-    font-family: var(--font);
-    transition: border-color .15s, box-shadow .15s;
+    height: var(--d-row);
+    padding: 0 12px;
+    font: inherit;
+    font-size: calc(var(--d-fs) - 1px);
+    color: var(--c-text);
     background: var(--c-surface);
+    border: 1px solid var(--c-line-2);
+    border-radius: var(--r);
+    transition: border-color .12s, box-shadow .12s;
 }
 .form-input:focus {
     outline: none;
-    border-color: var(--c-primary);
-    box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+    border-color: var(--c-text);
+    box-shadow: 0 0 0 3px var(--c-wash);
 }
-textarea.form-input { resize: vertical; min-height: 80px; }
-select.form-input { cursor: pointer; }
-.form-error { color: var(--c-danger); font-size: 0.8rem; margin-top: 0.25rem; }
-.form-hint { color: var(--c-text-2); font-size: 0.75rem; margin-top: 0.25rem; }
+.form-input::placeholder { color: var(--c-text-3); }
+/* A URL and a code are read character by character. */
+input.form-input[type="url"],
+input.form-input[type="text"],
+textarea.form-input { font-family: var(--mono); }
+textarea.form-input { height: auto; padding: 10px 12px; resize: vertical; line-height: 1.6; }
 
-/* ===== Cards ===== */
+/* The select used to be given the text field's styling and keep the system
+   arrow, which is the one control that then looked like neither. */
+select.form-input {
+    appearance: none;
+    padding-right: 32px;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+        linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 16px) center, calc(100% - 11px) center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    cursor: pointer;
+}
+
+.form-error { color: var(--c-danger); font-size: calc(var(--d-fs) - 1px); margin-bottom: 8px; }
+.form-hint { color: var(--c-text-3); font-size: calc(var(--d-fs) - 2px); margin-top: 5px; display: block; }
+
+/* A tick and its word are one target, and the list of them is a list --
+   four templates used to hand-write `display:block` on every row. */
+.check-list { display: grid; gap: 2px; }
+.check-list--cols { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: var(--r);
+    cursor: pointer;
+    font-size: calc(var(--d-fs) - 1px);
+}
+.check:hover { background: var(--c-wash); }
+.check input { flex: none; accent-color: var(--c-action); width: 14px; height: 14px; cursor: pointer; }
+.check code { background: none; border: none; padding: 0; color: inherit; }
+
+/* ===== Panels ===== */
 .card {
     background: var(--c-surface);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    padding: 1.5rem;
-    box-shadow: var(--shadow-sm);
+    border: var(--edge);
+    border-radius: var(--r-lg);
+    padding: var(--d-pad);
 }
+/* Pulled out to the panel's edges: the head is a rule across the panel, not
+   a box inside it. */
 .card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--c-border);
+    gap: 12px;
+    margin: calc(var(--d-pad) * -1) calc(var(--d-pad) * -1) var(--d-pad);
+    padding: 9px var(--d-pad);
+    border-bottom: var(--edge);
+    min-height: 36px;
 }
-.card-title { font-size: 1rem; font-weight: 600; }
+.card--flush { padding: 0; }
+.card--flush .card-header { margin: 0; }
+.card-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 500;
+    color: var(--c-text-3);
+}
+
+/* ===== Alerts ===== */
+.alert {
+    border-left: 3px solid var(--c-line-2);
+    padding: 8px 0 8px 14px;
+    font-size: calc(var(--d-fs) - 1px);
+    color: var(--c-text-2);
+}
+.alert--success { border-left-color: var(--c-ok); }
+.alert--error { border-left-color: var(--c-danger); color: var(--c-danger); }
+.alert--info { border-left-color: var(--c-line-2); }
+
+/* The one thing taken from the document direction: where the interface
+   explains a permission it gets real typographic weight, instead of being
+   the smallest grey text under a table. */
+.explain {
+    border-left: 3px solid var(--c-line-2);
+    padding: 2px 0 2px 14px;
+    font-size: var(--d-fs);
+    color: var(--c-text-2);
+    max-width: 68ch;
+}
+.explain b, .explain strong { color: var(--c-text); font-weight: 600; }
+.explain code { font-size: 0.92em; color: var(--c-text); }
+
+/* ===== Badges =====
+
+   `.badge--blue` used to set no blue: it gave a grey border and ordinary
+   text, and roles, permissions and states all wore it, so every pill in
+   every table looked the same. They are told apart by what they mean now:
+   a state carries its hue, a name does not. */
+.badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.5;
+    padding: 1px 6px;
+    border: var(--edge);
+    border-radius: 3px;
+    background: var(--c-surface-2);
+    color: var(--c-text-2);
+    margin: 0 3px 3px 0;
+    white-space: nowrap;
+}
+.badge--name { color: var(--c-text); }
+.badge--gray { color: var(--c-text-3); }
+.badge--ok { color: var(--c-ok); border-color: color-mix(in srgb, var(--c-ok) 35%, var(--c-line)); }
+.badge--danger { color: var(--c-danger); border-color: color-mix(in srgb, var(--c-danger) 35%, var(--c-line)); }
+.badge--warn { color: var(--c-warn); border-color: color-mix(in srgb, var(--c-warn) 35%, var(--c-line)); }
+
+/* A permission is a scope and an action. Printed whole they are a wall of
+   identical strings; split, a column of them can be read down. */
+.perms { display: grid; gap: 6px; }
+.perm-group { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.perm-scope {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--c-text-3);
+    width: 56px;
+    flex: none;
+}
 
 /* ===== Tables ===== */
 .table-wrap { overflow-x: auto; }
-.table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.table { width: 100%; border-collapse: collapse; font-size: calc(var(--d-fs) - 1px); }
 .table th {
     text-align: left;
+    font-family: var(--mono);
+    font-size: 10px;
     font-weight: 500;
-    color: var(--c-text-2);
-    font-size: 0.75rem;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--c-border);
+    color: var(--c-text-3);
+    padding: 0 12px 7px 0;
+    border-bottom: var(--edge);
+    white-space: nowrap;
 }
 .table td {
-    padding: 0.6rem 0.75rem;
-    border-bottom: 1px solid #f3f4f6;
+    height: var(--d-row);
+    padding: 0 12px 0 0;
+    border-bottom: var(--edge);
     vertical-align: middle;
+    color: var(--c-text-2);
 }
-.table tr:last-child td { border-bottom: none; }
-.table tr:hover td { background: #f9fafb; }
-.table-mono { font-family: var(--mono); font-size: 0.8rem; }
+.table tbody tr:last-child td { border-bottom: none; }
+.table tbody tr:hover td { background: var(--c-wash); }
+/* Written against `.table th` as well: that selector is the more specific
+   of the two, so a bare `.table-actions` rule lost to it and the heading
+   sat left while its column sat right. */
+.table td.table-actions,
+.table th.table-actions { text-align: right; white-space: nowrap; }
+.table-actions .btn { margin-left: 2px; }
+/* First and last cells keep the panel's padding, so a flush table does not
+   start against the border. */
+.card--flush .table th:first-child,
+.card--flush .table td:first-child { padding-left: var(--d-pad); }
+.card--flush .table th:last-child,
+.card--flush .table td:last-child { padding-right: var(--d-pad); }
 
-/* ===== Stats Grid ===== */
+/* The short code, wherever it appears. It used to be a green shield; here
+   it is simply set in the face the whole system sets data in, which is what
+   makes it recognisable in a table, in a result and in a mail. */
+/* Written against `.table td` as well, which is (0,1,1) and beat a bare
+   `.table-mono` at (0,1,0): the code came out in the secondary grey on the
+   pages where it is plain text and in full-strength ink on the pages where
+   it is a link, so one short code wore two colours across the dashboard.
+
+   `white-space: nowrap` for the same reason the code exists at all. Left to
+   wrap, a narrow screen broke `o-sLOrD` into `o-` and `sLOrD` across two
+   lines -- and a code that cannot be read off in one piece is not a code
+   you can say out loud, which is the whole promise on the front page. */
+.table td.table-mono,
+.table-mono, .table-mono a {
+    font-family: var(--mono);
+    color: var(--c-text);
+    text-decoration: none;
+    white-space: nowrap;
+}
+.table-mono a:hover { text-decoration: underline; }
+
+/* The one column that holds an address, and the one width it is cut to.
+
+   Two things were wrong with how this was done. Five page scripts wrote the
+   width into a style attribute -- one of them 200px and four 250px, with
+   nothing to say why they differed -- and every one of them overrode the
+   value declared here, so this rule was dead. And none of the six worked
+   anyway: `max-width` on a `<td>` is a suggestion the automatic table
+   layout is free to ignore, and it did. Measured on the old markup, cells
+   "limited" to 250px were drawn twice that and wider, the figure depending
+   on the address and the window. What made it invisible is that the
+   computed style dutifully reported 250.
+
+   A fixed width is the wrong answer too: capped at 34ch the address was cut
+   with an ellipsis while a third of its own column sat empty beside it. The
+   column should take what the other columns leave and cut only what does
+   not fit.
+
+   That is what `max-width: 0` with `width: 100%` does under the automatic
+   table layout: the cell asks for everything left over, and its contents
+   are forbidden from widening the column any further. The block inside then
+   truncates to whatever width the cell was actually given. A block, not an
+   inline-block -- the latter sat a pixel below every other cell in the row,
+   because `vertical-align` was being asked to line up two different kinds
+   of box. */
+.table td.cell-fill { max-width: 0; width: 100%; }
+.truncate {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Kept as a word rather than replaced by a bare skeleton: it is what a
+   screen reader announces, and the live browser run reads it to prove that
+   a refusal replaces it instead of leaving the table loading for good. */
+.loading { color: var(--c-text-3); }
+.loading::after {
+    content: "";
+    display: inline-block;
+    width: 22px;
+    height: 1px;
+    margin-left: 8px;
+    vertical-align: middle;
+    background: currentColor;
+    animation: load 1.1s ease-in-out infinite;
+}
+@keyframes load { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+/* ===== Figures ===== */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 1rem;
+    /* An upper bound as well as a lower one: three tiles used to spread
+       across a whole wide monitor because auto-fit had nothing to stop it. */
+    grid-template-columns: repeat(auto-fit, minmax(170px, 260px));
+    gap: var(--d-gap);
 }
 .stat-card {
     background: var(--c-surface);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
+    border: var(--edge);
+    border-radius: var(--r-lg);
+    padding: 10px 12px 9px;
+}
+.stat-value {
+    display: block;
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    color: var(--c-text);
+}
+.stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-3);
+}
+/* Four tiles rather than three. The cap above is what keeps three tiles
+   from spreading across a wide monitor, and with a fourth it is what
+   pushes that one onto a row of its own -- 4×260 plus the gaps is wider
+   than the dashboard's content column. Here the tiles share the row
+   instead, and still wrap in pairs when there is no room for four. */
+.stats-grid--four { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+/* State as a shape, not only as a word: a dot is legible before the label
+   is read, and it survives being printed in grey. */
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--c-text-3); }
+.dot--ok { background: var(--c-ok); }
+.dot--danger { background: var(--c-danger); }
+
+.status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 34px;
+    border-bottom: var(--edge);
+}
+.status-row:last-child { border-bottom: none; }
+.status-row > span { display: inline-flex; align-items: center; gap: 8px; color: var(--c-text); }
+.status-row em { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--c-text-3); }
+
+/* ===== Empty states ===== */
+.empty { padding: 36px 16px; text-align: center; color: var(--c-text-2); }
+.empty p + p { margin-top: 4px; font-size: calc(var(--d-fs) - 2px); color: var(--c-text-3); }
+.empty-icon { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-text-3); margin-bottom: 8px; }
+
+/* ===== Pager ===== */
+.pager { display: flex; align-items: center; gap: 12px; margin-top: var(--d-gap); }
+.pager-page { font-family: var(--mono); font-size: 11px; color: var(--c-text-3); font-variant-numeric: tabular-nums; }
+
+/* ===== Account menu ===== */
+.avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex: none;
+    border: 1px solid var(--c-line-2);
+    border-radius: var(--r);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+}
+.avatar--sm { width: 24px; height: 24px; font-size: 10px; }
+
+.dropdown { position: relative; }
+.dropdown-trigger {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--c-text-2);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--r);
+    padding: 3px 6px;
+    cursor: pointer;
+}
+.dropdown-trigger:hover { background: var(--c-wash); color: var(--c-text); }
+.dropdown-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 220px;
+    background: var(--c-surface);
+    border: var(--edge);
+    border-radius: var(--r-lg);
+    padding: 4px;
+    display: none;
+    z-index: 200;
+}
+.dropdown-menu.active { display: block; }
+.dropdown-label { padding: 5px 8px; font-size: 12px; color: var(--c-text-3); overflow: hidden; text-overflow: ellipsis; }
+.dropdown-divider { border: none; border-top: var(--edge); margin: 4px 0; }
+.dropdown-item {
+    display: block;
+    padding: 6px 8px;
+    border-radius: var(--r);
+    color: var(--c-text-2);
+    font-size: 13px;
+    text-decoration: none;
+}
+.dropdown-item:hover { background: var(--c-wash); color: var(--c-text); text-decoration: none; }
+.dropdown-item--danger { color: var(--c-danger); }
+
+/* ===== Landing ===== */
+.hero { padding-top: 24px; }
+.hero h1 { font-size: clamp(28px, 4vw, 38px); margin: 10px 0 8px; }
+.hero p { color: var(--c-text-2); max-width: 52ch; }
+
+.shorten { margin-top: 22px; max-width: 620px; }
+
+/* Creating and looking up are two jobs; they used to share one strip of
+   four tabs. What is left here only chooses how many links are made. */
+.modes { display: inline-flex; border: var(--edge); border-radius: var(--r); padding: 2px; margin-bottom: 10px; }
+.mode-btn {
+    border: none;
+    background: none;
+    color: var(--c-text-2);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 550;
+    padding: 4px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.mode-btn:hover { color: var(--c-text); }
+.mode-btn.active { background: var(--c-surface-2); color: var(--c-text); box-shadow: inset 0 0 0 1px var(--c-line); }
+.mode-content { display: none; }
+.mode-content.active { display: block; }
+
+/* A field and the control that submits it are one object. */
+.field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--d-row);
+    padding: 0 6px 0 12px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-line-2);
+    border-radius: var(--r-lg);
+}
+.field:focus-within { border-color: var(--c-text); box-shadow: 0 0 0 3px var(--c-wash); }
+.field input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: none;
+    background: none;
+    color: var(--c-text);
+    font: inherit;
+    font-family: var(--mono);
+    font-size: calc(var(--d-fs) - 1px);
+    outline: none;
+}
+.field input::placeholder { color: var(--c-text-3); }
+
+/* The quota is the one sentence a first-time visitor needs before pressing
+   anything, and it used to be the smallest text on the page. */
+.quota {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: var(--edge);
+    font-size: 13px;
+    color: var(--c-text-2);
+}
+.quota b { font-family: var(--mono); font-weight: 600; color: var(--c-text); }
+
+/* Room is reserved for the answer before there is one, so the page does not
+   jump when it arrives. */
+.result-card {
+    margin-top: 12px;
+    background: var(--c-surface);
+    border: var(--edge);
+    border-radius: var(--r-lg);
+    padding: var(--d-pad);
+}
+.result-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--d-row);
+    padding: 0 6px 0 12px;
+    background: var(--c-surface-2);
+    border: var(--edge);
+    border-radius: var(--r);
+    margin: 8px 0;
+}
+/* The host may wrap anywhere it likes; the code may not wrap at all. This
+   was `word-break: break-all` over the whole address, which on a narrow
+   window split the code itself -- `o-` on one line and `sLOrD` on the next
+   -- on the very page that promises a code short enough to read out loud. */
+.result-url { flex: 1; font-family: var(--mono); font-size: 15px; color: var(--c-text); min-width: 0; }
+.result-url .url-host { color: var(--c-text-3); overflow-wrap: anywhere; }
+.result-url .code-atom { white-space: nowrap; }
+.result-copy {
+    background: none;
+    border: 1px solid var(--c-line-2);
+    border-radius: var(--r);
+    color: var(--c-text-2);
+    font: inherit;
+    font-size: 12px;
+    padding: 5px 9px;
+    cursor: pointer;
+    flex: none;
+}
+.result-copy:hover { background: var(--c-wash); color: var(--c-text); }
+.result-delete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.result-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: var(--edge);
+}
+.stat-item strong {
+    display: block;
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--c-text);
+}
+.stat-item span { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-text-3); }
+
+/* Below the fold there used to be nothing at all. */
+.strip { border-top: var(--edge); margin-top: 48px; padding-top: 28px; }
+.strip-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 40px; }
+.strip h2 { font-size: 15px; font-weight: 600; margin: 8px 0 6px; }
+.strip p { color: var(--c-text-2); font-size: 13px; max-width: 46ch; }
+
+.code-block {
+    margin-top: 10px;
+    padding: 12px 14px;
+    background: var(--c-surface-2);
+    border: var(--edge);
+    border-radius: var(--r);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--c-text-2);
+}
+
+/* Syntax colour, and the only place in the system where a hue names a kind
+   of thing rather than a state. A code block is where that reading is
+   native -- nobody has ever taken a coloured string literal for a success
+   message -- and the boundary is the block: these four classes are scoped
+   to it and appear nowhere else.
+
+   No new hues, and the two that are used already mean what is wanted here:
+   the writing blue marks the parts that say what to do, and the data teal
+   marks the parts that are the payload. */
+.code-block .c-cmd { color: var(--c-text); }
+.code-block .c-flag { color: var(--c-write); }
+.code-block .c-val { color: var(--c-data); }
+.code-block .c-dim { color: var(--c-text-3); }
+
+/* ===== Auth ===== */
+.auth { max-width: 380px; margin: 0 auto; }
+.auth h1 { font-size: 24px; margin-bottom: 4px; }
+.auth-lede { color: var(--c-text-2); font-size: 13px; margin-bottom: 20px; }
+.auth-foot { margin-top: 16px; padding-top: 14px; border-top: var(--edge); font-size: 13px; color: var(--c-text-2); }
+.auth-foot p + p { margin-top: 6px; }
+
+/* ===== Error page ===== */
+.stop { max-width: 480px; margin: 0 auto; padding-top: 32px; }
+.stop h1 { font-size: 24px; margin: 10px 0 6px; }
+.stop p { color: var(--c-text-2); }
+
+/* ===== API description =====
+
+   The page was a single 10 600-pixel scroll with every operation open and
+   nothing to navigate by. It is now a table of contents beside a column of
+   operations, each one a disclosure that opens on its own -- which needs no
+   script at all. */
+.api { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 40px; align-items: start; }
+.api-toc { position: sticky; top: 72px; font-size: 13px; }
+.api-toc a { display: block; padding: 4px 0; color: var(--c-text-2); text-decoration: none; }
+.api-toc a:hover { color: var(--c-text); }
+.api-tag { margin-bottom: 32px; scroll-margin-top: 72px; }
+.api-tag > p { color: var(--c-text-2); font-size: 13px; margin: 4px 0 12px; max-width: 62ch; }
+.api-doc { display: grid; gap: 6px; }
+
+.api-op { border: var(--edge); border-radius: var(--r); background: var(--c-surface); overflow: hidden; }
+.api-op-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    cursor: pointer;
+    list-style: none;
+    font-size: 13px;
+}
+.api-op-head::-webkit-details-marker { display: none; }
+.api-op-head:hover { background: var(--c-wash); }
+.api-op[open] .api-op-head { border-bottom: var(--edge); }
+/* The verb is coloured by what the call does to the world, not by an
+   arbitrary hue per word. One hue carries "this is an operation", and the
+   fill carries "and it changes something":
+
+     GET     reads, changes nothing           -- blue, outline only
+     POST    writes                           -- blue, filled
+     PUT     writes over what was there       -- blue, filled, dashed edge
+     DELETE  destroys                         -- the danger red, which means
+                                                 here what it means on a
+                                                 button and on a 404
+
+   Not Swagger's rainbow, and specifically not green for GET: green is what
+   the answer table on this same page uses for 200. A hue that means
+   "success" in one column cannot mean "read" in another. */
+.api-verb {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border: 1px solid color-mix(in srgb, var(--c-write) 45%, var(--c-line));
+    border-radius: 3px;
+    color: var(--c-write);
+    flex: none;
+    min-width: 52px;
     text-align: center;
 }
-.stat-value { font-size: 1.75rem; font-weight: 700; color: var(--c-primary); line-height: 1.2; }
-.stat-label { font-size: 0.75rem; color: var(--c-text-2); margin-top: 0.25rem; }
-
-/* ===== Badge ===== */
-.badge {
-    display: inline-block;
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
-    font-size: 0.7rem;
-    font-weight: 500;
+/* The fill, not the hue, is what separates a read from a write. */
+.api-verb--post,
+.api-verb--put { background: color-mix(in srgb, var(--c-write) 15%, transparent); }
+.api-verb--put { border-style: dashed; }
+.api-verb--delete {
+    color: var(--c-danger);
+    border-color: color-mix(in srgb, var(--c-danger) 45%, var(--c-line));
+    background: color-mix(in srgb, var(--c-danger) 8%, transparent);
 }
-.badge--green { background: #d1fae5; color: #065f46; }
-.badge--red { background: #fee2e2; color: #991b1b; }
-.badge--blue { background: #dbeafe; color: #1e40af; }
-.badge--gray { background: #f3f4f6; color: #374151; }
 
-/* ===== Alerts ===== */
-.alert { padding: 0.75rem 1rem; border-radius: var(--radius); font-size: 0.875rem; margin-bottom: 1rem; }
-.alert--error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-.alert--success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+/* A status is a state, which is what the state palette is for. There is no
+   5xx anywhere in this API -- every failure it documents is a 4xx -- so red
+   is spent on refusal rather than kept in reserve for a server fault that
+   is never described. 302 gets neither colour: on a link shortener a
+   redirect is the product, not an outcome. */
+.api-status { font-family: var(--mono); color: var(--c-text); white-space: nowrap; }
+.api-status .dot { margin-right: 8px; vertical-align: 1px; }
+.api-path { font-family: var(--mono); font-size: 12px; color: var(--c-text); }
+.api-op-summary { color: var(--c-text-3); font-size: 12px; margin-left: auto; text-align: right; }
+.api-op-body { padding: 12px; font-size: 13px; color: var(--c-text-2); }
+.api-op-body > p { margin-bottom: 10px; max-width: 62ch; }
+.api-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.api-table td { padding: 3px 12px 3px 0; vertical-align: top; border: none; }
+.api-table td:first-child { white-space: nowrap; font-family: var(--mono); color: var(--c-text); }
 
-/* ===== Auth Layout ===== */
-.auth-center { display: flex; justify-content: center; align-items: center; min-height: calc(100vh - 200px); }
-.auth-card { width: 100%; max-width: 380px; }
-.auth-card h2 { font-size: 1.25rem; margin-bottom: 1.5rem; text-align: center; }
-.auth-card p { text-align: center; font-size: 0.875rem; color: var(--c-text-2); margin-top: 1rem; }
-
-/* ===== Empty State ===== */
-.empty { text-align: center; padding: 3rem 1rem; color: var(--c-text-2); }
-
-/* ===== Utility ===== */
-.text-sm { font-size: 0.875rem; }
-.text-xs { font-size: 0.75rem; }
-.text-muted { color: var(--c-text-2); }
-.text-center { text-align: center; }
-.mt-1 { margin-top: 0.5rem; }
-.mt-2 { margin-top: 1rem; }
-.mb-1 { margin-bottom: 0.5rem; }
-.mb-2 { margin-bottom: 1rem; }
-.gap-1 { gap: 0.5rem; }
-.flex { display: flex; }
-.flex-wrap { flex-wrap: wrap; }
-.items-center { align-items: center; }
-.justify-between { justify-content: space-between; }
-.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ===== Utilities ===== */
 .hidden { display: none !important; }
+.text-muted { color: var(--c-text-2); }
+.text-sm { font-size: calc(var(--d-fs) - 1px); }
+.text-xs { font-size: calc(var(--d-fs) - 2px); }
+.text-center { text-align: center; }
+.flex { display: flex; }
+.gap-1 { gap: 8px; }
+.mt-1 { margin-top: 8px; }
+.mt-2 { margin-top: 16px; }
+.mt-3 { margin-top: 24px; }
+.mb-1 { margin-bottom: 8px; }
+.mb-2 { margin-bottom: 16px; }
+.narrow { max-width: 480px; }
+/* One line length for running text, in one place. It was written inline
+   twice as 62ch and in the stylesheet twice more as 62ch and 60ch. */
+.measure { max-width: 62ch; }
+
+/* Present for a screen reader, absent for an eye. Clipped rather than
+   hidden, because `display: none` takes it out of the accessibility tree
+   too. */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* ===== Small screens ===== */
+@media (max-width: 860px) {
+    .api { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+    .api-toc { position: static; }
+}
+
+@media (max-width: 640px) {
+    .container { padding: 0 16px; }
+    .dropdown-name { display: none; }
+    .main { padding: 24px 0 40px; }
+    .table td.table-actions, .table th.table-actions { text-align: left; }
+    .table-actions .btn { margin: 2px 2px 2px 0; }
+    .strip-grid { gap: 28px; }
+    .stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+}

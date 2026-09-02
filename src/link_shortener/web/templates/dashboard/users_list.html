@@ -1,36 +1,97 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Users – Linkr{% endblock %}
+{% block title %}{{ _('Users — MaizLink') }}{% endblock %}
 {% block dashboard_content %}
-<div class="flex items-center justify-between mb-2">
-    <h1 class="dash-title" style="margin:0;">Users</h1>
-    <a href="{{ url_for('dashboard.create_user_form') }}" class="btn btn--primary btn--sm">+ New User</a>
+<div class="dash-head">
+    <h1 class="dash-title">{{ _('Users') }}</h1>
+    {% if can('admin:manage_users') %}
+    <a href="{{ url_for('dashboard.create_user_form') }}" class="btn btn--primary btn--sm">{{ _('New user') }}</a>
+    {% endif %}
 </div>
 
-<div class="card">
+<div id="users-error" class="alert alert--error hidden mb-2"></div>
+
+<div class="card card--flush">
     <div class="table-wrap">
         <table class="table">
             <thead>
-                <tr><th>Email</th><th>Roles</th><th>Status</th><th>Actions</th></tr>
+                <tr>
+                    <th>{{ _('Email') }}</th><th>{{ _('Roles') }}</th><th>{{ _('State') }}</th><th class="table-actions">{{ _('Actions') }}</th>
+                </tr>
             </thead>
             <tbody>
                 {% for user in users %}
-                <tr>
-                    <td>{{ user.email }}</td>
+                <tr data-user-id="{{ user.id }}" data-user-email="{{ user.email }}">
+                    <td class="text-muted">{{ user.email }}</td>
                     <td>
+                        {# ``roles`` is a list of names, not of objects.
+                           Reading ``.name`` off a string yields Undefined,
+                           which Jinja prints as nothing: every account in
+                           this table showed a blank Roles column. #}
                         {% for role in user.roles %}
-                            <span class="badge badge--blue">{{ role.name }}</span>
+                            <span class="badge badge--name">{{ role }}</span>
+                        {% else %}
+                            <span class="text-muted text-sm">{{ _('none') }}</span>
                         {% endfor %}
                     </td>
+                    {# Two states, not one. Signing in needs both, and this
+                       column used to show only the first: an operator read
+                       "Active" off an account that could not log in, because
+                       nobody had confirmed its address. #}
                     <td>
                         {% if user.is_active %}
-                            <span class="badge badge--green">Active</span>
+                            <span class="badge badge--ok">{{ _('Active') }}</span>
                         {% else %}
-                            <span class="badge badge--red">Inactive</span>
+                            <span class="badge badge--danger">{{ _('Inactive') }}</span>
+                        {% endif %}
+                        {% if user.email_verified %}
+                            <span class="badge badge--ok">{{ _('Verified') }}</span>
+                        {% else %}
+                            <span class="badge badge--warn" title="{{ _('The address has not been confirmed, so this account cannot sign in') }}">{{ _('Not verified') }}</span>
                         {% endif %}
                     </td>
-                    <td>
-                        <a href="{{ url_for('dashboard.edit_user', user_id=user.id) }}" class="btn btn--ghost btn--sm">Edit</a>
-                        <a href="{{ url_for('dashboard.user_stats', user_id=user.id) }}" class="btn btn--ghost btn--sm">Stats</a>
+                    <td class="table-actions">
+                        {% if can('admin:manage_users') %}
+                        <a href="{{ url_for('dashboard.edit_user', user_id=user.id) }}" class="btn btn--ghost btn--sm">{{ _('Edit') }}</a>
+                        {% endif %}
+                        <a href="{{ url_for('dashboard.user_stats', user_id=user.id) }}" class="btn btn--ghost btn--sm">{{ _('Stats') }}</a>
+                        {# Offered only where there is something to do: on a
+                           confirmed account both buttons would be no-ops. #}
+                        {% if can('admin:manage_users') and not user.email_verified %}
+                            <button class="btn btn--ghost btn--sm js-resend-verification">{{ _('Send link again') }}</button>
+                            {# The question the button asks before it acts,
+                               translated here and with the address already
+                               in it. The script only reads it: a sentence
+                               built in the browser would be built out of an
+                               English string, since no catalogue reaches a
+                               `.js` file. #}
+                            <button class="btn btn--ghost btn--sm js-confirm-email"
+                                    data-confirm="{{ _('Confirm the address of %(email)s without a mailed link? Do this only if you know the address is theirs.', email=user.email) }}">{{ _('Confirm manually') }}</button>
+                        {% endif %}
+                        {% if can('admin:manage_users') %}
+                            {# Deactivation, reactivation and deletion exist in
+                               the service and had no way in: an operator had to
+                               call the API by hand to suspend an account.
+
+                               Not on the operator's own row. The service
+                               refuses to leave itself without an
+                               administrator, so both buttons answered
+                               "This would leave the system without an
+                               administrator" every time they were pressed. #}
+                            {% if user.id != g.current_user.id %}
+                                {% if user.is_active %}
+                                <button class="btn btn--ghost btn--sm js-deactivate"
+                                        data-confirm="{{ _('Deactivate %(email)s? They will not be able to sign in.', email=user.email) }}">{{ _('Deactivate') }}</button>
+                                {% else %}
+                                {# No `data-confirm`: restoring an account
+                                   takes nothing away, so it does not ask. #}
+                                <button class="btn btn--ghost btn--sm js-activate">{{ _('Activate') }}</button>
+                                {% endif %}
+                                <button class="btn btn--ghost btn--sm btn--danger js-delete-user"
+                                        data-confirm="{{ _('Delete %(email)s permanently? This cannot be undone.', email=user.email) }}">{{ _('Delete') }}</button>
+                            {% else %}
+                                <span class="text-muted text-sm">{{ _('this is you') }}</span>
+                            {% endif %}
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -38,7 +99,28 @@
         </table>
     </div>
     {% if not users %}
-    <div class="empty"><p>No users found.</p></div>
+    <div class="empty">
+        <div class="empty-icon">{{ _('No users') }}</div>
+        <p>{% if page > 1 %}{{ _('Nothing on this page.') }}{% else %}{{ _('Nothing to show.') }}{% endif %}</p>
+    </div>
     {% endif %}
 </div>
+
+{# Without this the page showed the first hundred accounts and said nothing
+   about the rest, which on a service with more than that is a list that
+   quietly lies. #}
+{% if has_next or page > 1 %}
+<div class="pager">
+    {% if page > 1 %}
+    <a class="btn btn--ghost btn--sm" href="{{ url_for('dashboard.users_list', page=page - 1) }}">&larr; {{ _('Previous') }}</a>
+    {% endif %}
+    <span class="pager-page">{% trans number=page %}Page {{ number }}{% endtrans %}</span>
+    {% if has_next %}
+    <a class="btn btn--ghost btn--sm" href="{{ url_for('dashboard.users_list', page=page + 1) }}">{{ _('Next') }} &rarr;</a>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/pages/users_list.js') }}" defer></script>
 {% endblock %}

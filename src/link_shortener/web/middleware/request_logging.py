@@ -5,6 +5,7 @@ from flask import Flask, Response, g, request
 
 from link_shortener.application import Logger
 from link_shortener.web.middleware.hooks import response_hook
+from link_shortener.web.security.context import get_client_ip
 
 
 class RequestLoggingMiddleware:
@@ -14,7 +15,7 @@ class RequestLoggingMiddleware:
     Sets ``g.start_time`` and ``g.request_id`` early in the request
     lifecycle, then logs request and response metadata.
     """
-    
+
     def __init__(self, app: Flask, logger: Logger):
         """
         Args:
@@ -47,10 +48,20 @@ class RequestLoggingMiddleware:
             user_agent = request.headers.get('User-Agent')
 
             self.logger.info(
-                "Request started", 
+                "Request started",
                 method=request.method,
-                path=request.path, 
-                remote_addr=request.remote_addr,
+                path=request.path,
+                # The same address every other line of this request carries.
+                # `request.remote_addr` is the connection's far end, which
+                # behind a proxy is the proxy: every "Request started" line
+                # would name one address while the use-case lines beside it,
+                # bound from `RequestContext`, name the client -- one field,
+                # one file, one request, two answers. It also splits a search:
+                # `GET /api/v1/journals/application?remote_addr=` matches
+                # `remote_addr` exactly, so an investigation into one client
+                # would be handed the work and not the requests that carried
+                # it. With `TRUSTED_PROXIES` empty this is `request.remote_addr`.
+                remote_addr=get_client_ip(),
                 request_id=g.request_id,
                 user_agent=user_agent
             )
@@ -67,9 +78,9 @@ class RequestLoggingMiddleware:
                 return response
 
             if hasattr(g, 'start_time'):
-                
+
                 duration = time.time() - g.start_time
-                
+
                 self.logger.info(
                     "Request completed",
                     status=response.status_code,

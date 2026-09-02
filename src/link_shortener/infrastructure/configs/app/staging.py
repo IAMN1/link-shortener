@@ -1,6 +1,6 @@
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 from link_shortener.infrastructure.configs.app.env import (
-    env_bool, env_int, env_str, read_env_for
+    env_bool, env_int, env_list, env_str, is_unset, read_env_for
 )
 
 
@@ -31,15 +31,21 @@ class StagingConfig(BaseConfig):
     # --------------------------------------------------------------------------
     # Security: enforce presence of secrets
     # --------------------------------------------------------------------------
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def SECRET_KEY(self) -> str:
+    def SECRET_KEY(self) -> str:  # type: ignore[override]
         key = read_env_for(self, "SECRET_KEY")
         if not key:
             raise ValueError("SECRET_KEY must be set in environment")
         return key
 
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def SHORT_CODE_SECRET_PEPPER(self) -> str:
+    def SHORT_CODE_SECRET_PEPPER(self) -> str:  # type: ignore[override]
         pepper = read_env_for(self, "SHORT_CODE_PEPPER")
         if not pepper:
             raise ValueError("SHORT_CODE_PEPPER must be set in environment")
@@ -50,9 +56,12 @@ class StagingConfig(BaseConfig):
     # Redis: enabled by default for realistic testing
     # --------------------------------------------------------------------------
     REDIS_ENABLED: bool = env_bool("REDIS_ENABLED", True)
-    
+
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def REDIS_URL(self) -> str:
+    def REDIS_URL(self) -> str:  # type: ignore[override]
         """Redis URL must be set in environment if Redis is enabled."""
         url = read_env_for(self, "REDIS_URL")
         if self.REDIS_ENABLED and not url:
@@ -72,6 +81,30 @@ class StagingConfig(BaseConfig):
     # Still overridable by environment, for a staging host genuinely running
     # without TLS -- but that now has to be asked for rather than inherited.
     USE_HTTPS: bool = env_bool("USE_HTTPS", True)
+
+    # --------------------------------------------------------------------------
+    # CORS: nothing is allowed until a deployment names it
+    # --------------------------------------------------------------------------
+    CORS_ORIGINS: list = env_list("CORS_ORIGINS", [])
+    """
+    Origins allowed to send credentials, and empty until one is named.
+
+    The base default is ``http://localhost:5000``, which is right for a run
+    on a laptop and wrong everywhere else: inherited here it left a deployed
+    service answering ``Access-Control-Allow-Origin: http://localhost:5000``
+    with ``Allow-Credentials: true``, so a page a visitor opened on that port
+    could read this service's answers with that visitor's cookies. Nobody
+    needs the allowance, and a deployment that does needs a different value
+    anyway.
+
+    Empty is not the same as closed. The CSRF layer adds ``BASE_URL`` to the
+    origins it admits, so the service's own pages keep working with nothing
+    named here -- measured: with ``CORS_ORIGINS`` empty, a signed-in form
+    post from ``https://maizlink.example`` answered 201 and the same post
+    from ``https://evil.example`` answered 403. What is empty is the list of
+    *other* origins, which is the honest default for one.
+    """
+
     COOKIE_SECURE: bool = env_bool("COOKIE_SECURE", True)
     SESSION_COOKIE_SECURE: bool = env_bool("SESSION_COOKIE_SECURE", True)
 
@@ -96,10 +129,9 @@ class StagingConfig(BaseConfig):
     Staging seeds roles as a deployment step, not on every application start.
 
     That step is `flask db load-base-roles`, run once after
-    `alembic upgrade head`. It is not a migration: no revision seeds RBAC,
-    though this comment and three others used to say so. Skip it and the
-    `roles` table stays empty, which is not a visible failure -- the service
-    starts and answers 401 to anonymous shortening.
+    `alembic upgrade head`. It is not a migration: no revision seeds RBAC.
+    Skip it and the `roles` table stays empty, which is not a visible
+    failure -- the service starts and answers 401 to anonymous shortening.
 
     The profile only sets the default – it stays overridable via env var.
     """
@@ -109,3 +141,64 @@ class StagingConfig(BaseConfig):
     # Alembic: must be enabled in staging (mirrors production)
     # --------------------------------------------------------------------------
     USE_ALEMBIC: bool = env_bool("USE_ALEMBIC", True)
+
+
+    def _collect_errors(self) -> list:
+        """Enforce presence of required environment variables.
+
+        The same override ``production`` carries. Two of this profile's
+        demands are not settings and so are not part of the base checks:
+        the database URL, which is assembled when something wants it, and
+        ``DOMAIN``, whose absence is a fallback rather than an error.
+        Unset, ``BASE_URL`` falls back to ``http://HOST:PORT/`` -- where
+        the process binds rather than where the service is reached.
+
+        The secrets are not read here: both are properties that refuse for
+        themselves, and ``BaseConfig`` collects those refusals.
+
+        Returns:
+            List of human-readable error messages.
+        """
+        errors = super()._collect_errors()
+
+        # Secrets and Redis are already collected by the base class, which
+        # reads both through the properties this profile overrides and
+        # keeps the message each raises.
+        try:
+            self.get_database_url()
+        except ValueError as error:
+            errors.append(str(error))
+
+        # The parts that have defaults, demanded explicitly on a deployed
+        # profile. ``DATABASE_HOST`` falls back to ``localhost`` and
+        # ``DATABASE_NAME`` to ``db_shortener``, so a deployment naming
+        # only ``DATABASE_TYPE=postgresql`` and a user would connect to a
+        # server and a database nobody chose -- the same class of fault
+        # ``_deployed_backend_errors`` exists for, on PostgreSQL rather
+        # than on SQLite.
+        if not self.DATABASE_URL and self.DATABASE_TYPE == "postgresql":
+            for name in ("DATABASE_HOST", "DATABASE_NAME"):
+                # Both halves are asked, because either one is a way of
+                # saying it deliberately: the variable, or a profile that
+                # pins the value as a class attribute. Only the value that
+                # is still the inherited default *and* unnamed in the
+                # environment is the one nobody chose.
+                default = vars(BaseConfig)[name].default
+                if getattr(self, name) == default and is_unset(
+                    read_env_for(self, name)
+                ):
+                    errors.append(
+                        f"{name} must be set when a deployed profile builds "
+                        f"its connection from the DATABASE_* parts -- the "
+                        f"default names a database nobody chose"
+                    )
+
+        # domain_value, not os.environ and not the raw field: it is what
+        # BASE_URL builds from, so the check and the builder cannot
+        # disagree about what counts as set.
+        if not self.domain_value:
+            errors.append(
+                "DOMAIN environment variable must be set in staging"
+            )
+
+        return errors

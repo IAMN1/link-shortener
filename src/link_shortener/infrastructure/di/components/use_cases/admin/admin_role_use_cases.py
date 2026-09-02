@@ -1,15 +1,12 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application import (
-    CreateRoleUseCase,
-    UpdateRolePermissionsUseCase,
-    DeleteRoleUseCase,
-    ListRolesUseCase,
-    GetRoleUseCase,
-    RoleManagementService,
-    Logger,
-    UnitOfWork,
+    UnitOfWorkFactory, AuditLogger, CreateRoleUseCase,
+    UpdateRolePermissionsUseCase, DeleteRoleUseCase, ListRolesUseCase,
+    GetRoleUseCase, RoleManagementService, Logger
+)
+from link_shortener.application.services.user_management_service import (
+    UserManagementService,
 )
 
 
@@ -18,13 +15,21 @@ class AdminRoleUseCasesComponent:
     """
     Provides factory methods for all role administration use cases.
 
-    All dependencies (UoW factory, role service, authorization service,
-    logger) are injected at construction time.
+    All dependencies -- the UoW factory, the role service, the user
+    service, the default role name, the logger and the audit logger -- are
+    injected at construction time. No authorization service among them:
+    the routes carry the permission check and ``privilege_guard`` reads the
+    actor out of the unit of work the operation runs in.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     role_service: RoleManagementService
+    # Deleting a role puts the accounts it leaves bare back on the default
+    # one, and that goes through the same service the other door uses.
+    user_service: UserManagementService
+    default_role_name: str
     logger: Logger
+    audit_logger: AuditLogger
 
     def get_create_role_use_case(self) -> CreateRoleUseCase:
         """
@@ -36,6 +41,7 @@ class AdminRoleUseCasesComponent:
             uow_factory=self.uow_factory,
             role_service=self.role_service,
             logger=self.logger,
+            audit_logger=self.audit_logger,
         )
 
     def get_update_role_permissions_use_case(self) -> UpdateRolePermissionsUseCase:
@@ -48,6 +54,7 @@ class AdminRoleUseCasesComponent:
             uow_factory=self.uow_factory,
             role_service=self.role_service,
             logger=self.logger,
+            audit_logger=self.audit_logger,
         )
 
     def get_delete_role_use_case(self) -> DeleteRoleUseCase:
@@ -59,7 +66,10 @@ class AdminRoleUseCasesComponent:
         return DeleteRoleUseCase(
             uow_factory=self.uow_factory,
             role_service=self.role_service,
+            user_service=self.user_service,
+            default_role_name=self.default_role_name,
             logger=self.logger,
+            audit_logger=self.audit_logger,
         )
 
     def get_list_roles_use_case(self) -> ListRolesUseCase:

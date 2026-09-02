@@ -1,7 +1,10 @@
 """Tests for the admin API controller."""
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock
 
-from link_shortener.application.ports.logging_status import LoggingStatus
+from link_shortener.application.ports.logging_status import (
+    ChainStatus, LoggingStatus,
+)
+from link_shortener.domain import RoleNotFoundError
 
 
 def _get_admin_controller(app):
@@ -189,36 +192,57 @@ class TestAdminApiController:
     def test_delete_role(self, app, client):
         """DELETE /api/v1/admin/roles/<name> deletes role."""
         ctrl = _get_admin_controller(app)
-        ctrl.admin_service.delete_role.return_value = True
+        ctrl.admin_service.delete_role.return_value = None
 
         response = client.delete("/api/v1/admin/roles/editor")
         assert response.status_code == 200
 
     def test_delete_role_not_found(self, app, client):
-        """DELETE /api/v1/admin/roles/<name> returns 404 when not found."""
+        """A name nothing carries is 404, and the use case says so.
+
+        This used to mock the facade into returning ``False`` and assert
+        that the route noticed -- a branch the use case cannot reach,
+        since it raises. What the route actually answers is whatever the
+        refusal's code maps to.
+        """
         ctrl = _get_admin_controller(app)
-        ctrl.admin_service.delete_role.return_value = False
+        ctrl.admin_service.delete_role.side_effect = RoleNotFoundError(
+            "system"
+        )
 
         response = client.delete("/api/v1/admin/roles/system")
         assert response.status_code == 404
+        assert response.get_json()["error"] == "ROLE_NOT_FOUND"
 
     def test_get_health(self, app, client):
         """GET /api/v1/admin/health returns health status."""
         ctrl = _get_admin_controller(app)
         mock_health = MagicMock()
         mock_health.database = True
+        # A MagicMock attribute is not a boolean and does not survive jsonify:
+        # left unset, the endpoint answered 500 rather than reporting a schema.
+        mock_health.database_schema = True
         mock_health.redis = True
         mock_health.task_queue = True
         mock_health.rate_limiter = True
+        mock_health.cache_configured = True
+        mock_health.task_queue_configured = True
+        mock_health.timed_out = ()
+        # The verdict the page draws. A MagicMock attribute is not a dict
+        # and does not survive jsonify either, for the reason written
+        # above about `database_schema`.
+        mock_health.components = {
+            "database": "ok",
+            "cache": "ok",
+            "task_queue": "ok",
+            "rate_limiter": "enforcing",
+        }
         mock_health.logging = LoggingStatus(
-            logger_active="structlog",
-            logger_dropped_calls=0,
-            logger_failed_checks=0,
-            logger_lost_log_lines=4,
-            audit_active="structlog_audit",
-            audit_dropped_calls=2,
-            audit_failed_checks=1,
-            audit_lost_log_lines=0,
+            worker=4242,
+            logger=ChainStatus("structlog", 0, 0, 4, "healthy"),
+            audit=ChainStatus("structlog_audit", 2, 1, 0, "unhealthy"),
+            journals_written=("application",),
+            journals_unavailable=(),
         )
         ctrl.admin_service.get_service_health.return_value = mock_health
 
@@ -230,7 +254,9 @@ class TestAdminApiController:
         # does, from the same snapshot -- plus the logging chains, which
         # nothing else reports at all.
         assert set(data) == {
-            "database", "cache", "task_queue", "rate_limiter", "logging"
+            "database", "database_schema", "cache", "cache_configured",
+            "task_queue", "task_queue_configured", "rate_limiter",
+            "components", "timed_out", "logging"
         }
         assert data["logging"]["audit"]["dropped_calls"] == 2
         assert data["logging"]["audit"]["failed_checks"] == 1
@@ -250,9 +276,24 @@ class TestAdminApiController:
         ctrl = _get_admin_controller(app)
         mock_health = MagicMock()
         mock_health.database = True
+        # A MagicMock attribute is not a boolean and does not survive jsonify:
+        # left unset, the endpoint answered 500 rather than reporting a schema.
+        mock_health.database_schema = True
         mock_health.redis = True
         mock_health.task_queue = True
         mock_health.rate_limiter = True
+        mock_health.cache_configured = True
+        mock_health.task_queue_configured = True
+        mock_health.timed_out = ()
+        # The verdict the page draws. A MagicMock attribute is not a dict
+        # and does not survive jsonify either, for the reason written
+        # above about `database_schema`.
+        mock_health.components = {
+            "database": "ok",
+            "cache": "ok",
+            "task_queue": "ok",
+            "rate_limiter": "enforcing",
+        }
         mock_health.logging = None
         ctrl.admin_service.get_service_health.return_value = mock_health
 
@@ -260,18 +301,18 @@ class TestAdminApiController:
 
         # The status first: publishing the section unconditionally raises
         # on the None and the caller gets a 500 whose body has no
-        # "logging" key either -- so the assertion below passed on the
-        # error envelope. Measured: `if health.logging is not None:`
-        # widened to `if True:` left this file green.
+        # "logging" key either -- so the assertion below would pass on the
+        # error envelope. `if health.logging is not None:` widened to
+        # `if True:` leaves the rest of this file green.
         assert response.status_code == 200
         assert "logging" not in response.get_json()
 
     def test_list_users_passes_the_window_it_was_asked_for(self, app, client):
         """``limit`` and ``offset`` can be swapped and nothing notices.
 
-        Measured on the mutation run of 2026-08-10: passing ``limit=offset``
-        and ``offset=limit`` answered 200 with an empty list, because every
-        test that reached this endpoint set the service to answer ``[]``
+        Passing ``limit=offset`` and ``offset=limit`` answers 200 with an
+        empty list, because every other test that reaches this endpoint
+        sets the service to answer ``[]``
         and none looked at what it had been asked for.
         """
         ctrl = _get_admin_controller(app)

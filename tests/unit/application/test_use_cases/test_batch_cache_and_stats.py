@@ -21,6 +21,7 @@ Two things it did, and one it did not:
 
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from typing import get_type_hints
 from unittest.mock import Mock
 
 import pytest
@@ -28,6 +29,9 @@ import pytest
 from link_shortener.application.use_cases.batch.batch_create_links import (
     BatchCreateLinksUseCase,
 )
+from link_shortener.application.use_cases.batch.fetcher import BatchLinkFetcher
+from link_shortener.application.ports.cache.link_cache import LinkCache
+from link_shortener.application.use_cases.batch.groups import UrlGroup
 from link_shortener.application.context import RequestContext
 from link_shortener.domain import Link, OriginalUrl, ShortCode, UrlHash
 
@@ -48,12 +52,11 @@ def _link(code="btch01"):
 
 def _group():
     """One grouper output entry."""
-    return {
-        "hash": UrlHash("b" * 64),
-        "original_url": OriginalUrl(URL),
-        "urls": [URL],
-        "is_valid": True,
-    }
+    return UrlGroup(
+        hash=UrlHash("b" * 64),
+        original_url=OriginalUrl(URL),
+        urls=[URL],
+    )
 
 
 @pytest.fixture
@@ -62,7 +65,7 @@ def parts():
     saved = [_link()]
 
     grouper = Mock()
-    grouper.group.return_value = {"b" * 64: _group()}
+    grouper.group.return_value = ([_group()], [])
 
     fetcher = Mock()
     fetcher.fetch.return_value = ([], [_group()], [])
@@ -96,7 +99,6 @@ def use_case(parts):
 
     return BatchCreateLinksUseCase(
         uow_factory=factory,
-        cache=Mock(),
         stats_cache=Mock(),
         base_url="https://short.link",
         logger=logger,
@@ -105,6 +107,7 @@ def use_case(parts):
         guest_link_limit=10,
         guest_link_window_days=1,
         default_guest_ttl_seconds=604800,
+        max_collision_attempts=3,
         grouper=grouper,
         fetcher=fetcher,
         creator=creator,
@@ -120,17 +123,30 @@ class TestNothingIsWrittenToTheCacheAfterTheTransaction:
     """
     The write landed after the unit of work closed, so a DELETE that
     committed in between was undone by it.
+
+    Read off what the use case is assembled from rather than off a mock
+    that went uncalled. It was handed a ``LinkCache`` it never touched --
+    zero mentions of it in three hundred and eighty-one lines -- and the
+    only thing keeping the dependency alive was the pair of tests asserting
+    it stayed unused. A collaborator whose entire role is to be ignored is
+    one the constructor should not ask for: dropped, the promise is in the
+    signature, and no later reader can undo it by forgetting a comment.
+
+    The cache itself did not go anywhere. ``BatchLinkFetcher`` still holds
+    it and still reads it -- looking a batch up is exactly what it is for.
+    What ended is this layer being able to write to it.
     """
 
-    def test_the_batch_does_not_warm_the_link_cache(self, use_case):
-        use_case.execute([URL], _context())
+    def test_the_use_case_is_not_handed_a_link_cache_at_all(self):
+        held = get_type_hints(BatchCreateLinksUseCase)
 
-        use_case.cache.save_many.assert_not_called()
+        assert LinkCache not in held.values()
 
-    def test_it_does_not_reach_for_a_single_save_either(self, use_case):
-        use_case.execute([URL], _context())
+    def test_the_fetcher_is_still_the_one_that_reads_it(self):
+        """The dependency moved down, it was not deleted from the batch."""
+        held = get_type_hints(BatchLinkFetcher.__init__)
 
-        use_case.cache.save.assert_not_called()
+        assert LinkCache in held.values()
 
 
 class TestTheTotalsAreDroppedWhenLinksAreCreated:
@@ -183,6 +199,7 @@ class TestRefreshingStatisticsActuallyRefreshes:
     """
 
     def test_the_cached_entry_is_dropped_before_reading(self):
+        from link_shortener.application.context import RequestContext
         from link_shortener.infrastructure.cli.commands.stats import refresh_stats
 
         order = []
@@ -194,6 +211,8 @@ class TestRefreshingStatisticsActuallyRefreshes:
             total_urls=1, total_clicks=0, avg_clicks_per_url=0.0, popular_links=[]
         )
 
-        refresh_stats(use_case, stats_cache)
+        refresh_stats(
+            use_case, stats_cache, RequestContext(request_id="cli-stats-refresh")
+        )
 
         assert order == ["drop", "read"]

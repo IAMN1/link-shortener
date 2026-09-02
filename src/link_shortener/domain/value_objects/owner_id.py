@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.i18n import N_
 
 
 @dataclass(frozen=True)
@@ -10,12 +11,10 @@ class OwnerID:
 
     Isolates the domain from the concrete ID type (UUID string, integer, etc.).
 
-    An owner-less link carries ``owner=None``, never ``OwnerID(None)``. The
-    two used to coexist -- the repository returned one, the factory and the
-    cache the other -- so the same guest link arrived in different shapes
-    depending on where it was read from, and any comparison between them was
-    quietly wrong. Refusing to be constructed without a value is what keeps
-    the second shape from coming back.
+    An owner-less link carries ``owner=None``, never ``OwnerID(None)``: two
+    shapes for one state would make the same guest link differ by where it
+    was read from, and every comparison between them wrong. Construction
+    without a value is refused for that reason.
 
     Attributes:
         value: The raw owner identifier.
@@ -26,13 +25,19 @@ class OwnerID:
         """
         Validate that an actual identifier was supplied.
 
+        Whitespace counts as empty, the way it does for ``PasswordHash``
+        next door: ``"   "`` is not an account any more than ``""`` is, and
+        a scope token built from it -- ``u:   `` -- is a scope no owner
+        can ever match again.
+
         Raises:
-            ValidationError: If the value is missing or empty.
+            ValidationError: If the value is missing, empty, or only
+                whitespace.
         """
-        if not self.value:
+        if not self.value or not self.value.strip():
             raise ValidationError(
-                "Owner id must not be empty. An owner-less link carries "
-                "owner=None.",
+                N_("Owner id must not be empty. An owner-less link carries "
+                "owner=None."),
                 field="owner_id",
             )
 

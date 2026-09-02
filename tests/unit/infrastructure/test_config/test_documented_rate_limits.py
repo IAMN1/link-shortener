@@ -1,7 +1,7 @@
 """
 The published rate limits against the ones the service enforces.
 
-Two documents print these numbers as the service's promise, and until now
+The configuration reference prints these numbers as the service's promise, and until now
 nothing read them: the tables drifted from the configuration and from each
 other, and the drift was found by hand. A limit is a security decision,
 and a document that names the wrong one is worse than a document that
@@ -19,12 +19,11 @@ import pytest
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 
 
-DOCS = Path("docs/OPERATIONS_AND_MIGRATIONS.md")
-README = Path("README.md")
+DOCS = Path("docs/configuration.md")
 
 ROW = re.compile(
     r"^\|\s*`(?P<endpoint>[a-z_.]+)`\s*\|\s*(?P<limit>\d+)\s*\|\s*"
-    r"(?P<period>\d+)\s*сек\s*\|"
+    r"(?P<period>\d+)\s*s\s*\|"
 )
 
 
@@ -57,7 +56,11 @@ def shipped_limits():
 
 
 class TestTheTablesSayWhatTheServiceDoes:
-    """The operations guide and README against ``RATE_LIMITS``."""
+    """The operations guide against ``RATE_LIMITS``.
+
+    One table, in one document: the limits are an operations matter, and a
+    copy in the README is a second place for the numbers to drift.
+    """
 
     def test_the_guide_lists_every_configured_endpoint(self):
         """A limit that exists and is not published is a limit nobody plans for."""
@@ -73,50 +76,37 @@ class TestTheTablesSayWhatTheServiceDoes:
         """
         assert documented_limits()[endpoint] == shipped_limits()[endpoint]
 
-    def test_the_readme_agrees_about_the_brute_force_limits(self):
-        """
-        The four an attacker meets, in the file most people read first.
-
-        README writes them per minute and per hour rather than in seconds,
-        so the rows are matched by their text; what matters is that the
-        numbers cannot be changed in one document and left in the other.
-        """
-        readme = README.read_text(encoding="utf-8")
-        shipped = shipped_limits()
-
-        login_limit, _ = shipped["auth.login"]
-        register_limit, _ = shipped["auth.register"]
-        refresh_limit, _ = shipped["auth.refresh_token"]
-        logout_limit, _ = shipped["auth.logout"]
-
-        assert f"| `POST /api/v1/auth/login` | {login_limit} / мин |" in readme
-        assert f"| `POST /api/v1/auth/register` | {register_limit} / час |" in readme
-        assert f"| `POST /api/v1/auth/refresh` | {refresh_limit} / мин |" in readme
-        assert f"| `POST /api/v1/auth/logout` | {logout_limit} / мин |" in readme
-
     def test_the_documented_default_is_the_configured_one(self):
         """
-        The pair that bounds everything the tables do not name.
+        The pair that bounds everything the table does not name.
 
-        Both documents state it in prose beside the table, which is the
-        sentence a reader uses to work out what an unlisted route costs.
+        Stated in prose beside the table, which is the sentence a reader
+        uses to work out what an unlisted route costs.
         """
         detached = type("Detached", (BaseConfig,), {"IGNORE_ENV": True})()
         limit = detached.DEFAULT_RATE_LIMIT
 
-        assert f"— {limit} запросов за" in DOCS.read_text(encoding="utf-8")
-        assert f"— {limit} запросов в минуту" in README.read_text(encoding="utf-8")
+        # Whitespace is collapsed first: the sentence is wrapped by the
+        # markdown around it, and a check that depends on where the line
+        # happens to break fails on a reflow that changed nothing.
+        prose = " ".join(DOCS.read_text(encoding="utf-8").split())
+
+        assert f"— {limit} requests per" in prose
 
 
 class TestTheReadLimitsKeepTheirPlaceInTheOrder:
     """
     Not the numbers themselves -- the relations between them.
 
-    Only the four ``auth.*`` limits and the pair of defaults were pinned,
-    because those stand against an attacker. The consequence was honest and
-    unpleasant: ``redirect_to_original`` could go from 200 to 200000 and no
-    run would notice. Pinning all ten to literals would turn every
-    deliberate retune into a red test, which is why it was not done.
+    Four of the fifteen entries are pinned -- ``auth.login``,
+    ``auth.register``, ``auth.refresh_token`` and ``auth.logout`` -- along
+    with the pair of defaults, because those stand against an attacker.
+    The consequence was honest and unpleasant: ``redirect_to_original``
+    could go from 200 to 200000 and no run would notice. Pinning all
+    fifteen to literals would turn every deliberate retune into a red
+    test, which is why it was not done. The other five ``auth.*`` limits
+    -- the reset, verification and password-change endpoints -- are
+    unpinned as well, which is worth knowing rather than assuming.
 
     What is asserted instead is the shape an operator relies on: reading is
     not cheaper to abuse than writing, nothing is effectively unlimited,

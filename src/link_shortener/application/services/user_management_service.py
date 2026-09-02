@@ -4,8 +4,12 @@ from typing import List, Optional
 from link_shortener.application.ports.auth.auth_service import AuthenticationService
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.domain import (
-    User, DomainError, ValidationError,
-    Email, PasswordHash, Role
+    User, DomainError, EmailAlreadyRegisteredError, UserNotFoundError,
+    ValidationError, Email, PasswordHash, Role
+)
+from link_shortener.domain.i18n import N_
+from link_shortener.domain.policies.role_policy import (
+    require_roles_are_assignable,
 )
 
 
@@ -42,19 +46,26 @@ class UserManagementService:
             The created User entity.
 
         Raises:
-            ValidationError: If email is invalid or already registered.
+            ValidationError: If the address is not an address.
+            EmailAlreadyRegisteredError: If an account already carries it.
+                A ``ValidationError``, so a caller catching that catches
+                this too, and answered 409 rather than 400.
+            DomainError: With code ``CONFIGURATION_ERROR`` when no roles
+                were asked for and the deployment's default role is not
+                there to fall back on.
         """
 
-        # Validate email format via value object
-        try:
-            email_vo = Email(email)
-        except ValueError as e:
-            raise ValidationError(str(e), field="email")
-        
+        # Validated by the value object, and left to raise. The wrap that
+        # used to be here caught ``ValueError`` -- which a ``ValidationError``
+        # is not, so it never ran -- and had it run it would have replaced a
+        # marked sentence with a finished one, costing the address error its
+        # translation on the way out.
+        email_vo = Email(email)
+
         # Check uniqueness
         if uow.users.find_by_email(email_vo):
-            raise ValidationError("Email already registered", field="email")
-        
+            raise EmailAlreadyRegisteredError()
+
         # Hash password using authentication service
         hashed_password = self.authentication_service.hash_password(password)
         password_hash_vo = PasswordHash(hashed_password)
@@ -69,7 +80,7 @@ class UserManagementService:
                     code="CONFIGURATION_ERROR"
                 )
             assigned_roles = [default_role]
-        
+
         # Create domain entity (business rules encapsulated inside)
         user = User.create(
             email=email_vo,
@@ -89,7 +100,7 @@ class UserManagementService:
         # Persist
         saved_user = uow.users.save(user)
         return saved_user
-    
+
     def update_roles(self, uow: UnitOfWork, user_id: str, roles: List[Role]) -> User:
         """
         Replace roles of an existing user.
@@ -103,16 +114,39 @@ class UserManagementService:
             Updated User.
 
         Raises:
-            DomainError: If user not found.
+            UserNotFoundError: If no account carries that id.
+            ValidationError: If the new set is empty. An account with no
+                roles is not an account with the least privilege -- it
+                has *less* than an anonymous caller, who is answered as
+                ``guest``. Measured: such an account signed in, and was
+                then refused ``POST /api/v1/shorten``, which a visitor
+                who never signed in may do. The admin API already refused
+                an empty list at its schema and answered ``400
+                VALIDATION_ERROR``; every other way in reached this and
+                was let through, which is how deleting a role stripped
+                its wearers. To park an account, ``deactivate_user`` is
+                the door -- it says what it does and can be undone.
+            RoleNotAssignableError: At the first role no account may wear.
+                This is one of the two doors a role reaches an account
+                through, and the policy is asked at both.
         """
 
         user = uow.users.find_by_id(user_id)
         if not user:
-            raise DomainError(f"User with id {user_id} not found", code="USER_NOT_FOUND")
-        
+            raise UserNotFoundError(user_id)
+
+        if not roles:
+            raise ValidationError(
+                N_("An account must keep at least one role"), field="roles"
+            )
+
+        # ``User.create`` asks this on the way in; this is the other way
+        # a role reaches an account, and it goes around the factory.
+        require_roles_are_assignable(roles)
+
         user.roles = roles
         return uow.users.save(user)
-    
+
     def deactivate_user(self, uow: UnitOfWork, user_id: str) -> User:
         """
         Deactivate a user (soft delete).
@@ -126,11 +160,11 @@ class UserManagementService:
         """
         user = uow.users.find_by_id(user_id)
         if not user:
-            raise DomainError(f"User with id {user_id} not found", code="USER_NOT_FOUND")
+            raise UserNotFoundError(user_id)
         user.deactivate()
 
         return uow.users.save(user)
-    
+
     def activate_user(self, uow: UnitOfWork, user_id: str) -> User:
         """
         Activate a previously deactivated user.
@@ -144,13 +178,33 @@ class UserManagementService:
         """
         user = uow.users.find_by_id(user_id)
         if not user:
-            raise DomainError(f"User with id {user_id} not found", code="USER_NOT_FOUND")
+            raise UserNotFoundError(user_id)
         user.activate()
         return uow.users.save(user)
-    
-    def update_password(self, uow: UnitOfWork, user: User, new_password: str) -> User:
+
+    def update_password(
+        self, uow: UnitOfWork, user: User, new_password: str
+    ) -> int:
         """
-        Replace a user's password with a freshly hashed one.
+        Replace a user's password, and retire everything the old one held.
+
+        The whole act, not the hash alone. A password change retires every
+        session the account has and every reset link outstanding for it,
+        and that is written down in ``docs/decisions.md``: "A new request
+        retires the links outstanding, and so does any password change."
+        The reason is what a password change is usually *for* -- somebody
+        else may have the old one -- and a change that leaves their
+        session open has changed nothing they care about, while a reset
+        link that outlives it is that stranger still holding a way back
+        in.
+
+        All of it here rather than in the callers, because there are three
+        callers and the rule held in two. ``flask security
+        reset-password`` -- the operator's path, reached for an account
+        believed compromised -- replaced the hash and left every session
+        live and every mailed link working. A rule stated in the callers
+        is a rule the next caller does not know about; stated here, it is
+        the only door.
 
         Args:
             uow: Unit of work.
@@ -158,18 +212,30 @@ class UserManagementService:
             new_password: New plain-text password.
 
         Returns:
-            Updated User.
+            How many sessions were revoked, which is what the audit
+            journal records alongside the change.
 
         Raises:
-            ValidationError: If the password is empty.
+            ValidationError: If the password is empty, or the policy
+                refuses it. Raised before anything is retired, so a
+                refused password leaves the account exactly as it was.
         """
         if not new_password:
-            raise ValidationError("Password must not be empty", field="password")
+            raise ValidationError(N_("Password must not be empty"), field="password")
 
+        # The policy lives inside hashing, so a password it refuses is
+        # refused here before a single session is touched.
         hashed = self.authentication_service.hash_password(new_password)
         user.password_hash = PasswordHash(hashed)
+        uow.users.save(user)
 
-        return uow.users.save(user)
+        # The likeliest reason somebody changes a password in a hurry is
+        # that a reset they did not ask for arrived in their mailbox, and
+        # a link that outlives the change is that stranger still holding
+        # the account.
+        uow.password_resets.invalidate_for_user(user.id)
+
+        return uow.refresh_sessions.revoke_all_for_user(user.id)
 
     def list_users(self, uow: UnitOfWork, limit: int = 100, offset: int = 0) -> List[User]:
         """
@@ -184,7 +250,7 @@ class UserManagementService:
             List of User entities.
         """
         return uow.users.list_all(limit=limit, offset=offset)
-    
+
     def get_user_by_id(self, uow: UnitOfWork, user_id: str) -> Optional[User]:
         """
         Find a user by ID.
@@ -197,7 +263,7 @@ class UserManagementService:
             User if found, else None.
         """
         return uow.users.find_by_id(user_id)
-    
+
     def delete_user(self, uow: UnitOfWork, user_id: str) -> bool:
         """
         Permanently delete a user.

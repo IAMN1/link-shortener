@@ -68,7 +68,9 @@ class TestClaimForRotation:
         _open_session(uow_factory, token_id="claim-revoked")
 
         with uow_factory() as uow:
-            uow.refresh_sessions.revoke_by_token_id("claim-revoked")
+            # By its chain, which is what everything here revokes by. A
+            # session opened on its own is its own chain.
+            uow.refresh_sessions.revoke_chain("claim-revoked")
             uow.commit()
 
         with uow_factory() as uow:
@@ -110,18 +112,24 @@ class TestClaimForRotation:
 class TestRevocation:
     """Revocation is scoped, and never silently lost."""
 
-    def test_revoking_twice_reports_only_the_first(self, uow_factory):
+    def test_revoking_twice_counts_only_the_first(self, uow_factory):
+        """The count is what the caller reports, so it must not double.
+
+        A password change writes ``sessions_revoked`` into the audit
+        journal from this number, and a second pass over an already
+        revoked chain would say the account lost its sessions twice.
+        """
         _open_session(uow_factory, token_id="revoke-twice")
 
         with uow_factory() as uow:
-            first = uow.refresh_sessions.revoke_by_token_id("revoke-twice")
+            first = uow.refresh_sessions.revoke_chain("revoke-twice")
             uow.commit()
         with uow_factory() as uow:
-            second = uow.refresh_sessions.revoke_by_token_id("revoke-twice")
+            second = uow.refresh_sessions.revoke_chain("revoke-twice")
             uow.commit()
 
-        assert first is True
-        assert second is False
+        assert first == 1
+        assert second == 0
 
     def test_revoke_chain_spares_other_chains(self, uow_factory):
         _open_session(uow_factory, user_id="chains", token_id="a1")

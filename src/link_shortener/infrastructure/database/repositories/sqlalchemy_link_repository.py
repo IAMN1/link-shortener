@@ -18,8 +18,56 @@ from sqlalchemy.orm import Session
 
 from link_shortener.domain import (Link, LinkRepository, OriginalUrl,
                                    ShortCode, UrlHash, LinkConflictError,
-                                   LinkNotFoundError, DedupScope, OwnerID)
+                                   LinkNotFoundError, DedupScope, OwnerID,
+                                   ServiceLinkStats, UserLinkStats)
+from link_shortener.infrastructure.database.models.base import Base
 from link_shortener.infrastructure.database.models.link_model import LinkModel
+
+
+SHORT_CODE_INDEX_NAME = next(
+    index.name
+    for index in Base.metadata.tables[LinkModel.__tablename__].indexes
+    if [column.name for column in index.columns] == ["short_code"]
+)
+"""Name of the unique index on ``urls.short_code``.
+
+Read off the model rather than written out, for the reason given beside
+``EMAIL_INDEX_NAME``: the name is what PostgreSQL reports a violation of,
+and the two would otherwise have to be kept in step by hand. The migration
+creates it under this name as well.
+"""
+
+
+def _is_code_clash(error: IntegrityError) -> bool:
+    """
+    Report whether an integrity error is the short code index refusing.
+
+    Asked because ``urls`` is refused by more than one constraint, so
+    "something violated a constraint" is not the same question as "that
+    code is taken". Measured on the running stack: saving a link whose
+    owner had gone answered ``ForeignKeyViolation`` on
+    ``fk_urls_owner_id_users``, and reported as a lost race it sent the
+    creation round its five retries and out as "every attempt lost a race
+    with a concurrent creation" -- a cause that had nothing to do with it.
+
+    The two databases say it differently, and both forms are covered:
+    PostgreSQL names the constraint and offers it as
+    ``diag.constraint_name``, while SQLite names the column in the message
+    and offers no diagnostics -- ``UNIQUE constraint failed:
+    urls.short_code``.
+
+    Args:
+        error: The integrity error the flush raised.
+
+    Returns:
+        ``True`` if the short code index is what refused the write.
+    """
+    diagnostics = getattr(error.orig, "diag", None)
+    constraint = getattr(diagnostics, "constraint_name", None)
+    if constraint:
+        return constraint == SHORT_CODE_INDEX_NAME
+    return "urls.short_code" in str(error.orig)
+
 
 class SQLAlchemyLinkRepository(LinkRepository):
     """
@@ -45,13 +93,20 @@ class SQLAlchemyLinkRepository(LinkRepository):
         say "somebody got there first" instead of surfacing a driver error
         as a 500.
 
+        That index and no other: every other way ``urls`` can refuse a
+        write is a different fault, and answering all of them with "lost a
+        race" hands the caller a retry loop that cannot succeed and a
+        reason that is not the reason. Anything else leaves as it came, to
+        be answered as the failure it is.
+
         Raises:
-            LinkConflictError: On any integrity violation from the wrapped
-                statements.
+            LinkConflictError: If the short code index refused the write.
         """
         try:
             yield
         except IntegrityError as error:
+            if not _is_code_clash(error):
+                raise
             # The session is unusable after this; the unit of work rolls it
             # back on the way out and the caller retries in a fresh one.
             raise LinkConflictError() from error
@@ -207,7 +262,9 @@ class SQLAlchemyLinkRepository(LinkRepository):
             .filter(LinkModel.short_code.in_(code_values))
             .all()
         )
-        result = {ShortCode(m.short_code): self._to_domain(m) for m in models}
+        result: Dict[ShortCode, Optional[Link]] = {
+            ShortCode(m.short_code): self._to_domain(m) for m in models
+        }
         # Ensure every requested code is present in the dict (with None if absent)
         for code in short_codes:
             result.setdefault(code, None)
@@ -246,26 +303,35 @@ class SQLAlchemyLinkRepository(LinkRepository):
     # ------------------------------------------------------------------
     # Statistics & click updates
     # ------------------------------------------------------------------
-    def increment_clicks(self, short_code: ShortCode) -> Link:
+    def increment_clicks(self, short_code: ShortCode) -> None:
         """Atomically increment the click counter and update ``last_accessed``.
 
-        The row is read back after the update -- with ``populate_existing``,
-        so the read does not come out of the session's identity map --
-        because the caller is handed the updated entity and because a code
-        that is not there has to be told apart from one that is:
-        ``UPDATE`` alone raises nothing.
+        One statement, and it returns nothing: the ``UPDATE``'s own row
+        count answers the ``LinkNotFoundError`` below, and reading the row
+        back would cost half again as much on the redirect path, which is
+        the one path this service runs hot. A row handed back here would
+        also be a snapshot from the moment of the update, and the counter
+        is the one thing another request may already have moved.
+
+        Pending session state is flushed first -- ``autoflush`` is off on
+        this session factory -- so the ``UPDATE`` sees every row this
+        session has created and its count can be trusted.
+
+        The session is left unsynchronised (``synchronize_session=False``),
+        so a model still in the identity map answers with the counter it
+        had before. Nothing reads the row again inside this session, and
+        ``commit()`` expires its objects, so the next read is fresh.
 
         Args:
             short_code: ShortCode of the link to update.
 
-        Returns:
-            The updated Link entity.
-
         Raises:
             LinkNotFoundError: If no link with the given code exists.
         """
+        self.session.flush()
+
         # Atomic UPDATE in the database
-        self.session.query(LinkModel).filter_by(
+        updated = self.session.query(LinkModel).filter_by(
             short_code=short_code.value
         ).update(
             {
@@ -274,39 +340,15 @@ class SQLAlchemyLinkRepository(LinkRepository):
             },
             synchronize_session=False,
         )
-        self.session.flush()
 
-        # ``populate_existing()`` is load-bearing, and the measurement that
-        # said otherwise was wrong. With ``synchronize_session=False``
-        # SQLAlchemy leaves the session alone -- "the state of objects in
-        # the Session is unchanged and will not automatically correspond to
-        # the UPDATE or DELETE statement that was emitted" (ORM Queryguide,
-        # DML). So a row still held in the identity map answers with the
-        # counter it had before, and this method hands that back as the new
-        # one: measured, it returned 0 while the database held 1.
-        #
-        # The suite missed it because the identity map holds objects
-        # weakly: a test that merely reads the row first has nothing left
-        # in the map by the time the UPDATE runs. It takes a live reference
-        # to reproduce, which is what the test now keeps.
-        model = (
-            self.session.query(LinkModel)
-            .filter_by(short_code=short_code.value)
-            .populate_existing()   # bypass the session's identity map
-            .first()
-        )
-        if not model:
+        if not updated:
             raise LinkNotFoundError(short_code.value)
-        return self._to_domain(model)
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> ServiceLinkStats:
         """Compute service-wide statistics.
 
         Returns:
-            Dictionary with keys:
-                - ``total_urls``: total number of short links.
-                - ``total_clicks``: sum of all clicks.
-                - ``popular_links``: up to 10 most-clicked Link entities.
+            The counts and up to ten most-clicked links.
         """
         total_urls = self.session.query(func.count(LinkModel.id)).scalar()
         total_clicks = self.session.query(func.sum(LinkModel.clicks)).scalar() or 0
@@ -316,11 +358,11 @@ class SQLAlchemyLinkRepository(LinkRepository):
             .limit(10)
             .all()
         )
-        return {
-            "total_urls": total_urls,
-            "total_clicks": total_clicks,
-            "popular_links": [self._to_domain(m) for m in popular_links],
-        }
+        return ServiceLinkStats(
+            total_urls=total_urls,
+            total_clicks=total_clicks,
+            popular_links=[self._to_domain(m) for m in popular_links],
+        )
 
     GUEST_QUOTA_LOCK_NAMESPACE = 1029701804
     """First half of the advisory lock key.
@@ -391,7 +433,7 @@ class SQLAlchemyLinkRepository(LinkRepository):
         ).scalar()
         return count or 0
 
-    def get_user_stats(self, user_id) -> dict:
+    def get_user_stats(self, user_id) -> UserLinkStats:
         """
         Retrieve activity statistics for a specific user.
 
@@ -399,11 +441,7 @@ class SQLAlchemyLinkRepository(LinkRepository):
             user_id: UUID of the user.
 
         Returns:
-            Dictionary with keys:
-                - ``'total_links'``: number of links owned by the user.
-                - ``'total_clicks'``: sum of clicks across those links.
-                - ``'recent_links'``: list of the user's 10 most recent
-                  ``Link`` entities.
+            The account's counts and its ten most recent links.
         """
         total_links = self.session.query(func.count(LinkModel.id)).filter(
             LinkModel.owner_id == user_id
@@ -414,11 +452,11 @@ class SQLAlchemyLinkRepository(LinkRepository):
         recent = self.session.query(LinkModel).filter(
             LinkModel.owner_id == user_id
         ).order_by(LinkModel.created_at.desc()).limit(10).all()
-        return {
-            "total_links": total_links,
-            "total_clicks": total_clicks,
-            "recent_links": [self._to_domain(m) for m in recent],
-        }
+        return UserLinkStats(
+            total_links=total_links,
+            total_clicks=total_clicks,
+            recent_links=[self._to_domain(m) for m in recent],
+        )
 
 
     # ------------------------------------------------------------------
@@ -427,14 +465,11 @@ class SQLAlchemyLinkRepository(LinkRepository):
     def delete(self, link_id: str) -> bool:
         """Delete a link by its identifier.
 
-        Answers from the number of rows the statement actually removed, not
-        from a read that preceded it. Under READ COMMITTED two concurrent
-        deletions both see the row in their own snapshot, both issue a
-        DELETE, and only one of them matches anything -- while the other,
-        judging by its earlier read, used to report success as well. Ten
-        simultaneous requests then answered 200 ten times over one row, and
-        each of them wrote its own "link deleted" line into the audit trail,
-        which is supposed to be the record of what happened.
+        Answers from the number of rows the statement removed, not from a
+        read that preceded it. Under READ COMMITTED two concurrent deletions
+        both see the row in their own snapshot and both issue a DELETE, but
+        only one matches anything; judging by the earlier read, both would
+        report success and both would write a "link deleted" audit line.
 
         Args:
             link_id: Identifier of the link to delete.
@@ -598,7 +633,7 @@ class SQLAlchemyLinkRepository(LinkRepository):
         last_accessed = model.last_accessed
         if last_accessed is not None and last_accessed.tzinfo is None:
             last_accessed = last_accessed.replace(tzinfo=timezone.utc)
-        
+
         expires_at = model.expires_at
         if expires_at is not None and expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)

@@ -1,0 +1,44 @@
+# syntax=docker/dockerfile:1
+
+# The same bookworm the application image is built on: one package
+# system and one set of system tools per stack rather than two.
+FROM debian:bookworm-slim
+
+# gettext-base for the sake of one envsubst: the journal names are
+# substituted into the template at startup, so the rotator watches the same
+# files the application writes. Doing it by hand with sed would save the
+# package and read worse -- envsubst names exactly the variables it is
+# allowed to touch.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    logrotate \
+    gettext-base \
+    && rm -rf /var/lib/apt/lists/*
+
+# Path from the project root: the build context is the root, as it is for
+# the application image. It lands as a template -- the entrypoint makes the
+# finished configuration out of it by substituting the journal names.
+COPY dockers/logrotate.conf /etc/logrotate.d/link_shortener.template
+COPY dockers/logrotate-entrypoint.sh /logrotate-entrypoint.sh
+RUN chmod +x /logrotate-entrypoint.sh
+
+# A loop for the schedule, not cron.
+#
+# A scheduling daemon in a container would have to be given somewhere to
+# put its output (cron mails it, and there is no mail here), have its clock
+# synchronised, and be made to stop on docker's signal. The loop is one
+# process: it shows up in `docker ps`, its output goes to `docker logs`,
+# and it ends when the container does.
+#
+# The hour is how often it looks, not how often it rotates. How often a
+# file is moved aside is decided by daily and weekly in the configuration;
+# the hourly call is what makes maxsize work at all, since that one is only
+# examined at the moment of the call.
+#
+# The state file lives beside the journals on the mounted volume: inside
+# the container it would not survive a restart, and the first call after
+# one would rotate everything again without waiting out the day.
+#
+# The loop itself and the substitution are in /logrotate-entrypoint.sh.
+ENV LOG_ROTATE_INTERVAL=3600
+
+CMD ["/logrotate-entrypoint.sh"]

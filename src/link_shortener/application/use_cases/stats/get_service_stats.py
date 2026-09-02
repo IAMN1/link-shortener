@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
 import time
-from typing import Callable
 
 
 
@@ -9,9 +8,8 @@ from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.stats import ServiceStatsResponse, StatsItemResponse
 from link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
-from link_shortener.application.utils.url_utils import build_short_url
 
 
 @dataclass
@@ -25,7 +23,7 @@ class GetServiceStatsUseCase(BaseUseCase):
     empty container for the first gave the caller a lie it could not detect.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     base_url: str
     cache: StatsCache
     logger: Logger
@@ -76,25 +74,26 @@ class GetServiceStatsUseCase(BaseUseCase):
             with self.uow_factory(read_only=True) as uow:
                 stats_data = uow.links.get_stats()
 
-            total_urls = stats_data.get("total_urls", 0)
-            total_clicks = stats_data.get("total_clicks", 0)
+            total_urls = stats_data.total_urls
+            total_clicks = stats_data.total_clicks
             avg_clicks = total_clicks / total_urls if total_urls > 0 else 0
 
-            popular_links = stats_data.get("popular_links", [])
+            # Its own name: the branch above builds ``popular_links`` out of
+            # what the cache kept, and these are the entities the repository
+            # returned. One name for both made the two shapes look alike.
+            most_clicked = stats_data.popular_links
 
             response = ServiceStatsResponse(
                 total_urls=total_urls,
                 total_clicks=total_clicks,
                 avg_clicks_per_url=round(avg_clicks, 2),
+                # Through the DTO's own factory, which is this and was
+                # written for it. Spelled out here instead, the two said
+                # the same five lines and only one of them was covered by
+                # the tests that build a DTO.
                 popular_links=[
-                    StatsItemResponse(
-                        short_code=str(link.short_code.value),
-                        short_url=build_short_url(self.base_url, link.short_code.value),
-                        original_url=str(link.original_url.value),
-                        clicks=link.clicks,
-                        created_at=link.created_at,
-                    )
-                    for link in popular_links
+                    StatsItemResponse.from_link(link, self.base_url)
+                    for link in most_clicked
                 ],
             )
 
@@ -110,18 +109,17 @@ class GetServiceStatsUseCase(BaseUseCase):
 
             return response
         except Exception as e:
-            # Raised on, not swallowed. This used to answer 200 with
-            # ``{0, 0, 0.0, []}`` -- "the service is empty" -- for any
-            # failure at all, which is a lie a caller cannot detect and the
-            # exact shape of the fabricated-zeroes bug already fixed twice
-            # in the cache. It is reachable without touching anything:
+            # Raised on, not swallowed. Answering 200 with
+            # ``{0, 0, 0.0, []}`` would say "the service is empty" for any
+            # failure at all, which is a lie a caller cannot detect --
+            # and it is reachable without touching anything, since
             # DATABASE_STATEMENT_TIMEOUT aborts the aggregate over a large
-            # enough table, and the endpoint reports an empty service.
+            # enough table.
             #
             # An error here is not a degraded answer, because there is no
             # fallback source for these numbers. The global handler turns it
             # into a 500, which is what "I could not count" means.
-            log.exception("Error getting service stats", exc_info=str(e))
+            log.exception("Error getting service stats", error=str(e))
             raise
         finally:
             duration = time.perf_counter() - start_time

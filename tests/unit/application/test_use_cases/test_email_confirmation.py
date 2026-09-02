@@ -26,7 +26,7 @@ from link_shortener.application.use_cases.auth.send_verification_email import (
 )
 from link_shortener.application.use_cases.auth.verify_email import VerifyEmailUseCase
 from link_shortener.domain import (
-    DomainError, Email, PasswordHash, Role, User, ValidationError
+    Email, PasswordHash, Role, User, ValidationError
 )
 from link_shortener.domain.entities.email_verification import EmailVerification
 from link_shortener.domain.value_objects.verification_token import (
@@ -176,6 +176,7 @@ class TestRegistration:
             uow_factory=uow_factory,
             authentication_service=auth,
             logger=Mock(),
+            audit_logger=Mock(),
             default_role_name="user",
             task_queue=queue,
             verification_ttl_hours=24,
@@ -270,6 +271,7 @@ class TestRegistration:
             uow_factory=uow_factory,
             authentication_service=auth,
             logger=Mock(),
+            audit_logger=Mock(),
             default_role_name="user",
             task_queue=queue,
             verification_ttl_hours=24,
@@ -293,6 +295,7 @@ class TestRegistration:
             uow_factory=uow_factory,
             authentication_service=auth,
             logger=logger,
+            audit_logger=Mock(),
             default_role_name="user",
             task_queue=queue,
             verification_ttl_hours=24,
@@ -312,6 +315,7 @@ class TestRegistration:
             uow_factory=uow_factory,
             authentication_service=auth,
             logger=logger,
+            audit_logger=Mock(),
             default_role_name="user",
             task_queue=queue,
             verification_ttl_hours=24,
@@ -335,15 +339,63 @@ class TestConfirmation:
                 user_id=user.id, token_hash=token_digest(token), ttl_hours=24
             )
         )
-        use_case = VerifyEmailUseCase(uow_factory=uow_factory, logger=Mock())
+        use_case = VerifyEmailUseCase(
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock()
+        )
         return use_case, user, token
 
-    def test_a_live_token_confirms_the_account(self, confirmed):
+    def test_a_live_token_confirms_the_account(self, confirmed, uow):
+        """The flag and the commit, because the flag alone is not evidence.
+
+        ``user`` is the entity the fixture built and handed to the fake
+        repository, and the use case sets the flag on it in place -- so
+        the assertion below holds whether or not the transaction was ever
+        committed. Measured: deleting ``uow.commit()`` from the use case
+        left this green. ``TestRegistration`` beside it reads ``commits``
+        for exactly this reason.
+        """
         use_case, user, token = confirmed
 
         use_case.execute(token, context())
 
         assert user.email_verified is True
+        assert uow.commits == 1
+
+    def test_the_confirmation_reaches_the_audit_journal(self, confirmed):
+        """The act that lets an account sign in leaves a record.
+
+        The journal's rule is that an act changing who may do what is
+        recorded, and this is the act that turns an account which cannot
+        sign in into one that can. Its two neighbours on the self-service
+        path -- a password changed and a password reset -- were recorded
+        from the start; this one was not, so an account appeared at
+        registration and then simply started signing in.
+        """
+        use_case, user, token = confirmed
+
+        use_case.execute(token, context())
+
+        bound = use_case.audit_logger.bind.return_value
+        bound.log_email_confirmed.assert_called_once_with(
+            target_user_id=user.id
+        )
+
+    def test_a_refusal_leaves_no_record(self, confirmed):
+        """A token that cannot be spent names nobody.
+
+        The opposite of the sign-in beside it, where the refusals are the
+        interesting record. Here every way a token can fail is answered
+        alike on purpose, so a record of one would say nothing an operator
+        can act on -- and on the unknown-token path there is not even an
+        account to name.
+        """
+        use_case, _, _ = confirmed
+
+        with pytest.raises(ValidationError):
+            use_case.execute("never-issued", context())
+
+        bound = use_case.audit_logger.bind.return_value
+        bound.log_email_confirmed.assert_not_called()
 
     def test_a_token_works_once(self, confirmed):
         use_case, _, token = confirmed
@@ -370,7 +422,9 @@ class TestConfirmation:
                 now=datetime.now(timezone.utc) - timedelta(days=2),
             )
         )
-        use_case = VerifyEmailUseCase(uow_factory=uow_factory, logger=Mock())
+        use_case = VerifyEmailUseCase(
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock()
+        )
 
         with pytest.raises(ValidationError):
             use_case.execute(token, context())
@@ -385,7 +439,9 @@ class TestConfirmation:
                 user_id="gone", token_hash=token_digest(token), ttl_hours=24
             )
         )
-        use_case = VerifyEmailUseCase(uow_factory=uow_factory, logger=Mock())
+        use_case = VerifyEmailUseCase(
+            uow_factory=uow_factory, logger=Mock(), audit_logger=Mock()
+        )
 
         with pytest.raises(ValidationError):
             use_case.execute(token, context())
@@ -523,7 +579,9 @@ class TestTheMessageItself:
         use_case.execute("user@example.com", "TOKEN-123", context())
 
         url = templates.verification_email.call_args.kwargs["confirm_url"]
-        assert url.startswith("https://links.example.com/auth/verify?token=")
+        # The confirmation page, not the endpoint: what arrives in a
+        # mailbox is opened by a browser, and the endpoint answers JSON.
+        assert url.startswith("https://links.example.com/verify?token=")
 
     def test_a_trailing_slash_does_not_double(self, ):
         use_case, templates = self._use_case(Mock(), "https://links.example.com/")
@@ -531,7 +589,10 @@ class TestTheMessageItself:
         use_case.execute("user@example.com", "TOKEN-123", context())
 
         url = templates.verification_email.call_args.kwargs["confirm_url"]
-        assert "//auth" not in url
+        # Named after the path the link actually carries. Held against
+        # "//auth" it went on passing once that path was gone, which is a
+        # test that cannot fail rather than one that holds.
+        assert "//verify" not in url
 
     def test_the_token_is_escaped_for_a_query_string(self):
         use_case, templates = self._use_case(Mock())
@@ -605,10 +666,11 @@ class TestTheMessageItself:
 class TestTheSweep:
     """Old unconfirmed registrations, and the tokens left behind."""
 
-    def _use_case(self, uow_factory, ttl_hours=72):
+    def _use_case(self, uow_factory, ttl_hours=72, audit=None):
         return CleanUnverifiedAccountsUseCase(
             uow_factory=uow_factory,
             logger=Mock(),
+            audit_logger=audit or Mock(),
             unverified_ttl_hours=ttl_hours,
         )
 
@@ -636,8 +698,26 @@ class TestTheSweep:
         stale = User.create(Email("stale@example.com"), PasswordHash(HASH))
         stale.created_at = datetime.now(timezone.utc) - timedelta(hours=100)
         uow.users.save(stale)
+        # Expired, because that is what the second half counts:
+        # ``delete_expired`` removes tokens that can no longer be spent,
+        # and a live one is deliberately left alone.
+        uow.email_verifications.save(
+            EmailVerification.issue(
+                user_id=stale.id, token_hash=token_digest(issue_token()),
+                ttl_hours=24,
+                now=datetime.now(timezone.utc) - timedelta(hours=100),
+            )
+        )
 
-        assert self._use_case(uow_factory).execute(context()) == 1
+        accounts, tokens = self._use_case(uow_factory).execute(context())
+
+        assert accounts == 1
+        # The second half of the answer, which every test here discarded
+        # with ``_``: the use case returns it because the report prints it
+        # and because a token outliving the account it belongs to is a live
+        # credential for a row that is gone. Returning a constant 0 for it
+        # left the whole suite green.
+        assert tokens == 1
 
     def test_it_leaves_confirmed_accounts_alone(self, uow_factory, uow):
         settled = User.create(
@@ -646,5 +726,44 @@ class TestTheSweep:
         settled.created_at = datetime.now(timezone.utc) - timedelta(days=400)
         uow.users.save(settled)
 
-        assert self._use_case(uow_factory).execute(context()) == 0
+        accounts, _ = self._use_case(uow_factory).execute(context())
+        assert accounts == 0
         assert uow.users.users == [settled]
+
+    def test_a_sweep_that_removed_accounts_reaches_the_audit_trail(
+        self, uow_factory, uow
+    ):
+        """
+        The accounts go for a reason nobody argues with, and they still
+        go. Measured on the running stack before this was written: the
+        security journal held 111 records before a sweep that deleted an
+        account and 111 after, while ``DELETE /api/v1/admin/users/<id>``
+        -- the same outcome through the other door -- writes
+        ``USER_DELETED`` every time.
+        """
+        audit = Mock()
+        stale = User.create(Email("swept@example.com"), PasswordHash(HASH))
+        stale.created_at = datetime.now(timezone.utc) - timedelta(hours=100)
+        uow.users.save(stale)
+
+        self._use_case(uow_factory, audit=audit).execute(context())
+
+        audit.bind.return_value.log_unverified_accounts_swept.assert_called_once()
+        _, kwargs = (
+            audit.bind.return_value.log_unverified_accounts_swept.call_args
+        )
+        assert kwargs["accounts_deleted"] == 1
+
+    def test_a_sweep_that_removed_nothing_writes_no_record(
+        self, uow_factory, uow
+    ):
+        """
+        A schedule running over a clean service would otherwise write a
+        record every run saying it did nothing, and the records that
+        matter would sit among them.
+        """
+        audit = Mock()
+
+        self._use_case(uow_factory, audit=audit).execute(context())
+
+        audit.bind.return_value.log_unverified_accounts_swept.assert_not_called()

@@ -1,0 +1,113 @@
+# ==============================================================================
+# The development overlay on docker-compose.yml
+# ==============================================================================
+# Compose picks this file up on its own, so the ordinary command
+#
+#   docker compose --env-file .env.docker up -d
+#
+# brings up the development stack: the dev server with its debugger and the
+# sources mounted. Nothing about the usual way of working changes.
+#
+# The production stack is the base without the overlay, which means naming
+# the file explicitly:
+#
+#   docker compose -f dockers/docker-compose.yml --env-file .env.docker up -d
+#
+# The application then starts from the image's CMD: gunicorn with a ceiling
+# on a request.
+#
+# The split exists so the dev server cannot end up in the production form:
+# under `flask run --debug` none of gunicorn's hardening applies (the
+# per-request ceiling), and Werkzeug's interactive debugger answers
+# `GET /console`.
+# ==============================================================================
+
+services:
+
+    # A mail catcher: it accepts SMTP on 1025, sends nothing on, and shows
+    # everything it caught at http://127.0.0.1:8025. Only in the overlay --
+    # the production stack submits to a real server.
+    #
+    # A catcher rather than writing mail to a file: the same code runs
+    # through it as in service -- smtplib, the SMTP dialogue, the assembly
+    # of headers.
+    #
+    # It offers no TLS, and `DevelopmentConfig` knows that: MAIL_USE_TLS is
+    # False there. A password must not be set -- configuration validation
+    # refuses rather than send it in the clear.
+    mailpit:
+      image: axllent/mailpit:latest
+      container_name: link_shortener_mailpit
+      # Behind a profile of its own. A real server is named by MAIL_HOST and
+      # MAIL_PORT, with this profile left off. Nothing depends_on it: the
+      # application starts without mail.
+      profiles: ["mail"]
+      restart: unless-stopped
+      # Both on the loopback: the mailbox holds other people's addresses and
+      # their confirmation links.
+      ports:
+        - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+        - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+      environment:
+        # The mailbox lives in memory and goes with the container.
+        MP_MAX_MESSAGES: 500
+      healthcheck:
+        test: ["CMD", "/mailpit", "readyz"]
+        interval: 10s
+        timeout: 3s
+        retries: 5
+
+    migrations:
+      volumes:
+        # A revision created inside the container by `flask alembic migrate`
+        # lands on the host at once.
+        #
+        # `../`, because compose counts a relative path from its own file's
+        # directory, which is now dockers/. These three live in the project
+        # root.
+        - ../alembic.ini:/app/alembic.ini
+        - ../migrations:/app/migrations
+        # Alembic needs the models for --autogenerate.
+        - ../src:/app/src
+
+    app:
+      # The catcher's address. Here rather than in the base file: the
+      # production form has no catcher, and MAIL_HOST there is named by the
+      # env file.
+      #
+      # The same substitution as REDIS_URL uses: empty means the catcher
+      # from this stack, set means a real server. Without it the container
+      # would get the profile's default of `localhost` -- its own loopback.
+      environment:
+        MAIL_HOST: ${MAIL_HOST:-mailpit}
+        MAIL_PORT: ${MAIL_PORT:-1025}
+      # !override is required: compose **merges** ports rather than
+      # replacing them, and without the tag the base file's publication
+      # would stay alongside the loopback one.
+      ports: !override
+        # Loopback only: Werkzeug's debugger is an interactive console and
+        # has no place on a network. The host side is kept separate from the
+        # container side.
+        - "127.0.0.1:${APP_HOST_PORT:-5000}:${PORT:-5000}"
+      volumes:
+        - ${APP_SRC_PATH}:/app/src
+        - ${LOG_HOST_PATH}:/app/${LOG_DIR}
+        # Without them `flask alembic ...` inside the container fails with
+        # "No 'script_location' key found". Paths from the root, see above.
+        - ../alembic.ini:/app/alembic.ini
+        - ../migrations:/app/migrations
+      command: flask run --host=${HOST:-0.0.0.0} --port=${PORT:-5000} --debug
+
+    celery_worker:
+      # With CELERY_ENABLED=true the mail goes out from here, and the worker
+      # needs the catcher's address as much as the application does.
+      environment:
+        MAIL_HOST: ${MAIL_HOST:-mailpit}
+        MAIL_PORT: ${MAIL_PORT:-1025}
+      volumes:
+        - ${LOG_HOST_PATH}:/app/${LOG_DIR}
+        # The sources are mounted for the worker too, or it runs the code
+        # from the image while the application runs the edit. Celery has no
+        # autoreload: an edit is applied by
+        # `docker compose restart celery_worker`.
+        - ${APP_SRC_PATH}:/app/src

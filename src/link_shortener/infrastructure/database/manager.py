@@ -6,8 +6,9 @@ for manual sessions.
 """
 
 from contextlib import contextmanager
-from typing import Generator, Iterable
+from typing import Optional, Any, Dict, Generator, Iterable
 
+from sqlalchemy.engine import Engine
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
@@ -54,7 +55,7 @@ def postgresql_connect_args(
         Mapping for ``create_engine(connect_args=...)``, empty when
         neither timeout is configured.
     """
-    args = {}
+    args: Dict[str, Any] = {}
 
     if connect_timeout:
         args["connect_timeout"] = connect_timeout
@@ -114,9 +115,11 @@ class DatabaseManager:
         self.connect_timeout = connect_timeout
         self.statement_timeout = statement_timeout
         self.pool_params = pool_params
-        self.engine = None
-        self._session_factory = None
-        self._probe_engine = None
+        # Annotated Optional rather than inferred from these assignments:
+        # all three hold None until connect() runs.
+        self.engine: Optional[Engine] = None
+        self._session_factory: Optional[sessionmaker] = None
+        self._probe_engine: Optional[Engine] = None
 
     def connect(self) -> "DatabaseManager":
         """
@@ -135,10 +138,17 @@ class DatabaseManager:
 
         # Add pool parameters only for PostgreSQL (SQLite doesn't support them)
         if self.database_type == "postgresql":
+            # ``None`` is dropped and nothing else. Dropping a zero with
+            # it would silently reverse two settings:
+            # ``DATABASE_MAX_OVERFLOW=0`` caps the pool at ``pool_size``
+            # and would arrive as SQLAlchemy's default of 10, and
+            # ``DATABASE_POOL_RECYCLE=0`` would arrive as -1, which is
+            # "never recycle". The zeros that mean "no pool" belong to the
+            # other backends, and the whole block is skipped for them.
             engine_kwargs.update(
                 {
-                    k: v for k, v in  self.pool_params.items()
-                        if v is not None and v != 0
+                    k: v for k, v in self.pool_params.items()
+                    if v is not None
                 }
             )
             engine_kwargs.update(self._connect_args())
@@ -217,6 +227,47 @@ class DatabaseManager:
 
         with self._probe_engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+
+    def missing_declared_tables(self) -> list[str]:
+        """
+        Which of the tables the models declare the database does not have.
+
+        This exists because "the database answered" and "the database holds
+        this application's schema" are two questions, and only the first
+        was ever asked. A stack whose migration ran somewhere else answers
+        ``SELECT 1`` perfectly: the connection is real, the database is
+        real, and it is empty. Measured on a fresh clone -- the migration
+        container wrote a schema into its own filesystem, the application
+        opened a different database, ``/health`` reported ``healthy`` and
+        the landing page answered ``500 no such table: roles``.
+
+        Asked of the shared engine, and **not** of the probe engine that
+        ``probe`` uses, though the caller is the same health check. The
+        question here is whether the connection this application serves
+        from holds the schema, and a second engine is not that connection:
+        against ``sqlite:///:memory:`` it is a different, empty database
+        altogether, so the probe would report a missing schema for every
+        such deployment -- including the entire test suite, which is how
+        this was caught. The pool cost that ``probe`` avoids is paid once:
+        the caller stops asking as soon as the answer is "nothing missing".
+
+        The set is taken from ``Base.metadata`` rather than named here, so
+        a model added later is covered without anybody remembering to add
+        it. ``alembic_version`` is deliberately not among them: it is
+        alembic's bookkeeping, not this application's schema, and a
+        deployment whose tables were created some other way is not broken.
+
+        Returns:
+            The names that are absent, sorted. Empty when the schema is
+            whole.
+
+        Raises:
+            RuntimeError: If connect() hasn't been called.
+            Exception: Whatever the driver raises when it cannot connect.
+                A database that cannot be reached is not a database with a
+                missing schema, and the two are not merged here.
+        """
+        return self.missing_tables(sorted(Base.metadata.tables))
 
     def close(self):
         """Dispose of the engine and all associated connections."""

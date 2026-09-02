@@ -14,11 +14,11 @@ that is wrong.
 
 from pathlib import Path
 
-import pytest
 
 from link_shortener.infrastructure.configs.app import base as base_module
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 from link_shortener.infrastructure.configs.app.staging import StagingConfig
+from link_shortener.infrastructure.configs.app.testing import TestingConfig
 
 
 def detached(**overrides):
@@ -58,8 +58,8 @@ class TestARelativeDirectoryIsAnchored:
         The directory it lands in is checked by its markers rather than
         against ``PROJECT_ROOT``: an expectation built from the same
         constant the code reads agrees with whatever root that constant
-        holds, a wrong one included. Measured -- with the root moved one
-        level up, the ``PROJECT_ROOT``-shaped assertions all still passed.
+        holds, a wrong one included: with the root moved one level up, the
+        ``PROJECT_ROOT``-shaped assertions all still pass.
         """
         monkeypatch.chdir(tmp_path)
 
@@ -67,8 +67,12 @@ class TestARelativeDirectoryIsAnchored:
 
         assert not str(log_dir).startswith(str(tmp_path))
         assert log_dir.name == "logs"
-        assert (log_dir.parent / "pyproject.toml").is_file()
-        assert (log_dir.parent / "src").is_dir()
+        # `datas/logs`, and the root above that identified by the
+        # project's own markers rather than by PROJECT_ROOT, which
+        # would agree with any root the code reported.
+        assert log_dir.parent.name == "datas"
+        assert (log_dir.parent.parent / "pyproject.toml").is_file()
+        assert (log_dir.parent.parent / "src").is_dir()
 
     def test_a_nested_relative_directory_keeps_its_shape(self):
         """``var/log`` is a relative path too, not merely a bare name."""
@@ -108,6 +112,9 @@ class TestWhatIsLeftAlone:
 
         assert log_dir.is_absolute()
         assert log_dir.name == "staging-logs"
+        # A profile's own relative default is anchored where it says --
+        # straight under the root, not under `datas`, which is only where
+        # the base default points.
         assert (log_dir.parent / "pyproject.toml").is_file()
 
     def test_a_detached_config_does_not_read_the_machine(self, monkeypatch):
@@ -123,6 +130,25 @@ class TestWhatIsLeftAlone:
         assert detached().LOG_DIR != "/var/log/from-the-machine"
         assert Path(detached().LOG_DIR).name == "logs"
 
+    def test_the_testing_profile_is_the_one_that_is_detached(self, monkeypatch):
+        """
+        The check above builds its own detached subclass, so it holds for
+        `IGNORE_ENV` and says nothing about who sets it. `TestingConfig`
+        is where it is set, and it is the profile the whole suite runs
+        under: flipped there, every test starts reading the machine it
+        runs on and this file stays green.
+
+        Asked through the journal directory because that is what it costs
+        -- a suite that reads `LOG_DIR` from the environment writes its
+        logs into whatever the developer or the CI job happens to export.
+        """
+        monkeypatch.setenv("LOG_DIR", "/var/log/from-the-machine")
+
+        log_dir = TestingConfig().LOG_DIR
+
+        assert log_dir != "/var/log/from-the-machine"
+        assert Path(log_dir).name == "logs"
+
     def test_outside_a_source_tree_nothing_is_invented(self, monkeypatch):
         """An installed copy has no project directory to anchor to.
 
@@ -132,4 +158,4 @@ class TestWhatIsLeftAlone:
         """
         monkeypatch.setattr(base_module, "PROJECT_ROOT", None)
 
-        assert detached().LOG_DIR == "logs"
+        assert detached().LOG_DIR == "datas/logs"

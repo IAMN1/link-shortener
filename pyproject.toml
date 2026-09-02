@@ -1,80 +1,112 @@
 [project]
 name = "link-shortener"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.9.0"
+description = "A URL shortener with clean architecture, RBAC and a two-level cache"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 dependencies = [
     "alembic>=1.18.4",
     "bcrypt>=5.0.0",
     "celery>=5.6.3",
     "flask>=3.1.2",
+    # Interface translations. Taken not for substituting strings -- a
+    # twenty-line dictionary would have done that -- but for plurals:
+    # Russian has three forms (ссылка / ссылки / ссылок), and the rule for
+    # choosing among them lives in the gettext catalogues themselves rather
+    # than in the page's code. Choosing the form ourselves would mean
+    # writing that rule again for every language.
+    "flask-babel>=4.0.0",
     "flask-cors>=6.0.2",
     # Runtime, not tooling: it is the production image's CMD. Absent from
     # here, the image built and then failed on start -- masked in compose,
     # which overrides the command with `flask run`.
     "gunicorn>=23.0.0",
-    # Разбор интернационализированных доменов (IDNA 2008 + UTS-46).
-    # Встроенный кодек 'idna' в стандартной библиотеке — это IDNA 2003:
-    # он не знает раскладки UTS-46, спотыкается о метки длиннее 63 байт
-    # после кодирования и по-другому обходится с ß и ς.
+    # Parsing internationalised domain names (IDNA 2008 + UTS-46). The
+    # standard library's built-in 'idna' codec is IDNA 2003: it knows
+    # nothing of the UTS-46 mapping, trips over labels longer than 63 bytes
+    # once encoded, and treats ß and ς differently.
     "idna>=3.10",
-    # Приходит транзитивно с Flask, но используется напрямую — подпись
-    # значений кэша. Объявлено явно, чтобы смена зависимостей Flask не
-    # унесла её молча.
+    # Arrives transitively with Flask, but is used directly -- signing
+    # cache values. Declared explicitly so that a change in Flask's
+    # dependencies cannot take it away in silence.
     "itsdangerous>=2.2.0",
-    # Та же причина: шаблоны писем рисуются своим Environment, минуя Flask,
-    # — почта уходит из воркера Celery, где приложения нет вовсе.
+    # The same reason: the mail templates are rendered by an Environment of
+    # their own, bypassing Flask -- the mail goes out from a Celery worker,
+    # where there is no application at all.
     "jinja2>=3.1.4",
     "psycopg[binary]>=3.3.3",
     "pydantic>=2.12.5",
     "pyjwt>=2.12.1",
     "python-dotenv>=1.2.1",
     "redis>=7.1.0",
-    "sqlalchemy[asyncio]>=2.0.45",
+    # Without the `asyncio` extra: nothing in this project is async --
+    # no coroutine, no `AsyncSession`, and both drivers it runs on
+    # (psycopg for PostgreSQL, the standard library for SQLite) are
+    # synchronous. The extra only pinned `greenlet` on every platform,
+    # which SQLAlchemy already asks for on the ones that need it.
+    # Rendering QR codes. Pure Python with no dependencies of its own, and
+    # it writes SVG directly -- so a code is a vector the reader can print
+    # at any size, and nothing has to draw pixels or pull in an imaging
+    # library. The alternative in wide use, `qrcode`, renders through
+    # Pillow: a C extension and a wheel per platform, to produce a raster
+    # of a shape that is not raster.
+    "segno>=1.6.6",
+    "sqlalchemy>=2.0.45",
     "structlog>=25.5.0",
-    "validators>=0.35.0",
 ]
 
 [dependency-groups]
-# Not in `dev`: `requirements.txt` is exported from the lock without
-# filtering groups, and Dockerfile pip-installs that file -- so anything in
-# `dev` travels into the runtime image. Measured: adding playwright there
-# took the image from 540 MB to 731 MB, for a browser the service never
-# starts. The browser run is driven by hand from a developer's machine
-# (`tests/live/browser_test.py`), which is exactly where this group is
-# installed: `uv sync --group browser`.
+# A group of its own rather than part of `dev`: `uv export` puts only the
+# default group into requirements.txt, and that file is what pip installs
+# into the image. Everything in `dev` travels into the runtime image;
+# nothing in a group of its own does.
+# Installed by hand: `uv sync --group browser`.
 browser = [
     "playwright>=1.49",
 ]
+contract = [
+    "schemathesis>=4",
+]
 dev = [
+    # The one formatter, and the only one that agrees with the tree.
+    # Measured on 643 files: `autopep8 --diff` proposes nothing, `black`
+    # would rewrite 496 of them and `isort` 421 -- so running either of
+    # those is not "format before committing", it is reformatting the
+    # project. Both were declared and neither was ever run; they are gone.
+    # `.flake8` selects no code that rewrites a line, so layout is not a
+    # gate either way -- and `autopep8` takes its `select` from that same
+    # file, so what the gate watches is what the formatter fixes.
+    # `isort` is still installed -- `pylint` depends on it -- but it is no
+    # longer declared here as something this project runs.
     "autopep8>=2.3.2",
     "bandit>=1.9.2",
-    "black>=26.1.0",
     "flake8>=7.3.0",
-    "isort>=7.0.0",
     "mypy>=1.19.1",
     "openapi-spec-validator>=0.7.1",
     "pylint>=4.0.4",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
-    # Supplies --error-for-skips, which CI passes and nobody else does.
-    # Locked here rather than installed ad hoc in the workflow so its
-    # version is pinned by uv.lock like everything else -- which also means
-    # it reaches the image, since requirements.txt exports this group whole
-    # and Dockerfile pip-installs the file. That is how every linter here
-    # already travels; noted rather than fixed. The flag guards the
-    # single skip branch the suite has -- an unreachable Docker daemon --
-    # which is an honest skip on a laptop and a silent loss of 35
-    # PostgreSQL and Redis tests on a runner that is supposed to have it.
+    # Provides --error-for-skips, which only CI uses. Declared here so that
+    # uv.lock pins its version; it travels into the image along with every
+    # linter in the group.
     "pytest-error-for-skips>=2.0.2",
     "pytest-mock>=3.15.1",
+    "types-pyyaml>=6.0",
+]
+# The tool the numbers in docs/development.md were measured with. In a
+# group of its own for the same reason as `browser` above.
+# To run: `uv sync --group load`, then tests/load/locustfile.py.
+load = [
+    "locust>=2.32",
 ]
 
-# Без этой секции uv не устанавливает проект в виртуальное окружение,
-# и пакет link_shortener не импортируется без ручного PYTHONPATH=src.
-# С ней `uv sync` ставит проект в editable-режиме, и команды
-# `flask run`, `flask db ...`, `alembic upgrade head` работают из коробки.
+# Without this section uv does not install the project into the virtual
+# environment, and the link_shortener package does not import without a
+# manual PYTHONPATH=src. With it, `uv sync` installs the project in editable
+# mode and `flask run`, `flask db ...` and `alembic upgrade head` work as
+# they stand.
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -83,22 +115,32 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 include = ["link_shortener", "link_shortener.*"]
 
-# Без этого в установленный пакет попадает только код. Обнаружено при
-# запуске продакшн-образа: `flask db load-base-roles` падал с
-# `RBAC configuration file not found`, потому что roles.yaml остался в
-# репозитории. Не косметика — без ролей анонимное сокращение отвечает 401.
-# Шаблоны и статика по той же причине: без них не отрисовывается ни одна
-# HTML-страница.
+# Without this, only the code reaches the installed package. Found by
+# running the production image: `flask db load-base-roles` failed with
+# `RBAC configuration file not found`, because roles.yaml had stayed behind
+# in the repository. Not cosmetic -- with no roles, anonymous shortening
+# answers 401. Templates and static files for the same reason: without them
+# not one HTML page renders.
 [tool.setuptools.package-data]
 link_shortener = [
     "infrastructure/configs/rbac/*.yaml",
     "web/templates/*.html",
     "web/templates/**/*.html",
-    # Письма — обычный текст, а не HTML, и под предыдущие два шаблона они
-    # не подпадают. Без этой строки они остаются в репозитории, как когда-то
-    # roles.yaml: страницы рисуются, регистрация проходит, письмо не уходит.
+    # The mail bodies are plain text and are not covered by the templates
+    # above.
     "web/templates/**/*.txt",
     "web/static/**/*",
+    # Translations. Found by the same trap as roles.yaml: without this line
+    # the image installs, starts and quietly serves every page in English,
+    # because gettext, finding no catalogue, returns the source text -- and
+    # the source text is English. There is no error.
+    #
+    # `.mo` is what gettext reads; `.po` is what a person edits. Both live
+    # in the package: the suite holds one against the other, and without the
+    # `.po` beside it there would be nothing to hold it against.
+    "web/translations/*.pot",
+    "web/translations/**/*.po",
+    "web/translations/**/*.mo",
 ]
 
 [tool.pytest.ini_options]
@@ -107,17 +149,15 @@ pythonpath = ["src"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-# --strict-markers and --strict-config used to sit in addopts below and did
-# nothing there. Both are OverrideIniAction, and Config.parse freezes the
-# override list from the real command line *before* it prepends addopts, so
-# a copy living in addopts never reaches getini. Measured: an unregistered
-# marker under the old addopts printed "1 passed, 1 warning". Declared as
-# ini options they take effect, and they take effect for every invocation
-# rather than only for the ones that spell the flags out again.
+# As ini options rather than flags in addopts: both are OverrideIniAction,
+# and Config.parse freezes the list of overrides from the real command line
+# before addopts is substituted, so a copy inside addopts never reaches
+# getini. As ini options they apply to every run.
 strict_markers = true
 strict_config = true
-# The canonical name; `xfail_strict` is its alias. Turns an xfail that has
-# started passing into a failure instead of an `xpassed` line nobody reads.
+# The canonical name; `xfail_strict` is an alias. An xfail that
+# unexpectedly passes becomes a failure rather than a line reading
+# `xpassed`.
 strict_xfail = true
 
 addopts = [
@@ -127,37 +167,75 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
-    # A floor, two points under where the suite stands. Coverage was
-    # measured and reported and bounded by nothing, so a private method
-    # nobody calls -- or a test quietly deleted -- cost a fraction of a
-    # percent and went unnoticed. Two points of slack so that ordinary
-    # work does not trip it and a real loss does; lowering it is a
-    # decision someone has to write down, which is the point.
+    # A floor rather than a reflection of what has been reached: the gap is
+    # left wide so the threshold catches a real loss rather than the
+    # movement of ordinary work. Lowering it has to be written down.
     "--cov-fail-under=88",
     "--junitxml=test-results/junit.xml"
 ]
 
+# Applied automatically by directory -- see `pytest_collection_modifyitems`
+# in tests/conftest.py. They are not written by hand: a test's category is
+# where it lives, and a marker typed into a file can drift from that place.
+#
+# The old list also declared `slow`, `database`, `cache` and `api`. No test
+# carried any of them, so there was nothing to select by.
 markers = [
-    "unit: unit tests (fast, isolated)",
-    "integration: integration tests (require external services)",
-    "e2e: end-to-end tests (full system)",
-    "slow: slow running tests",
-    "database: tests that use database",
-    "cache: tests that use cache",
-    "api: tests for API endpoints",
+    # Flask appears in them -- but with every service of the container
+    # replaced by a stub, so there is little mocking and nothing external.
+    "unit: starts no external service",
+    "integration: several real layers together",
+    "docker: needs the test stack running (PostgreSQL and Redis)",
+    "e2e: a user's path end to end",
+    "contract: generated from the published OpenAPI document",
 ]
 
-[tool.flake8]
-max-line-length = 88
-ignore = "E203, W503"
+# flake8 is configured by the .flake8 file: it does not read
+# pyproject.toml.
 
+# A list rather than a string: inside a string TOML does not treat a hash as
+# a comment, and pylint would take the comment's text for a message name.
 [tool.pylint.'MESSAGES CONTROL']
-disable = """
-    W0107,  # unnecessary-pass (нормально для абстрактных методов)
-    W0511,  # fixme (можно оставить TODO)
-    R0801,  # duplicate-code (фальшивые срабатывания)
-"""
+disable = [
+    # Fine on an abstract method.
+    "unnecessary-pass",
+    "unnecessary-ellipsis",
+    # A TODO is allowed to stay.
+    "fixme",
+    # False positives: the openings of handlers of one kind coincide.
+    "duplicate-code",
+]
 
 [tool.pylint.'MASTER']
 fail-under = 9.0
 ignore-patterns = ["test_.*", "_test.*"]
+
+# Only src is checked, as with bandit: the tests hold stubs whose business
+# is to stand in for a real object rather than to reproduce its type.
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+# Without this, mypy does not enter the bodies of unannotated functions and
+# reports that as a note rather than an error: the gate would have been
+# silent about the whole of `di/container.py` and the CLI adapter, neither
+# of which is annotated. On the day the flag was turned on it had been
+# hiding 39 errors across 5 files while the gate read zero; eight of them
+# were about the cache, which the container hands out under four roles while
+# declaring one.
+check_untyped_defs = true
+# A suppression that is no longer needed is a lie about the code: the line
+# says there is a limitation here when there is not. Every `type: ignore` in
+# src is held by this setting.
+warn_unused_ignores = true
+warn_redundant_casts = true
+# The same goes for the sections below: a package that has since gained
+# stubs must not quietly stay on the list of undeclared ones.
+warn_unused_configs = true
+
+# celery, flask_babel and flask_cors ship neither stubs nor a py.typed
+# marker. Named one by one rather than covered by a blanket
+# --ignore-missing-imports: that way the silence extends to exactly three
+# packages, and a new untyped import is still visible.
+[[tool.mypy.overrides]]
+module = ["celery.*", "flask_babel.*", "flask_cors.*"]
+ignore_missing_imports = true

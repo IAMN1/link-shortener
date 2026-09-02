@@ -1,5 +1,5 @@
-from typing import Callable
-from link_shortener.application import Logger, UnitOfWork
+from typing import Optional
+from link_shortener.application import UnitOfWorkFactory, Logger
 from link_shortener.infrastructure.auth.jwt_auth_service import JwtAuthenticationService
 from link_shortener.infrastructure.auth.rbac_authorization_service import RBACAuthorizationService
 
@@ -16,7 +16,7 @@ class AuthComponent:
                  jwt_access_expire_minutes: int,
                  jwt_refresh_expire_days: int,
                  jwt_algorithm: str,
-                 uow_factory: Callable[[], UnitOfWork],
+                 uow_factory: UnitOfWorkFactory,
                  logger: Logger,
     ):
 
@@ -37,8 +37,11 @@ class AuthComponent:
         self.uow_factory = uow_factory
         self.logger = logger
 
-        self._authentication_service = None
-        self._authorization_service = None
+        # Annotated Optional rather than inferred from this assignment: the
+        # attribute holds None until the first call builds it, and a checker
+        # told otherwise reports both the assignment and the return as errors.
+        self._authentication_service: Optional[JwtAuthenticationService] = None
+        self._authorization_service: Optional[RBACAuthorizationService] = None
 
     def get_authentication_service(self) -> JwtAuthenticationService:
         """

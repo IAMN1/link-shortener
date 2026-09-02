@@ -1,21 +1,12 @@
 from dataclasses import dataclass
-from typing import Callable
 
 from link_shortener.application import (
-    CreateUserUseCase,
-    UpdateUserRolesUseCase,
-    DeactivateUserUseCase,
-    ActivateUserUseCase,
-    ListUsersUseCase,
-    GetUserUseCase,
-    DeleteUserUseCase,
-    UserManagementService,
-    AuditLogger,
-    LinkCache,
-    Logger,
-    RedirectCache,
-    StatsCache,
-    UnitOfWork,
+    UnitOfWorkFactory, CreateUserUseCase,
+    UpdateUserRolesUseCase, DeactivateUserUseCase, ActivateUserUseCase,
+    ListUsersUseCase, GetUserUseCase, DeleteUserUseCase,
+    ConfirmUserEmailUseCase,
+    UserManagementService, AuditLogger, LinkCache, Logger, RedirectCache,
+    StatsCache
 )
 
 
@@ -27,7 +18,7 @@ class AdminUserUseCasesComponent:
     All methods return fully initialised use case instances.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     user_service: UserManagementService
     cache: LinkCache
     redirect_cache: RedirectCache
@@ -41,14 +32,16 @@ class AdminUserUseCasesComponent:
             user_service=self.user_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
         )
 
     def get_update_user_roles_use_case(self) -> UpdateUserRolesUseCase:
         """Return a configured ``UpdateUserRolesUseCase``."""
         return UpdateUserRolesUseCase(
-            user_service=self.user_service,            
+            user_service=self.user_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
         )
 
     def get_deactivate_user_use_case(self) -> DeactivateUserUseCase:
@@ -57,6 +50,15 @@ class AdminUserUseCasesComponent:
             user_service=self.user_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
+        )
+
+    def get_confirm_user_email_use_case(self) -> ConfirmUserEmailUseCase:
+        """Return a configured ``ConfirmUserEmailUseCase``."""
+        return ConfirmUserEmailUseCase(
+            logger=self.logger,
+            uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
         )
 
     def get_activate_user_use_case(self) -> ActivateUserUseCase:
@@ -65,6 +67,7 @@ class AdminUserUseCasesComponent:
             user_service=self.user_service,
             logger=self.logger,
             uow_factory=self.uow_factory,
+            audit_logger=self.audit_logger,
         )
 
     def get_list_users_use_case(self) -> ListUsersUseCase:

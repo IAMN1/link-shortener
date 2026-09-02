@@ -1,16 +1,12 @@
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from link_shortener.application.ports.cache.cache_health import CacheHealth
-from link_shortener.application.ports.cache.link_cache import LinkCache
-from link_shortener.application.ports.cache.link_service_stats_cache import StatsCache
-from link_shortener.application.ports.cache.redirect_cache import (
-    CachedRedirect, RedirectCache
-)
+from link_shortener.application.ports.cache.redirect_cache import CachedRedirect
+from link_shortener.application.ports.cache.service_cache import ServiceCache
 from link_shortener.domain import DedupScope, Link, ShortCode, UrlHash
 
 
-class NullCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
+class NullCache(ServiceCache):
     """
     Null-object cache that discards all data.
 
@@ -25,9 +21,28 @@ class NullCache(LinkCache, RedirectCache, StatsCache, CacheHealth):
         """No backend is involved; there is nothing to be up or down."""
         return False
 
+    def stores_entries(self) -> bool:
+        """Nothing is kept: every read misses and every write is dropped."""
+        return False
+
     def ping(self) -> bool:
         """A cache with nothing to connect to cannot be unreachable."""
         return True
+
+    # ========== CacheMaintenance methods ==========
+    def clear_all(self) -> None:
+        """No-op: a cache that stores nothing has nothing to drop."""
+
+    def get_cache_info(self) -> Dict[str, Any]:
+        """
+        Report that there is nothing to report.
+
+        An ``error`` key rather than zeroed counters: a null cache holding
+        no entries and a Redis cache that has just lost its server both
+        hold nothing, and an operator reading "0 keys" cannot tell which
+        one they are looking at.
+        """
+        return {"error": "No cache is configured"}
 
     # ========== Link Cache methods ==========
     def get_by_code(self, short_code: ShortCode) -> Optional[Link]:

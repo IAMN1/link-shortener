@@ -17,7 +17,7 @@ from link_shortener.infrastructure.mail.jinja_templates import (
 )
 
 
-URL = "https://links.example.com/auth/verify?token=AbC-123_xyz"
+URL = "https://links.example.com/api/v1/auth/verify?token=AbC-123_xyz"
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ class TestTheConfirmationMessage:
     def test_nothing_is_html_escaped(self, templates):
         """Autoescaping in a text/plain body corrupts the link: an ``&``
         becomes ``&amp;`` and the URL stops matching its own token."""
-        url = "https://x.example/auth/verify?token=a&b='c'"
+        url = "https://x.example/api/v1/auth/verify?token=a&b='c'"
 
         _, body = templates.verification_email(confirm_url=url, ttl_hours=24)
 
@@ -89,7 +89,7 @@ class TestTheConfirmationMessage:
         from jinja2 import UndefinedError
 
         with pytest.raises(UndefinedError):
-            templates.environment.get_template("verification_body.txt").render()
+            templates.default_environment.get_template("verification_body.txt").render()
 
 
 class TestTheAccountExistsMessage:
@@ -134,7 +134,7 @@ class TestTheAccountExistsMessage:
         from jinja2 import UndefinedError
 
         with pytest.raises(UndefinedError):
-            templates.environment.get_template("account_exists_body.txt").render()
+            templates.default_environment.get_template("account_exists_body.txt").render()
 
 
 class TestTheTemplatesReachTheImage:

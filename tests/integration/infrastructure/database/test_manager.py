@@ -1,6 +1,5 @@
 """Integration tests for DatabaseManager with real in-memory SQLite."""
 
-import pytest
 from sqlalchemy import text
 
 
@@ -59,10 +58,10 @@ class TestDatabaseManager:
                 result = session.execute(
                     text("SELECT COUNT(*) FROM urls WHERE id='rollback-id'")
                 )
-                # Zero, not "either": `in (0, 1)` stood here and accepted the
-                # broken outcome. Measured -- replacing the rollback in
-                # DatabaseManager.session() with a commit leaves the whole
-                # suite green, so this is the only test that can notice a
+                # Zero, not "either": `in (0, 1)` accepts the broken
+                # outcome. Replacing the rollback in
+                # DatabaseManager.session() with a commit leaves everything
+                # else green, so this is the only test that can notice a
                 # failed request committing its partial writes.
                 count = result.fetchone()[0]
                 assert count == 0

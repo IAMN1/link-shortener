@@ -3,9 +3,9 @@
 ``find_by_email`` compares the stored string, and the unique index on
 ``users.email`` compares it too, so whether ``Case@Example.com`` and
 ``case@example.com`` are one account or two is decided here and nowhere
-else. It used to be two: a second account for the same mailbox, two
-confirmation links, and a sign-in that worked or failed depending on how
-the address had been capitalised the first time.
+else. Two means a second account for the same mailbox, two confirmation
+links, and a sign-in that works or fails depending on how the address was
+capitalised the first time.
 
 The rule is asymmetric in the standard and deliberately not here. RFC 5321
 section 2.4 says mailbox domains "follow normal DNS rules and are hence

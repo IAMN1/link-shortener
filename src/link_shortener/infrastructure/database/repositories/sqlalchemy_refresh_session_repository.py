@@ -73,29 +73,6 @@ class SQLAlchemyRefreshSessionRepository(RefreshSessionRepository):
         self.session.flush()
         return claimed == 1
 
-    def revoke_by_token_id(self, token_id: str) -> bool:
-        """Revoke one session if it is still live.
-
-        Args:
-            token_id: Session to revoke.
-
-        Returns:
-            True if this call revoked it.
-        """
-        revoked = (
-            self.session.query(RefreshSessionModel)
-            .filter(
-                RefreshSessionModel.token_id == token_id,
-                RefreshSessionModel.revoked_at.is_(None),
-            )
-            .update(
-                {RefreshSessionModel.revoked_at: datetime.now(timezone.utc)},
-                synchronize_session=False,
-            )
-        )
-        self.session.flush()
-        return revoked == 1
-
     def chain_is_live(self, chain_id: str) -> bool:
         """Report whether a chain still has a usable session.
 
@@ -180,6 +157,19 @@ class SQLAlchemyRefreshSessionRepository(RefreshSessionRepository):
 
     def delete_expired(self) -> int:
         """Delete sessions whose tokens have already expired.
+
+        Expiry only, and a revoked session that has not expired stays --
+        which reads like an oversight and is the opposite. A replay is
+        recognised by finding the row the presented token names and seeing
+        that it was already spent: with the row gone, the same token is
+        merely one that names nothing, which is what an expired or forged
+        token looks like. Sweeping revoked rows early would turn every
+        detectable theft inside the refresh lifetime into an ordinary
+        refusal and take ``REFRESH_TOKEN_REPLAYED`` out of the journal
+        with it.
+
+        The row stops being useful at the moment the token it names could
+        no longer be presented at all, and that moment is its expiry.
 
         Returns:
             Number of sessions deleted.

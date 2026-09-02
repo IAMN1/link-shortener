@@ -1,28 +1,30 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Edit Role – Linkr{% endblock %}
+{% import "dashboard/_perms.html" as perms %}
+{% block title %}{% trans name=role.name %}Edit role {{ name }} — MaizLink{% endtrans %}{% endblock %}
 {% block dashboard_content %}
-<h1 class="dash-title">Edit Role: {{ role.name }}</h1>
+<div class="dash-head">
+    <h1 class="dash-title">{{ _('Edit Role') }}</h1>
+    <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost btn--sm">{{ _('Cancel') }}</a>
+</div>
 
-<div class="card" style="max-width:480px;">
+<div class="card">
+    <p class="lab mb-1">{{ _('Editing') }}</p>
+    <p class="mono mb-2">{{ role.name }}</p>
+
     <form id="edit-role-form">
-        <div class="form-group">
-            <label class="form-label">Permissions</label>
-            {% for perm in available_permissions %}
-            <label style="display:block; margin-bottom:0.25rem;">
-                <input type="checkbox" name="permissions" value="{{ perm }}"
-                    {% if perm in role.permissions|map(attribute='name')|list %}checked{% endif %}>
-                {{ perm }}
-            </label>
-            {% endfor %}
-        </div>
-        <div id="edit-role-error" class="form-error hidden"></div>
-        <div class="flex gap-1 mt-1">
-            <button type="submit" class="btn btn--primary">Save</button>
-            <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost">Cancel</a>
+        <span class="form-label">{{ _('Permissions') }}</span>
+        <span class="form-hint mb-1">{{ _('Grouped by what they act on.') }}</span>
+        {{ perms.checks(available_permissions, 'permissions',
+                        role.permissions|map(attribute='name')|list) }}
+
+        <div id="edit-role-error" class="form-error hidden mt-2"></div>
+        <div class="flex gap-1 mt-2">
+            <button type="submit" class="btn btn--primary">{{ _('Save') }}</button>
+            <a href="{{ url_for('dashboard.roles_list') }}" class="btn btn--ghost">{{ _('Cancel') }}</a>
         </div>
     </form>
 </div>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/edit_role.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/edit_role.js') }}" defer></script>
 {% endblock %}

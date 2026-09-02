@@ -14,7 +14,9 @@ Module-specific loggers are created via proxies that add ``module`` context.
 from typing import Dict, List, Optional, Tuple
 
 from link_shortener.application import Logger
-from link_shortener.infrastructure.failover.failover_service import FailoverService
+from link_shortener.infrastructure.failover.failover_service import (
+    CheckOutcome, FailoverService,
+)
 from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
 from link_shortener.infrastructure.logging.handlers.logger.null_logger import NullLogger
 from link_shortener.infrastructure.logging.handlers.logger.standard import StandardLogger
@@ -49,6 +51,9 @@ class LoggerManager:
         self.logger = logger if logger is not None else MinimalLogger()
         self._failover_service: Optional[FailoverService] = None
         self._active_logger: Optional[Logger] = None
+        # The name the implementation was built under, kept rather than
+        # worked out again later: see ``get_active_logger_name``.
+        self._active_logger_name = "unknown"
         self._loggers_cache: Dict[str, Logger] = {}
         self._init_failover_service(logger_type)
 
@@ -60,14 +65,11 @@ class LoggerManager:
         Args:
             logger_type: The configured logger type.
         """
-        # Case and surrounding blanks are taken off first. The comparison
-        # below is against exact strings, so ``NULL``, ``Null`` and
-        # ``"null "`` used to miss the ``null`` branch and fall through to
-        # the default -- which is the full chain. An operator who wrote
-        # ``AUDIT_TYPE=NULL`` to turn auditing off got a complete audit
-        # trail instead, with original_url, remote_addr and user_id in it.
-        # Anything still unrecognised keeps falling through to the
-        # default, which is what it always did.
+        # Case and surrounding blanks come off first: the comparisons below
+        # are against exact strings, so ``NULL``, ``Null`` and ``"null "``
+        # would miss the ``null`` branch and fall through to the default --
+        # the full chain, which is the opposite of what was asked for.
+        # Anything still unrecognised falls through to the default.
         logger_type = (logger_type or "").strip().lower()
 
         # Determine priority order
@@ -83,6 +85,11 @@ class LoggerManager:
             order = ["structlog", "standard"]
 
         loggers: List[Tuple[Logger, str]] = []
+
+        # Declared by the port both branches produce: the two implementations
+        # are unrelated classes, and a variable typed from whichever came
+        # first rejects the other.
+        logger: Logger
 
         for type_ in order:
             if type_ == "structlog":
@@ -111,7 +118,7 @@ class LoggerManager:
         # Single logger: no failover
         if len(loggers) == 1:
             self._failover_service = None
-            self._active_logger = loggers[0][0]
+            self._active_logger, self._active_logger_name = loggers[0]
         else:
             # Health checker using is_healthy
             def health_check(logger: Logger) -> bool:
@@ -124,6 +131,25 @@ class LoggerManager:
                 upgrade_cooldown=300,
                 logger=self.logger,
             )
+
+    @property
+    def _single_logger(self) -> Logger:
+        """Return the logger built when no failover was needed.
+
+        The attribute holds ``None`` until ``_init_failover_service`` picks
+        an implementation, and stays ``None`` when several were built and
+        the failover service owns them instead.
+
+        Returns:
+            The one active implementation.
+
+        Raises:
+            RuntimeError: If the manager holds no logger, which means its
+                initialisation did not finish.
+        """
+        if self._active_logger is None:
+            raise RuntimeError("LoggerManager has no logger (initialisation failed)")
+        return self._active_logger
 
     def get_logger(self, module_name: str) -> Logger:
         """
@@ -142,8 +168,9 @@ class LoggerManager:
         if module_name in self._loggers_cache:
             return self._loggers_cache[module_name]
 
+        logger: Logger
         if self._failover_service is None:
-            logger = _ModuleLogger(self._active_logger, module_name)
+            logger = _ModuleLogger(self._single_logger, module_name)
         else:
             logger = FailoverLoggerProxy(self._failover_service, module_name)
 
@@ -154,19 +181,20 @@ class LoggerManager:
         """
         Return the name of the currently active logger implementation.
 
+        The name the implementation was built under, in both branches. It
+        was worked out again here, by ``isinstance`` over the classes --
+        a second answer to a question the list of implementations had
+        already answered, and one that could disagree with it. It is the
+        same string either way now, so a chain reports itself the same
+        whether or not failover was built for it.
+
         Returns:
-            One of ``"structlog"``, ``"standard"``, ``"null"``, or ``"unknown"``.
+            One of ``"structlog"``, ``"standard"``, ``"null"``, or
+            ``"unknown"`` where nothing was built.
         """
         if self._failover_service:
             return self._failover_service.get_current_service_name()
-        elif self._active_logger:
-            if isinstance(self._active_logger, StructLogger):
-                return "structlog"
-            elif isinstance(self._active_logger, StandardLogger):
-                return "standard"
-            else:
-                return "null"
-        return "unknown"
+        return self._active_logger_name
 
     def counters(self) -> Tuple[int, int, int]:
         """
@@ -190,6 +218,24 @@ class LoggerManager:
             self._failover_service.failed_checks,
             self._failover_service.lost_log_lines,
         )
+
+    def last_check(self) -> str:
+        """
+        What the last background round found the active logger to be.
+
+        The state the counters cannot report: they count losses, and a
+        logger that reports itself unwell produces none of them while
+        nothing is being logged. Without failover there is no background
+        round to have found anything, and no round is not a verdict of
+        "well".
+
+        Returns:
+            One of ``CheckOutcome``'s values.
+        """
+        if self._failover_service is None:
+            return CheckOutcome.NOT_RUN.value
+
+        return self._failover_service.last_check.value
 
     def shutdown(self) -> bool:
         """
@@ -262,7 +308,22 @@ class FailoverLoggerProxy(Logger):
             discard it; nothing else calls this.
         """
         all_kwargs = {**self._bound_fields, **kwargs}
-        all_kwargs["module"] = self._module_name
+        # A bound ``module`` wins over the name this proxy was built with;
+        # one passed on the call does not, which is the distinction the
+        # test beside this one is about. Where a line came from is a
+        # property of the writer, so a writer may state it once by binding
+        # it -- and a single line may not, or lines start attributing
+        # themselves to whatever the call felt like naming.
+        #
+        # The name this proxy carries is the one the logger was *fetched*
+        # under, and the fetching is done by the DI container: every record
+        # an application-layer use case wrote was therefore filed under
+        # ``link_shortener.infrastructure.di.container``, so the one field
+        # saying where a record came from named the wiring rather than the
+        # work. ``BaseUseCase._get_logger`` binds the real one.
+        all_kwargs["module"] = self._bound_fields.get(
+            "module", self._module_name
+        )
         return self._service.execute(method_name, message, **all_kwargs)
 
     def debug(self, message: str, **kwargs):
@@ -343,7 +404,11 @@ class _ModuleLogger(Logger):
             **kwargs: Additional structured data.
         """
         all_kwargs = {**self._bound_fields, **kwargs}
-        all_kwargs["module"] = self._module_name
+        # A bound name wins, a called one does not: see the reasoning in
+        # ``FailoverLoggerProxy._call``.
+        all_kwargs["module"] = self._bound_fields.get(
+            "module", self._module_name
+        )
         getattr(self._logger, level)(message, **all_kwargs)
 
     def debug(self, message: str, **kwargs):

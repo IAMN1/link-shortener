@@ -37,7 +37,10 @@ def use_case(mock_health_check, mock_logger):
     )
 
 
-def _snapshot(database=True, cache=True, task_queue=True, rate_limiter=True):
+def _snapshot(
+    database=True, cache=True, task_queue=True, rate_limiter=True,
+    cache_configured=True, timed_out=(),
+):
     """
     Build a health snapshot with the given component states.
 
@@ -46,6 +49,8 @@ def _snapshot(database=True, cache=True, task_queue=True, rate_limiter=True):
         cache: Whether the cache answered.
         task_queue: Whether the queue can accept work.
         rate_limiter: Whether request limits are being enforced.
+        cache_configured: Whether a cache backend exists at all.
+        timed_out: Components that ran out of the check's budget.
 
     Returns:
         A ``HealthSnapshot``.
@@ -53,9 +58,10 @@ def _snapshot(database=True, cache=True, task_queue=True, rate_limiter=True):
     return HealthSnapshot(
         database=database,
         cache=cache,
-        cache_configured=True,
+        cache_configured=cache_configured,
         task_queue=task_queue,
         rate_limiter=rate_limiter,
+        timed_out=timed_out,
     )
 
 
@@ -104,9 +110,9 @@ class TestGetServiceHealthUseCase:
 class TestTheLoggingStateIsReadWhenThereIsAReaderForIt:
     """The section can be dropped on the way out and nothing noticed.
 
-    Measured: replacing ``self.logging_status.read() if self.logging_status
-    else None`` with a bare ``None`` left the whole suite green -- and with
-    it the whole point of ``LoggingStatus``, which exists so that an audit
+    Replacing ``self.logging_status.read() if self.logging_status else
+    None`` with a bare ``None`` passes everything else -- and takes with it
+    the whole point of ``LoggingStatus``, which exists so that an audit
     trail that stopped being written stops looking like one that is fine.
     Every test here built the use case without a reader, so the branch that
     reads one was never taken.
@@ -116,18 +122,15 @@ class TestTheLoggingStateIsReadWhenThereIsAReaderForIt:
         self, mock_health_check, mock_logger, context
     ):
         from link_shortener.application.ports.logging_status import (
-            LoggingStatus,
+            ChainStatus, LoggingStatus,
         )
 
         state = LoggingStatus(
-            logger_active="structlog",
-            logger_dropped_calls=11,
-            logger_failed_checks=12,
-            logger_lost_log_lines=13,
-            audit_active="standard_audit",
-            audit_dropped_calls=21,
-            audit_failed_checks=22,
-            audit_lost_log_lines=23,
+            worker=4242,
+            logger=ChainStatus("structlog", 11, 12, 13, "healthy"),
+            audit=ChainStatus("standard_audit", 21, 22, 23, "unhealthy"),
+            journals_written=("application", "error", "audit"),
+            journals_unavailable=(),
         )
         reader = Mock()
         reader.read.return_value = state
@@ -156,9 +159,9 @@ class TestTheLoggingStateIsReadWhenThereIsAReaderForIt:
 class TestEachFieldComesFromItsOwnFieldOfTheSnapshot:
     """One component down at a time, because all-True tells none apart.
 
-    Measured: ``rate_limiter=state.database`` in place of
-    ``state.rate_limiter`` left the whole suite green. What it costs is the
-    one component nothing else reports -- a limiter that has lost its
+    ``rate_limiter=state.database`` in place of ``state.rate_limiter``
+    passes everything else. What it costs is the one component nothing else
+    reports -- a limiter that has lost its
     backend lets everything through, brute-force protection on the auth
     endpoints included, and the admin panel goes on saying it is enforcing.
     ``rate_limiter`` was not asserted by any test here, and ``_snapshot``
@@ -194,13 +197,68 @@ class TestEachFieldComesFromItsOwnFieldOfTheSnapshot:
         ] == []
 
 
+class TestWhatTheBooleansCannotSayIsCarriedBeside:
+    """Two fields of the snapshot stopped here, and both are distinctions.
+
+    ``cache`` is ``True`` on a deployment with no cache at all -- a cache
+    with nothing to connect to cannot be down -- so the admin surfaces
+    drew "Redis: answering" over a service running ``REDIS_ENABLED=false``.
+    ``timed_out`` names the dependency that is hanging, which "answered
+    no" cannot. ``/health`` and ``flask maintenance health`` read both
+    off this same snapshot; only the answer an operator watches dropped
+    them.
+    """
+
+    def test_a_cache_nobody_configured_is_told_from_a_working_one(
+        self, use_case, mock_health_check, context
+    ):
+        mock_health_check.snapshot.return_value = _snapshot(
+            cache=True, cache_configured=False
+        )
+
+        result = use_case.execute(context)
+
+        # Both, and they say different things: the cache answered, and
+        # there is no cache to answer.
+        assert result.redis is True
+        assert result.cache_configured is False
+
+    def test_a_configured_cache_says_so(
+        self, use_case, mock_health_check, context
+    ):
+        # The premise: without it the assertion above is satisfied by a
+        # field that is False whatever the snapshot holds.
+        mock_health_check.snapshot.return_value = _snapshot()
+
+        assert use_case.execute(context).cache_configured is True
+
+    def test_what_ran_out_of_budget_is_named(
+        self, use_case, mock_health_check, context
+    ):
+        mock_health_check.snapshot.return_value = _snapshot(
+            task_queue=False, timed_out=("task_queue",)
+        )
+
+        result = use_case.execute(context)
+
+        assert result.task_queue is False
+        assert result.timed_out == ("task_queue",)
+
+    def test_nothing_hanging_names_nothing(
+        self, use_case, mock_health_check, context
+    ):
+        mock_health_check.snapshot.return_value = _snapshot(task_queue=False)
+
+        assert use_case.execute(context).timed_out == ()
+
+
 class TestAdminHealthMatchesTheProbe:
     """
     The admin panel and the container probe must not disagree.
 
-    The use case used to run its own checks and keep the answer for 15
-    seconds, so the two surfaces could report different states of the same
-    component with nothing to say which was stale.
+    Both read one snapshot. Running its own checks here and keeping the
+    answer for 15 seconds lets the two surfaces report different states of
+    the same component, with nothing to say which is stale.
     """
 
     def test_the_state_is_read_from_the_shared_snapshot(

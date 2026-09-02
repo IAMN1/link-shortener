@@ -2,7 +2,9 @@ from unittest.mock import Mock, MagicMock
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.use_cases.stats.get_user_activity_stats import GetUserActivityStatsUseCase
-from link_shortener.domain import Link, ShortCode, UrlHash, OriginalUrl
+from link_shortener.domain import (
+    Link, OriginalUrl, ShortCode, UrlHash, UserLinkStats
+)
 import pytest
 
 
@@ -42,11 +44,11 @@ class TestGetUserActivityStatsUseCase:
         self, use_case, mock_uow_factory, context
     ):
         factory, uow = mock_uow_factory
-        uow.links.get_user_stats.return_value = {
-            "total_links": 0,
-            "total_clicks": 0,
-            "recent_links": [],
-        }
+        uow.links.get_user_stats.return_value = UserLinkStats(
+            total_links=0,
+            total_clicks=0,
+            recent_links=[],
+        )
 
         result = use_case.execute("user-123", context)
 
@@ -72,11 +74,11 @@ class TestGetUserActivityStatsUseCase:
         )
         link2.clicks = 20
 
-        uow.links.get_user_stats.return_value = {
-            "total_links": 2,
-            "total_clicks": 30,
-            "recent_links": [link1, link2],
-        }
+        uow.links.get_user_stats.return_value = UserLinkStats(
+            total_links=2,
+            total_clicks=30,
+            recent_links=[link1, link2],
+        )
 
         result = use_case.execute("user-123", context)
 
@@ -89,11 +91,11 @@ class TestGetUserActivityStatsUseCase:
         self, use_case, mock_uow_factory, context
     ):
         factory, uow = mock_uow_factory
-        uow.links.get_user_stats.return_value = {
-            "total_links": 0,
-            "total_clicks": 0,
-            "recent_links": [],
-        }
+        uow.links.get_user_stats.return_value = UserLinkStats(
+            total_links=0,
+            total_clicks=0,
+            recent_links=[],
+        )
 
         result = use_case.execute("user-123", context)
 
@@ -110,11 +112,11 @@ class TestGetUserActivityStatsUseCase:
         )
         link.clicks = 5
 
-        uow.links.get_user_stats.return_value = {
-            "total_links": 1,
-            "total_clicks": 5,
-            "recent_links": [link],
-        }
+        uow.links.get_user_stats.return_value = UserLinkStats(
+            total_links=1,
+            total_clicks=5,
+            recent_links=[link],
+        )
 
         result = use_case.execute("user-123", context)
 

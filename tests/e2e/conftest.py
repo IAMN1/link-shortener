@@ -10,7 +10,7 @@ Run level 1 (fast):
     uv run pytest tests/e2e/ -v
 
 Run level 3 (Docker):
-    docker compose -f docker-compose.test.yml up -d
+    docker compose -f dockers/docker-compose.test.yml up -d
     E2E_BASE_URL=http://localhost:5000 uv run pytest tests/e2e/ -v --base-url
 """
 
@@ -42,7 +42,6 @@ def app():
     application = create_app(config=E2ETestConfig())
 
     with application.app_context():
-        from link_shortener.infrastructure.database.models.base import Base
         from link_shortener.infrastructure.database.seed import seed_base_roles
         db = application.container.get_db_manager()
         db.create_tables()

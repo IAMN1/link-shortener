@@ -1,4 +1,13 @@
+import ast
+import pathlib
+
+import link_shortener
 from link_shortener.domain.exceptions import DomainError, LinkNotFoundError, ValidationError as DomainValidationError
+from link_shortener.web.middleware.error_handler import STATUS_BY_CODE
+
+
+SOURCE = pathlib.Path(link_shortener.__file__).parent
+"""The package itself -- swept rather than listed, so a new code counts."""
 
 
 class TestErrorHandlerMiddleware:
@@ -54,7 +63,7 @@ class TestErrorHandlerMiddleware:
 
         # Act
         response = client.post("/api/v1/shorten", json={"url": 123})
-        
+
         # Assert
         assert response.status_code == 400
         data = response.get_json()
@@ -224,3 +233,75 @@ class TestErrorHandlerMiddleware:
         assert response.status_code == 400
         data = response.get_json()
         assert data["error"] == "BAD_REQUEST"
+
+class TestTheTableNamesEveryCodeTheServiceRaises:
+    """A code missing from ``STATUS_BY_CODE`` is a code answered 500.
+
+    The default is deliberate -- an unclassified failure is safer read as
+    "we do not know what went wrong" than as "the request was bad" -- but
+    it is a default for codes nobody has got to yet, not a place for codes
+    this application raises on purpose. ``EMAIL_NOT_VERIFIED`` sat there:
+    the sign-in answers it 401 itself, so the omission never showed, and
+    it stopped being harmless the moment anything else read the table.
+    Nothing but a sweep can notice that, because the code that hides it is
+    the code that works.
+    """
+
+    @staticmethod
+    def _codes_the_source_raises():
+        """
+        Collect every error code spelled out under ``src``.
+
+        Returns:
+            Dict of code to the places that raise it.
+        """
+        found = {}
+        for path in sorted(SOURCE.rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+
+                # ``DomainError(sentence, code="X")`` and every subclass
+                # that names the argument.
+                for keyword in node.keywords:
+                    if keyword.arg == "code" and isinstance(
+                        keyword.value, ast.Constant
+                    ):
+                        found.setdefault(keyword.value.value, []).append(
+                            f"{path.name}:{node.lineno}"
+                        )
+
+                # ``super().__init__(sentence, "X")`` inside an exception,
+                # and ``DomainError(sentence, "X")`` at a call site: the
+                # code is the second positional argument in both.
+                name = getattr(
+                    node.func, "id", getattr(node.func, "attr", "")
+                )
+                if name in ("DomainError", "__init__") and len(node.args) > 1:
+                    second = node.args[1]
+                    if isinstance(second, ast.Constant) and isinstance(
+                        second.value, str
+                    ):
+                        found.setdefault(second.value, []).append(
+                            f"{path.name}:{node.lineno}"
+                        )
+        return found
+
+    def test_the_sweep_finds_codes_to_check(self):
+        """A sweep over nothing passes and proves nothing."""
+        assert len(self._codes_the_source_raises()) >= 10
+
+    def test_every_code_raised_is_named_in_the_table(self):
+        raised = self._codes_the_source_raises()
+
+        unmapped = {
+            code: places
+            for code, places in raised.items()
+            if code not in STATUS_BY_CODE and code.isupper()
+        }
+
+        assert unmapped == {}, (
+            "these codes are raised but not in STATUS_BY_CODE, so they are "
+            f"answered 500: {unmapped}"
+        )

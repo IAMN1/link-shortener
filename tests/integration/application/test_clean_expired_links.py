@@ -1,9 +1,9 @@
 """
 Tests for the ``clean-expired`` maintenance path.
 
-The command is named after expiry and now works by it. It used to sweep by
-``last_accessed`` instead, which removed permanent links their owners had
-simply not clicked lately, and left the expired ones -- the rows that make a
+The command is named after expiry and works by it. Sweeping by
+``last_accessed`` instead removes permanent links their owners have simply
+not clicked lately, and leaves the expired ones -- the rows that make a
 URL unshortenable -- exactly where they were.
 """
 
@@ -263,6 +263,7 @@ class TestInvalidationHappensAfterTheCommit:
                 cache=RecordingCache(),
                 stats_cache=RecordingCache(),
                 logger=app.container.logger_component.get_logger(__name__),
+                audit_logger=app.container.get_audit_logger(),
             )
             use_case.execute(RequestContext(request_id="cli-test"))
 
@@ -305,6 +306,7 @@ class TestInvalidationHappensAfterTheCommit:
                 cache=SilentlyFailingCache(),
                 stats_cache=SilentlyFailingCache(),
                 logger=RecordingLogger(),
+                audit_logger=app.container.get_audit_logger(),
             )
             use_case.execute(RequestContext(request_id="cli-test"))
 

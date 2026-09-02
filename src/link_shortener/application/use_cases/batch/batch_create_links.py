@@ -1,14 +1,14 @@
 from dataclasses import dataclass
 
 import time
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 import uuid
 
 from link_shortener.application.dtos.batch import BatchCreateResponse, BatchItemResponse
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.dtos.refusal import Refusal
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.context import RequestContext
 
-from link_shortener.application.ports.cache.link_cache import LinkCache
 from link_shortener.application.ports.cache.link_service_stats_cache import (
     StatsCache,
 )
@@ -18,12 +18,18 @@ from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.application.use_cases.batch.creator import BatchLinkCreator
 from link_shortener.application.use_cases.batch.fetcher import BatchLinkFetcher
 from link_shortener.application.use_cases.batch.grouper import UrlGrouper
+from link_shortener.application.use_cases.batch.groups import UrlGroup
 from link_shortener.application.use_cases.batch.response_builder import BatchResponseBuilder
 from link_shortener.domain.exceptions import (
-    GuestLinkLimitExceededError, LinkConflictError, ValidationError
+    LinkConflictError, ValidationError
+)
+from link_shortener.domain.policies.guest_quota_policy import (
+    guest_allowance, guest_quota_spent,
 )
 from link_shortener.domain.value_objects.dedup_scope import DedupScope
 from link_shortener.domain.value_objects.owner_id import OwnerID
+from link_shortener.domain.entities.link import Link
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -47,7 +53,6 @@ class BatchCreateLinksUseCase(BaseUseCase):
 
     Attributes:
         uow_factory: Callable factory for creating Unit of Work instances.
-        cache: Link cache implementation.
         base_url: Base URL of the service for building short URLs.
         logger: Application logger.
         audit_logger: Audit logger for significant events.
@@ -55,6 +60,13 @@ class BatchCreateLinksUseCase(BaseUseCase):
         guest_link_limit: Max number of guest links per window.
         guest_link_window_days: Time window in days for guest link counting.
         default_guest_ttl_seconds: Default TTL for guest-created links.
+        max_collision_attempts: How many times the whole transaction is
+            retried when it loses a race for a short code. Its own, as on
+            the single-link path: it used to be read off ``creator``,
+            whose number answers a different question -- how many salted
+            codes one hash is offered before it is given up on. One value
+            fed both, so the two could never be tuned apart, and the
+            reader of either had to know the other existed.
         stats_cache: Cache of service-wide totals, dropped when links are
             created because the totals it holds have just gone stale.
         grouper: Validates and groups the input URLs.
@@ -63,8 +75,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
         builder: Turns created links into per-item responses.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
-    cache: LinkCache
+    uow_factory: UnitOfWorkFactory
     stats_cache: StatsCache
     base_url: str
     logger: Logger
@@ -73,6 +84,7 @@ class BatchCreateLinksUseCase(BaseUseCase):
     guest_link_limit: int
     guest_link_window_days: int
     default_guest_ttl_seconds: int
+    max_collision_attempts: int
 
     grouper: UrlGrouper
     fetcher: BatchLinkFetcher
@@ -91,42 +103,60 @@ class BatchCreateLinksUseCase(BaseUseCase):
             BatchCreateResponse with per-URL results and aggregates.
 
         Raises:
-            ValueError: If batch size exceeds limit.
+            ValidationError: If the batch carries more URLs than the limit.
+                Not ``ValueError``, which is what this said and what a
+                caller writing ``except ValueError`` would have caught
+                nothing with: ``DomainError`` descends from ``Exception``,
+                and ``create_short_link`` has a comment of its own about
+                the two not being the same thing.
+            GuestLinkLimitExceededError: If the guest's allowance refused
+                every item and nothing else in the batch got done.
+            LinkConflictError: If every attempt lost a race for a code.
         """
         log = self._get_logger(self.logger, context)
         audit = self._get_audit_logger(self.audit_logger, context)
         start_time = time.perf_counter()
 
+        # Every exit reports the duration, not only the one at the end.
+        # Filled in on the last return alone, the field went on being 0.0
+        # for a batch of nothing and for a batch that was all malformed --
+        # the two answers a caller is most likely to be timing.
         if not urls:
-            return BatchCreateResponse.empty()
-        
+            return BatchCreateResponse.from_results(
+                [], processing_time_seconds=time.perf_counter() - start_time
+            )
+
         if len(urls) > self.batch_limit:
             log.warning(
                 "Batch limit exceeded", requested=len(urls), limit=self.batch_limit
             )
             raise ValidationError(
-                f"Batch limit exceeded. Max: {self.batch_limit}, requested: {len(urls)}",
-                field="urls",
-            )
-        
+                      f"Batch limit exceeded. Max: {self.batch_limit}, "
+                      f"requested: {len(urls)}",
+                      field="urls",
+                      template=N_(
+                          "Batch limit exceeded. Max: %(max)s, requested: %(requested)s"
+                      ),
+                      params={"max": self.batch_limit, "requested": len(urls)},
+                  )
+
         log.info("Starting batch link creation", count=len(urls))
 
-        # 1. Group URLs by hash, separating valid/invalid
-        groups = self.grouper.group(urls)
-        valid_groups = [g for g in groups.values() if g["is_valid"]]
-        invalid_groups = [g for g in groups.values() if not g["is_valid"]]
+        # 1. Group URLs by hash, and take the refused ones aside
+        valid_groups, rejected = self.grouper.group(urls)
 
         # Build responses for invalid URLs immediately
-        invalid_results = []
-        for g in invalid_groups:
-            for url in g["urls"]:
-                invalid_results.append(
-                    BatchItemResponse.error_(url=url, error=g["error"])
-                )
-        
+        invalid_results = [
+            BatchItemResponse.error_(url=item.url, error=item.refusal)
+            for item in rejected
+        ]
+
         if not valid_groups:
-            return BatchCreateResponse.from_results(invalid_results)
-        
+            return BatchCreateResponse.from_results(
+                invalid_results,
+                processing_time_seconds=time.perf_counter() - start_time,
+            )
+
         # Extract owner from context
         owner_id = OwnerID(context.current_user.id) if context.current_user else None
 
@@ -148,10 +178,10 @@ class BatchCreateLinksUseCase(BaseUseCase):
         # settled by the unique index, not by the lookup before the insert;
         # on the retry the winner's rows are visible, so the resolver picks
         # around them instead of failing the batch.
-        for attempt in range(self.creator.max_attempts):
+        for attempt in range(self.max_collision_attempts):
             try:
                 (
-                    fetched_results, groups_to_create, links_to_cache,
+                    fetched_results, groups_to_create, links_found_in_db,
                     quota_results, saved_links,
                 ) = self._look_up_and_create(
                     valid_groups, scope, owner_id, guest_id, ttl_seconds,
@@ -183,7 +213,11 @@ class BatchCreateLinksUseCase(BaseUseCase):
         # The path loses nothing by not warming: the redirect warms both
         # levels from its own repository hit the first time a code is used,
         # and most of a batch is never opened at all.
-        log.debug("Links created", count=len(links_to_cache + saved_links))
+        log.debug(
+            "Batch lookup and creation done",
+            found=len(links_found_in_db),
+            created=len(saved_links),
+        )
 
         # 4. The totals the statistics cache holds are now wrong -- by as
         # much as a whole batch. The single-creation path, the delete path
@@ -193,15 +227,13 @@ class BatchCreateLinksUseCase(BaseUseCase):
             self.stats_cache.delete_stats()
 
         # 5. A batch in which the quota refused every single item is the
-        # same refusal the single-link path answers 429 to, and it used to
-        # come back 200 here -- the same condition, two statuses, depending
-        # on which endpoint was asked. A batch that got anything at all
-        # done, including reporting a malformed URL, keeps its 200 and its
-        # per-item errors: that is what the response format is for.
+        # same refusal the single-link path answers 429 to, so it answers
+        # 429 here as well rather than 200. A batch that got anything at
+        # all done, including reporting a malformed URL, keeps its 200 and
+        # its per-item errors: that is what the response format is for.
         if quota_results and not (saved_links or fetched_results or invalid_results):
-            raise GuestLinkLimitExceededError(
-                f"Guest link limit of {self.guest_link_limit} exceeded.",
-                retry_after_seconds=self.guest_link_window_days * 24 * 3600,
+            raise guest_quota_spent(
+                self.guest_link_limit, self.guest_link_window_days
             )
 
         # 6. Build DTOs for newly created links
@@ -209,13 +241,15 @@ class BatchCreateLinksUseCase(BaseUseCase):
             groups_to_create, saved_links, self.base_url
         )
 
-        # 5. Combine all results
+        # 7. Combine all results
         all_results = (
             fetched_results + new_results + quota_results + invalid_results
         )
-        response = BatchCreateResponse.from_results(all_results)
-
         processing_time = time.perf_counter() - start_time
+        response = BatchCreateResponse.from_results(
+            all_results, processing_time_seconds=processing_time
+        )
+
         log.info(
             "Batch link creation completed",
             total=response.total,
@@ -229,8 +263,18 @@ class BatchCreateLinksUseCase(BaseUseCase):
         return response
 
     def _look_up_and_create(
-        self, valid_groups, scope, owner_id, guest_id, ttl_seconds, log, audit
-    ):
+        self,
+        valid_groups: List[UrlGroup],
+        scope: DedupScope,
+        owner_id: Optional[OwnerID],
+        guest_id: Optional[str],
+        ttl_seconds: int,
+        log: Logger,
+        audit: AuditLogger,
+    ) -> Tuple[
+        List[BatchItemResponse], List[UrlGroup], List[Link],
+        List[BatchItemResponse], List[Link],
+    ]:
         """
         Run one attempt at the lookup-and-create transaction.
 
@@ -252,28 +296,22 @@ class BatchCreateLinksUseCase(BaseUseCase):
         """
         with self.uow_factory() as uow:
             repo = uow.links
-            fetched_results, groups_to_create, links_to_cache = self.fetcher.fetch(
+            fetched_results, groups_to_create, links_found_in_db = self.fetcher.fetch(
                 repository=repo,
                 groups=valid_groups,
                 base_url=self.base_url,
                 scope=scope,
             )
 
-            # Counted here rather than up front, in the transaction that
-            # goes on to insert. It does not make the count atomic -- see
-            # the note on `_apply_guest_quota` -- but a count taken in a
-            # unit of work that has already closed leaves a window as wide
-            # as the whole lookup.
+            # Read inside the transaction that goes on to insert, and read
+            # under a lock; both reasons are on ``guest_allowance``, which
+            # is also where the single-link path reads it.
             remaining_quota = None
             if guest_id is not None:
-                # Serialised against this guest's other requests, so the
-                # allowance is read and spent as one decision. Without it a
-                # batch is worth a whole quota to every concurrent caller.
-                repo.lock_guest_quota(guest_id)
-                used = repo.count_guest_links_by_identifier(
-                    guest_id, self.guest_link_window_days
+                remaining_quota = guest_allowance(
+                    repo, guest_id, self.guest_link_limit,
+                    self.guest_link_window_days,
                 )
-                remaining_quota = max(0, self.guest_link_limit - used)
 
             # Only links that have to be created draw on the quota; being
             # handed one that already exists costs nothing.
@@ -313,13 +351,14 @@ class BatchCreateLinksUseCase(BaseUseCase):
                     )
 
         return (
-            fetched_results, groups_to_create, links_to_cache,
+            fetched_results, groups_to_create, links_found_in_db,
             quota_results, saved_links,
         )
 
     def _apply_guest_quota(
-        self, groups_to_create: List[dict], remaining: Optional[int], log: Logger
-    ) -> Tuple[List[dict], List[BatchItemResponse]]:
+        self, groups_to_create: List[UrlGroup], remaining: Optional[int],
+        log: Logger,
+    ) -> Tuple[List[UrlGroup], List[BatchItemResponse]]:
         """
         Trim the groups to what the caller's quota still allows.
 
@@ -328,11 +367,11 @@ class BatchCreateLinksUseCase(BaseUseCase):
         comes back as a per-item error. That keeps a guest with two slots
         left from losing a batch of ten entirely.
 
-        Concurrency is handled a level down: the transaction takes an
-        advisory lock on the guest identifier before reading the allowance,
-        so this arithmetic is never done against a number another request is
-        about to spend. On engines without such a lock -- SQLite, i.e. local
-        development and the test suite -- the limit is advisory.
+        Concurrency is handled where the allowance is read:
+        ``guest_allowance`` locks the guest identifier before counting, so
+        this arithmetic is never done against a number another request is
+        about to spend. What that lock is worth, and what it is worth on an
+        engine that has none, is written there.
 
         Args:
             groups_to_create: Groups that need a new link, in input order.
@@ -357,10 +396,15 @@ class BatchCreateLinksUseCase(BaseUseCase):
             refused=len(refused),
         )
 
-        error = f"Guest link limit of {self.guest_link_limit} exceeded."
+        # The same refusal the whole-batch branch raises, and the same
+        # sentence: written as a finished f-string here, it was the one
+        # answer in this response nobody could translate.
+        refusal = Refusal.from_error(
+            guest_quota_spent(self.guest_link_limit, self.guest_link_window_days)
+        )
         quota_results = [
-            BatchItemResponse.error_(url=url, error=error)
+            BatchItemResponse.error_(url=url, error=refusal)
             for group in refused
-            for url in group["urls"]
+            for url in group.urls
         ]
         return allowed, quota_results

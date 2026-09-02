@@ -1,6 +1,7 @@
 from typing import Callable, Optional
 
 from link_shortener.application.context import RequestContext
+from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
 
 
@@ -22,19 +23,23 @@ class NullTaskQueue(TaskQueue):
         self,
         update_fn: Optional[Callable] = None,
         send_verification_fn: Optional[Callable] = None,
+        send_password_reset_fn: Optional[Callable] = None,
         send_account_exists_fn: Optional[Callable] = None,
-        logger: Optional[object] = None,
+        logger: Optional[Logger] = None,
     ):
         """
         Args:
             update_fn: Synchronous stand-in for the click statistics task.
             send_verification_fn: Synchronous stand-in for the mail task.
+            send_password_reset_fn: Synchronous stand-in for the password
+                reset message.
             send_account_exists_fn: Synchronous stand-in for the notice
                 that an address is already registered.
             logger: Application logger for diagnostics.
         """
         self._update_fn = update_fn
         self._send_verification_fn = send_verification_fn
+        self._send_password_reset_fn = send_password_reset_fn
         self._send_account_exists_fn = send_account_exists_fn
         self.logger = logger
 
@@ -46,6 +51,10 @@ class NullTaskQueue(TaskQueue):
         """Set the synchronous mail function (called when Celery is off)."""
         self._send_verification_fn = send_fn
 
+    def set_send_password_reset_fn(self, send_fn: Callable) -> None:
+        """Set the synchronous reset-mail function (called when Celery is off)."""
+        self._send_password_reset_fn = send_fn
+
     def set_send_account_exists_fn(self, send_fn: Callable) -> None:
         """Set the synchronous notice function (called when Celery is off)."""
         self._send_account_exists_fn = send_fn
@@ -55,7 +64,8 @@ class NullTaskQueue(TaskQueue):
             try:
                 self._update_fn(short_code_str, context)
             except Exception:
-                pass  # Best-effort: don't crash the redirect
+                # Best-effort: counting a click must not fail the redirect.
+                pass  # nosec B110
 
     def enqueue_verification_email(
         self, email: str, token: str, context: RequestContext
@@ -84,6 +94,37 @@ class NullTaskQueue(TaskQueue):
             if self.logger:
                 self.logger.error(
                     "Verification email not sent", error=str(e), email=email
+                )
+            return False
+
+    def enqueue_password_reset_email(
+        self, email: str, token: str, context: RequestContext
+    ) -> bool:
+        """
+        Send the password reset message on the caller's thread.
+
+        Args:
+            email: Address to send to.
+            token: The reset token.
+            context: Request context.
+
+        Returns:
+            True if the message was sent.
+        """
+        if not self._send_password_reset_fn:
+            return False
+
+        try:
+            self._send_password_reset_fn(email, token, context)
+            return True
+        except Exception as e:
+            # The token is stored either way, so nothing is left
+            # half-done: the person can ask again. What must not happen is
+            # the failure passing unsaid -- somebody is locked out of an
+            # account and waiting for a message that is not coming.
+            if self.logger:
+                self.logger.error(
+                    "Password reset email not sent", error=str(e), email=email
                 )
             return False
 

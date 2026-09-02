@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 
 class Logger(ABC):
@@ -12,17 +12,23 @@ class Logger(ABC):
 
     def bind(self, **kwargs) -> "Logger":
         """
-        Return a new logger instance with additional bound fields.
+        Return a logger that carries these fields into every later call.
 
-        Bound fields are included in every subsequent log call.
-        This is useful for adding contextual information like request ID,
-        user IP, etc., without ...ing them explicitly each time.
+        Useful for context that belongs to a whole request -- its id, the
+        caller's address -- without passing them explicitly each time.
+
+        Implementations that can carry fields return a new instance and
+        leave this one alone. The default here returns ``self``, which is
+        the honest answer for a logger that keeps nothing: ``NullLogger``
+        discards the fields either way, and handing back a copy of a sink
+        would only suggest otherwise.
 
         Args:
             **kwargs: Key-value pairs to bind to the logger.
 
         Returns:
-            A new Logger instance with the bound fields.
+            A logger carrying the fields -- a new instance where that means
+            anything, and ``self`` where it does not.
         """
         return self
 
@@ -62,9 +68,8 @@ class Logger(ABC):
                 ``logging.Logger.exception`` and ``structlog.exception``
                 both do. An exception instance is rendered instead.
                 ``None`` means no traceback at all: the renderer skips a
-                falsy value, so the line comes out without one. The default
-                used to be ``None``, which made a bare ``log.exception(...)``
-                print a line that looked like a traceback and had none.
+                falsy value, so the line comes out without one -- which is
+                why it is not the default.
             **kwargs: Additional structured data.
         """
         ...

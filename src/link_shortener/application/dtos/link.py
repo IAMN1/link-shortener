@@ -21,6 +21,9 @@ class ShortLinkResponse:
         expires_at: When the link expires; ``None`` for a permanent one.
         is_new: True if the link was just created.
         from_cache: True if data came from cache.
+        owner_id: Account the link belongs to, or ``None`` for a guest's.
+            Internal: it is what the web layer reads to decide whether a
+            deletion token is issued, and never goes into a response.
         link_id: Identifier of the stored row. Internal: the web layer signs
             it into the deletion token handed to a guest, and never puts it
             in a response.
@@ -39,7 +42,7 @@ class ShortLinkResponse:
 
     @classmethod
     def from_link(
-       cls, link: Link, base_url: str, is_new: bool = False, from_cache: bool = False 
+       cls, link: Link, base_url: str, is_new: bool = False, from_cache: bool = False
     ) -> "ShortLinkResponse":
         """
         Construct DTO from a domain Link entity.
@@ -109,6 +112,13 @@ class ExtendedLinkInfoResponse:
         age_days: Age of the link in days.
         clicks_per_day: Average clicks per day.
         last_access_days_ago: Days since last access (None if never accessed).
+        owner_id: Account the link belongs to, or ``None`` for a guest's.
+            Internal, as on ``ShortLinkResponse``: it never goes into a
+            response.
+        link_id: Identifier of the stored row, for the same reason
+            ``ShortLinkResponse`` carries one: the web layer signs it into
+            a deletion token, and that token is what a guest has in place
+            of an owner. Internal -- no response schema publishes it.
     """
     short_code: str
     short_url: str
@@ -122,6 +132,7 @@ class ExtendedLinkInfoResponse:
     clicks_per_day: float
     last_access_days_ago: Optional[int]
     owner_id: Optional[str] = None
+    link_id: Optional[str] = None
 
     @classmethod
     def from_link(
@@ -161,5 +172,6 @@ class ExtendedLinkInfoResponse:
             age_days=age_days,
             clicks_per_day=clicks_per_day,
             last_access_days_ago=last_access_days_ago,
-            owner_id=link.owner.value if link.owner else None
+            owner_id=link.owner.value if link.owner else None,
+            link_id=link.id,
         )

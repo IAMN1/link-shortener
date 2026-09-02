@@ -9,7 +9,7 @@ test told it to.
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, Mock
+from unittest.mock import Mock
 
 import pytest
 
@@ -294,7 +294,7 @@ class TestTheRepositoryIsAskedWithinTheCallersScope:
 
 class TestAnInternalFailureIsNotReportedAsBadInput:
     """
-    ``except ValueError`` used to wrap the whole of ``execute``.
+    ``except ValueError`` must not wrap the whole of ``execute``.
 
     Everything inside it -- the cache read, the repository, the unit of work
     -- came back to the caller as ``400 "Invalid URL <internal message>"``.

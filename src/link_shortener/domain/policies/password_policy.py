@@ -15,6 +15,7 @@ property that actually costs an attacker work.
 """
 
 from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.i18n import N_
 
 
 MIN_PASSWORD_LENGTH = 8
@@ -58,6 +59,13 @@ and neither belongs in a domain policy. What this catches is the top of
 every cracking list; what it does not catch is a password that is merely
 weak. Stated rather than implied, because a check like this reads as more
 protection than it gives.
+
+Narrower still than it looks: 48 of these 94 are shorter than
+``MIN_PASSWORD_LENGTH``, and the length check runs first, so those are
+refused for being short and never reach this set at all. They are kept
+because the floor is the reason they are unreachable -- lower it and they
+are the first guesses an attacker makes -- but the working half of this
+list is the other 46.
 """
 
 
@@ -69,30 +77,76 @@ def validate_password(password: str) -> None:
         password: Raw password.
 
     Raises:
-        ValidationError: If the password is too short, too long, or one an
-            attacker would try immediately.
+        ValidationError: If the password is blank, too short, too long, or
+            one an attacker would try immediately.
     """
-    if len(password) < MIN_PASSWORD_LENGTH:
+    # Length alone does not catch this: eight spaces are eight characters
+    # and clear every bar below. `flask create-admin` asks for the
+    # password with the input hidden, so a held-down space bar would
+    # create the most privileged account in the service with a password
+    # nobody can see and anybody can guess.
+    #
+    # `str.strip()` is Unicode-aware, so a value made of tabs, newlines or
+    # non-breaking spaces is caught with the plain ones. The value itself
+    # is never stripped: NIST SP 800-63B asks for spaces to be accepted
+    # inside a password and for verifiers not to truncate, so
+    # " my pass phrase " stays exactly that, trailing space included, and
+    # that space keeps counting towards the length.
+    if not password.strip():
         raise ValidationError(
-            f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
+            N_("Password must not be blank"),
             field="password",
         )
 
+    # Not a Unicode rule but a bcrypt one, and the only invisible
+    # character worth naming. bcrypt reads its key as a C string, so
+    # everything from the first NUL onwards is ignored, so a password of
+    # eight NULs hashes to something `checkpw(b"", stored)` accepts --
+    # an account with no password at all.
+    if "\x00" in password:
+        raise ValidationError(
+            N_("Password must not contain a null character"),
+            field="password",
+        )
+
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValidationError(
+                  f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
+                  field="password",
+                  template=N_("Password must be at least %(count)s characters"),
+                  params={"count": MIN_PASSWORD_LENGTH},
+              )
+
+    # One message for two ceilings, and the wording has to fit both. The
+    # byte limit bites first for anything outside Latin -- 37 Cyrillic
+    # characters are 74 bytes -- and a bare "must not exceed 64
+    # characters" then states a number the password does not have. Naming
+    # the byte limit outright is what this module refuses to do: it is the
+    # hashing library's, and a message quoting it tells an anonymous
+    # caller which algorithm is in use -- and a test in
+    # `test_auth_controller` holds the endpoint to that, refusing the
+    # words "byte", "72", "bcrypt" and "truncate" in any answer.
     if (
         len(password) > MAX_PASSWORD_LENGTH
         or len(password.encode("utf-8")) > MAX_PASSWORD_BYTES
     ):
         raise ValidationError(
-            f"Password must not exceed {MAX_PASSWORD_LENGTH} characters",
-            field="password",
-        )
+                  f"Password must not exceed {MAX_PASSWORD_LENGTH} characters, "
+                  "and fewer for alphabets that need more room per character",
+                  field="password",
+                  template=N_(
+                      "Password must not exceed %(count)s characters, and fewer "
+                      "for alphabets that need more room per character"
+                  ),
+                  params={"count": MAX_PASSWORD_LENGTH},
+              )
 
     # Compared in lower case: "Password123" is the same guess as
     # "password123" to anyone running a list through a case-folding rule,
     # which every cracking tool does by default.
     if password.lower() in COMMON_PASSWORDS:
         raise ValidationError(
-            "Password is too common -- choose one that is not on every "
-            "attacker's list",
+            N_("Password is too common -- choose one that is not on every "
+            "attacker's list"),
             field="password",
         )

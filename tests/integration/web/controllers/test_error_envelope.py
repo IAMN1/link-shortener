@@ -33,6 +33,10 @@ PARAMETERS = {
     "user_id": "00000000-0000-0000-0000-000000000000",
     "role_name": "no-such-role",
     "short_code": "nosuch",
+    # A journal that exists, deliberately: a name outside the enum is
+    # refused as a name, and the sweep is about what an anonymous caller
+    # is told when the route itself is real.
+    "journal": "application",
 }
 
 BODIES = {
@@ -114,8 +118,12 @@ def assert_envelope(response, where):
 class TestEveryRefusalToAnAnonymousCaller:
 
     def test_the_route_map_has_routes_to_sweep(self, app):
-        # A sweep over an empty list passes and proves nothing.
-        assert len(api_routes(app)) >= 20
+        # A sweep over an empty list passes and proves nothing -- and a
+        # floor well under what the sweep reaches proves almost as little.
+        # This stood at 20 against 39 routes, so nineteen could go without
+        # a word. Set at the real number, as the neighbouring document
+        # sweeps are.
+        assert len(api_routes(app)) >= 39
 
     def test_each_one_refuses_in_the_envelope(self, app, client):
         # Anything the anonymous caller is allowed to do answers 2xx and is
@@ -130,7 +138,9 @@ class TestEveryRefusalToAnAnonymousCaller:
             assert_envelope(response, f"{method} {path}")
             checked += 1
 
-        assert checked >= 15, f"only {checked} refusals were seen"
+        # 34 is what this reaches; it stood at 15, so more than half the
+        # refusals could stop being refusals in silence.
+        assert checked >= 34, f"only {checked} refusals were seen"
 
 
 class TestRefusalsThatNeedAnAccount:
@@ -170,6 +180,47 @@ class TestRefusalsThatNeedAnAccount:
         assert response.status_code == 401
         assert_envelope(response, "POST /api/v1/auth/refresh")
         assert response.get_json()["error"] == "UNAUTHENTICATED"
+
+
+class TestOneValidationErrorIsOneEnvelope:
+    """A refused field is named, on every route that refuses one.
+
+    ``details`` is where the envelope says *which* field was refused, and
+    it is filled by the global handler. ``/register`` used to answer its
+    own ``ValidationError`` by hand, so the same exception -- same class,
+    same code, same status -- came back with the field named on one route
+    and ``details: null`` on the next, while the OpenAPI document declared
+    the field on both.
+    """
+
+    @pytest.mark.parametrize("path, body, field", [
+        (
+            "/api/v1/auth/register",
+            {"email": "envelope-weak@example.test", "password": "short"},
+            "password",
+        ),
+        (
+            "/api/v1/auth/register",
+            {"email": "not-an-address", "password": "Str0ng!Passw0rd"},
+            "email",
+        ),
+        (
+            "/api/v1/auth/forgot-password",
+            {"email": "not-an-address"},
+            "email",
+        ),
+    ])
+    def test_the_refused_field_is_named(self, client, path, body, field):
+        response = client.post(path, json=body)
+
+        assert response.status_code == 400
+        assert_envelope(response, f"POST {path}")
+        answer = response.get_json()
+        assert answer["error"] == "VALIDATION_ERROR"
+        assert answer["details"], (
+            f"POST {path} refused {field} without saying which field it was"
+        )
+        assert answer["details"][0]["field"] == field
 
 
 class TestAdminRefusalsPastTheDoor:
@@ -219,9 +270,9 @@ class TestAdminRefusalsPastTheDoor:
          "USER_NOT_FOUND"),
         ("GET", "/api/v1/admin/roles/no-such-role", 404, "ROLE_NOT_FOUND"),
         # A role that is not there answers 404, like the user endpoint
-        # beside it. The two used to disagree: one exception carried both
-        # "no such role" and "that one is protected", and the status table
-        # maps that code to 400 -- so a name that simply is not there came
+        # beside it. One exception carrying both "no such role" and "that
+        # one is protected" makes them disagree: the status table maps that
+        # code to 400, so a name that simply is not there comes
         # back as a bad request.
         ("DELETE", "/api/v1/admin/roles/no-such-role", 404, "ROLE_NOT_FOUND"),
     ])
@@ -233,6 +284,149 @@ class TestAdminRefusalsPastTheDoor:
         assert response.status_code == status, response.get_json()
         assert_envelope(response, f"{method} {path}")
         assert response.get_json()["error"] == code
+
+    def test_updating_a_role_that_is_not_there_is_a_missing_one(self, client):
+        """The update route answers the delete route's answer.
+
+        A name nothing carries used to come back 400 from here and 404
+        from ``DELETE`` beside it -- one question, two answers, because
+        the service raised a bare ``ValueError`` that the use case
+        flattened into ``ROLE_UPDATE_FAILED``.
+        """
+        response = client.put(
+            "/api/v1/admin/roles/no-such-role/permissions",
+            json={"permissions": ["link:create"]},
+            headers=auth_headers(self.token),
+        )
+
+        assert response.status_code == 404, response.get_json()
+        assert_envelope(response, "PUT /api/v1/admin/roles/no-such-role")
+        assert response.get_json()["error"] == "ROLE_NOT_FOUND"
+
+    def test_a_role_that_is_not_there_answers_the_role_endpoints_answer(
+        self, client
+    ):
+        """One question about a role, one code, on all four routes.
+
+        The two user routes resolved role names themselves and raised
+        ``VALIDATION_ERROR`` for a name nothing carries -- 400, against
+        the 404 ``GET`` and ``DELETE`` on the role endpoints give the
+        very same question. A client could not handle "no such role" by
+        its code, and the catalogue carried two msgids for one sentence.
+        """
+        created = client.post(
+            f"{API_PREFIX}/admin/users",
+            json={
+                "email": "envelope-roles@example.test",
+                "password": "Irrelevant1!",
+                "roles": ["user"],
+            },
+            headers=auth_headers(self.token),
+        )
+        assert created.status_code == 201, created.get_json()
+        user_id = created.get_json()["id"]
+
+        for method, path in (
+            ("POST", f"{API_PREFIX}/admin/users"),
+            ("PUT", f"{API_PREFIX}/admin/users/{user_id}/roles"),
+        ):
+            body = {"roles": ["no-such-role"]}
+            if method == "POST":
+                body |= {
+                    "email": "envelope-roles-2@example.test",
+                    "password": "Irrelevant1!",
+                }
+
+            response = client.open(
+                path, method=method, json=body,
+                headers=auth_headers(self.token),
+            )
+
+            assert response.status_code == 404, (
+                f"{method} {path}: {response.get_json()}"
+            )
+            assert_envelope(response, f"{method} {path}")
+            assert response.get_json()["error"] == "ROLE_NOT_FOUND"
+
+    def test_the_guest_role_is_not_handed_to_an_account(self, client):
+        """The role an unauthenticated request acts under stays there.
+
+        The admin panel left ``guest`` out of the lists it draws and said
+        why: an account holding it gets the entitlements of a passer-by
+        and signs in to a dashboard it may not read. The rule lived in the
+        page that drew the form, so ``PUT`` took the role without a word
+        -- measured against the running stack at 200.
+        """
+        created = client.post(
+            f"{API_PREFIX}/admin/users",
+            json={
+                "email": "envelope-guest@example.test",
+                "password": "Irrelevant1!",
+                "roles": ["user"],
+            },
+            headers=auth_headers(self.token),
+        )
+        assert created.status_code == 201, created.get_json()
+        user_id = created.get_json()["id"]
+
+        response = client.put(
+            f"{API_PREFIX}/admin/users/{user_id}/roles",
+            json={"roles": ["guest"]},
+            headers=auth_headers(self.token),
+        )
+
+        assert response.status_code == 400, response.get_json()
+        assert_envelope(response, "PUT /api/v1/admin/users/<id>/roles")
+        assert response.get_json()["error"] == "ROLE_NOT_ASSIGNABLE"
+
+        # And the account still holds what it held: a refusal that wrote
+        # half the change would be worse than the grant it refused.
+        after = client.get(
+            f"{API_PREFIX}/admin/users/{user_id}",
+            headers=auth_headers(self.token),
+        )
+        assert after.get_json()["roles"] == ["user"]
+
+    def test_creating_an_account_as_a_guest_is_refused_too(self, client):
+        """The other door into the same rule."""
+        response = client.post(
+            f"{API_PREFIX}/admin/users",
+            json={
+                "email": "envelope-guest-new@example.test",
+                "password": "Irrelevant1!",
+                "roles": ["guest"],
+            },
+            headers=auth_headers(self.token),
+        )
+
+        assert response.status_code == 400, response.get_json()
+        assert response.get_json()["error"] == "ROLE_NOT_ASSIGNABLE"
+
+    def test_a_name_somebody_already_holds_is_a_conflict(self, client):
+        """409, for the reason ``LINK_CODE_TAKEN`` is.
+
+        The caller asked for one particular name and the fix is theirs to
+        make. Answered 400 under ``ROLE_CREATION_FAILED``, it was the same
+        status as a malformed request body, and the only thing telling the
+        two apart was an English sentence.
+        """
+        body = {
+            "name": "envelope-taken",
+            "description": "a name to take",
+            "permissions": ["link:create"],
+        }
+        first = client.post(
+            "/api/v1/admin/roles", json=body, headers=auth_headers(self.token)
+        )
+        assert first.status_code == 201, first.get_json()
+
+        response = client.post(
+            "/api/v1/admin/roles", json=body, headers=auth_headers(self.token)
+        )
+
+        assert response.status_code == 409, response.get_json()
+        assert_envelope(response, "POST /api/v1/admin/roles")
+        assert response.get_json()["error"] == "ROLE_ALREADY_EXISTS"
 
     def test_a_protected_role_is_a_bad_request_and_not_a_missing_one(
         self, client
@@ -250,7 +444,7 @@ class TestAdminRefusalsPastTheDoor:
         )
 
         assert response.status_code == 400, response.get_json()
-        assert response.get_json()["error"] == "ROLE_DELETION_FAILED"
+        assert response.get_json()["error"] == "ROLE_IS_SYSTEM"
 
 
 class TestTheThrottlesOwnRefusal:
@@ -260,7 +454,7 @@ class TestTheThrottlesOwnRefusal:
     sweep sends one request per route, so the throttle never refuses anything
     in the tests above. It answered ``{error, message, retry_after}`` -- no
     ``details``, no ``timestamp`` -- while the OpenAPI document merges a 429
-    declared as ``ErrorResponse`` into thirteen operations, and while the
+    declared as ``ErrorResponse`` into every operation, and while the
     guest-quota 429 beside it, raised as a ``DomainError``, carried the full
     envelope. Its own application, because the shared one has the throttle
     turned off for auth and a session-wide counter for everything else.
@@ -307,9 +501,9 @@ class TestRefusalsTheAnonymousSweepCannotReach:
     The sweep is anonymous, so a permission check answers it with
     ``UNAUTHENTICATED`` and its ``FORBIDDEN`` branch is never entered; and a
     refresh with no cookie at all takes the first branch, never the one for
-    a token that is present and no good. Measured: both could be answered
-    with a hand-built ``{"error": "<sentence>"}`` and the whole suite,
-    including the live run, stayed green.
+    a token that is present and no good. Both can be answered with a
+    hand-built ``{"error": "<sentence>"}`` and everything else, including
+    the live run, still passes.
     """
 
     def test_a_permission_that_is_missing_refuses_in_the_envelope(self, client):

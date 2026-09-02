@@ -16,8 +16,9 @@ from unittest.mock import Mock
 
 import pytest
 from flask import Flask
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
+from link_shortener.web.i18n import init_babel
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
 
 
@@ -42,7 +43,14 @@ def client(logger):
     """An app whose only route refuses the body it is given."""
     app = Flask(__name__)
     app.config["TESTING"] = True
-    ErrorHandlerMiddleware(app, logger)
+    # The handler's own sentences are translated now, and `gettext` reads
+    # the extension out of `app.extensions`. The real factory wires Babel
+    # before any middleware; an app built by hand here has to do the same,
+    # or what this measures is `KeyError: 'babel'` instead of a log line.
+    app.config["SUPPORTED_LANGUAGES"] = ["en"]
+    app.config["DEFAULT_LANGUAGE"] = "en"
+    init_babel(app)
+    ErrorHandlerMiddleware(app, logger, Mock())
 
     @app.post("/api/v1/probe")
     def probe():

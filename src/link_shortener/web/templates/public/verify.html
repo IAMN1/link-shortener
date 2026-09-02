@@ -1,0 +1,31 @@
+{% extends "layout/base.html" %}
+{% block title %}{{ _('Confirm your address — MaizLink') }}{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="auth" id="verify-card" data-token="{{ token or '' }}">
+        <h1>{{ _('Confirm your address') }}</h1>
+
+        {% if token %}
+        <p class="auth-lede">{{ _('One press finishes signing up. The link expires, so do it now rather than later.') }}</p>
+
+        <div id="verify-error" class="form-error hidden"></div>
+        <button id="verify-btn" class="btn btn--primary btn--block">{{ _('Confirm this address') }}</button>
+        <div id="verify-done" class="alert alert--success hidden mt-2"></div>
+        <p id="verify-next" class="hidden mt-2">
+            <a href="{{ url_for('frontend.login_page') }}">{{ _('Log in') }}</a>
+        </p>
+        {% else %}
+        {# Reached without a token: somebody opened the page directly, or a
+           mail client trimmed the link. #}
+        <div class="alert alert--error mb-2">{{ _('This confirmation link is not valid.') }}</div>
+        <p class="text-sm text-muted">
+            {%- set page %}<a href="{{ url_for('frontend.login_page') }}">{{ _('sign-in page') }}</a>{% endset -%}
+            {% trans link=page %}Ask for a new one from the {{ link }}.{% endtrans %}
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pages/verify.js') }}" defer></script>
+{% endblock %}

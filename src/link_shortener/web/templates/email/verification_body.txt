@@ -1,10 +1,10 @@
-Someone -- we hope you -- registered this address with the link shortener.
+{% trans %}Someone -- we hope you -- registered this address with the link shortener.
 
-Open this link to confirm the address and finish signing up:
+Open this link to confirm the address and finish signing up:{% endtrans %}
 
 {{ confirm_url }}
 
-The link stops working in {{ ttl_hours }} hour{{ 's' if ttl_hours != 1 else '' }}.
+{% trans count=ttl_hours %}The link stops working in {{ count }} hour.{% pluralize %}The link stops working in {{ count }} hours.{% endtrans %}
 
-If it was not you, ignore this message. The account cannot be used until
-the address is confirmed, and it is removed on its own if nobody confirms it.
+{% trans %}If it was not you, ignore this message. The account cannot be used until
+the address is confirmed, and it is removed on its own if nobody confirms it.{% endtrans %}

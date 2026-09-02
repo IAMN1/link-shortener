@@ -1,16 +1,15 @@
 from dataclasses import dataclass
 import time
-from typing import Callable
 
 from link_shortener.application import (
     ShortLinkResponse, Logger
 )
 
 from link_shortener.application.context import RequestContext
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 from link_shortener.domain import (
-    LinkExpiredError, LinkNotFoundError, ShortCode
+    LinkExpiredError, LinkNotFoundError
 )
 
 @dataclass
@@ -50,7 +49,7 @@ class GetLinkInfoUseCase(BaseUseCase):
         logger: Application logger.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     base_url: str
     logger: Logger
 
@@ -65,9 +64,11 @@ class GetLinkInfoUseCase(BaseUseCase):
             ShortLinkResponse with link details.
 
         Raises:
-            LinkNotFoundError: If the short code does not exist.
+            LinkNotFoundError: If no link carries this code, a string the
+                format rules refuse included -- ``_code_to_look_up`` answers
+                for both alike, so a malformed code raises no ``ValueError``
+                here.
             LinkExpiredError: If the link exists but has expired.
-            ValueError: If the short code format is invalid.
             DomainError: If the requester is not authorized to view the link.
         """
         log = self._get_logger(self.logger, context)
@@ -109,16 +110,18 @@ class GetLinkInfoUseCase(BaseUseCase):
             log.info("Found in repository", short_code=short_code.value)
             return ShortLinkResponse.from_link(link, self.base_url, from_cache=False)
 
-        except ValueError as e:
-            log.error("Invalid short code format", short_code=short_code_str)
-            raise ValueError(f"Invalid short code: {str(e)}")
+        # No ``except ValueError`` here. A code the format rules refuse is
+        # turned into ``LinkNotFoundError`` by ``_code_to_look_up`` before
+        # this block is reached -- that is the decision recorded on it --
+        # so the branch that used to re-raise a bare ``ValueError`` was
+        # unreachable, and a second answer to a question already answered.
 
         except (LinkNotFoundError, LinkExpiredError):
             raise
 
         except Exception as e:
             log.exception(
-                "Error getting link info", short_code=short_code_str, exc_info=str(e)
+                "Error getting link info", short_code=short_code_str, error=str(e)
             )
             raise
         finally:

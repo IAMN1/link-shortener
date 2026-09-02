@@ -1,33 +1,52 @@
 {% extends "dashboard/base.html" %}
-{% block title %}My Links – Linkr{% endblock %}
+{% block title %}{{ _('My Links — MaizLink') }}{% endblock %}
 {% block dashboard_content %}
-<div class="flex items-center justify-between mb-2">
-    <h1 class="dash-title" style="margin:0;">My Links</h1>
-    <a href="{{ url_for('dashboard.create_link_form') }}" class="btn btn--primary btn--sm">+ New Link</a>
+<div class="dash-head">
+    <h1 class="dash-title">{{ _('My Links') }}</h1>
+    {% if can('link:create') %}
+    <a href="{{ url_for('dashboard.create_link_form') }}" class="btn btn--primary btn--sm">{{ _('New link') }}</a>
+    {% endif %}
 </div>
 
-<div class="card">
+<div id="links-error" class="alert alert--error hidden mb-2"></div>
+
+{# The last column is drawn by the script and holds two controls with
+   different rules: a link to the row's own statistics, which anyone who
+   sees the row may open, and Delete, which is a permission of its own --
+   an analyst reads its links and may not remove them. The button used to
+   be drawn for everyone and answered 403, so the permission reaches the
+   script through the attribute below. The column itself is now always
+   there, because the statistics link always is. #}
+<div class="card card--flush" data-can-delete="{{ 'yes' if can('link:delete_own') else 'no' }}" id="links-card">
     <div class="table-wrap">
         <table class="table">
             <thead>
                 <tr>
-                    <th>Short URL</th>
-                    <th>Original</th>
-                    <th>Clicks</th>
-                    <th>Created</th>
-                    <th>Expires</th>
+                    <th>{{ _('Code') }}</th>
+                    <th>{{ _('Destination') }}</th>
+                    <th>{{ _('Clicks') }}</th>
+                    <th>{{ _('Created') }}</th>
+                    <th>{{ _('Expires') }}</th>
                     <th></th>
                 </tr>
             </thead>
-            <tbody id="links-tbody"><tr><td colspan="6" class="text-muted text-center">Loading...</td></tr></tbody>
+            <tbody id="links-tbody">
+                <tr><td colspan="6" class="loading">{{ _('Loading…') }}</td></tr>
+            </tbody>
         </table>
     </div>
     <div id="links-empty" class="empty hidden">
-        <div class="empty-icon">&#128279;</div>
-        <p>No links yet. <a href="{{ url_for('dashboard.create_link_form') }}">Create your first link</a></p>
+        <div class="empty-icon">{{ _('No links') }}</div>
+        {% if can('link:create') %}
+        <p>{{ _('Nothing here yet.') }}</p>
+        <p><a href="{{ url_for('dashboard.create_link_form') }}">{{ _('Create your first link') }}</a></p>
+        {% else %}
+        <p>{{ _('Nothing here yet.') }}</p>
+        <p>{{ _('This account may read links but not create them.') }}</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/pages/my_links.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/my_links.js') }}" defer></script>
 {% endblock %}

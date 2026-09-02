@@ -20,7 +20,7 @@ class BrokerSocketOptions:
     ``max_retries`` is what actually bounds a dead broker. The socket
     timeouts cap a single attempt, but ``Connection.default_channel`` wraps
     that attempt in ``ensure_connection``, whose back-off (2s, 4s, 6s, 8s)
-    accounted for the measured 19.5 seconds per redirect: a refused
+    accounted for 19.5 seconds per redirect: a refused
     connection returns instantly, and all of the time went into sleeping
     between retries. The worker is unaffected -- it establishes its consumer
     connection with an explicit retry count of its own, taken from
@@ -36,7 +36,11 @@ class BrokerSocketOptions:
         Returns:
             Transport options for the broker connection.
         """
-        timeout = owner.broker_connection_timeout
+        # The descriptor protocol declares ``owner`` as ``type | None``, and
+        # neither half carries the field: this descriptor is read through
+        # ``CeleryConfig`` and nothing else, so the class is always there and
+        # always the one that holds the timeout.
+        timeout = owner.broker_connection_timeout  # type: ignore[union-attr]
 
         return {
             "socket_connect_timeout": timeout,
@@ -103,17 +107,20 @@ class CeleryConfig:
     """
     Do not retry publishing a task.
 
-    Producer-side only. This queue carries click statistics, so a broker
-    that is down costs a lost counter increment; retrying instead spends the
-    caller's request on a broker that is already known to be unreachable.
+    Producer-side only, and every publish here happens inside a request, so
+    retrying spends that request on a broker already known to be
+    unreachable. What a lost publish costs depends on the task: a click
+    counter that is not incremented, which nothing is told about, or a
+    message that is not sent, which the enqueue method reports back as
+    ``False`` to the caller that asked for it.
     """
 
     task_ignore_result = True
     """
     Do not store task results.
 
-    Nothing in the application reads one back -- the only task increments a
-    click counter. Storing them was not merely wasteful: ``send_task``
+    Nothing in the application reads one back -- no caller waits on what a
+    task returned. Storing them was not merely wasteful: ``send_task``
     announces every task to the result store before publishing it, and with
     the store unreachable that announcement is what cost the redirect 19.5
     seconds. The broker connection itself failed in 0.14s.
@@ -135,7 +142,7 @@ class CeleryConfig:
     """
     Format for serializing task messages.
     JSON is recommended for cross-language compatibility and security.
-    """    
+    """
 
     accept_content = ["json"]
     """
@@ -145,7 +152,7 @@ class CeleryConfig:
     result_serializer = "json"
     """
     Format for serializing task results.
-    """    
+    """
 
 
     # --------------------------------------------------------------------------
@@ -154,12 +161,12 @@ class CeleryConfig:
     timezone = "UTC"
     """
     Timezone used by Celery workers for scheduling and logging.
-    """    
+    """
 
     enable_utc = True
     """
     Use UTC internally for all datetime operations.
-    """    
+    """
 
 
     # --------------------------------------------------------------------------

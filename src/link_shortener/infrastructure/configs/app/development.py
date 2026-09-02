@@ -53,7 +53,8 @@ class DevelopmentConfig(BaseConfig):
     MAIL_USE_TLS: bool = env_bool("MAIL_USE_TLS", False)
     MAIL_FROM: str = env_str("MAIL_FROM", "no-reply@link-shortener.local")
     """
-    Defaults for the Mailpit container in ``docker-compose.override.yml``:
+    Defaults for the Mailpit container in
+    ``dockers/docker-compose.override.yml``:
     SMTP on 1025, no TLS, no authentication, and every message kept in its
     own web interface on 8025 instead of being delivered.
 

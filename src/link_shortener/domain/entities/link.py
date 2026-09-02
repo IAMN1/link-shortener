@@ -9,6 +9,7 @@ from link_shortener.domain.value_objects.original_url import OriginalUrl
 from link_shortener.domain.value_objects.owner_id import OwnerID
 from link_shortener.domain.value_objects.short_code import ShortCode
 from link_shortener.domain.value_objects.url_hash import UrlHash
+from link_shortener.domain.i18n import N_
 
 
 @dataclass
@@ -84,7 +85,7 @@ class Link:
                 # ValueError, so every handler on the way out missed it and
                 # an unauthenticated request body of two fields returned 500.
                 raise ValidationError(
-                    "ttl_seconds is too large to be a date",
+                    N_("ttl_seconds is too large to be a date"),
                     field="ttl_seconds",
                 ) from exc
 
@@ -135,6 +136,33 @@ class Link:
         """
         return self.clicks > threshold
 
+    @staticmethod
+    def _as_utc(moment: datetime) -> datetime:
+        """
+        Read a stored timestamp as UTC when it arrived without a zone.
+
+        SQLite hands back naive datetimes, which is why ``RefreshSession``
+        and ``EmailVerification`` each say the same thing in their own
+        ``is_usable``. This entity said it nowhere and left the rule to
+        whoever built it: ``sqlalchemy_link_repository`` attaches the zone
+        to three of its columns and ``redis_cache`` to the same three when
+        it rebuilds a link, so the answer was right only because every
+        adapter remembered. One that did not
+        -- a new adapter, or a test building a ``Link`` by hand -- got
+        ``TypeError: can't compare offset-naive and offset-aware
+        datetimes`` out of ``is_expired``, which is on the redirect path
+        and would be answered 500.
+
+        Args:
+            moment: A timestamp off this entity, zoned or not.
+
+        Returns:
+            The same instant, with UTC attached if it carried no zone.
+        """
+        if moment.tzinfo is None:
+            return moment.replace(tzinfo=timezone.utc)
+        return moment
+
     def is_recent(self, days: int) -> bool:
         """
         Business rule: check if the link was created within the given number of days.
@@ -145,9 +173,9 @@ class Link:
         Returns:
             True if created_at is within the last `days` days, else False.
         """
-        age = datetime.now(timezone.utc) - self.created_at
+        age = datetime.now(timezone.utc) - self._as_utc(self.created_at)
         return age.days <= days
-    
+
     def is_expired(self) -> bool:
         """
         Check whether the link has expired.
@@ -157,16 +185,7 @@ class Link:
         """
         if self.expires_at is None:
             return False
-        return datetime.now(timezone.utc) >= self.expires_at
-    
-    def is_active(self) -> bool:
-        """
-        Check if the link is active (not expired).
-
-        Returns:
-            True if not expired, False otherwise.
-        """
-        return not self.is_expired()
+        return datetime.now(timezone.utc) >= self._as_utc(self.expires_at)
 
     def __eq__(self, other: object) -> bool:
         """Equality check based on link ID."""

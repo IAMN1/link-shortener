@@ -1,10 +1,12 @@
 from unittest.mock import MagicMock, Mock
 from jinja2 import BaseLoader
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.services.link_service import LinkService
+from link_shortener.application.facades.auth_service import AuthService
+from link_shortener.application.facades.link_service import LinkService
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.web.app_factory import create_app
 from link_shortener.infrastructure.di.container import Container
+from link_shortener.infrastructure.di.components.database import DatabaseComponent
 import pytest
 
 
@@ -29,7 +31,7 @@ class TestConfig(TestingConfig):
     BASE_URL = "http://testserver/"
     HOST = "testserver"
     PORT = 80
-        
+
 
 
 @pytest.fixture
@@ -97,7 +99,26 @@ def mock_auth_service():
 
 
 @pytest.fixture
-def app(test_config, mock_link_service, mock_auth_service, monkeypatch, test_logger):
+def mock_auth_facade():
+    """The facade the auth controller holds, as one object per test.
+
+    ``Mock(spec=AuthService)`` rather than a bare ``Mock``: a bare one
+    answers to any name, so a test setting ``login_use_case.execute`` on
+    it would pass while the controller called something else entirely --
+    which is what the eight separate use-case mocks here used to allow.
+    """
+    return Mock(spec=AuthService)
+
+
+@pytest.fixture
+def app(
+    test_config,
+    mock_link_service,
+    mock_auth_service,
+    mock_auth_facade,
+    monkeypatch,
+    test_logger,
+):
     """
     Create a Flask app for testing with mocked services.
     """
@@ -127,10 +148,33 @@ def app(test_config, mock_link_service, mock_auth_service, monkeypatch, test_log
     monkeypatch.setattr(Container, "get_authorization_service", lambda self: Mock())
     monkeypatch.setattr(Container, "get_uow_factory", lambda self: Mock())
     monkeypatch.setattr(Container, "get_rate_limiter", lambda self: Mock())
-    monkeypatch.setattr(Container, "get_login_use_case", lambda self: Mock())
-    monkeypatch.setattr(Container, "get_register_use_case", lambda self: Mock())
+    monkeypatch.setattr(
+        Container, "get_auth_service", lambda self: mock_auth_facade
+    )
     monkeypatch.setattr(Container, "get_cache", lambda self: Mock(cache_type="null"))
-    monkeypatch.setattr(Container, "get_db_manager", lambda self: MagicMock())
+    # A bare MagicMock answers every call with a truthy Mock, and the
+    # health check reads one of those as an answer rather than as a stub:
+    # `missing_declared_tables()` returning a Mock is a non-empty list of
+    # missing tables, so this app reported "no schema" and /health answered
+    # 503 to every test in this module. The fixture has to own what it
+    # asserts -- these tests assert a healthy service, so they have to say
+    # the schema is whole.
+    db_manager = MagicMock()
+    db_manager.missing_declared_tables.return_value = []
+    db_manager.missing_tables.return_value = []
+    monkeypatch.setattr(Container, "get_db_manager", lambda self: db_manager)
+    # And on the component too, which is where it actually has to land.
+    # `Container.__init__` builds the health checker out of
+    # `self.db_component.get_db_manager()`, not out of its own accessor, so
+    # the line above reached every caller except the one that matters --
+    # the checker held the real manager for the testing profile's empty
+    # in-memory database and reported a missing schema, and /health
+    # answered 503 to this whole module. The wiring is captured at
+    # construction: patching the container's accessor after the fact
+    # changes nothing the checker holds.
+    monkeypatch.setattr(
+        DatabaseComponent, "get_db_manager", lambda self: db_manager
+    )
     monkeypatch.setattr(Container, "close", lambda self: None)
 
     app = create_app(config=test_config)

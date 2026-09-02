@@ -23,7 +23,16 @@ class ErrorDetail(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    """Standard API error envelope."""
+    """Standard API error envelope.
+
+    ``error`` is the machine-readable code and is the same string in every
+    language; ``message`` is the sentence for a person and is translated,
+    by the ``lang`` cookie and then ``Accept-Language``. A client that
+    branches on the wording of ``message`` breaks against a browser's
+    cookie -- and was already relying on wording that could be reworded.
+
+    A programmatic client sends neither, so it keeps getting English.
+    """
 
     error: str
     message: str

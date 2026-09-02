@@ -1,5 +1,10 @@
+from typing import List
+
 import structlog
+from structlog.typing import Processor
+
 from link_shortener.infrastructure.logging.logging_settings import LoggingSettings
+from link_shortener.infrastructure.logging.utils import UTC_SECONDS
 
 
 def _replace_logger_name_with_module(logger, method_name, event_dict):
@@ -24,10 +29,18 @@ def configure_structlog(settings: LoggingSettings):
         settings: ``LoggingSettings`` instance.
     """
 
-    processors = [
+    processors: List[Processor] = [
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
-        structlog.processors.TimeStamper(fmt=settings.log_date_format, utc=True),
+        # The same stamp the standard chain writes, and from the same
+        # constant: this side was already UTC while the other was not, and
+        # the pair have to agree or a reader cannot tell one journal's
+        # moment from the other's. ``log_date_format`` is not consulted
+        # here: it dresses the console line of the standard chain, which
+        # has a formatter of its own, and this stamp is read by a program.
+        # This chain's console renders over these same processors, so its
+        # line carries this stamp too.
+        structlog.processors.TimeStamper(fmt=UTC_SECONDS, utc=True),
         _replace_logger_name_with_module,
         structlog.processors.StackInfoRenderer(),
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter,

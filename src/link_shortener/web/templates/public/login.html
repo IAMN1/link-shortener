@@ -1,27 +1,48 @@
 {% extends "layout/base.html" %}
-{% block title %}Login – Linkr{% endblock %}
+{% block title %}{{ _('Log in — MaizLink') }}{% endblock %}
 {% block content %}
-<div class="auth-center">
-    <div class="auth-card">
-        <div class="card">
-            <h2>Login</h2>
-            <form id="login-form">
-                <div class="form-group">
-                    <label class="form-label" for="email">Email</label>
-                    <input type="email" id="email" class="form-input" required autocomplete="email">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="password">Password</label>
-                    <input type="password" id="password" class="form-input" required autocomplete="current-password">
-                </div>
-                <div id="login-error" class="form-error hidden"></div>
-                <button type="submit" class="btn btn--primary btn--block mt-1">Login</button>
-            </form>
-            <p>Don't have an account? <a href="{{ url_for('frontend.register_form') }}">Sign up</a></p>
+<div class="container">
+    <div class="auth">
+        {# An `h1`, not an `h2`. The page's own heading used to start the
+           document outline at the second level. #}
+        <h1>{{ _('Log in') }}</h1>
+        <p class="auth-lede">{{ _('To the account that keeps your links.') }}</p>
+
+        <form id="login-form">
+            <div class="form-group">
+                <label class="form-label" for="email">{{ _('Email') }}</label>
+                <input type="email" id="email" class="form-input" required autocomplete="email">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="password">{{ _('Password') }}</label>
+                <input type="password" id="password" class="form-input" required autocomplete="current-password">
+            </div>
+            <div id="login-error" class="form-error hidden"></div>
+            <button type="submit" class="btn btn--primary btn--block">{{ _('Log in') }}</button>
+        </form>
+
+        <div class="auth-foot">
+            {# A destination, unlike the entry below it: the address is
+               typed on that page, not on this one, so there is nothing
+               here to send. #}
+            <p><a href="{{ url_for('frontend.forgot_password_page') }}">{{ _('Forgotten your password?') }}</a></p>
+            {# An account that never confirmed its address cannot sign in,
+               and the service will mail a fresh link on request -- which
+               had no button anywhere. Someone whose message never arrived
+               was simply stuck. #}
+            {# Not a destination -- it asks for another message and
+               writes the answer beneath itself. See the note on the logout
+               entry in `layout/base.html` for why no `data-turbo` attribute
+               is needed to keep Turbo out of it. #}
+            <p><a href="#" id="resend-link">{{ _("Didn't get the confirmation email?") }}</a></p>
+            <div id="resend-error" class="form-error hidden"></div>
+            <div id="resend-done" class="alert alert--success hidden mt-1"></div>
+            {%- set signup %}<a href="{{ url_for('frontend.register_form') }}">{{ pgettext('inside a sentence', 'Sign up') }}</a>{% endset -%}
+            <p>{% trans link=signup %}No account yet? {{ link }}{% endtrans %}</p>
         </div>
     </div>
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/pages/login.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/login.js') }}" defer></script>
 {% endblock %}

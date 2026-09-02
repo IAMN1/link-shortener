@@ -25,15 +25,14 @@ authenticating with a **valid** ``Authorization: Bearer <token>`` has already
 proven it can set request headers and is not exposed to CSRF; those requests
 pass through untouched so programmatic API clients keep working.
 
-Three rules keep that exemption honest. Every one of them was a hole found
-in an earlier revision of this file, and all three are the same mistake:
-deciding from something that merely resembles the answer instead of asking
-the layer that knows it.
+Three rules keep that exemption honest, and all three are the same rule:
+decide from the layer that knows, not from something that resembles the
+answer.
 
 - The exemption is granted on the credential the authentication layer
   actually accepted (``g.auth_token_source``), never on the shape of the
   incoming header -- an empty or garbage ``Bearer`` token authenticates
-  nothing, yet used to buy an exemption for a request resting on cookies.
+  nothing.
 - It never applies to endpoints that read an auth cookie themselves, listed
   in ``COOKIE_AUTHORITY_ENDPOINTS``, because their authority comes from the
   cookie regardless of any header.
@@ -49,11 +48,12 @@ import time
 from typing import Optional
 from urllib.parse import urlparse
 
-from flask import Flask, g, jsonify, request
+from flask import Flask, g, request
+from flask_babel import gettext
 
 from link_shortener.application import AuthenticationService, Logger
 from link_shortener.web.middleware.authentication import AUTH_SOURCE_HEADER
-from link_shortener.web.schemas.error import ErrorResponse
+from link_shortener.web.responses import error_response
 from link_shortener.web.middleware.hooks import response_hook
 
 
@@ -197,6 +197,53 @@ def set_csrf_cookie(response, secure: bool, token: str):
     return response
 
 
+LOOPBACK_TWINS = {"localhost": "127.0.0.1", "127.0.0.1": "localhost"}
+"""The two spellings of this machine, each naming the other.
+
+A browser treats them as different origins; a person treats them as the
+same address and types whichever they remember.
+"""
+
+
+def _loopback_twin(parsed) -> set:
+    """
+    The other spelling of a loopback base URL, if that is what this is.
+
+    ``.env.example`` lists both spellings of the loopback address at port
+    5000, and says why: "someone who opened `http://127.0.0.1:5000` sees a
+    working front page (an anonymous caller does not go through CSRF) and
+    'CSRF token missing or invalid' on every form the moment they sign in
+    -- measured on a live run".
+
+    That fix was pinned to the port. The guide tells a reader to move the
+    published port when 5000 is taken, and moving it puts the failure
+    back: measured on a stack published at 5101, `http://localhost:5101`
+    wrote fine and `http://127.0.0.1:5101` answered 403
+    `CSRF_TOKEN_INVALID` on every signed-in form -- including the logout,
+    which failed silently and left the dashboard open. Meanwhile the two
+    stale entries for 5000, where nothing is listening, were still
+    admitted.
+
+    Derived from ``BASE_URL`` rather than added to the template, so it
+    follows the port instead of naming one. Only for loopback: a
+    deployment names a real ``DOMAIN`` -- both deployed profiles refuse to
+    start without one -- and nothing here widens anything for it.
+
+    Args:
+        parsed: The parsed ``BASE_URL``.
+
+    Returns:
+        A set holding the twin origin, or an empty one.
+    """
+    host = parsed.hostname or ""
+    twin = LOOPBACK_TWINS.get(host)
+    if not twin:
+        return set()
+
+    port = f":{parsed.port}" if parsed.port else ""
+    return {f"{parsed.scheme}://{twin}{port}"}
+
+
 class CsrfProtectionMiddleware:
     """
     Rejects state-changing requests that are authenticated by cookie but
@@ -249,6 +296,7 @@ class CsrfProtectionMiddleware:
             parsed = urlparse(base_url)
             if parsed.scheme and parsed.netloc:
                 origins.add(f"{parsed.scheme}://{parsed.netloc}")
+                origins.update(_loopback_twin(parsed))
 
         return frozenset(origins)
 
@@ -419,16 +467,43 @@ class CsrfProtectionMiddleware:
         """
         Build the refusal returned for every failed check.
 
+        The sentence is written for whoever is reading it and taken from
+        the catalogue, like every other sentence this service shows. Built
+        by hand it was "CSRF token missing or invalid" -- the name of the
+        mechanism rather than anything a visitor can act on, and English
+        on a page the same request had just been answered in Russian.
+        What a person can act on is reloading: the ordinary cause is a
+        token that aged out under a form left open, and the next response
+        hands out a fresh one.
+
+        The envelope is ``error_response`` rather than an ``ErrorResponse``
+        assembled here, for the reason the throttle's 429 was moved onto
+        it: an answer built by hand is a second shape for one API, and it
+        drifts the first time the envelope gains a field.
+
+        There is deliberately no page branch. ``wants_html`` decides that
+        question everywhere else, and here it has nothing to decide: this
+        check only ever refuses an unsafe method, and every route in the
+        application that takes one is under ``/api/``. A page branch would
+        be a branch no request can reach.
+
         Returns:
             Tuple of (JSON response, 403).
         """
+        # The mechanism's own words, not the shown ones: an operator
+        # matching this against the middleware needs the name of the check
+        # that failed, and this line is not read by the visitor.
         self.logger.warning(
             "CSRF token missing or invalid",
             path=request.path,
             method=request.method,
         )
-        response = ErrorResponse(
-            error="CSRF_TOKEN_INVALID",
-            message="CSRF token missing or invalid",
+
+        return error_response(
+            "CSRF_TOKEN_INVALID",
+            gettext(
+                "This request could not be verified. Reload the page and "
+                "try again."
+            ),
+            403,
         )
-        return jsonify(response.model_dump()), 403

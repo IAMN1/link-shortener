@@ -12,6 +12,7 @@ from flask import current_app, g, request
 
 from link_shortener.application import RequestContext
 from link_shortener.domain import User
+from link_shortener.web.i18n import select_language
 
 
 def get_client_ip() -> str:
@@ -31,9 +32,9 @@ def get_client_ip() -> str:
     the victim's allowance and lock them out for the day.
 
     The value is also required to be an address, and returned in its
-    canonical form. It becomes ``urls.guest_identifier``, a ``VARCHAR(45)``:
-    a long header used to fail the insert on PostgreSQL, and the two
-    spellings of one IPv6 address used to count as two guests.
+    canonical form. It becomes ``urls.guest_identifier``, a
+    ``VARCHAR(45)``: a long header would fail the insert on PostgreSQL,
+    and two spellings of one IPv6 address would count as two guests.
 
     Returns:
         Client IP string, or an empty string if unavailable.
@@ -95,12 +96,16 @@ def create_request_context() -> RequestContext:
         Populated ``RequestContext`` object.
     """
     return RequestContext(
-        request_id=getattr(g, 'request_id', None),
+        request_id=getattr(g, 'request_id', '') or '',
         remote_addr=get_client_ip(),
         user_agent=request.headers.get('User-Agent'),
         request_path=request.path,
         request_method=request.method,
-        current_user=getattr(g, "current_user", None)
+        current_user=getattr(g, "current_user", None),
+        # Asked here, where a request exists to ask. What is queued from
+        # this request -- a confirmation message -- is rendered in a
+        # worker later, and `select_language` there has nothing to read.
+        language=select_language(),
     )
 
 
@@ -108,7 +113,7 @@ def get_current_domain_user() -> Optional[User]:
     """
     Load the full domain User entity for the current request.
 
-    The domain user is cached in g._domain_user by AuthenticationMiddleware.
-    This function no longer touches the DI container.
+    The entity is cached in ``g._domain_user`` by
+    ``AuthenticationMiddleware``; this function only reads it.
     """
     return getattr(g, '_domain_user', None)

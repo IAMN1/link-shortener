@@ -146,3 +146,33 @@ class MyStatsResponse(BaseModel):
     total_clicks: int
     avg_clicks_per_link: float
     recent_links: List[ShortLinkResponse]
+
+    @classmethod
+    def from_dto(cls, dto) -> "MyStatsResponse":
+        """
+        Build from what the application layer returned.
+
+        Named rather than spelled out at the call site, for the reason
+        every other schema here has a ``from_dto``: a controller writing
+        the dictionary itself is a second copy of the field list, and the
+        day the DTO gains a field is the day the two disagree about
+        whether it is published. This model had none, and the field list
+        was written out twice more -- once in ``api_controller`` for
+        ``/stats/mine`` and once in ``admin_api_controller`` for the same
+        figures about another account -- so the model that describes the
+        answer was the one thing neither of them consulted.
+
+        Args:
+            dto: ``UserActivityResponse`` from the application layer.
+
+        Returns:
+            The response as this API publishes it.
+        """
+        return cls(
+            total_links=dto.total_links,
+            total_clicks=dto.total_clicks,
+            avg_clicks_per_link=dto.avg_clicks_per_link,
+            recent_links=[
+                ShortLinkResponse.from_dto(link) for link in dto.recent_links
+            ],
+        )

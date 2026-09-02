@@ -1,4 +1,4 @@
-from unittest.mock import patch, Mock
+from unittest.mock import Mock
 from link_shortener.infrastructure.cache.null_cache import NullCache
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.infrastructure.di.container import Container
@@ -17,16 +17,33 @@ class TestContainer:
         container = Container(config)
         assert container.config is config
 
+    def test_the_audit_logger_it_hands_out_is_the_counting_one(self, config):
+        """The accessor and the use cases must get the same object.
+
+        It handed back the component's logger directly, so anything wired
+        through here wrote to ``audit.log`` and was counted nowhere.
+        Measured on the running stack the day the error handler became its
+        first caller: two ``PERMISSION_DENIED`` lines in the journal and
+        no row in ``security_events``, so the chart on the journal page
+        reported no refusals while the journal beside it listed two.
+        """
+        from link_shortener.infrastructure.logging.handlers.audit.counting import (
+            CountingAuditLogger,
+        )
+
+        container = Container(config)
+
+        assert isinstance(container.get_audit_logger(), CountingAuditLogger)
+
     def test_get_link_service(self, config):
         """Container should provide a LinkService instance."""
         container = Container(config)
-        from link_shortener.application.services.link_service import LinkService
+        from link_shortener.application.facades.link_service import LinkService
         assert isinstance(container.get_link_service(), LinkService)
 
     def test_get_admin_service(self, config):
         """Container should provide an AdminService instance."""
         container = Container(config)
-        from link_shortener.application.services.admin_service import AdminService
         admin = container.get_admin_service()
         assert admin is not None
 

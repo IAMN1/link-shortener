@@ -1,118 +1,648 @@
-/* Dashboard Layout */
+/* ==========================================================================
+   Dashboard layout
 
-.dash { display: flex; min-height: calc(100vh - 57px); }
+   A fixed left rail carries the sections a caller may reach; what the rail
+   lists is decided by permission, in the markup. Everything here is the same
+   system as the public pages -- the same tokens, the same components -- set
+   to the second density. There is no rule below that redefines a colour or a
+   control; only the layout that holds them.
+   ========================================================================== */
 
-/* Sidebar */
+/* The dashboard fills whatever the header and footer leave. It used to be
+   `calc(100vh - 60px - 69px)`: the two heights written in by hand, so any
+   change to the footer broke the layout silently. */
+.main--flush { padding: 0; display: flex; flex-direction: column; }
+
+.dash {
+    display: grid;
+    grid-template-columns: 214px minmax(0, 1fr);
+    flex: 1;
+    transition: grid-template-columns .16s ease;
+}
+
 .dash-side {
-    width: 240px;
+    border-right: var(--edge);
     background: var(--c-surface);
-    border-right: 1px solid var(--c-border);
-    padding: 1rem 0;
-    flex-shrink: 0;
-    position: sticky;
-    top: 57px;
-    height: calc(100vh - 57px);
-    overflow-y: auto;
+    padding: 12px 10px;
     display: flex;
     flex-direction: column;
+    gap: 1px;
 }
+
 .dash-side-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 1.25rem 1rem;
-    border-bottom: 1px solid var(--c-border);
-    margin-bottom: 0.5rem;
+    gap: 8px;
+    padding: 4px 6px 12px;
+    margin-bottom: 6px;
+    border-bottom: var(--edge);
+    min-width: 0;
 }
-.avatar--sm { width: 32px; height: 32px; font-size: 0.8rem; }
-.dash-side-user { font-size: 0.85rem; font-weight: 500; color: var(--c-text); }
-.dash-side-role { font-size: 0.7rem; color: var(--c-text-2); }
+.dash-side-user {
+    font-size: 12px;
+    font-weight: 550;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+}
+.dash-side-role {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--c-text-3);
+}
 
 .dash-side-section {
-    font-size: 0.65rem;
-    font-weight: 600;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--c-text-2);
-    padding: 0.75rem 1.25rem 0.25rem;
+    color: var(--c-text-3);
+    padding: 12px 6px 4px;
 }
+
+/* Sized from the density, not from a number typed here. The rail used to
+   be 28px whatever the density said, alongside a `--d-row` of 34px that
+   nothing in this file consulted. */
 .dash-side a {
-    display: block;
-    padding: 0.4rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: calc(var(--d-row) - 6px);
+    padding: 0 8px;
+    border-radius: var(--r);
     color: var(--c-text-2);
-    font-size: 0.85rem;
-    font-weight: 500;
+    font-size: var(--d-fs);
     text-decoration: none;
-    transition: background .1s, color .1s;
-    border-left: 2px solid transparent;
 }
-.dash-side a:hover { background: #f3f4f6; color: var(--c-text); text-decoration: none; }
-.dash-side a.active { color: var(--c-primary); background: #eff6ff; border-left-color: var(--c-primary); }
+/* The glyph never shrinks: it is the whole entry once the rail is closed,
+   and a label long enough to squeeze it would leave a row of slivers. */
+.dash-side-glyph { flex: none; opacity: .8; }
+.dash-side a:hover { background: var(--c-wash); color: var(--c-text); text-decoration: none; }
 
-.dash-side-bottom {
-    margin-top: auto;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--c-border);
+/* Which entry is current is decided by the server, which knows the endpoint
+   it is rendering. It used to be decided by a script comparing
+   `location.pathname` after the page had already been painted -- a flash on
+   every load, and the first thing that would break under Turbo. */
+.dash-side a[aria-current="page"] {
+    background: var(--c-surface-2);
+    color: var(--c-text);
+    font-weight: 550;
+    /* An inset ring rather than a border: a border here would move the
+       entry by a pixel the moment it became current. Nothing floats -- it
+       is a hairline drawn inside the box. */
+    box-shadow: inset 0 0 0 1px var(--c-line);
 }
-.dash-side-bottom a {
-    display: block;
-    padding: 0.4rem 1.25rem;
-    color: var(--c-text-2);
-    font-size: 0.8rem;
-    text-decoration: none;
+/* Written after, and above the specificity of the rule above, which
+   otherwise won by being later: the current entry was the one entry in the
+   menu that gave no sign of being under the pointer.
+
+   Not `--c-wash`, though. The wash is a film laid over whatever is beneath
+   it, and beneath this entry is `--c-surface-2` rather than the plain
+   surface: the two land within three units of one another, so the entry
+   technically responded and visibly did not -- 1.02 against the 1.10 every
+   other entry gives. Mixed against the ink instead, the step is the same
+   size the others make. */
+.dash-side a[aria-current="page"]:hover {
+    background: color-mix(in srgb, var(--c-text) 7%, var(--c-surface-2));
 }
-.dash-side-bottom a:hover { color: var(--c-text); text-decoration: none; }
-.dash-side-logout {
-    display: block;
+
+.dash-side-bottom { margin-top: auto; padding-top: 12px; border-top: var(--edge); }
+.dash-side-logout,
+.dash-side-collapse {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     width: 100%;
+    height: 28px;
+    padding: 0 8px;
     text-align: left;
-    padding: 0.4rem 1.25rem;
-    color: var(--c-text-2);
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
+    font: inherit;
+    font-size: 13px;
     background: none;
-    font-family: var(--font);
+    border: none;
+    border-radius: var(--r);
+    cursor: pointer;
 }
-.dash-side-logout:hover { color: var(--c-danger); background: #fef2f2; }
+.dash-side-logout { color: var(--c-danger); }
+.dash-side-collapse { color: var(--c-text-3); }
+.dash-side-logout:hover { background: var(--c-wash); }
+.dash-side-collapse:hover { background: var(--c-wash); color: var(--c-text-2); }
 
-/* Content */
-.dash-main { flex: 1; padding: 1.5rem 2rem; min-width: 0; }
-.dash-title { font-size: 1.25rem; font-weight: 600; margin-bottom: 1.25rem; }
+/* A bound as well as a start: the content column used to have neither, so
+   three figures and a table spread across the whole width of a wide
+   monitor. */
+.dash-main {
+    padding: var(--d-pad) calc(var(--d-pad) + 8px) 40px;
+    min-width: 0;
+    max-width: 1180px;
+}
 
-/* Mobile */
+/* Size, weight and tracking already come from `h1`, which every one of
+   these is; repeating them here was a rule that said "in the dashboard it
+   is different" while setting exactly the same values. All that is left is
+   the one thing that does differ. */
+.dash-title { margin-bottom: calc(var(--d-gap) + 4px); }
+/* A heading with something beside it -- a "New link" button, a pager -- is
+   a row, and the row owns the spacing. */
+.dash-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: calc(var(--d-gap) + 4px);
+}
+.dash-head .dash-title { margin-bottom: 0; }
+
 .dash-toggle {
     display: none;
     position: fixed;
-    bottom: 1rem;
-    left: 1rem;
-    z-index: 200;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: var(--c-primary);
-    color: #fff;
-    border: none;
-    font-size: 1.2rem;
+    left: 16px;
+    bottom: 16px;
+    z-index: 150;
+    width: 42px;
+    height: 42px;
+    border-radius: var(--r-lg);
+    border: 1px solid var(--c-line-2);
+    background: var(--c-surface);
+    color: var(--c-text);
     cursor: pointer;
-    box-shadow: var(--shadow-lg);
-    align-items: center;
-    justify-content: center;
+    font-size: 16px;
 }
 
-@media (max-width: 768px) {
+/* ==========================================================================
+   Charts
+
+   Drawn by `static/js/charts.js` as plain SVG -- no library, and none of
+   the rules below styles anything a library would need. The shapes carry
+   the data; everything around them is the same components the rest of the
+   dashboard is built from, at the same density.
+
+   The one rule the marks follow: white does the separating. A 2px gap in
+   the surface colour parts the two halves of a stacked column and the
+   slices of a ring, instead of a stroke drawn around each -- a stroke is
+   ink that is not data, and at this size it doubles the weight of a small
+   segment.
+   ========================================================================== */
+
+/* The row of controls above a chart: what span, how often, and how fresh
+   what you are looking at is. Wraps, because five intervals and four spans
+   do not fit a narrow panel in one line. */
+.chart-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: var(--d-gap);
+}
+.chart-bar-label {
+    font-size: calc(var(--d-fs) - 2px);
+    color: var(--c-text-3);
+}
+/* Pushes the buttons on its right to the far end of the refresh row, so
+   they sit away from the interval controls on its left rather than
+   reading as more of them. (The freshness note is not here: it lives in
+   `.card-header`, which spaces itself.) */
+.chart-bar-gap { flex: 1 1 auto; }
+.chart-fresh {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: calc(var(--d-fs) - 2px);
+    color: var(--c-text-3);
+    font-variant-numeric: tabular-nums;
+}
+/* Lit while the page is polling, unlit when it is not. The word beside it
+   says the same thing -- the dot is the glance, not the message. */
+.chart-fresh-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--c-ok);
+    flex: none;
+}
+.chart-fresh-dot--off { background: var(--c-line-2); }
+
+/* The frame a chart is drawn into. Positioned, because the tooltip is an
+   absolutely placed element inside it. */
+.chart-figure { position: relative; }
+.chart-figure svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    /* The axis labels sit just outside the viewBox on the left. */
+    overflow: visible;
+}
+.chart-grid { stroke: var(--c-line); stroke-width: 1; }
+.chart-axis {
+    fill: var(--c-text-3);
+    font-family: var(--sans);
+    font-size: 11px;
+}
+.chart-axis--num { font-variant-numeric: tabular-nums; }
+/* The target the pointer is tested against: the whole column of the plot,
+   not the mark, so a one-visit column is as easy to hit as a tall one. */
+.chart-hit { fill: transparent; cursor: crosshair; }
+.chart-empty-text {
+    fill: var(--c-text-2);
+    font-family: var(--sans);
+    font-size: 13px;
+}
+.chart-empty-hint {
+    fill: var(--c-text-3);
+    font-family: var(--sans);
+    font-size: 11px;
+}
+/* A chart that could not be loaded keeps its frame and steps back, so the
+   panel reads as "no answer" rather than as an empty box. */
+.chart-figure--failed svg { opacity: .45; }
+
+.chart-tip {
+    position: absolute;
+    z-index: 5;
+    /* Never the thing under the pointer: the tooltip follows the pointer,
+       and a tooltip that can be hovered flickers against its own trigger. */
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+    padding: 6px 8px;
+    border: 1px solid var(--c-line-2);
+    border-radius: var(--r);
+    background: var(--c-surface);
+    color: var(--c-text);
+    font-size: calc(var(--d-fs) - 1px);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity .08s;
+}
+.chart-tip.active { opacity: 1; }
+.chart-tip-head { font-weight: 600; margin-bottom: 3px; }
+.chart-tip-row { display: flex; justify-content: space-between; gap: 10px; }
+.chart-tip-key { color: var(--c-text-2); }
+.chart-tip-val { font-family: var(--mono); font-weight: 600; }
+
+/* Two series need a legend; one does not, and the ring does not either --
+   its own list of rows is the legend. */
+.chart-legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    font-size: calc(var(--d-fs) - 2px);
+    color: var(--c-text-2);
+}
+.chart-key { display: inline-flex; align-items: center; gap: 6px; }
+.chart-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex: none;
+}
+
+/* The two series' colours, as classes rather than as
+   `style="background: var(--c-humans)"` in the markup. Not because the
+   content policy refuses that -- `style-src` keeps `'unsafe-inline'` on
+   purpose, and `security_headers.py` says at length why it has to -- but
+   because a colour that names a series belongs with the other tokens
+   rather than being retyped at each of its uses. */
+.chart-swatch--humans { background: var(--c-humans); }
+.chart-swatch--bots { background: var(--c-bots); }
+
+/* Bars: label, track, value. A grid rather than three floats, so the
+   tracks line up whatever the labels are -- and the labels come from the
+   data, so their width is not ours to decide. */
+.chart-bars {
+    display: grid;
+    grid-template-columns: minmax(64px, auto) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 10px;
+}
+.chart-bars-label { font-size: calc(var(--d-fs) - 1px); color: var(--c-text); }
+.chart-bars-track {
+    height: 14px;
+    border-radius: 3px;
+    background: var(--c-wash);
+}
+.chart-bars-fill { height: 100%; border-radius: 3px 4px 4px 3px; }
+.chart-bars-val {
+    font-family: var(--mono);
+    font-size: calc(var(--d-fs) - 1px);
+    color: var(--c-text-2);
+}
+
+/* The two breakdowns stand side by side while there is room and stack when
+   there is not. Its own rule rather than `.stats-grid`, which caps a tile
+   at 260px -- a ring plus its rows needs more than that. */
+.chart-pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--d-gap);
+}
+
+/* Ring and its rows, side by side while there is room. */
+.chart-ring {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+.chart-ring svg { width: 148px; flex: none; }
+.chart-ring-total {
+    fill: var(--c-text);
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 600;
+}
+.chart-ring-rows {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 10px;
+    font-size: calc(var(--d-fs) - 1px);
+    min-width: 0;
+}
+/* A browser family can be any string the data carries; it wraps rather
+   than pushing the ring off the panel. */
+.chart-ring-name { overflow-wrap: anywhere; }
+.chart-ring-val {
+    font-family: var(--mono);
+    color: var(--c-text-2);
+    white-space: nowrap;
+}
+
+/* ===== The rail =====
+
+   Collapsed, the sidebar gives up its words and keeps its glyphs, so every
+   destination is still one click away -- which is the whole difference
+   between this and hiding the sidebar. Scoped to the wide layout: below the
+   breakpoint the sidebar is already an overlay that covers the page, and a
+   rail there would eat 56px of a screen that has none to spare.
+   ========================================================================== */
+
+@media (min-width: 861px) {
+    .dash--rail { grid-template-columns: 52px minmax(0, 1fr); }
+
+    .dash--rail .dash-side { padding-left: 8px; padding-right: 8px; }
+
+    /* Clipped rather than `display: none`: a screen reader still reads the
+       entry's name, and the rail is a visual economy rather than a smaller
+       menu. */
+    .dash--rail .dash-side-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .dash--rail .dash-side-header { justify-content: center; padding-left: 0; padding-right: 0; }
+
+    /* A heading with no room for its word becomes what it was underneath:
+       the line between two groups. */
+    .dash--rail .dash-side-section {
+        height: 1px;
+        padding: 0;
+        margin: 10px 4px 8px;
+        background: var(--c-line);
+        font-size: 0;
+        overflow: hidden;
+    }
+
+    .dash--rail .dash-side a,
+    .dash--rail .dash-side-logout,
+    .dash--rail .dash-side-collapse {
+        position: relative;
+        justify-content: center;
+        gap: 0;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .dash--rail .dash-side-collapse .dash-side-glyph { transform: scaleX(-1); }
+
+    /* The label the rail took away, handed back on hover and on focus.
+       Drawn from `data-title` rather than a `title` attribute, which waits
+       about a second, appears wherever the pointer is, and never shows up
+       for a keyboard at all. */
+    .dash--rail .dash-side a::after,
+    .dash--rail .dash-side-logout::after,
+    .dash--rail .dash-side-collapse::after {
+        content: attr(data-title);
+        position: absolute;
+        left: calc(100% + 8px);
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 170;
+        padding: 4px 8px;
+        border: var(--edge);
+        border-radius: var(--r);
+        background: var(--c-surface);
+        color: var(--c-text);
+        font-family: var(--mono);
+        font-size: 11px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .dash--rail .dash-side a:hover::after,
+    .dash--rail .dash-side a:focus-visible::after,
+    .dash--rail .dash-side-logout:hover::after,
+    .dash--rail .dash-side-logout:focus-visible::after,
+    .dash--rail .dash-side-collapse:hover::after,
+    .dash--rail .dash-side-collapse:focus-visible::after { opacity: 1; }
+}
+
+/* Width is animated for the person who asked for motion and nobody else. */
+@media (prefers-reduced-motion: reduce) {
+    .dash { transition: none; }
+}
+
+@media (max-width: 860px) {
+    .dash,
+    .dash--rail { grid-template-columns: minmax(0, 1fr); }
+    /* Nothing to collapse: the sidebar here is an overlay the toggle at the
+       bottom of the screen opens and closes. */
+    .dash-side-collapse { display: none; }
     .dash-side {
-        display: none;
         position: fixed;
-        top: 57px;
+        top: 0;
         left: 0;
         bottom: 0;
-        z-index: 150;
-        box-shadow: var(--shadow-lg);
-        width: 260px;
+        width: 240px;
+        z-index: 160;
+        transform: translateX(-100%);
+        transition: transform .2s ease;
+        overflow-y: auto;
     }
-    .dash-side.active { display: flex; }
-    .dash-toggle { display: flex; }
-    .dash-main { padding: 1rem; }
+    .dash-side.active { transform: translateX(0); }
+    .dash-toggle { display: block; }
+    .dash-main { padding: 16px 16px 72px; }
+}
+
+/* ---------------------------------------------------------------- */
+/* The journal viewer                                                */
+/* ---------------------------------------------------------------- */
+
+/* A journal is read as text, so the whole table is monospaced: a column of
+   timestamps in a proportional face does not line up, and lining up is what
+   makes a run of records scannable at all. */
+.journal-table td {
+    font-family: var(--mono);
+    font-size: calc(var(--d-fs) - 2px);
+    vertical-align: top;
+}
+
+.journal-time { white-space: nowrap; color: var(--c-text-2); }
+
+/* The level as a shape as well as a colour. A screenshot in grey, a
+   printer, and a reader who cannot tell red from green all get the word --
+   the tint is the glance, the word is the message. */
+.journal-level {
+    display: inline-block;
+    padding: 0 6px;
+    border: 1px solid var(--c-line);
+    border-radius: 3px;
+    font-size: 10px;
+    line-height: 16px;
+    text-transform: uppercase;
+    color: var(--c-text-3);
+}
+/* Recognised, and the quietest of the five -- a DEBUG line is not what
+   anybody is scanning for, so it keeps the base tint. The dotted border
+   is what separates it from a level the parser did not recognise, which
+   gets the plain badge: without a rule of its own the class was emitted
+   and the two were drawn identically. */
+.journal-level--debug { border-style: dotted; }
+.journal-level--info { color: var(--c-text-2); }
+.journal-level--warning { color: var(--c-warn); border-color: var(--c-warn); }
+.journal-level--error,
+.journal-level--critical { color: var(--c-danger); border-color: var(--c-danger); }
+
+.journal-event { color: var(--c-text); white-space: nowrap; }
+
+/* The table scrolls in its own box, and the box is what keeps the controls
+   on screen: a thousand lines is twenty screens of scrolling, and the
+   button that chooses a different journal is at the top of all of them.
+   `vh` rather than a pixel height so a tall screen shows more of the
+   journal, which is the whole reason somebody made the window tall. */
+.journal-scroll {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* The headings stay put while the rows move under them. Found by looking:
+   with the table scrolling inside its own box, the first scroll took
+   `TIME LEVEL EVENT DETAILS` off the top and left four unlabelled columns
+   of monospace. An opaque background is part of it -- a transparent
+   sticky heading is a heading with journal lines sliding through it. */
+.journal-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--c-surface);
+}
+
+/* The leftover fields. Cut to one line rather than allowed to wrap: a
+   record carrying a user agent would otherwise be six lines tall and push
+   the rows around it off the screen. The whole line is one click away. */
+.journal-details {
+    color: var(--c-text-2);
+    max-width: 0;
+    width: 100%;
+}
+
+.journal-row { cursor: pointer; }
+.journal-row:hover { background: var(--c-wash); }
+.journal-row:focus-visible { outline: 2px solid var(--c-action); outline-offset: -2px; }
+
+/* A line nothing could parse, and the raw text under a row that was
+   expanded. Both are the bytes as they were written, so both wrap rather
+   than truncate -- this is the view somebody opened *because* the rendered
+   one was not enough. */
+.journal-raw {
+    font-family: var(--mono);
+    font-size: calc(var(--d-fs) - 2px);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 0;
+    color: var(--c-text-2);
+}
+
+.journal-row--raw td { background: var(--c-wash); }
+.journal-source { color: var(--c-text-3); white-space: nowrap; }
+.journal-expanded td { background: var(--c-wash); }
+
+/* The search over a journal. Six terms, laid out as a grid that reflows
+   rather than as a row: on a narrow screen a row of six inputs either
+   overflows the card or squeezes each of them to a width that fits no
+   value anybody would type. */
+.journal-search {
+    border-top: 1px solid var(--c-line);
+    margin-top: var(--d-gap);
+    padding-top: var(--d-gap);
+}
+
+.journal-search-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+}
+
+.journal-search-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* The labels sit above their fields and are read as a group, so they carry
+   less weight than a section heading would. */
+.journal-search-field .form-label { margin-bottom: 0; }
+
+.journal-search-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+/* The counted half of the journal page: four figures above the chart they
+   are drawn from. A grid rather than a row, for the reason the search
+   fields are one -- four tiles in a line either overflow a narrow card or
+   squeeze the numbers to a width that cannot hold them. */
+.counts-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: var(--d-gap);
+}
+
+.counts-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--c-line);
+    border-radius: 8px;
+}
+
+/* The dot carries the colour the series has in the chart, so the figure
+   above and the column below are readable as the same thing. */
+.counts-tile-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.counts-tile-value {
+    font-size: calc(var(--d-fs) + 6px);
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.counts-tile-label {
+    color: var(--c-text-3);
+    font-size: calc(var(--d-fs) - 2px);
 }

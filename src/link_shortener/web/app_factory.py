@@ -1,11 +1,11 @@
 import atexit
-import os
 
 from flask import Flask, redirect
+from sqlalchemy.exc import IntegrityError
 from flask_cors import CORS
 
 from link_shortener.infrastructure import (
-    LoggingSettings,
+    logging_settings_from,
     Container,
     ConfigFactory,
     get_config,
@@ -19,15 +19,26 @@ from link_shortener.web.controllers.api_controller import ApiController
 from link_shortener.web.controllers.auth_controller import AuthController
 from link_shortener.web.controllers.dashboard_controller import DashboardController
 from link_shortener.web.controllers.frontend_controller import FrontendController
+from link_shortener.web.controllers.journal_api_controller import JournalApiController
+from link_shortener.web.i18n import init_babel
 from link_shortener.web.middleware.authentication import AuthenticationMiddleware
+from link_shortener.web.middleware.cache_control import PrivateCacheMiddleware
+from link_shortener.web.middleware.compression import CompressionMiddleware
 from link_shortener.web.middleware.csrf import CsrfProtectionMiddleware
 from link_shortener.web.middleware.error_handler import ErrorHandlerMiddleware
+from link_shortener.web.middleware.host_check import HostCheckMiddleware
+from link_shortener.web.middleware.query_strictness import QueryStrictnessMiddleware
 from link_shortener.web.middleware.rate_limit import (
     RateLimitMiddleware,
     check_rate_limit_targets,
 )
 from link_shortener.web.middleware.request_logging import RequestLoggingMiddleware
+from link_shortener.web.middleware.security_headers import SecurityHeadersMiddleware
 from link_shortener.web.security.context import create_request_context
+from link_shortener.infrastructure.database.models.role_model import (
+    RoleModel
+)
+from link_shortener.web.security.template_access import register_template_access
 
 RBAC_TABLES = ("roles", "permissions")
 """Tables ``seed_base_roles`` writes to.
@@ -38,17 +49,49 @@ migrate, then seed.
 """
 
 
+def _roles_are_present(db_manager) -> bool:
+    """
+    Say whether the roles table holds anything at all.
+
+    Asked after a losing insert, to tell the two outcomes apart: a race
+    the winner completed leaves the whole set committed, and every other
+    integrity failure leaves nothing -- each worker seeds in one
+    transaction, so there is no half-written state for this to read
+    wrongly.
+
+    Args:
+        db_manager: Database manager to ask.
+
+    Returns:
+        True when at least one role is stored. False when none is, and
+        also when the question itself cannot be answered -- a database
+        that will not answer is not evidence that another process
+        succeeded, and the louder of the two lines is the safe one to
+        print.
+    """
+    try:
+        with db_manager.session() as session:
+            return session.query(RoleModel).first() is not None
+    except Exception:
+        return False
+
+
 def _seed_base_roles_if_ready(container) -> None:
     """
     Seed the base roles, unless the schema is not in place yet.
 
-    Startup seeding runs in every process, CLI invocations included. On a
-    database without tables the attempt used to be reported as a failed
-    seed, so every single command against a fresh database greeted the
-    operator with a warning carrying a driver error -- for a state that is
-    expected and that the next command fixes. An empty schema is now stated
-    plainly and told what to do about it; a real failure (unreachable
-    database, refused permission, malformed YAML) still warns.
+    Startup seeding runs in every process, CLI invocations included, so a
+    database without tables is an expected state that the next command
+    fixes rather than a failure: it is stated plainly and told what to do
+    about it. A real failure -- unreachable database, refused permission,
+    malformed YAML -- still warns.
+
+    The command it names follows ``USE_ALEMBIC``, because that flag picks
+    which of the two ways of building a schema is open and closes the
+    other outright. It used to say ``flask alembic upgrade head``
+    unconditionally -- so a deployment running with the flag off was told,
+    on every start until it had a schema, to run the one command that
+    profile refuses with exit 1, while ``flask db init`` went unmentioned.
 
     Must be called inside an application context.
 
@@ -61,15 +104,63 @@ def _seed_base_roles_if_ready(container) -> None:
         db_manager = container.get_db_manager()
         missing = db_manager.missing_tables(RBAC_TABLES)
         if missing:
+            # Off the container rather than off ``current_app``: this
+            # branch is reached from the CLI as well, the container is
+            # the only thing handed in, and reading the flag through the
+            # request-time proxy turned an absent schema into
+            # "AUTO_SEED_ROLES failed: Working outside of application
+            # context" -- a warning, which is the one thing this function
+            # exists not to raise here.
+            build_it = (
+                "flask alembic upgrade head"
+                if getattr(container.config, "USE_ALEMBIC", True)
+                else "flask db init"
+            )
             logger.info(
                 "Skipping role seeding: database schema is not initialised",
                 missing_tables=", ".join(missing),
-                next_step="flask alembic upgrade head && flask db load-base-roles",
+                next_step=f"{build_it} && flask db load-base-roles",
             )
             return
 
         with db_manager.session() as session:
             seed_base_roles(session)
+    except IntegrityError as clash:
+        # Every worker seeds at startup, and the pass is "read, then write":
+        # two of them find the same permission missing and both insert it,
+        # so the loser meets the unique index. Measured on a container with
+        # `GUNICORN_WORKERS=4` against an empty database -- three of the four
+        # reported `duplicate key value violates unique constraint
+        # "permissions_name_key"`.
+        #
+        # The outcome is right either way: each worker seeds the whole set in
+        # one transaction, so the winner's commit leaves nothing half-written
+        # and the losers roll back entirely. What was wrong was the sentence.
+        # An operator reading "AUTO_SEED_ROLES failed" on a first deployment
+        # has every reason to think the roles are missing -- and the fix for
+        # missing roles, running `flask db load-base-roles`, is a step they
+        # then take for no reason.
+        #
+        # Asked rather than assumed, because the sentence is a claim about
+        # another process and this one cannot see it. Every other way to
+        # meet the unique index leaves the table empty instead: a name
+        # written twice in the RBAC file is refused by the loader before
+        # any of this, and an entry missing a NOT NULL column arrives
+        # here wearing the race's clothes -- measured, `NOT NULL
+        # constraint failed: permissions.resource`, nought roles, and an
+        # info line saying somebody else had done the seeding.
+        detail = str(clash.orig) if clash.orig else str(clash)
+        if _roles_are_present(db_manager):
+            logger.info(
+                "Roles were seeded by another process; this one rolled back",
+                detail=detail,
+            )
+        else:
+            logger.warning(
+                "AUTO_SEED_ROLES failed and the roles table is empty",
+                error=detail,
+                next_step="flask db load-base-roles",
+            )
     except Exception as e:
         logger.warning("AUTO_SEED_ROLES failed", error=str(e))
 
@@ -89,18 +180,18 @@ def create_app(config=None) -> Flask:
     if config is None:
         # Resolve the profile through the factory so that the same rules apply
         # everywhere: FLASK_ENV is case-insensitive and may come from `.env`.
-        # Reading os.environ directly here used to make `FLASK_ENV=Production`
-        # fail with "Unknown environment" while get_config() accepted it.
+        # Reading os.environ directly here makes `FLASK_ENV=Production` fail
+        # with "Unknown environment" while get_config() accepts it.
         env = ConfigFactory.resolve_env()
         config = get_config(env)
     else:
         env = getattr(config, "ENV", 'custom')
         # Validated here as well, and not only inside `ConfigFactory`.
         # A configuration built as an object -- which is every test
-        # configuration, and anything that constructs one in code -- used
-        # to skip the checks entirely: an app given
-        # `DEFAULT_RATE_LIMIT_PERIOD=-60` this way came up and throttled
-        # nothing at all, measured at 150 requests out of 150 let through.
+        # configuration, and anything that constructs one in code -- would
+        # otherwise skip the checks entirely, so an app given
+        # `DEFAULT_RATE_LIMIT_PERIOD=-60` this way would come up and
+        # throttle nothing.
         config.validate()
 
     # ------------------------------------------------------------------
@@ -112,26 +203,11 @@ def create_app(config=None) -> Flask:
     # ------------------------------------------------------------------
     # Setup logging
     # ------------------------------------------------------------------
-    logging_settings = LoggingSettings(
-        log_dir=app.config.get("LOG_DIR", "logs"),
-        log_file_name=app.config.get("LOG_FILENAME", "link_shortener"),
-        audit_log_filename=app.config.get("AUDIT_LOG_FILENAME", "audit"),
-        error_log_filename=app.config.get("ERROR_LOG_FILENAME", "error"),
-        log_date_format=app.config.get("LOG_DATE_FORMAT", "%Y-%m-%d %H:%M:%S"),
-        log_to_console=app.config.get("LOG_TO_CONSOLE", True),
-        log_to_file=app.config.get("LOG_TO_FILE", False),
-        log_level_str=app.config.get("LOG_LEVEL", "DEBUG"), 
-        debug=app.config.get("DEBUG", False),
-        sqlalchemy_log_level=app.config.get("SQLALCHEMY_LOG_LEVEL", "WARNING"),
-        werkzeug_log_level=app.config.get("WERKZEUG_LOG_LEVEL", "WARNING"),
-        logger_type=app.config.get("LOGGER_TYPE", "auto"),
-        audit_enabled=app.config.get("AUDIT_ENABLED", True)
-    )
-    setup_logging(
-        logging_settings, 
-        logging_enabled=app.config.get("LOGGING_ENABLED", True), 
-        audit_enabled=app.config.get("AUDIT_ENABLED", True)
-    )
+    # The same list of names the Celery worker builds its settings from --
+    # see `logging_settings_from`. Failed writes raise here, because this
+    # is the process that has `FailoverService` behind them.
+    logging_settings = logging_settings_from(app.config.get)
+    setup_logging(logging_settings)
 
     # ------------------------------------------------------------------
     # Register CLI commands (must be done before first request)
@@ -150,10 +226,21 @@ def create_app(config=None) -> Flask:
     )
 
     # ------------------------------------------------------------------
+    # Interface language
+    # ------------------------------------------------------------------
+    # Before anything that renders: the selector reads the request, so it
+    # only has to exist by the time a page is built, but registering it here
+    # keeps it beside the other extension rather than among the middlewares,
+    # which it is not -- it adds no hook to the request cycle.
+    init_babel(app)
+
+    # ------------------------------------------------------------------
     # Dependency Injection Container
     # ------------------------------------------------------------------
     container = Container(config)
-    app.container = container
+    # Flask has no ``container`` attribute of its own: this is the line that
+    # puts it there, and every reader of ``app.container`` depends on it.
+    app.container = container  # type: ignore[attr-defined]
 
     # ------------------------------------------------------------------
     # Idempotent seeding of base roles & permissions (only if flag allows)
@@ -166,8 +253,48 @@ def create_app(config=None) -> Flask:
     # ------------------------------------------------------------------
     # Register Middlewares (order matters)
     # ------------------------------------------------------------------
+    ## 0. Compression
+    #
+    # First, and that is deliberate: Flask runs `after_request` hooks in the
+    # reverse of the order they were registered, so the first one installed
+    # is the last one to touch the response. Compression has to see the body
+    # after every other middleware has finished writing it -- installed
+    # last, it would gzip a body that the error handler then replaced.
+    #
+    # Nothing in front of this application compresses anything: gunicorn
+    # serves it directly, with no nginx and no CDN, and whoever runs it may
+    # not put one there either.
+    CompressionMiddleware(app)
+    ## 0.5 Security headers
+    #
+    # After compression and before everything else, which puts its
+    # `after_request` second-to-last: the headers are written onto whatever
+    # response finally leaves, including the one the error handler
+    # replaced, and compression still sees the body afterwards.
+    #
+    # Nothing about the nonce depends on this position: it is minted by a
+    # context processor, when a template asks for it, and read back out of
+    # `g` by the `after_request` that writes the header -- see
+    # `security_headers.py`, which says why a `before_request` would be
+    # the wrong place. What the position does decide is that its header
+    # goes on before compression touches the body.
+    SecurityHeadersMiddleware(app)
     ## 1. Request logging (generates request_id)
     RequestLoggingMiddleware(app, container.get_logger(RequestLoggingMiddleware.__module__))
+    ## 1.5 The names this deployment answers to
+    #
+    # After logging, so a refusal still carries a `request_id` and leaves a
+    # line; before authentication, so a request for somebody else's name
+    # costs no database query.
+    #
+    # Ahead of the limiter, unlike everything below it, and for a reason
+    # that does not apply to the rest: being refused here buys a caller
+    # nothing. The order below exists because a hook that refuses before
+    # the limiter counts is a way to probe for free -- but a caller who
+    # sends the wrong `Host` gets no service at all, whatever they were
+    # probing for. Registers no hook when `ALLOWED_HOSTS` is empty, which
+    # is the default, so it costs nothing until a deployment names one.
+    HostCheckMiddleware(app, container.get_logger(HostCheckMiddleware.__module__))
     ## 2. Authentication (loads current_user into g)
     AuthenticationMiddleware(
         app,
@@ -181,12 +308,11 @@ def create_app(config=None) -> Flask:
     # Before CSRF, and that is the whole point of where it sits. Flask runs
     # `before_request` hooks in the order they were registered, so with CSRF
     # first every request it refused was a request the limiter never saw. A
-    # caller only had to look cookie-authenticated to be exempt from the
-    # limits: `_is_cookie_authenticated` asks whether an auth cookie is
-    # present, not whether it is valid, so any anonymous client that sent
-    # `access_token=anything` got 403 without ever being counted. Measured
-    # on `POST /api/v1/shorten`: 60 such requests, 60 refusals, not one 429,
-    # while the same client without the cookie was throttled at the 31st.
+    # caller would only have to look cookie-authenticated to be exempt
+    # from the limits: `_is_cookie_authenticated` asks whether an auth
+    # cookie is present, not whether it is valid, so any anonymous client
+    # sending `access_token=anything` would be refused without ever being
+    # counted.
     #
     # After authentication, which has to stay: the limiter counts against
     # the account once one is signed in and against the address until then,
@@ -202,36 +328,55 @@ def create_app(config=None) -> Flask:
         container.get_logger(CsrfProtectionMiddleware.__module__),
         container.get_authentication_service()
     )
-    ## 5. Error handling
-    ErrorHandlerMiddleware(app, container.get_logger(ErrorHandlerMiddleware.__module__))
+    ## 5. The query string against the published document
+    #
+    # After the limiter, for the reason written above it: a hook that
+    # refuses a request before the limiter has counted it is a way to be
+    # refused for free, and "send a parameter that does not exist" is as
+    # cheap a way as sending no CSRF token. After CSRF as well -- a
+    # forged write is a worse thing than a misspelt parameter, and the
+    # worse one should be the answer the caller gets.
+    QueryStrictnessMiddleware(app)
+    ## 6. Error handling
+    ErrorHandlerMiddleware(
+        app,
+        container.get_logger(ErrorHandlerMiddleware.__module__),
+        container.get_audit_logger(),
+    )
+    ## 7. Cache-Control on responses belonging to an account
+    #
+    # Position matters only in that it is after authentication, which is
+    # what puts the identity in `g` -- `after_request` order does not,
+    # since this adds a header nobody else reads.
+    PrivateCacheMiddleware(app)
 
     # ------------------------------------------------------------------
     # Register Controllers (Blueprints)
     # ------------------------------------------------------------------
     link_service = container.get_link_service()
     admin_service = container.get_admin_service()
-    authentication_service = container.get_authentication_service()
     authorization_service = container.get_authorization_service()
-    login_uc = container.get_login_use_case()
-    register_uc = container.get_register_use_case()
 
     api_controller = ApiController(link_service, admin_service, authorization_service)
     frontend_controller = FrontendController()
     admin_api_controller = AdminApiController(admin_service)
-    dashboard_controller = DashboardController(link_service, admin_service)
-    auth_controller = AuthController(
-        authentication_service,
-        login_uc,
-        register_uc,
-        container.get_verify_email_use_case(),
-        container.get_resend_verification_use_case(),
+    journal_api_controller = JournalApiController(
+        container.get_read_journal_use_case(),
+        container.get_security_counts_use_case(),
     )
+    dashboard_controller = DashboardController(link_service, admin_service)
+    auth_controller = AuthController(container.get_auth_service())
 
     app.register_blueprint(api_controller.bp)
     app.register_blueprint(frontend_controller.bp)
     app.register_blueprint(admin_api_controller.bp)
+    app.register_blueprint(journal_api_controller.bp)
     app.register_blueprint(dashboard_controller.bp)
     app.register_blueprint(auth_controller.bp)
+
+    # Lets the markup ask the authorization service what this caller may
+    # do, rather than guess it from role names.
+    register_template_access(app)
 
     # ------------------------------------------------------------------
     # Redirect route (short code resolver)
@@ -277,37 +422,36 @@ def create_app(config=None) -> Flask:
         """
         state = container.health_check.snapshot()
 
-        def describe(name: str, ok: bool) -> str:
-            """Render one component's state."""
-            if name in state.timed_out:
-                return "timeout"
-            return "ok" if ok else "unavailable"
-
-        components = {
-            "database": describe("database", state.database),
-            # "ok" would claim a working cache on a deployment that runs
-            # without one.
-            "cache": (
-                describe("cache", state.cache)
-                if state.cache_configured
-                else "disabled"
-            ),
-            "task_queue": describe("task_queue", state.task_queue),
-            # Not "ok"/"unavailable": the limiter is reachable or not, but
-            # what matters to an operator is whether limits are on.
-            "rate_limiter": (
-                "enforcing" if state.rate_limiter else "not_enforcing"
-            ),
-        }
+        # Rendered by the snapshot rather than here. Four surfaces
+        # reported the same per-component verdict in their own words --
+        # this endpoint, `flask maintenance health`, the admin API and the
+        # health page's JavaScript -- and the two facts added most
+        # recently had to be written into all four by hand. The words
+        # below are this endpoint's; the judgement is the snapshot's.
+        components = state.component_states()
 
         # Three states, two response codes, on purpose. The code answers the
         # container's question -- "should this be restarted?" -- and for a
         # failed cache or broker the answer is no: a restart does not fix
         # them and does take down a service that still works. The body
         # answers the operator's question, which the code cannot.
-        if not state.database:
+        # `state.healthy`, not a second reading of the rendered strings:
+        # the same verdict is what `flask maintenance health` exits on,
+        # and it is the snapshot's to give -- a component added to one
+        # expression and not the other is a surface disagreeing with a
+        # surface, which is what this object exists to prevent.
+        # A missing schema is counted with the database being down rather
+        # than with a failed cache, and it is the one addition to this rule
+        # that is not about restarting. Neither state is fixed by a
+        # restart; both make the instance answer 5xx to every request, and
+        # 503 is what takes it out of a load balancer's rotation. Reporting
+        # 200 there is what let a stack that served nothing look like a
+        # stack that served everything.
+        serves_requests = state.database and state.database_schema
+
+        if not serves_requests:
             status = "unhealthy"
-        elif all(value in ("ok", "disabled", "enforcing") for value in components.values()):
+        elif state.healthy:
             status = "healthy"
         else:
             status = "degraded"
@@ -317,7 +461,7 @@ def create_app(config=None) -> Flask:
                 "status": status,
                 "components": components,
             },
-            200 if state.database else 503,
+            200 if serves_requests else 503,
         )
 
     # ------------------------------------------------------------------
@@ -366,6 +510,47 @@ def create_app(config=None) -> Flask:
         logger.warning(
             "Running on generated secrets; each worker process has its own",
             settings=", ".join(generated),
+        )
+
+    # Empty `TRUSTED_PROXIES` says two different things and the difference
+    # cannot be read from the value: "this service is reached directly", in
+    # which case it is right, and "there is a proxy in front and nobody
+    # named it", in which case every visitor in the world shares one
+    # identity. `get_client_ip()` falls back to the connection's address,
+    # which behind a balancer is the balancer -- so the guest quota and the
+    # rate limiter count everyone as one caller. Measured with a limit of
+    # three: six visitors from six addresses through one proxy got
+    # 201, 201, 201, 429, 429, 429, the fourth refused on his first link.
+    #
+    # A warning rather than a refusal, because the first reading is a real
+    # deployment: a service on a public address with no proxy in front of
+    # it is configured correctly with this empty. What it cannot do is stay
+    # silent, since the wrong reading looks like a working service until
+    # somebody complains about a quota they never spent.
+    # "Deployed" is read the way `_deployed_backend_errors` reads it --
+    # neither DEBUG nor TESTING -- and not from the profile's name. A
+    # configuration handed to `create_app` as an object carries no `ENV`
+    # attribute, so `env` above is the string "custom" for every such
+    # caller, which is every test and every deployment that builds its
+    # configuration in code. A check written against the name would have
+    # been silent exactly where it is needed.
+    deployed = not app.config.get("DEBUG") and not app.config.get("TESTING")
+    if deployed and not app.config.get("TRUSTED_PROXIES"):
+        logger.warning(
+            "TRUSTED_PROXIES is empty: X-Forwarded-For is not read, so the "
+            "guest quota and the rate limiter count by the connecting "
+            "address. Correct where this service is reached directly; "
+            "behind a proxy it makes every visitor one caller",
+            profile=env,
+        )
+
+    if deployed and not app.config.get("ALLOWED_HOSTS"):
+        logger.warning(
+            "ALLOWED_HOSTS is empty: the service answers to any Host it is "
+            "given, including a name somebody else pointed at this address. "
+            "Harmless while nothing builds an address from the request, and "
+            "the wrong default the moment something does",
+            profile=env,
         )
 
     logger.info(

@@ -3,9 +3,9 @@ Tests that losing a race with a concurrent creation is not a failure.
 
 Whether a short code is free is decided by the unique index on
 ``urls.short_code``, not by the lookup that precedes the insert: between
-the two, another request can commit. The check-then-insert shape is the
-textbook race, and the loser used to surface as a 500 -- for something as
-ordinary as a double-click.
+the two, another request can commit. The check-then-insert shape is a
+race, and the loser must not surface as a 500 -- for something as ordinary
+as a double-click.
 
 The fix is the standard one: let the constraint decide, report the
 violation, and retry the whole unit of work. By then the winner's row is
@@ -168,7 +168,7 @@ class TestLosingTheRaceIsNotAFailure:
     def test_a_conflict_never_reaches_the_caller_as_itself(self, use_case, repo):
         """
         Whatever else happens, the caller must not see the storage-level
-        conflict: it means nothing to them and used to arrive as a 500.
+        conflict: it means nothing to them and arrives as a 500.
         """
         repo.save.side_effect = LinkConflictError()
 

@@ -6,8 +6,13 @@ space with every top-level page the service serves. Werkzeug prefers a
 static rule to a dynamic one, so a link whose code is ``health`` is not a
 hijacked health check -- it is a link that never resolves, because
 ``/health`` answers first. Either way the caller was handed a code that does
-not work, and only a custom code can produce one: generated codes are random
-and the chance is negligible, while a person picking a code picks words.
+not work, and in practice only a custom code produces one: a person picking
+a code picks words, while a generated code is ``sha256(url + pepper)`` cut
+to ``SHORT_CODE_LENGTH`` Base64URL characters -- not random, but spread
+evenly enough over 64**7 at the shipped length that landing on one of the
+seven reserved names of that same length is a chance nobody will meet.
+Evenly enough rather than never: ``is_reserved`` is asked only of a custom
+code, so this is a bound and not a guard.
 
 Only names that could actually be a code are listed. A short code is 6 to 10
 characters from ``[a-zA-Z0-9_-]``, so ``/login`` and ``/api`` are out of
@@ -30,6 +35,7 @@ RESERVED_CODES = frozenset({
     "metrics",
     "openapi",
     "swagger",
+    "verify",
 })
 """Lower-cased. Comparison folds case: codes are case-sensitive to the
 router, but a person asking for ``Health`` means the word, and handing them

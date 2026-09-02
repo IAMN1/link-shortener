@@ -13,13 +13,11 @@ from link_shortener.application import AuthorizationService
 from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.uow import UnitOfWork
 from link_shortener.domain import SystemPermissions, User
+from link_shortener.domain.policies.role_policy import GUEST_ROLE_NAME
 
 # ==============================================================================
 # Anonymous access
 # ==============================================================================
-
-GUEST_ROLE_NAME = "guest"
-"""Name of the role an unauthenticated caller acts under."""
 
 ANONYMOUS_PERMISSION_CEILING = frozenset({
     SystemPermissions.STATS_VIEW_BASIC.value,
@@ -52,15 +50,45 @@ belongs where the permission is used, so a set widened later cannot leave an
 unguarded path behind.
 """
 
+# ==============================================================================
+# The limit of the administrative bypass
+# ==============================================================================
+
+BEYOND_ADMIN_ALL = frozenset({
+    SystemPermissions.AUDIT_VIEW.value,
+})
+"""Permissions ``admin:all`` does not carry, and has to be granted for.
+
+The audit journal records what was done to links and accounts, and an
+administrator is the person who can do the most of it. A bypass that handed
+them the record along with the powers would leave the journal proving
+nothing about the one caller it is chiefly kept against -- which is what
+NIST SP 800-53 AU-9 asks a system to prevent, and AC-5 the reason why.
+
+**What this does not do.** It does not stop an administrator reading the
+journal: they hold ``admin:manage_roles`` and can assign themselves
+``auditor``, and they can read the file off the disk besides. Nothing
+arranged inside one application can prevent that -- it takes a second
+system that this one cannot write to, which is the first entry in
+`docs/roadmap.md`. What the exception buys is that the short way round is
+closed and the remaining way leaves a record: the grant is an event, and so
+is the reading that follows it.
+
+``logs:view`` is deliberately absent from this set. `application.log` and
+`error.log` are operational journals -- an administrator reads them to do
+the job, and withholding them would be ceremony rather than separation.
+"""
+
 
 class RBACAuthorizationService(AuthorizationService):
     """
     Determines if a caller has a given permission based on assigned roles.
 
     Users holding the ``admin:all`` permission are considered super-users
-    and are granted implicit access to everything. That bypass is reachable
-    only for an authenticated user -- an anonymous caller is answered from
-    the ``guest`` role and never reaches it.
+    and are granted implicit access to everything except what
+    ``BEYOND_ADMIN_ALL`` names. That bypass is reachable only for an
+    authenticated user -- an anonymous caller is answered from the ``guest``
+    role and never reaches it.
 
     Attributes:
         uow_factory: Callable that returns a new Unit of Work instance.
@@ -97,8 +125,12 @@ class RBACAuthorizationService(AuthorizationService):
         """
         if user is None:
             return self._anonymous_is_allowed(permission)
-        # Admins bypass all permission checks.
-        if user.has_permission(SystemPermissions.ADMIN_ALL.value):
+        # Admins bypass permission checks, with the exception named in
+        # ``BEYOND_ADMIN_ALL``: the audit journal is not something the
+        # administrative role carries by being administrative.
+        if permission not in BEYOND_ADMIN_ALL and user.has_permission(
+            SystemPermissions.ADMIN_ALL.value
+        ):
             return True
         # Standard role-based check.
         return user.has_permission(permission)
@@ -107,10 +139,22 @@ class RBACAuthorizationService(AuthorizationService):
         """
         Check a permission for an unauthenticated caller.
 
-        Opens a Unit of Work, so this branch must not be reached from inside
-        an open one. Today it cannot be: the only call site within a
-        transaction (``DeleteLinkUseCase``) has already established that the
-        caller is somebody.
+        Opens a Unit of Work, so this branch must not be reached from
+        inside an open one. Three use cases ask this service while doing
+        their own database work, and each stays clear of it differently:
+        ``DeleteLinkUseCase`` has already established that the caller is
+        somebody, while ``ReadJournalUseCase`` and ``GetSecurityCountsUseCase``
+        close the unit of work they loaded the actor with before they ask.
+        Said as a list because it was said as "the only call site", and by
+        then there were three.
+
+        The last two are held to it by
+        ``test_the_actor_is_loaded_before_the_permission_is_asked``, which
+        widens the ceiling below for the length of a test: with the ceiling
+        as it stands, neither journal permission reaches the database here,
+        so the order in those use cases could be reversed and nothing would
+        notice. What the ceiling admits is a decision that can change; the
+        order must not depend on it.
 
         Args:
             permission: Permission string being checked.

@@ -56,10 +56,10 @@ class TestConfigFactory:
 
     def test_validate_production_missing_vars(self, monkeypatch, mocker):
         """
-        Should raise ValueError in production 
+        Should raise ValueError in production
         when required env vars are missing.
         """
-        
+
         monkeypatch.setenv('FLASK_ENV', 'production')
 
         # Prevent loading variables from .env files: a developer machine may
@@ -81,7 +81,7 @@ class TestConfigFactory:
 
     def test_create_testing_config(self):
         """Should create TestingConfig when env='testing'."""
-        
+
         # Act
         config = ConfigFactory.create_config("testing")
 
@@ -92,7 +92,7 @@ class TestConfigFactory:
 
     def test_create_staging_config(self, monkeypatch):
         """
-        Should create StagingConfig 
+        Should create StagingConfig
         when FLASK_ENV=staging with required env vars.
         """
 
@@ -102,10 +102,14 @@ class TestConfigFactory:
         monkeypatch.setenv("SHORT_CODE_PEPPER", "staging-pepper")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@staging/db")
         monkeypatch.setenv("REDIS_URL", "redis://staging:6379/0")
-        
+        # Demanded since the profile gained a validate() of its own, on the
+        # same terms as production: without it BASE_URL falls back to the
+        # bind address and every short link names an internal host.
+        monkeypatch.setenv("DOMAIN", "staging.example.com")
+
         # Act
         config = ConfigFactory.create_config()
-        
+
         # Assert
         assert isinstance(config, StagingConfig)
         assert config.DEBUG is False
@@ -223,4 +227,3 @@ class TestConfigFactory:
         config = TestingConfig()
         assert config.DATABASE_TYPE == "sqlite"
         assert config.DATABASE_URL == "sqlite:///:memory:"
-

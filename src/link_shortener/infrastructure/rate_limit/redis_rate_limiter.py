@@ -52,25 +52,21 @@ class RedisRateLimiter(RateLimiter):
     clean up abandoned keys.
 
     When Redis is unreachable the limiter fails **open**: requests are
-    allowed. It runs in ``before_request`` for every route, so raising there
-    turned a cache outage into a 500 on every single endpoint -- including
-    the health endpoints whose whole job is to report that outage. Serving
-    traffic unthrottled is the lesser failure.
+    allowed. It runs in ``before_request`` for every route, so raising
+    there would turn a cache outage into a 500 on every endpoint --
+    including the health endpoints whose job is to report that outage.
 
-    Failing open is not the same as failing quietly, and the two failures it
-    can meet are not the same either:
+    Failing open is not the same as failing quietly, and the two failures
+    it can meet are not the same either:
 
-    * The connection broke. Nothing can be enforced until it comes back, so
-      the limiter backs off rather than paying a socket timeout on every
-      request -- against a Redis that accepted TCP and stopped answering,
-      that cost every route two full timeouts before this existed.
-    * The server answered and refused the command: ``READONLY`` on a replica
-      after a failover, ``OOM``, a rotated password. The connection is fine;
-      the deployment is misconfigured. Treating it as an outage would drop a
-      healthy connection, and treating it as normal left throttling switched
-      off -- brute-force protection on ``auth.login`` and ``auth.register``
-      included -- while every health surface reported the cache as fine,
-      because ``PING`` is allowed in exactly these states.
+    * The connection broke. Nothing can be enforced until it comes back,
+      so the limiter backs off rather than paying a socket timeout on
+      every request.
+    * The server answered and refused the command: ``READONLY`` on a
+      replica after a failover, ``OOM``, a rotated password. The
+      connection is fine and the deployment is misconfigured, so dropping
+      the connection would not help -- and ``PING`` is allowed in exactly
+      these states, so no health surface would notice on its own.
 
     Either way ``is_enforcing()`` turns false, so the state is reportable
     instead of invisible.
@@ -80,7 +76,7 @@ class RedisRateLimiter(RateLimiter):
         self,
         redis_client: redis.Redis,
         prefix: str = "rate_limiter",
-        logger: Logger = None,
+        logger: Optional[Logger] = None,
         retry_interval: int = 10,
     ):
         """
@@ -104,14 +100,10 @@ class RedisRateLimiter(RateLimiter):
         """
         Report whether Redis is currently being skipped after a failure.
 
-        A pure read. It used to clear the outage once the interval elapsed,
-        which meant that merely *asking* about the limiter's state declared
-        the outage over -- with nothing having verified that Redis came
-        back. The health check asks exactly that question, so it reported
-        limits as enforced during an outage it had itself just erased.
-
-        The outage is cleared in one place only: a real operation that
-        succeeded.
+        A pure read: asking about the limiter's state must not declare the
+        outage over, or the health check would report limits as enforced
+        during an outage it had itself just erased. The outage is cleared
+        in one place only -- a real operation that succeeded.
 
         Returns:
             True while the back-off window is still running.
@@ -250,7 +242,7 @@ class RedisRateLimiter(RateLimiter):
     def _get_key(self, key: str) -> str:
         """Return the full Redis key by prefixing the given identifier."""
         return f"{self.prefix}:{key}"
-    
+
     def _evaluate(self, key, limit, period):
         """
         Run the sliding-window script, atomically.
@@ -270,7 +262,10 @@ class RedisRateLimiter(RateLimiter):
         now = time.time()
         window_start = now - period
 
-        allowed, remaining = self.redis.eval(
+        # One class in redis-py serves both the sync and the async client,
+        # so ``eval`` is declared as returning an awaitable as well; this
+        # client is the synchronous one and the script returns two numbers.
+        allowed, remaining = self.redis.eval(  # type: ignore[misc]
             SLIDING_WINDOW_SCRIPT,
             1,               # number of keys
             redis_key,       # KEYS[1]
@@ -309,7 +304,7 @@ class RedisRateLimiter(RateLimiter):
                 "Rate limiter unavailable, allowing request unthrottled",
                 error=str(error),
             )
-    
+
     def get_remaining(self, key, limit, period) -> int:
         """
         Return the number of remaining requests allowed in the current window.

@@ -1,0 +1,398 @@
+# Operations
+
+Running a deployment: migrations, the CLI, the maintenance schedule,
+backups, health and upgrades.
+
+[All docs](README.md) · [Configuration](configuration.md) ·
+[Getting started](getting-started.md)
+
+Commands below are written without a prefix. Use:
+
+```bash
+uv run flask <command>                                        # locally
+docker compose --env-file .env.docker exec app flask <command>  # in Docker
+```
+
+`uv run` puts the command in the project's virtual environment, where the
+profile and settings come from `.env`. With the environment already
+activated the prefix is unnecessary; with neither, you get
+`flask: command not found`.
+
+---
+
+## Migrations
+
+The schema is owned by Alembic, and this repository keeps **one** revision.
+A change to the models is edited into the baseline rather than followed by a
+second revision, so a deployment always builds the current schema from
+nothing. What that costs is stated where it is decided: a database created
+by an older baseline is not caught up, and recreating it is the ordinary
+answer.
+
+```bash
+flask alembic upgrade head        # apply
+flask alembic status              # where the database stands
+flask alembic history             # the chain of revisions
+flask alembic migrate "what changed"   # autogenerate — see the rule above before keeping it
+flask alembic downgrade -1 --yes  # step back one; it asks first, and this repository
+                                  # keeps one revision, so -1 is every table
+```
+
+In Docker there is no separate step: the `migrations` service runs
+`upgrade head` and `app` waits for it with
+`condition: service_completed_successfully`. The schema is applied before
+the application starts, always.
+
+> [!WARNING]
+> Use `flask alembic`, not bare `alembic`. The bare command reads
+> `alembic.ini` from the working directory and fails with
+> `No 'script_location' key found` anywhere else — and, worse, it resolves
+> the database from its own environment rather than from the profile the
+> application is running under.
+
+<details>
+<summary>How a migration decides which database to open</summary>
+
+Alembic is handed one string and reads nothing else of the application's
+configuration, so `infrastructure/configs/app/migration_url.py` produces
+that string without demanding a configuration a migration does not need —
+secrets, the domain and the mail settings would each otherwise stop a
+migration that reads none of them.
+
+A caller that already resolved a URL hands it over in
+`ALEMBIC_DATABASE_URL`. The Flask CLI does exactly that when it shells out:
+without a handoff the subprocess re-derives a profile from its own
+environment, nothing exports `FLASK_ENV`, and a run under `testing` — the
+profile that pins an in-memory database precisely so a test cannot reach a
+real one — landed on the developer's own file. The value travels in the
+environment rather than in `-x` because it carries the database password and
+argv is visible in the process list.
+
+Outside `development` a migration refuses to go to an unnamed SQLite file,
+to an in-memory database, and to a database no profile names. Each refusal
+says which of those it is.
+
+</details>
+
+---
+
+## The CLI
+
+Seven groups, and two commands outside them. `flask --help` lists all of
+it; `flask <group> --help` lists a group. The `alembic` group is under
+[Migrations](#migrations) above, where the thing it operates on is
+explained.
+
+### Accounts
+
+| Command | |
+|---|---|
+| `create-admin --email <e> --password <p>` | The first administrator. Without the options it prompts; `--non-interactive` refuses instead and names what is missing — that is the form for provisioning scripts, where stdin is closed |
+| `create-user --email <e> --password <p> --role <r>` | An account with a given role |
+
+> [!WARNING]
+> **An administrator may switch themselves off, and the API does not ask.**
+> `POST /api/v1/admin/users/<own id>/deactivate` under your own token
+> answers `200`, and the next request with that token answers `401` — one
+> call, no confirmation. Deleting your own account is allowed on the same
+> terms. This is deliberate: an administrator resigning their own access
+> is a thing people do on purpose, and a rule against acting on oneself
+> would forbid it.
+>
+> What is not allowed is leaving the service with nobody: the **last**
+> active holder of `admin:all` is refused both operations with `403`, and
+> the count is taken under a lock so two administrators cannot demote each
+> other at once. So the way back always exists — another administrator, or
+> `flask create-admin` at a shell.
+
+### Security
+
+| Command | |
+|---|---|
+| `security check-secrets` | Are the secrets set properly |
+| `security generate-secrets` | Print a fresh `SECRET_KEY` and `SHORT_CODE_PEPPER`; `--write <file>` fills them into an env file instead, `--force` replaces values already set. `--with-service-passwords` adds `DATABASE_PASSWORD` and `REDIS_PASSWORD` — what the Docker stack's own PostgreSQL and Redis are started with, and refuse to start without |
+| `security list-users` · `security list-roles` | What exists |
+| `security validate-token <token>` | Verdict plus claims |
+| `security reset-password` | Set a new password |
+
+> [!NOTE]
+> `validate-token` says `Token is VALID (type: access)`. The type is named
+> deliberately: a bare "VALID" read the same for an access and a refresh
+> token, and they are not interchangeable — a refresh token opens no
+> endpoint. A token with no `exp` is treated as invalid: the library checks
+> expiry only when the claim is present, so one issued without it would
+> never expire.
+
+### Database
+
+| Command | |
+|---|---|
+| `db check` · `db status` | Can the database be reached |
+| `db migrate` | Apply Alembic migrations. With `USE_ALEMBIC=false` it refuses and exits 1, in the same words as the `alembic` group — a deployment line that checks the exit code is told the migration did not run |
+| `db load-base-roles` | Seed or update the system roles from YAML |
+| `db load-custom-roles <file>` | The same from a file of your own |
+| `db seed --count N` | Fill the database with test links. They belong to nobody and are counted against nobody: the quota is measured against the caller's address, and a CLI call has none, so `GUEST_LINK_LIMIT` does not apply and there is nothing to raise. They also never expire — a guest's link made over HTTP lives seven days, these live until deleted |
+| `db init` · `db drop --yes` | Only meaningful with `USE_ALEMBIC=false`, which is a setting like any other: it is read from the environment under `development`, `staging` and `production` alike, so either way of building the schema is available on any of them. `testing` is the exception — it spells `False` in the class and ignores the variable, so the suite does not depend on what is in the environment. With the flag on, these two refuse and the `alembic` group works; with it off, the other way round |
+
+### Links
+
+| Command | |
+|---|---|
+| `link create --url <u> [--code <c>]` | Shorten a URL from the shell. A URL this command already shortened comes back as its existing link rather than a second one, and `--code` is then not issued — the report says both. Links made by a signed-in account or by a web visitor are never returned here |
+| `link info <code>` | What the service holds about one link. An expired link is refused as expired rather than reported as missing — the row is still there, and `link delete` still removes it |
+| `link list --limit N` | The most recent links; `--limit` is 1 or more, because an empty report for `--limit 0` is not an answer |
+| `link delete <code>` | Remove one link. A refusal here is written to `application.log` and not to the audit journal: there is no request and no error handler behind it |
+
+### Cache
+
+| Command | |
+|---|---|
+| `cache stats` | Hits, memory and the rest, asked of the backend. A cache switched off says so and exits 0; one that does not answer exits 1 |
+| `cache clear [--stats-only]` | Empty the cache, or only its statistics half |
+| `maintenance check-redis` | The two questions `/health` puts to the cache: is a backend configured, and did it answer just now |
+
+### Maintenance and statistics
+
+| Command | |
+|---|---|
+| `maintenance clean-sessions` | Remove `refresh_sessions` rows whose tokens have expired |
+| `maintenance clean-expired` | Remove links past `expires_at` |
+| `maintenance clean-unverified` | Remove accounts nobody confirmed within `UNVERIFIED_ACCOUNT_TTL_HOURS`, and their dead tokens |
+| `maintenance clean-reset-tokens` | Remove `password_resets` rows that are spent or expired |
+| `maintenance normalize-emails --apply` | One-off, on an existing database |
+| `maintenance roll-up-visits` | Fold finished days of visits into day totals, then delete raw rows past `VISIT_RETENTION_DAYS`. Run daily |
+| `maintenance roll-up-security-events` | Fold finished days of security events into day totals, then delete raw rows past `SECURITY_EVENT_RETENTION_DAYS`. Run daily. A command of its own rather than a step in the line above: the two tables fill at different rates and keep their history for different lengths, and a cron line saying "roll up visits" should not delete the security history under a name that does not mention it |
+| `maintenance health` | A dependency report on the terminal, plus which journals this process could open |
+| `stats show` | Print the statistics as they stand, without recomputing them |
+| `stats refresh` | Rebuild the statistics cache |
+
+---
+
+## Maintenance schedule
+
+```mermaid
+flowchart LR
+    D([Daily]) --> S[clean-sessions<br/>expired refresh tokens]
+    D --> E[clean-expired<br/>expired links]
+    D --> U[clean-unverified<br/>unconfirmed accounts]
+    D --> P[clean-reset-tokens<br/>spent reset links]
+    D --> V[roll-up-visits<br/>finished days of traffic]
+    D --> C[roll-up-security-events<br/>finished days of evidence]
+    W([Weekly]) --> R[stats refresh]
+    O([Once, on an existing database]) --> N[normalize-emails --apply]
+```
+
+| Job | Why it is not optional |
+|---|---|
+| `clean-sessions` | One row per refresh token ever issued; without the job the table only grows. It removes only rows that already grant nothing |
+| `clean-expired` | Removes only links that already answer `410 Gone`. Not just space: while an expired row sits in the database it occupies a place in its owner's statistics and in `/links/mine` |
+| `clean-unverified` | **Not cosmetic.** An unconfirmed account holds an address: it cannot be registered again (taken) and cannot be signed into (unconfirmed). Without this job anyone can squat addresses in bulk, permanently, and their owners are told "already registered". Confirmed accounts are never touched, whatever their age |
+| `clean-reset-tokens` | One row per reset asked for, and the accounts they belong to are staying — so nothing else ever prunes them. It removes only rows that already grant nothing: spent, or past `PASSWORD_RESET_TTL_MINUTES` |
+| `roll-up-visits` | The raw visit rows are one per redirect. Folding a finished day into one row per link per day is what lets `VISIT_RETENTION_DAYS` delete the raw ones without emptying the long-range charts. Skip it and the sweep has nothing folded to fall back on |
+| `roll-up-security-events` | The same for the security journal, and a job of its own rather than a step in the one above: the two tables fill at different rates and keep their history for different lengths (`SECURITY_EVENT_RETENTION_DAYS` is a year against ninety days). A cron line saying "roll up visits" should not be deleting security history under a name that does not mention it |
+
+> [!WARNING]
+> **A behaviour change.** `clean-expired` used to delete anything untouched
+> for N days — regardless of `expires_at` or owner — and `--days` set that
+> threshold. The option was removed rather than redefined: an old cron line
+> now fails with `No such option: --days` instead of quietly doing something
+> else. The "not clicked in a while" sweep was not reinstated.
+
+---
+
+## Backups
+
+The user must match `DATABASE_USER` from your env file (`shortener` in the
+shipped `.env.docker`).
+
+```bash
+docker compose --env-file .env.docker exec -T db \
+    pg_dump --clean --if-exists -U shortener db_shortener > backup.sql
+```
+
+`--clean --if-exists` puts drop statements in the dump. Without them,
+restoring into a database where the `migrations` service has already created
+the schema fails on "relation already exists".
+
+```bash
+docker compose --env-file .env.docker exec -T db \
+    psql -U shortener -d db_shortener < backup.sql
+```
+
+---
+
+## Health
+
+```bash
+curl -s http://localhost:5000/health                 # liveness, never throttled
+curl -s http://localhost:5000/api/v1/admin/health    # detail, needs admin:view_system_health
+```
+
+The detailed answer reports what each dependency said, and — where a
+failover logger is configured — the counters that tell you whether the audit
+trail is still being written:
+
+```json
+{
+  "cache": true, "cache_configured": true,
+  "database": true, "database_schema": true,
+  "rate_limiter": true, "task_queue": true,
+  "task_queue_configured": true,
+  "components": { "database": "ok", "cache": "ok",
+                  "task_queue": "ok", "rate_limiter": "enforcing" },
+  "timed_out": [],
+  "logging": {
+    "logger": { "active": "structlog", "dropped_calls": 0,
+                "failed_checks": 0, "last_check": "healthy",
+                "lost_log_lines": 0 },
+    "audit":  { "active": "structlog_audit", "dropped_calls": 0,
+                "failed_checks": 0, "last_check": "healthy",
+                "lost_log_lines": 0 },
+    "journals_written": ["application", "error", "audit"],
+    "journals_unavailable": [],
+    "worker": 14
+  }
+}
+```
+
+Those counters are reported nowhere else. An audit trail that had quietly
+stopped being written looked, from every surface an operator has, exactly
+like one that was fine.
+
+Seven of those fields answer a question the plain `true` beside them cannot:
+
+| Field | What it says |
+|---|---|
+| `database_schema` | Whether the database that answered holds this application's tables. `SELECT 1` succeeds against an empty one, so `database: true` alone once reported a service that answered `500` to every request. `database` true with this false is the state the short `/health` renders as `"database": "no_schema"`, and it answers `503` |
+| `cache_configured` | Whether a cache backend is configured at all. A cache nobody configured cannot be down, so it reports `cache: true`; this field is what tells that apart from a cache that is working. It does not say whether anything is being cached — an in-process cache is configured by nobody and keeps entries anyway, which is what `components.cache: "in_process"` reports |
+| `task_queue_configured` | Whether there is a broker behind the queue at all. With `CELERY_ENABLED=false` the work is done during the request, so `task_queue` reports `true`; this field is what tells that apart from workers that are answering. It was missing, and a deployment running neither cache nor broker reported the two differently for one and the same state |
+| `components` | What each dependency is *doing*, judged once by the health snapshot instead of worked out again by every reader. The booleans are the measurement; this is what they mean, in the words `/health` publishes. It says two things they cannot: `no_schema` for a database that answers and holds no tables, and `in_process` for a cache keeping entries with no server behind it. The full vocabulary is `ok`, `unavailable`, `timeout`, `no_schema`, `in_process`, `disabled`, `inline`, `enforcing`, `not_enforcing` |
+| `timed_out` | Names the dependencies that did not answer inside the check's budget. They are reported `false` above as well — this list says which one is hanging, where `false` alone says only that it answered no. An empty list is the healthy case |
+| `journals_unavailable` | Names the journals this process could not open. `journals_written` is the other half: the ones it did, in the order they are written |
+| `worker` | The process the counters were taken in. They live in one worker's memory and a deployment runs several, so a number here is that worker's, not the service's |
+
+> [!IMPORTANT]
+> `/health` is exempt from rate limiting and cannot be given a limit. A
+> probe is how an orchestrator learns whether an instance is alive, and it
+> cannot tell `429` from a real failure — throttling the probe means a busy
+> service gets restarted. The application refuses to start if
+> `RATE_LIMITS` names it.
+
+---
+
+## Upgrading
+
+```bash
+git pull
+docker compose --env-file .env.docker build --no-cache
+docker compose --env-file .env.docker run --rm migrations alembic upgrade head
+docker compose --env-file .env.docker up -d
+```
+
+The separate `migrations run` is belt and braces: `up -d` would apply them
+anyway, but running the step alone shows the schema change on its own before
+any application container restarts.
+
+Rolling back a revision is `flask alembic downgrade -1`, which asks before
+it acts — this repository keeps one revision, so `-1` resolves to `base` and
+takes every table with it. Add `--yes` where nothing can answer the prompt:
+in a script, or in `docker compose exec` without `-it`. Rolling back the
+*application* below a revision it does not know is not supported — take a
+backup first.
+
+---
+
+## Logs
+
+With `LOG_TO_FILE=true` the journals go to `LOG_DIR` (`datas/logs` by
+default): `application.log`, `error.log`, `audit.log`.
+
+The audit journal is separate on purpose: it records what was done to
+links, accounts and roles — through the API, the admin panel and the
+commands alike — and it is the one an incident is reconstructed from.
+
+They are also read without a shell. `/dashboard/service/journals` serves
+all three, filtered by event, account, address, code or a span of time,
+and `audit:view` is what opens the audit one — an administrator holding
+`admin:all` is refused it.
+
+<img src="media/journals.png" alt="The Journals page showing the audit journal: filters for event, account, address, code and dates, and rows naming who created a link and when" width="820">
+
+### How fast they grow
+
+Measured on this tree, driving ordinary traffic through the application
+with file logging on: **796 bytes per request**, three records each, and
+**473 bytes per audited event** (344–525 across browser agents and four destinations). `error.log` stays empty while nothing is
+wrong.
+
+| Traffic | `application.log` per day | per month |
+|---|---|---|
+| 1 request/s | 69 MB | 2 GB |
+| 10 requests/s | 690 MB | 20 GB |
+| 100 requests/s | 6.9 GB | 200 GB |
+
+### Rotating them
+
+Rotation is not the application's job, and that is a decision rather than
+an omission — see [Decisions](decisions.md), *Rotation is somebody else's
+job*. The application writes through `WatchedFileHandler`, which notices
+that the file it holds has been moved aside and opens the new one; the
+moving is done from outside.
+
+The configuration that does it ships with the project, in
+[`dockers/logrotate.conf`](../dockers/logrotate.conf): the application and
+error journals daily, or at 100 MB, keeping 14 compressed generations; the
+audit journal weekly, or at 1 GB, keeping 200. It is a template rather than a finished
+file — the three journal names are written as `${LOG_FILENAME}`,
+`${ERROR_LOG_FILENAME}` and `${AUDIT_LOG_FILENAME}`, the same settings the
+application chooses them by, so a deployment that renames a journal keeps
+its rotation. Two ways to run it, one file:
+
+**In the stack.** A `logrotate` service under the `logs` profile mounts
+the same journals and runs logrotate hourly — hourly so that the 100 MB
+ceiling is noticed, not so that the file rotates hourly.
+
+```bash
+COMPOSE_PROFILES=db,cache,broker,logs \
+  docker compose -f dockers/docker-compose.yml --env-file .env.docker up -d
+```
+
+Leave `logs` out of the profiles and nothing rotates: the files grow until
+the disk ends. `LOG_ROTATE_INTERVAL` changes how often logrotate is
+called.
+
+**On the host, without Docker.** Copy the same file to
+`/etc/logrotate.d/link_shortener` and write out both parts of each path by
+hand: `/logs/...` becomes the absolute path of your `LOG_DIR`, and
+`${LOG_FILENAME}` and its two siblings become the names you configured --
+logrotate does not expand a variable, the rotator container does that at
+start-up. Nothing else in it is container-specific. Check it before
+trusting it:
+
+```bash
+logrotate -d /etc/logrotate.d/link_shortener   # says what it would do
+logrotate -vf /etc/logrotate.d/link_shortener  # does it, once, now
+```
+
+`create` in that file deliberately names a mode and no owner, so the new
+journal is created owned by whoever owned the old one — the account the
+application runs under. Naming an owner that cannot write there is the one
+way to break this quietly: the writes fail, `FailoverService` counts them,
+and the only place it shows is `dropped_calls` in
+`/api/v1/admin/health`.
+
+### The other stream
+
+The journals are not everything the deployment writes. gunicorn's own
+access log goes to stdout (`--access-logfile -`) and nowhere else, and
+Docker's `json-file` driver keeps that with **no limit at all** unless one
+is set. `DOCKER_LOG_MAX_SIZE` and `DOCKER_LOG_MAX_FILE` set it for `app`
+and `celery_worker`; the default is 10 MB across 5 files each. Rotating the
+journals does nothing for this stream, and vice versa.
+
+The Celery worker writes the same three journals the web processes do — it
+configures logging from `celery.signals.setup_logging`, since it never goes
+through `create_app`. One difference: a failed write does not raise there.
+Raising exists to feed `FailoverService`, which is behind the web
+application's loggers and not behind a task's, so a raised write in a
+worker would turn a lost log line into failed work.

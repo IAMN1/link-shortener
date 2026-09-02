@@ -59,18 +59,14 @@ class RefreshSessionRepository(ABC):
         """
         ...
 
-    @abstractmethod
-    def revoke_by_token_id(self, token_id: str) -> bool:
-        """
-        Revoke a single session, if it is still live.
-
-        Args:
-            token_id: Session to revoke.
-
-        Returns:
-            True if this call revoked it.
-        """
-        ...
+    # There is deliberately no ``revoke_by_token_id``. One session is not
+    # a unit anything here acts on: a login is a chain, however many times
+    # its token was rotated, and retiring one link of it leaves the
+    # successor live -- so the caller who asked to end a session would
+    # have ended nothing. Signing out, a replay and a password change all
+    # go through ``revoke_chain`` or ``revoke_all_for_user`` for that
+    # reason. The method existed, was implemented, was tested, and was
+    # called by nothing.
 
     @abstractmethod
     def chain_is_live(self, chain_id: str) -> bool:

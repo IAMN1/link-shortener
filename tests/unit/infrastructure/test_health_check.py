@@ -5,7 +5,6 @@ import time
 from contextlib import contextmanager
 from unittest.mock import MagicMock, Mock, patch
 
-import pytest
 import redis
 
 from link_shortener.domain import ShortCode
@@ -16,19 +15,28 @@ from link_shortener.infrastructure.health.infrastructure_health_check import (
 )
 
 
-def _db_manager(works=True):
+def _db_manager(works=True, missing_tables=()):
     """
-    Build a database manager whose connectivity probe succeeds or fails.
+    Build a database manager whose probes succeed or fail.
 
     Args:
-        works: Whether the probe should succeed.
+        works: Whether the connectivity probe should succeed.
+        missing_tables: Tables the schema probe should report absent.
+            Empty -- the default -- means a whole schema, which is what
+            "a database that works" has to mean here: a bare MagicMock
+            answers ``missing_declared_tables()`` with a truthy Mock,
+            and the checker reads that as a list of missing tables.
 
     Returns:
         A mock database manager.
     """
     manager = MagicMock()
+    manager.missing_declared_tables.return_value = list(missing_tables)
     if not works:
         manager.probe.side_effect = RuntimeError("connection refused")
+        manager.missing_declared_tables.side_effect = RuntimeError(
+            "connection refused"
+        )
     return manager
 
 
@@ -106,9 +114,10 @@ class TestCacheStateIsNotInferred:
     """
     Both directions of the same mistake: reading a state instead of asking.
 
-    The check used to ping the cache's client itself and, when that failed,
-    fall back to the cache's own opinion. The ping told the cache nothing,
-    so its "available" flag survived the outage -- and once some other
+    The check must ask the cache rather than read a state beside it.
+    Pinging the client itself and falling back to the cache's own opinion
+    tells the cache nothing, so its "available" flag survives the outage --
+    and once some other
     request did notice and dropped the client, the missing client was read
     as "no cache configured".
     """
@@ -274,6 +283,30 @@ class TestTaskQueue:
         check = InfrastructureHealthCheck(_db_manager(), cache=None, task_queue=queue)
         assert check.check_task_queue() is False
 
+    def test_it_stops_at_the_first_worker_that_answers(self):
+        """
+        ``control.ping`` is a broadcast: without ``limit`` it collects
+        replies until the timeout expires, however fast the first one
+        arrives. One live worker is the whole question here, so the answer
+        is complete as soon as one replies.
+
+        Measured in the container against a running worker: 1.027 s
+        without the limit, 0.004 s with it, the same verdict either way --
+        paid on every observation that missed the two-second cache, on an
+        endpoint an orchestrator probes on a schedule.
+
+        A broker with no worker is unchanged: both forms wait out the
+        timeout and return nothing, so nothing about detecting the failure
+        moves.
+        """
+        queue = Mock()
+        queue.celery_app.control.ping.return_value = [{"worker@host": {"ok": "pong"}}]
+        check = InfrastructureHealthCheck(_db_manager(), cache=None, task_queue=queue)
+
+        check.check_task_queue()
+
+        assert queue.celery_app.control.ping.call_args.kwargs.get("limit") == 1
+
 
 class FakeClock:
     """A monotonic clock the test moves by hand."""
@@ -298,9 +331,9 @@ class TestTheSnapshotIsCachedBriefly:
     """
     ``/health`` is anonymous and exempt from throttling -- correctly, a
     probe has to answer while everything else is refusing. That made it the
-    cheapest way to make the service work: every request meant a query, a
-    Redis ping, a broker ping and a fresh ``ThreadPoolExecutor``. Measured:
-    200 anonymous requests started 563 OS threads.
+    cheapest way to make the service work: unshared, every request means a
+    query, a Redis ping, a broker ping and a fresh ``ThreadPoolExecutor`` --
+    200 anonymous requests start 563 OS threads.
 
     The clock is injected rather than slept through: sleeping past a
     two-second TTL measures the scheduler, and the interesting boundary is
@@ -381,11 +414,11 @@ class TestTheCacheDoesNotBecomeAQueue:
     The lock is held across the observation, so a slow dependency must not
     turn ``/health`` into a line of callers waiting their turn.
 
-    It did. The timestamp was taken *before* the observation, so an
-    observation slower than the TTL was already stale when it was stored:
-    every caller waiting on the lock observed again. Measured on the real
-    class with a 2.5 s probe against the 2 s TTL -- five parallel requests
-    took 12.52 s instead of 2.51 s, on an endpoint that is anonymous and
+    It does, if the timestamp is taken *before* the observation: an
+    observation slower than the TTL is already stale when it is stored, so
+    every caller waiting on the lock observes again. On the real class with
+    a 2.5 s probe against the 2 s TTL, five parallel requests take 12.52 s
+    instead of 2.51 s, on an endpoint that is anonymous and
     exempt from throttling, so the number of callers is chosen by whoever
     is asking.
     """
@@ -469,3 +502,154 @@ class TestTheWindowIsTheOneThatWasChosen:
         two minutes. This is the assertion that fails when the window
         changes without anyone deciding to change it."""
         assert InfrastructureHealthCheck.CACHE_TTL_SECONDS == 2.0
+
+
+class TestTheSchemaIsAskedAboutSeparately:
+    """
+    "The database answered" and "the database holds our tables" are two
+    questions, and for most of this project's life only the first was
+    asked. A stack whose migration ran against a different database
+    answers ``SELECT 1`` perfectly and answers 500 to every request.
+    """
+
+    def test_a_whole_schema_passes(self):
+        check = InfrastructureHealthCheck(_db_manager(), cache=None)
+        assert check.check_schema() is True
+
+    def test_a_missing_table_fails(self):
+        check = InfrastructureHealthCheck(
+            _db_manager(missing_tables=["roles", "permissions"]), cache=None
+        )
+        assert check.check_schema() is False
+
+    def test_an_unreachable_database_fails_here_too(self):
+        # Not a second alarm for one fault: `database` is False beside it,
+        # and the pair reads "cannot connect" while database-true and
+        # schema-false reads "connected to the wrong database".
+        check = InfrastructureHealthCheck(_db_manager(works=False), cache=None)
+        assert check.check_schema() is False
+        assert check.check_database() is False
+
+    def test_the_snapshot_carries_both_answers_apart(self):
+        check = InfrastructureHealthCheck(
+            _db_manager(missing_tables=["links"]), cache=None
+        )
+
+        state = check.snapshot()
+
+        assert state.database is True
+        assert state.database_schema is False
+
+    def test_a_service_without_its_schema_is_not_healthy(self):
+        check = InfrastructureHealthCheck(
+            _db_manager(missing_tables=["links"]), cache=None
+        )
+
+        assert check.snapshot().healthy is False
+
+    def test_the_answer_is_remembered_once_the_schema_is_whole(self):
+        # The one check here whose answer does not come back: a schema
+        # does not un-migrate itself, and re-asking would hold a pool
+        # connection every thirty seconds forever to re-confirm something
+        # settled at start-up.
+        manager = _db_manager()
+        check = InfrastructureHealthCheck(manager, cache=None)
+
+        assert check.check_schema() is True
+        assert check.check_schema() is True
+
+        assert manager.missing_declared_tables.call_count == 1
+
+    def test_a_queue_in_the_process_is_told_from_one_with_a_broker(self):
+        """
+        The cache had this distinction and the queue did not.
+
+        With `CELERY_ENABLED=false` the work is done during the request:
+        there is no queue to be up or down, and `task_queue` answers true
+        — correctly, because the work is done. What was missing is the
+        second boolean that says which of the two you are looking at.
+        Measured on the arrangement that puts both cache and queue in the
+        process: `/health` answered `"cache": "disabled"` beside
+        `"task_queue": "ok"` for two dependencies in the same state.
+        """
+        celery_backed = InfrastructureHealthCheck(
+            _db_manager(), cache=None, task_queue=Mock(celery_app=Mock())
+        )
+        in_the_process = InfrastructureHealthCheck(
+            _db_manager(), cache=None, task_queue=Mock(spec=[])
+        )
+
+        assert celery_backed.is_task_queue_configured() is True
+        assert in_the_process.is_task_queue_configured() is False
+
+    def test_no_queue_at_all_is_not_called_configured(self):
+        """`CELERY_ENABLED=false` may leave nothing here at all."""
+        check = InfrastructureHealthCheck(
+            _db_manager(), cache=None, task_queue=None
+        )
+
+        assert check.is_task_queue_configured() is False
+
+    def test_the_verdict_does_not_change(self):
+        """
+        The point of the distinction is that it changes nothing about
+        health: work done inline is done, and a queue nobody configured
+        cannot be down.
+        """
+        check = InfrastructureHealthCheck(
+            _db_manager(), cache=None, task_queue=None
+        )
+
+        state = check.snapshot()
+
+        assert state.task_queue is True
+        assert state.task_queue_configured is False
+        assert state.healthy is True
+
+    def test_the_answer_turns_green_without_a_restart(self):
+        """
+        The half the guide got wrong, in a sentence written this session.
+
+        The memo latches on success only, so a database that gains its
+        schema while the service runs is noticed at the next observation
+        -- no restart. The troubleshooting row briefly said otherwise
+        ("run the migration, then restart the service"), which sends an
+        operator to bounce a service that was about to recover on its
+        own. Measured: `database_schema` False, migration, then True in
+        the same process.
+
+        The other direction is the one that is remembered, and
+        `test_the_answer_is_remembered_once_the_schema_is_whole` above
+        holds it. Both are stated here so that neither can be quoted
+        alone.
+        """
+        missing = ["links"]
+        manager = _db_manager()
+        manager.missing_declared_tables.side_effect = lambda: list(missing)
+        check = InfrastructureHealthCheck(manager, cache=None)
+        # Through `snapshot`, which is what `/health` calls, and with its
+        # cache stood down: an observation stands in for the next for
+        # `CACHE_TTL_SECONDS`, so without this the check would be timing
+        # that cache rather than the memo under test.
+        check.CACHE_TTL_SECONDS = 0.0
+
+        assert check.snapshot().database_schema is False
+
+        missing.clear()
+
+        assert check.snapshot().database_schema is True, (
+            "the service did not notice a schema that appeared while it ran"
+        )
+
+    def test_a_missing_schema_is_asked_about_again(self):
+        # The opposite of the above, and the reason the memory is only of
+        # the positive: a service started before its migration must be
+        # able to become healthy without a restart.
+        manager = _db_manager(missing_tables=["roles"])
+        check = InfrastructureHealthCheck(manager, cache=None)
+
+        assert check.check_schema() is False
+        manager.missing_declared_tables.return_value = []
+        assert check.check_schema() is True
+
+        assert manager.missing_declared_tables.call_count == 2

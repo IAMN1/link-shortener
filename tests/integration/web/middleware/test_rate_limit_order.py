@@ -140,9 +140,9 @@ class TestARefusedWriteIsStillCounted:
 class TestTheRefusalLooksLikeTheRouteItCameFrom:
     """A browser route is refused with a page, an API route with JSON.
 
-    Measured before this: ``GET /login`` on an exhausted limit answered
+    Without this, ``GET /login`` on an exhausted limit answers
     ``429 application/json``, while every other refusal on that same route
-    -- 404, 500, an expired session -- rendered ``error.html``. The
+    -- 404, 500, an expired session -- renders ``error.html``. The
     throttle built its answer by hand and never asked what the caller
     wanted.
 

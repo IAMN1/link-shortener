@@ -32,10 +32,9 @@ def seed_base_roles(session: Session) -> LoadSummary:
     * Application startup (when ``AUTO_SEED_ROLES=True``)
     * The CLI command ``flask db load-base-roles``
 
-    Not by any Alembic migration. This docstring used to say otherwise, as
-    did ``BaseConfig.AUTO_SEED_ROLES``; no revision has ever called it, and a
-    deployment that trusted the claim came up with an empty ``roles`` table
-    and answered 401 to anonymous shortening.
+    Not by any Alembic migration: no revision calls it, and a deployment
+    that skips this step comes up with an empty ``roles`` table and
+    answers 401 to anonymous shortening.
 
     Args:
         session: An active database session.
@@ -52,7 +51,7 @@ def seed_base_roles(session: Session) -> LoadSummary:
             f"RBAC configuration file not found at {DEFAULT_RBAC_CONFIG_PATH}. "
             "Please ensure the file exists before running this command."
         )
-    
+
     loader = RoleLoader(session)
     # We do not update existing records to avoid overwriting manual changes.
     return loader.load_from_yaml(

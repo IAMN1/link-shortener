@@ -7,6 +7,7 @@ from urllib.parse import ParseResult, urlparse
 import idna
 
 from link_shortener.domain.exceptions import ValidationError
+from link_shortener.domain.i18n import N_
 
 
 IpAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
@@ -67,6 +68,24 @@ none of which any resolver would.
 """
 
 
+def _without_root_label(host: str) -> str:
+    """
+    Drop the root label a fully qualified name ends with.
+
+    Args:
+        host: Hostname as parsed out of the URL.
+
+    Returns:
+        The same name without its single trailing dot. A name ending in
+        two of them is returned untouched: the second one really is an
+        empty label, and refusing it is the point of the check that
+        follows.
+    """
+    if host.endswith(".") and not host.endswith(".."):
+        return host[:-1]
+    return host
+
+
 @dataclass(frozen=True)
 class OriginalUrl:
     """
@@ -101,10 +120,13 @@ class OriginalUrl:
     trusted: bool = field(default=False, compare=False, repr=False)
     """``True`` when the value comes from this service's own storage.
 
-    Admission rules -- length, the scheme list, control characters,
-    credentials, the ban on internal destinations -- are then skipped,
-    because they decide what may *enter* and re-deciding them on the way out
-    makes stored rows unreadable. Format rules still run.
+    Everything but parsing is then skipped -- length, the scheme list,
+    control characters, credentials, the ban on internal destinations, and
+    the format rules about the host and the path -- because they decide
+    what may *enter*, and re-deciding them on the way out makes stored rows
+    unreadable. What still runs is ``_parse`` and the demand that there be
+    an authority at all, which is the one rule every version of this object
+    has made: see ``_validate_authority_present`` and ``from_storage``.
     """
 
     def __post_init__(self):
@@ -168,7 +190,7 @@ class OriginalUrl:
             # -- would put the quoted authority back in the log the line
             # above just kept out of it.
             raise ValidationError(
-                "Malformed URL: its authority cannot be parsed", field="url"
+                N_("Malformed URL: its authority cannot be parsed"), field="url"
             ) from None
 
     @classmethod
@@ -176,34 +198,20 @@ class OriginalUrl:
         """
         Rebuild a URL that the service already accepted and stored.
 
-        Admission rules -- the length limit, the scheme list, the ban on
-        control characters, on credentials and on internal destinations --
-        decide what may *enter*. Each of them is either a setting an operator
-        can widen and narrow, or a rule newer than some stored rows.
-        Re-deciding any of them on the way out makes those rows unreadable,
-        and one unreadable row is enough to fail an entire maintenance sweep
-        or to answer 400 for a link that redirects perfectly well. This is
-        the same defect class as the email value object rejecting values it
-        had itself written -- and it is also what lets the sweep delete rows
-        admitted under rules since tightened.
-
-        The format rules are skipped too, and for the same reason rather
-        than a weaker one. They are no less a decision about what may enter,
-        and they have moved as well: the label pattern, the length ceiling,
-        the ban on control characters in the path and the port range are all
-        newer than rows written under earlier ones. A row they refuse is a
-        row nothing in the product can reach -- and ``clean_expired_links``
-        converts a whole chunk before deleting any of it, so one such row
-        stops every sweep from that point on, including the sweep that would
-        have removed it. ``GET /links/mine``, ``GET /stats`` and
-        ``flask link list`` fail the same way, on the whole answer.
-        Measured: one row with an underscore in a host label left five
-        healthy expired links undeleted, and no command in the service could
-        take any of them out.
+        Admission rules -- the length limit, the scheme list, the bans on
+        control characters, credentials and internal destinations, and the
+        format rules -- decide what may *enter*. Each is either a setting an
+        operator can widen and narrow, or a rule newer than some stored
+        rows. Re-deciding any of them on the way out makes those rows
+        unreadable, and one unreadable row is enough to fail an entire
+        maintenance sweep or to answer 400 for a link that redirects
+        perfectly well: ``clean_expired_links`` converts a whole chunk
+        before deleting any of it, so such a row stops every sweep from
+        that point on -- including the sweep that would have removed it.
 
         What still runs is parsing, because a string that cannot be split
         into components is not a URL in any sense and nothing downstream --
-        ``normalize()``, ``get_domain()`` -- can work with it.
+        ``normalize()`` -- can work with it.
 
         Args:
             value: URL string as stored.
@@ -221,56 +229,51 @@ class OriginalUrl:
 
         if len(self.value) > self.max_length:
             raise ValidationError(
-                f"URL too long (max {self.max_length} characters)", field="url"
-            )
+                      f"URL too long (max {self.max_length} characters)",
+                      field="url",
+                      template=N_("URL too long (max %(max)s characters)"),
+                      params={"max": self.max_length},
+                  )
 
     def _validate_admissible_characters(self) -> None:
         """
         Reject control characters anywhere in the submitted URL.
 
         Checked against the **raw string**, before parsing, and not against
-        any parsed component. ``urlsplit`` deletes ASCII tab, CR and LF from
+        any parsed component: ``urlsplit`` deletes ASCII tab, CR and LF from
         the input at any position -- WHATWG behaviour that Python adopted --
-        so a check on a parsed component can never see them, and the
-        library's own documentation says as much: it does not validate, and
-        callers are expected to verify the input themselves.
+        so a check on a parsed component can never see them.
 
-        What that let through:
-
-        - ``https://host/page#\\n`` was accepted, stored raw, and then
-          crashed the redirect for good, because an HTTP ``Location`` header
-          cannot contain a newline. Worse, ``normalize()`` drops the
-          fragment, so the poisoned URL hashed the same as the clean one and
-          took its place in deduplication: the clean URL could no longer be
-          shortened into a working link at all.
-        - ``https://host/x?a=\\x00`` reached PostgreSQL, which refuses NUL in
-          text, and the resulting error failed the whole request -- an
-          entire batch, when it arrived in one.
-
-        Rejecting rather than stripping: silently storing a different URL
-        than the one submitted is its own defect, and a URL that cannot be
-        put in a header is not a destination.
+        A newline reaches the ``Location`` header, which cannot carry one,
+        and a NUL reaches PostgreSQL, which refuses it in text. Rejecting
+        rather than stripping: silently storing a different URL than the
+        one submitted is its own defect.
 
         Raises:
             ValidationError: If any C0 control character or DEL is present.
         """
         if any(ord(char) < 32 or ord(char) == 127 for char in self.value):
             raise ValidationError(
-                "URL contains control characters", field="url"
+                N_("URL contains control characters"), field="url"
             )
 
     def _validate_scheme(self, parsed: ParseResult) -> None:
         """Check that the scheme is present and allowed."""
         if not parsed.scheme:
-            raise ValidationError("URL must have a scheme!", field="url")
+            raise ValidationError(N_("URL must have a scheme!"), field="url")
 
         if parsed.scheme not in self.allowed_schemes:
             allowed_list = ", ".join(self.allowed_schemes)
             raise ValidationError(
-                f"Scheme '{parsed.scheme}' is not allowed. "
-                f"Allowed schemes: {allowed_list}",
-                field="url",
-            )
+                      f"Scheme '{parsed.scheme}' is not allowed. "
+                      f"Allowed schemes: {allowed_list}",
+                      field="url",
+                      template=N_(
+                          "Scheme '%(scheme)s' is not allowed. "
+                          "Allowed schemes: %(allowed)s"
+                      ),
+                      params={"scheme": parsed.scheme, "allowed": allowed_list},
+                  )
 
     def _validate_no_credentials(self, parsed: ParseResult) -> None:
         """
@@ -295,7 +298,7 @@ class OriginalUrl:
         """
         if "@" in parsed.netloc:
             raise ValidationError(
-                "URL must not contain credentials before the host",
+                N_("URL must not contain credentials before the host"),
                 field="url",
             )
 
@@ -334,7 +337,7 @@ class OriginalUrl:
             ipaddress.IPv6Address(host)
         except ValueError:
             raise ValidationError(
-                "Brackets in a URL enclose an IPv6 address", field="url"
+                N_("Brackets in a URL enclose an IPv6 address"), field="url"
             )
 
     def _validate_authority_present(self, parsed: ParseResult) -> None:
@@ -356,30 +359,30 @@ class OriginalUrl:
                 number.
         """
         if not parsed.netloc:
-            raise ValidationError("URL must have a domain!", field="url")
+            raise ValidationError(N_("URL must have a domain!"), field="url")
 
         try:
             hostname = parsed.hostname
         except ValueError:
-            raise ValidationError("Invalid host", field="url")
+            raise ValidationError(N_("Invalid host"), field="url")
         if not hostname:
-            raise ValidationError("URL must have a hostname", field="url")
+            raise ValidationError(N_("URL must have a hostname"), field="url")
 
         try:
             parsed.port
         except ValueError:
-            raise ValidationError("Invalid port number", field="url")
+            raise ValidationError(N_("Invalid port number"), field="url")
 
     def _validate_netloc(self, parsed: ParseResult) -> None:
         """Validate the network location (hostname and optional port)."""
 
         port = parsed.port
         if port is not None and not (1 <= port <= 65535):
-            raise ValidationError("Invalid port number", field="url")
+            raise ValidationError(N_("Invalid port number"), field="url")
 
         self._validate_host(parsed.hostname)
 
-    def _validate_host(self, host: str) -> None:
+    def _validate_host(self, host: Optional[str]) -> None:
         """
         Validate hostname: can be an IP address, 'localhost', or a valid domain.
 
@@ -387,11 +390,23 @@ class OriginalUrl:
         cannot start or end with hyphen, and total length ≤ 253. A name written
         in a national script is checked in its punycode form, which is the
         form that actually travels over DNS.
+
+        A single trailing dot is dropped rather than refused. ``example.com.``
+        is the fully qualified spelling of ``example.com`` -- the root label,
+        which every resolver and every browser accepts -- and splitting on
+        the dots left an empty last label, so the name was refused as
+        ``Empty label in host``: a wrong answer given for a wrong reason.
+        It also left the trailing-dot handling further down this file
+        unreachable, in ``_validate_public_target`` and ``_as_ip_address``,
+        which both expect to meet one. Exactly one dot: ``example.com..``
+        really does carry an empty label and is still refused.
         """
 
         # Validate as a domain name.
         if not host:
-            raise ValidationError("Empty host", field="url")
+            raise ValidationError(N_("Empty host"), field="url")
+
+        host = _without_root_label(host)
 
         # Check if it's a valid IP address (IPv4 or IPv6)
         try:
@@ -408,28 +423,43 @@ class OriginalUrl:
 
         # Otherwise must be a domain with at least one dot
         if '.' not in host:
-            raise ValidationError("Host must contain a dot (e.g., example.com)", field="url")
+            raise ValidationError(N_("Host must contain a dot (e.g., example.com)"), field="url")
 
         # Total length limit
         if len(host) > 253:
-            raise ValidationError("Host too long", field="url")
+            raise ValidationError(N_("Host too long"), field="url")
 
         # Validate each label
         labels = host.split(".")
         for label in labels:
             if not label:
-                raise ValidationError("Empty label in host", field="url")
+                raise ValidationError(N_("Empty label in host"), field="url")
             if len(label) > 63:
-                raise ValidationError("Label too long", field="url")
+                raise ValidationError(N_("Label too long"), field="url")
 
             # Label must start/end with alphanumeric, may contain hyphens inside
             if not LABEL_PATTERN.match(label):
-                raise ValidationError(f"Invalid characters in host label: {label}", field="url")
+                raise ValidationError(
+                          f"Invalid characters in host label: {label}",
+                          field="url",
+                          template=N_("Invalid characters in host label: %(label)s"),
+                          params={"label": label},
+                      )
 
     def _validate_path(self, parsed) -> None:
         """Validate that the URL path does not contain control characters.
 
         Control characters (ASCII 0-31 and 127) are not allowed in the path.
+
+        A guard standing behind another one, and the sentence it raises is
+        not one a caller sees: ``_validate_admissible_characters`` asks the
+        same question of the raw string and asks it first, so anything this
+        would catch has already been refused as ``URL contains control
+        characters``. Kept because the two are about different things --
+        that one is about what may be submitted, this one about what the
+        parser handed back -- and because both are skipped together for a
+        stored row, so neither is load-bearing alone. Stated here so that
+        the message is not mistaken for one the API answers with.
 
         Args:
             parsed: The parsed URL result from urllib.parse.urlparse.
@@ -438,7 +468,7 @@ class OriginalUrl:
             ValidationError: If a control character is found in the path."""
 
         if parsed.path and any(ord(c) < 32 or ord(c) == 127 for c in parsed.path):
-            raise ValidationError("Path contains control characters", field="url")
+            raise ValidationError(N_("Path contains control characters"), field="url")
 
     def _validate_public_target(self, parsed: ParseResult) -> None:
         """
@@ -455,18 +485,10 @@ class OriginalUrl:
         the spelling submitted, because the two differ:
         ``http://0177.0.0.1/`` and ``http://127.1/`` are both the loopback
         to ``inet_aton`` and neither is an address to
-        ``ipaddress.ip_address``.
-
-        For the same reason the host is put through UTS-46 *before* it is
-        read as an address, and not only before it is read as a name.
-        ``http://１２７．０．０．１/`` -- fullwidth digits, fullwidth stops --
-        is the loopback to every browser, which maps it exactly as this
-        does. Classifying the raw spelling meant the digits were not digits
-        and the stops were not separators, so the host was taken for a name,
-        matched no reserved suffix and was admitted; ``normalize()`` mapped
-        it anyway, so the service hashed the link under ``127.0.0.1`` while
-        letting it in. Ideographic and halfwidth stops (U+3002, U+FF61) do
-        the same job.
+        ``ipaddress.ip_address``. For the same reason the host is put
+        through UTS-46 before it is read as an address: fullwidth digits
+        and stops (``http://１２７．０．０．１/``) are the loopback to every
+        browser, which maps them exactly as this does.
 
         What this does not cover, and knowingly: a name that resolves to an
         internal address (``127.0.0.1.nip.io``, or any record its owner
@@ -490,13 +512,13 @@ class OriginalUrl:
                 for suffix in SPECIAL_USE_SUFFIXES
             ):
                 raise ValidationError(
-                    "URL must point at a public address", field="url"
+                    N_("URL must point at a public address"), field="url"
                 )
             return
 
         if self._is_internal_address(address):
             raise ValidationError(
-                "URL must point at a public address", field="url"
+                N_("URL must point at a public address"), field="url"
             )
 
     # ------------------------------------------------------------------
@@ -521,6 +543,15 @@ class OriginalUrl:
         Raises:
             ValidationError: If the name cannot be expressed in punycode.
         """
+        # Here as well as in ``_validate_host``, because this is what
+        # ``normalize`` builds the stored form from: left on, the root
+        # label makes ``http://example.com./`` hash differently from
+        # ``http://example.com/`` and take a second short code for one
+        # destination. ``idna.encode`` also refuses a name ending in a dot,
+        # so an international name would be rejected here for carrying the
+        # spelling this one accepts.
+        host = _without_root_label(host)
+
         if host.isascii():
             return host.lower()
 
@@ -528,8 +559,11 @@ class OriginalUrl:
             return idna.encode(host, uts46=True).decode("ascii")
         except (idna.IDNAError, UnicodeError) as exc:
             raise ValidationError(
-                f"Invalid international domain name: {exc}", field="url"
-            )
+                      f"Invalid international domain name: {exc}",
+                      field="url",
+                      template=N_("Invalid international domain name: %(reason)s"),
+                      params={"reason": str(exc)},
+                  )
 
     @staticmethod
     def _as_ip_address(host: str) -> Optional[IpAddress]:
@@ -560,7 +594,7 @@ class OriginalUrl:
             try:
                 return ipaddress.IPv6Address(host)
             except ValueError:
-                raise ValidationError("Invalid IP address in host", field="url")
+                raise ValidationError(N_("Invalid IP address in host"), field="url")
 
         parts = host.split(".")
         if parts[-1] == "":
@@ -569,16 +603,22 @@ class OriginalUrl:
             # Ends in a name, so the host is a name and none of this applies.
             return None
         if len(parts) > 4:
-            raise ValidationError("Invalid IP address in host", field="url")
+            raise ValidationError(N_("Invalid IP address in host"), field="url")
 
-        numbers = [OriginalUrl._parse_ipv4_part(part) for part in parts]
-        if any(number is None for number in numbers):
-            raise ValidationError("Invalid IP address in host", field="url")
+        parsed = [OriginalUrl._parse_ipv4_part(part) for part in parts]
+        if any(number is None for number in parsed):
+            raise ValidationError(N_("Invalid IP address in host"), field="url")
+
+        # Its own name for the same list without the Nones. The check above
+        # rules them out for a reader, but it runs inside ``any()`` over the
+        # list rather than on a name, so nothing carries that over to the
+        # comparisons below.
+        numbers = [number for number in parsed if number is not None]
         if any(number > 255 for number in numbers[:-1]):
-            raise ValidationError("Invalid IP address in host", field="url")
+            raise ValidationError(N_("Invalid IP address in host"), field="url")
         # The last part fills every octet the ones before it left out.
         if numbers[-1] >= 256 ** (4 - (len(numbers) - 1)):
-            raise ValidationError("Invalid IP address in host", field="url")
+            raise ValidationError(N_("Invalid IP address in host"), field="url")
 
         packed = numbers[-1]
         for index, number in enumerate(numbers[:-1]):
@@ -666,10 +706,6 @@ class OriginalUrl:
         """Return the original URL string."""
         return self.value
 
-    def get_domain(self) -> str:
-        """Extract domain (hostname) from the URL."""
-        return self._parse().hostname or ""
-
     def normalize(self) -> str:
         """
         Normalize the URL for consistent comparison and hashing.
@@ -694,14 +730,11 @@ class OriginalUrl:
         scheme = parsed.scheme.lower()
         host = self._to_ascii_host(parsed.hostname or "")
         if ":" in host or "[" in parsed.netloc:
-            # An IPv6 literal keeps its brackets -- and so does anything
-            # else that arrived inside them. ``parsed.hostname`` strips
-            # them, so putting them back only for a host with a colon made
-            # ``http://[v1.example.com]/`` normalize onto
-            # ``http://v1.example.com/``: two different strings, one hash,
-            # one short code. Rows written before brackets were checked on
-            # the way in are still read back, and they no longer collide
-            # with the name they wrap.
+            # An IPv6 literal keeps its brackets, and so does anything else
+            # that arrived inside them. ``parsed.hostname`` strips them, so
+            # restoring them only for a host with a colon would normalize
+            # ``http://[v1.example.com]/`` onto ``http://v1.example.com/``:
+            # two different strings, one hash, one short code.
             host = f"[{host}]"
 
         netloc = host

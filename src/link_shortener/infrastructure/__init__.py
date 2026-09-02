@@ -1,3 +1,17 @@
+"""
+Everything the application named and did not build.
+
+What goes in is a class that satisfies a port -- a store, a cache, a broker,
+a mailer, a clock -- together with the wiring that decides which of them a
+deployment gets. The rule such a class carries out is never written here:
+the rules are the domain's, and a decision made in this directory is a
+decision about a mechanism.
+
+The test is what a change here can break. Swapping Redis for a dictionary
+must change how fast the service answers and nothing about what it answers;
+a directory whose contents fail that test is in the wrong layer.
+"""
+
 from .auth.jwt_auth_service import JwtAuthenticationService
 from .auth.rbac_authorization_service import RBACAuthorizationService
 
@@ -34,7 +48,9 @@ from .logging.handlers.audit.standard import StandardAuditLogger
 from .logging.handlers.audit.structlog import StructlogAuditLogger
 from .logging.managers.logger_manager import LoggerManager
 from .logging.managers.audit_manager import AuditManager
-from .logging.logging_settings import LoggingSettings
+from .logging.logging_settings import (
+    LoggingSettings, attribute_reader, logging_settings_from,
+)
 from .logging.bootstrap import setup_logging
 
 from .cli import register_flask_commands
@@ -50,11 +66,10 @@ __all__ = [
     "RBACAuthorizationService",
 
     # Cache
-    "CacheKeyGenerator",
     "NullCache",
     "InMemoryLinkCache",
     "RedisLinkCache",
-    
+
     # Configs
     "BaseConfig",
     "DevelopmentConfig",
@@ -76,7 +91,7 @@ __all__ = [
     "PermissionModel",
     "user_role_table",
     "role_permission_table",
-    
+
     ## Repositories
     "SQLAlchemyLinkRepository",
     "SQLAlchemyUserRepository",
@@ -91,6 +106,8 @@ __all__ = [
     "StandardAuditLogger",
     "StructlogAuditLogger",
     "LoggingSettings",
+    "attribute_reader",
+    "logging_settings_from",
     "NullLogger",
     "StandardLogger",
     "StructLogger",

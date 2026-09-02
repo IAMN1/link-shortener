@@ -3,140 +3,30 @@ Fixtures for level 2 integration tests (real PostgreSQL + Redis).
 
 Automatically starts Docker services before tests and stops after.
 No manual docker compose commands needed.
+
+Starting the stack, waiting for it and reporting a failure to start live in
+``tests/support/real_stack``: ``tests/e2e`` walks the same containers, and
+two copies of that logic would drift.
 """
 
-import os
-import time
-import subprocess
 import pytest
 import redis
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-POSTGRES_URL = "postgresql+psycopg://test_user:test_password@localhost:5433/test_shortener"
-REDIS_URL = "redis://:test_redis_pass@localhost:6380/0"
-COMPOSE_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "..", "docker-compose.test.yml")
-
-
-def _run_compose(*args):
-    """Run docker compose command."""
-    cmd = ["docker", "compose", "-f", COMPOSE_FILE] + list(args)
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
-
-def _docker_is_available() -> bool:
-    """
-    Tell whether a Docker daemon can be reached at all.
-
-    Separates "this machine cannot run these tests" from "these tests could
-    not start". Only the first is a reason to skip; the second is a
-    failure, and reporting it as a skip once turned a broken stack into a
-    green run -- ``492 passed, 16 skipped`` where the suite had been
-    printing ``508 passed``, with nothing but the arithmetic to notice.
-
-    Returns:
-        ``True`` when a daemon answers.
-    """
-    try:
-        result = subprocess.run(
-            ["docker", "info"], capture_output=True, text=True, timeout=20
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return result.returncode == 0
-
-
-def _diagnostics() -> str:
-    """
-    Collect what the stack has to say about why it did not come up.
-
-    Returns:
-        Container states and recent log lines, or a note on why not.
-    """
-    parts = []
-    for label, args in (
-        ("state", ("ps", "-a")),
-        ("logs", ("logs", "--no-color", "--tail", "40")),
-    ):
-        try:
-            result = _run_compose(*args)
-            parts.append(f"--- {label} ---\n{result.stdout or result.stderr}")
-        except subprocess.SubprocessError as error:
-            parts.append(f"--- {label} unavailable: {error} ---")
-    return "\n".join(parts)
-
-
-def _wait_for_service(check_fn, name, max_retries=30, delay=1):
-    """Wait for a service to become available."""
-    for i in range(max_retries):
-        try:
-            if check_fn():
-                return True
-        except Exception:
-            pass
-        time.sleep(delay)
-    return False
-
-
-def _pg_check():
-    engine = create_engine(POSTGRES_URL)
-    with engine.connect() as conn:
-        conn.execute(text("SELECT 1"))
-    engine.dispose()
-    return True
-
-
-def _redis_check():
-    r = redis.from_url(REDIS_URL)
-    r.ping()
-    r.close()
-    return True
+from tests.support.real_stack import POSTGRES_URL, REDIS_URL
 
 
 @pytest.fixture(scope="session", autouse=True)
-def docker_services():
+def docker_services(real_stack):
+    """Require the shared stack for every test in this directory.
+
+    The containers themselves are started once per session by the
+    ``real_stack`` fixture in ``tests/conftest.py`` -- ``tests/e2e`` runs
+    against the same ones, and two fixtures taking them down independently
+    is how one directory pulled the stack out from under the other.
     """
-    Start the test stack before the tests and stop it after.
-
-    A missing Docker daemon is the one condition worth skipping for: the
-    machine cannot run these tests, and saying so is honest. Everything
-    after that point is a failure. The distinction matters because it was
-    absent: a port collision stopped the stack from starting, every skip
-    branch below reported it as "skipped", and the run came back green
-    while sixteen tests of real PostgreSQL and Redis behaviour had not
-    executed.
-    """
-    if not _docker_is_available():
-        pytest.skip(
-            "Docker daemon is not reachable -- these tests require real "
-            "PostgreSQL and Redis"
-        )
-
-    try:
-        result = _run_compose("up", "-d")
-    except subprocess.SubprocessError as error:
-        pytest.fail(f"Docker is running but `compose up` did not finish: {error}")
-
-    if result.returncode != 0:
-        pytest.fail(
-            "Docker is running but the test stack failed to start.\n"
-            f"{result.stderr or result.stdout}\n{_diagnostics()}"
-        )
-
-    for check, name in ((_pg_check, "PostgreSQL"), (_redis_check, "Redis")):
-        if _wait_for_service(check, name):
-            continue
-        diagnostics = _diagnostics()
-        _run_compose("down", "-v")
-        pytest.fail(
-            f"{name} did not become reachable within the timeout, although "
-            f"Docker is running.\n{diagnostics}"
-        )
-
     yield
-
-    # Cleanup: stop services
-    _run_compose("down", "-v")
 
 
 @pytest.fixture(scope="session")
@@ -159,12 +49,42 @@ def redis_client():
 
 
 @pytest.fixture(autouse=True)
-def _clean_db(pg_engine):
+def _clean_db(pg_engine, pg_session_factory):
+    """Empty the tables between tests, and put the base roles back.
+
+    The truncation takes `roles` and `permissions` with it, while `app`
+    is session-scoped and seeds them exactly once -- so the seeded state
+    that fixture promises belonged to whichever test ran first, and every
+    test after it saw an empty `roles` table. Measured: five roles in the
+    first test of a file, none in the second.
+
+    Nothing had failed of it yet, because the tests here happen to build
+    what they need. What it meant is that a test needing a role would
+    pass alone and in first position and fail anywhere else -- the kind
+    of failure that is read as flakiness and retried.
+
+    Re-seeded rather than spared by the truncation: a role edited by a
+    test would otherwise survive into the next one, which is the state
+    the cleaning exists to prevent.
+    """
     yield
     with pg_engine.connect() as conn:
         conn.execute(text("TRUNCATE urls, user_roles, role_permissions, "
                           "users, roles, permissions CASCADE"))
         conn.commit()
+
+    from link_shortener.infrastructure.database.seed import seed_base_roles
+
+    session = pg_session_factory()
+    try:
+        # `seed_base_roles` writes and does not commit -- its callers own
+        # the transaction. Without this the re-seed rolled back on close
+        # and the next test still found an empty table, which is exactly
+        # what it looked like before: measured, five roles then none.
+        seed_base_roles(session)
+        session.commit()
+    finally:
+        session.close()
 
 
 @pytest.fixture()

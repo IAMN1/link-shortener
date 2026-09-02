@@ -3,7 +3,6 @@
 from datetime import datetime, timedelta, timezone
 
 import jwt
-import pytest
 
 from link_shortener.infrastructure.database.models.user_model import UserModel
 from tests.integration.conftest import confirm_email

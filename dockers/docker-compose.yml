@@ -1,0 +1,535 @@
+
+# An explicit project name. Without one compose takes the directory's name
+# and this stack ends up in the same namespace as docker-compose.test.yml:
+# commands start complaining about "orphan containers", `ps` shows another
+# stack's services, and `down -v` risks removing the neighbour's volumes.
+name: link-shortener
+
+# ==============================================================================
+# Infrastructure profiles
+# ==============================================================================
+# db, redis, redis_broker and logrotate come up only when their profile is
+# named. The set is given by COMPOSE_PROFILES in the same env file:
+#
+#   COMPOSE_PROFILES=db,cache,broker,logs   the whole stack is our own
+#   COMPOSE_PROFILES=                       everything external: only
+#                                           migrations, app and celery_worker
+#
+# The `mail` profile names the mail catcher, which is declared in the
+# overlay docker-compose.override.yml. Both env files set
+# `db,cache,broker,mail,logs` -- the set for the form with the overlay; in
+# the production form, where there is no overlay, the name `mail` names
+# nothing and is quietly skipped.
+#
+# For a one-off choice there is the flag `docker compose --profile db up -d`.
+#
+# External addresses are each given as a single string: DATABASE_URL,
+# REDIS_URL, CELERY_BROKER_URL. As a string rather than in parts, because
+# DATABASE_HOST below is nailed to the service name `db` and is not
+# overridden by the env file: environment beats env_file.
+#
+# `required: false` on depends_on is compulsory: without it a profile that
+# is off means not "there is no such service" but a parse failure --
+# `service "app" depends on undefined service "db"`. With the profile on,
+# the marker still preserves the start-up order.
+# ==============================================================================
+
+services:
+
+    # ==========================================================================
+    # Alembic migration Service
+    # ==========================================================================
+    migrations:
+      build:
+        context: ..
+        dockerfile: dockers/Dockerfile
+      depends_on:
+        db:
+          condition: service_healthy
+          required: false
+      environment:
+        PYTHONPATH: /app/src
+        # No default: an unnamed profile is not a choice as far as the
+        # migration is concerned. With `:-development` it would take silence
+        # for a choice and migrate the default sqlite -- an empty file
+        # inside a throwaway container.
+        FLASK_ENV: ${FLASK_ENV}
+        # `:?` fails at render time, before anything is started.
+        DATABASE_TYPE: ${DATABASE_TYPE:?set DATABASE_TYPE in the env file}
+        DATABASE_HOST: db
+        # Inside the network it is the image's port, not the host setting.
+        DATABASE_PORT: ${DATABASE_PORT:-5432}
+        DATABASE_NAME: ${DATABASE_NAME}
+        DATABASE_USER: ${DATABASE_USER}
+        DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+        DATABASE_POOL_PRE_PING: ${DATABASE_POOL_PRE_PING:-true}
+
+        # Migrations read no cache and queue no tasks: there is nothing for
+        # the extra connections to do.
+        CACHE_ENABLED: "false"
+        REDIS_ENABLED: "false"
+        CELERY_ENABLED: "false"
+        LOGGING_ENABLED: "false"
+      env_file:
+        # The same file app and celery_worker use: DATABASE_URL lives only
+        # there, and get_database_url() returns it ahead of DATABASE_*.
+        # Without env_file the migrations would go to a different database
+        # than the application.
+        - ../${ENV_FILE:-.env}
+      command: alembic upgrade head
+      restart: "no"               # runs once and exits
+      # Alembic's configuration and revisions are in the image. Mounting the
+      # directories is a development convenience -- a new revision lands on
+      # the host at once -- and lives in docker-compose.override.yml.
+
+    # ==========================================================================
+    # PostgreSQL Database Service
+    # ==========================================================================
+    db:
+      image: postgres:15-alpine
+      container_name: shortener_db
+      # Our own database. An external one is connected with the single
+      # string DATABASE_URL, with this profile left off.
+      profiles: ["db"]
+      restart: unless-stopped
+      environment:
+        POSTGRES_USER: ${DATABASE_USER}
+        POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+        POSTGRES_DB: ${DATABASE_NAME}
+      # The port inside the network is the same DATABASE_PORT the
+      # application reaches the database by: one value instead of two that
+      # can drift apart.
+      #
+      # The entrypoint is wrapped rather than replaced: the guard runs, then
+      # the image's own entrypoint runs with the same argument it would have
+      # had. Without the guard an empty DATABASE_PASSWORD reaches the image
+      # and it refuses with a sentence about POSTGRES_PASSWORD -- a name
+      # that appears nowhere in this project's configuration, in a log the
+      # reader has to go and find, while `docker compose up` reports
+      # success. `:?` cannot be used instead: compose interpolates the whole
+      # file whatever the profiles, so it would also stop a deployment that
+      # rightly has no password here because its database is external.
+      entrypoint:
+        - sh
+        - -c
+        - |
+          if [ -z "$$POSTGRES_PASSWORD" ]; then
+            echo "DATABASE_PASSWORD is empty, and the 'db' profile is on: this stack runs its own PostgreSQL and will not start it without a password." >&2
+            echo "Fill it in:  flask security generate-secrets --write <your env file> --with-service-passwords" >&2
+            echo "Or run your own database: take 'db' out of COMPOSE_PROFILES and set DATABASE_URL." >&2
+            exit 1
+          fi
+          exec docker-entrypoint.sh postgres -p ${DATABASE_PORT:-5432}
+      ports:
+        # Three distinct values: the bind address, the port on the host, the
+        # port inside the network. DATABASE_HOST_PORT is moved when the host
+        # port is taken -- which does not affect the address the application
+        # reaches the database by.
+        #
+        # The binding is loopback by default. Publishing without an address
+        # means every interface: "If you do not specify a host IP (such as
+        # 127.0.0.1), Docker binds to all interfaces (0.0.0.0), bypassing
+        # host firewall rules" (Compose file reference).
+        # DATABASE_BIND_ADDRESS widens it when the database has to be
+        # reached from another machine.
+        - "${DATABASE_BIND_ADDRESS:-127.0.0.1}:${DATABASE_HOST_PORT:-5432}:${DATABASE_PORT:-5432}"
+      volumes:
+        # A directory on the host or a named volume: a value with '/' or
+        # './' compose mounts as a directory, anything else as a volume.
+        - ${DATABASE_DATA_PATH:-postgres_data}:/var/lib/postgresql/data
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME} -p ${DATABASE_PORT:-5432}"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+
+    # ==========================================================================
+    # Redis Cache Service
+    # ==========================================================================
+    # The cache and the rate limiter, nothing else. Everything kept here
+    # has a TTL and need not survive eviction, so allkeys-lru is right.
+    redis:
+      image: redis:7-alpine
+      container_name: link_shortener_redis
+      # Our own cache. An external one is REDIS_URL, with the profile off.
+      profiles: ["cache"]
+      environment:
+        # Passed in so the guard below can look at it.
+        REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # An empty password used to be worse than no protection: written as
+      # `--requirepass ${REDIS_PASSWORD}`, the substitution left nothing
+      # behind in the exec form and redis read the next flag as the value --
+      # `requirepass "--maxmemory" "512mb"` -- and died with `wrong number
+      # of arguments`, a message that names neither the variable nor the
+      # file. Measured on a fresh clone.
+      command:
+        - sh
+        - -c
+        - |
+          if [ -z "$$REDIS_PASSWORD" ]; then
+            echo "REDIS_PASSWORD is empty, and the 'cache' profile is on: this stack runs its own Redis and will not start it without a password." >&2
+            echo "Fill it in:  flask security generate-secrets --write <your env file> --with-service-passwords" >&2
+            echo "Or run your own Redis: take 'cache' out of COMPOSE_PROFILES and set REDIS_URL." >&2
+            exit 1
+          fi
+          exec redis-server --port ${REDIS_PORT:-6379} --requirepass "$$REDIS_PASSWORD" --maxmemory 512mb --maxmemory-policy allkeys-lru
+      restart: unless-stopped
+      ports:
+        # Loopback only: whoever can write to the cache gets an open
+        # redirect to an address of their choosing. The host port is kept
+        # separate from the one inside the network.
+        - "127.0.0.1:${REDIS_HOST_PORT:-6379}:${REDIS_PORT:-6379}"
+      volumes:
+        - ${REDIS_DATA_PATH:-redis_data}:/data
+      healthcheck:
+        test: ["CMD", "redis-cli", "-p", "${REDIS_PORT:-6379}", "-a", "${REDIS_PASSWORD}", "ping"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+    # As above: the port is open to the host, and inside the network it is
+    # reached by the name "redis".
+
+
+    # ==========================================================================
+    # Redis Message Broker (Celery)
+    # ==========================================================================
+    # A separate instance rather than a separate database: maxmemory-policy
+    # applies to the whole server. With noeviction the queue is either
+    # accepted or refused outright; sharing a database with the cache it
+    # would be evicted along with it.
+    redis_broker:
+      image: redis:7-alpine
+      container_name: link_shortener_redis_broker
+      # Our own broker. An external one is CELERY_BROKER_URL, with the
+      # profile off.
+      profiles: ["broker"]
+      environment:
+        REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # The same guard as the cache above, and for the same measured
+      # reason. Both instances share one password: they are one deployment's
+      # two Redis, and a second variable would be a second thing to keep
+      # right for no gain.
+      command:
+        - sh
+        - -c
+        - |
+          if [ -z "$$REDIS_PASSWORD" ]; then
+            echo "REDIS_PASSWORD is empty, and the 'broker' profile is on: this stack runs its own Redis for Celery and will not start it without a password." >&2
+            echo "Fill it in:  flask security generate-secrets --write <your env file> --with-service-passwords" >&2
+            echo "Or run your own broker: take 'broker' out of COMPOSE_PROFILES and set CELERY_BROKER_URL." >&2
+            exit 1
+          fi
+          exec redis-server --port ${REDIS_BROKER_PORT:-6379} --requirepass "$$REDIS_PASSWORD" --maxmemory 256mb --maxmemory-policy noeviction
+      restart: unless-stopped
+      ports:
+        # The host port on the left, the one inside the network on the
+        # right; each has a variable of its own.
+        - "127.0.0.1:${REDIS_BROKER_HOST_PORT:-6381}:${REDIS_BROKER_PORT:-6379}"
+      volumes:
+        - ${REDIS_BROKER_DATA_PATH:-redis_broker_data}:/data
+      healthcheck:
+        test: ["CMD", "redis-cli", "-p", "${REDIS_BROKER_PORT:-6379}", "-a", "${REDIS_PASSWORD}", "ping"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+
+    # ==========================================================================
+    # Application Service (Flask)
+    # ==========================================================================
+    app:
+      build:
+        context: ..
+        dockerfile: dockers/Dockerfile
+      container_name: link_shortener_app
+      depends_on:
+        db:
+          condition: service_healthy
+          required: false
+        redis:
+          condition: service_healthy
+          required: false
+        redis_broker:
+          condition: service_healthy
+          required: false
+        # No required: migrations have no profile, and the application must
+        # not run against a schema that has not been applied.
+        migrations:
+          condition: service_completed_successfully
+      restart: unless-stopped
+      ports:
+        # The host port on the left, the one the container listens on the
+        # right. They are different values: the right follows the
+        # application (see the image's CMD), the left moves on its own.
+        - "${APP_HOST_PORT:-5000}:${PORT:-5000}"
+      environment:
+        # The addresses are overridden with the ones inside the network.
+
+        # ----- Flask / Application settings -----
+        PYTHONPATH: /app/src
+        FLASK_APP: link_shortener.web.app_factory:create_app
+        FLASK_ENV: ${FLASK_ENV}
+        FLASK_DEBUG: ${FLASK_DEBUG}
+
+        SECRET_KEY: ${SECRET_KEY}
+        SHORT_CODE_PEPPER: ${SHORT_CODE_PEPPER}
+
+        # ----- Database settings -----
+        DATABASE_TYPE: ${DATABASE_TYPE}
+        DATABASE_HOST: db
+        # Inside the network it is the image's port, not the host setting.
+        DATABASE_PORT: ${DATABASE_PORT:-5432}
+        DATABASE_NAME: ${DATABASE_NAME}
+        DATABASE_USER: ${DATABASE_USER}
+        DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+        # Connection pool settings (for PostgreSQL)
+        DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE}
+        DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW}
+        DATABASE_POOL_RECYCLE: ${DATABASE_POOL_RECYCLE}
+        DATABASE_POOL_PRE_PING: ${DATABASE_POOL_PRE_PING}
+        DATABASE_CONNECT_TIMEOUT: ${DATABASE_CONNECT_TIMEOUT}
+        DATABASE_STATEMENT_TIMEOUT: ${DATABASE_STATEMENT_TIMEOUT}
+
+        # ----- Redis / Cache settings -----
+        CACHE_ENABLED: ${CACHE_ENABLED}
+
+        REDIS_ENABLED: ${REDIS_ENABLED:-}
+        # Empty means the Redis from this stack, set means any external one.
+        # The substitution is required: environment beats env_file, and
+        # without it the value from the env file never reaches the
+        # container.
+        REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT:-6379}/0}
+        REDIS_CONNECT_TIMEOUT: ${REDIS_CONNECT_TIMEOUT}
+        REDIS_SOCKET_TIMEOUT: ${REDIS_SOCKET_TIMEOUT}
+        REDIS_RETRY_INTERVAL: ${REDIS_RETRY_INTERVAL}
+
+        # ----- Logging & Audit settings -----
+        LOGGING_ENABLED: ${LOGGING_ENABLED}
+        AUDIT_ENABLED: ${AUDIT_ENABLED}
+        LOG_LEVEL: ${LOG_LEVEL}
+        LOG_TO_CONSOLE: ${LOG_TO_CONSOLE:-}
+        LOG_TO_FILE: ${LOG_TO_FILE:-}
+        LOG_DIR: ${LOG_DIR}
+        LOG_FILENAME: ${LOG_FILENAME}
+
+        # ----- Celery settings -----
+        CELERY_ENABLED: ${CELERY_ENABLED}
+        # The same substitution as REDIS_URL uses: the broker may be
+        # external.
+        CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD}@redis_broker:${REDIS_BROKER_PORT:-6379}/0}
+        CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis_broker:${REDIS_BROKER_PORT:-6379}/0}
+        CELERY_BROKER_TIMEOUT: ${CELERY_BROKER_TIMEOUT}
+        HEALTH_CHECK_TIMEOUT: ${HEALTH_CHECK_TIMEOUT}
+
+        # ----- Performance / Workers -----
+        # The per-request ceiling is the only thing that interrupts a call
+        # to a database that has hung rather than fallen over: a frozen
+        # server does not run its own statement_timeout, and its kernel
+        # keeps answering TCP keepalive. GUNICORN_WORKER_CLASS has to stay
+        # sync: on gthread --timeout does not interrupt a request.
+        GUNICORN_WORKERS: ${GUNICORN_WORKERS}
+        GUNICORN_WORKER_CLASS: ${GUNICORN_WORKER_CLASS:-sync}
+        GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-30}
+        GUNICORN_GRACEFUL_TIMEOUT: ${GUNICORN_GRACEFUL_TIMEOUT:-20}
+
+      env_file:
+        # Loads every variable, though environment takes precedence.
+        # ENV_FILE allows separate sets: .env for a local run without
+        # Docker, .env.docker for this stack. The value is set inside the
+        # env file itself, so one flag is enough:
+        #   docker compose --env-file .env.docker up -d
+        - ../${ENV_FILE:-.env}
+      volumes:
+        # The journals stay on the host.
+        - ${LOG_HOST_PATH}:/app/${LOG_DIR}
+      # A ceiling on what goes to stdout: gunicorn's own log goes there
+      # (--access-logfile -), and json-file has no bound at all by default,
+      # so that stream piles up in /var/lib/docker until the disk ends,
+      # exactly as unrotated files would. Rotating the application's files
+      # does not touch this stream -- it is a different one.
+      logging:
+        driver: json-file
+        options:
+          max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
+          max-file: "${DOCKER_LOG_MAX_FILE:-5}"
+      # No command on purpose: the image's CMD runs -- gunicorn with the
+      # per-request ceiling. The development form (`flask run --debug`, the
+      # sources mounted) lives in docker-compose.override.yml, which compose
+      # picks up on its own.
+      healthcheck:
+        # timeout= is required: without it urlopen has no deadline of its
+        # own and the probe outlives the timeout below -- it is killed
+        # instead of answering. The port comes from PORT rather than being
+        # nailed to 5000: otherwise moving the application's port turns the
+        # healthcheck into a permanent failure.
+        test: ["CMD-SHELL", "python -c \"import os, urllib.request; urllib.request.urlopen('http://localhost:%s/health' % os.environ.get('PORT', '5000'), timeout=8)\""]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 15s
+
+
+    # ==========================================================================
+    # Celery
+    # ==========================================================================
+    celery_worker:
+      build:
+        context: ..
+        dockerfile: dockers/Dockerfile
+      container_name: link_shortener_celery
+      depends_on:
+        db:
+          condition: service_healthy
+          required: false
+        redis:
+          condition: service_healthy
+          required: false
+        redis_broker:
+          condition: service_healthy
+          required: false
+        # The same wait the application has, and for the same reason: this
+        # worker writes -- click counts, the roll-ups, the mail records --
+        # so it must not run against a schema that has not been applied.
+        # It was missing here while the guide and its diagram both said
+        # `migrations` had to exit 0 "before `app` and `celery_worker`".
+        # Measured on a run whose migration failed: `app` stayed `Created`
+        # and the worker was `Up` beside it.
+        migrations:
+          condition: service_completed_successfully
+      restart: unless-stopped
+      environment:
+        # Settings shared with the application
+        PYTHONPATH: /app/src
+        FLASK_ENV: ${FLASK_ENV}
+        FLASK_DEBUG: ${FLASK_DEBUG}
+        SECRET_KEY: ${SECRET_KEY}
+        SHORT_CODE_PEPPER: ${SHORT_CODE_PEPPER}
+
+        # The database -- inside the network we use the service name db
+        DATABASE_TYPE: ${DATABASE_TYPE}
+        DATABASE_HOST: db
+        # Inside the network it is the image's port, not the host setting.
+        DATABASE_PORT: ${DATABASE_PORT:-5432}
+        DATABASE_NAME: ${DATABASE_NAME}
+        DATABASE_USER: ${DATABASE_USER}
+        DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+        DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE}
+        DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW}
+        DATABASE_POOL_RECYCLE: ${DATABASE_POOL_RECYCLE}
+        DATABASE_POOL_PRE_PING: ${DATABASE_POOL_PRE_PING}
+        DATABASE_CONNECT_TIMEOUT: ${DATABASE_CONNECT_TIMEOUT}
+        DATABASE_STATEMENT_TIMEOUT: ${DATABASE_STATEMENT_TIMEOUT}
+
+        # Redis -- inside the network
+        CACHE_ENABLED: ${CACHE_ENABLED}
+
+        REDIS_ENABLED: ${REDIS_ENABLED:-}
+        # Empty means the Redis from this stack, set means any external one.
+        # The substitution is required: environment beats env_file, and
+        # without it the value from the env file never reaches the
+        # container.
+        REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT:-6379}/0}
+        REDIS_CONNECT_TIMEOUT: ${REDIS_CONNECT_TIMEOUT}
+        REDIS_SOCKET_TIMEOUT: ${REDIS_SOCKET_TIMEOUT}
+        REDIS_RETRY_INTERVAL: ${REDIS_RETRY_INTERVAL}
+
+        # Logging
+        LOGGING_ENABLED: ${LOGGING_ENABLED}
+        AUDIT_ENABLED: ${AUDIT_ENABLED}
+        LOG_LEVEL: ${LOG_LEVEL}
+        LOG_TO_CONSOLE: ${LOG_TO_CONSOLE:-}
+        LOG_TO_FILE: ${LOG_TO_FILE:-}
+        LOG_DIR: ${LOG_DIR}
+        LOG_FILENAME: ${LOG_FILENAME}
+
+        # Celery
+        CELERY_ENABLED: ${CELERY_ENABLED}
+        # The same substitution as REDIS_URL uses: the broker may be
+        # external.
+        CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD}@redis_broker:${REDIS_BROKER_PORT:-6379}/0}
+        CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis_broker:${REDIS_BROKER_PORT:-6379}/0}
+        CELERY_BROKER_TIMEOUT: ${CELERY_BROKER_TIMEOUT}
+        HEALTH_CHECK_TIMEOUT: ${HEALTH_CHECK_TIMEOUT}
+
+      env_file:
+        # The same file app uses: the worker writes to the same cache and
+        # the same database, and without env_file it would take the code's
+        # defaults for everything not listed above. environment still wins
+        # and keeps the addresses inside the network.
+        - ../${ENV_FILE:-.env}
+      command: celery -A link_shortener.infrastructure.task_queue.celery_app worker --loglevel=info
+      volumes:
+        - ${LOG_HOST_PATH}:/app/${LOG_DIR}
+      # The volume is required: the worker writes the same three files the
+      # application does. It does not go through create_app, so it
+      # configures logging for itself on celery's signal -- see
+      # task_queue/celery_app.py.
+      logging:
+        driver: json-file
+        options:
+          max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
+          max-file: "${DOCKER_LOG_MAX_FILE:-5}"
+    # The worker lives in a container either way -- when the application
+    # runs on the host and when the whole stack runs in Docker. A deployment
+    # that keeps only the application in a container may leave it off: with
+    # CELERY_ENABLED=false the queue is replaced by NullTaskQueue and the
+    # deferred work is done in place, inside the request.
+
+
+    # ==========================================================================
+    # Journal rotation
+    # ==========================================================================
+    # A separate process moves the journal files aside, not the application
+    # itself. The reason is in the numbers: four gunicorn workers write
+    # application.log at once, and a handler that rotates by itself
+    # (RotatingFileHandler) destroys between 10 and 16 percent of the
+    # records with four writers -- it truncates the file while the others
+    # are writing into it. The application writes through
+    # WatchedFileHandler, which notices the replacement and opens the new
+    # file; the measurement and the reasoning are in docs/decisions.md.
+    #
+    # Behind a profile of its own, like db and redis: rotation is turned on
+    # by naming it rather than by editing this file. Whoever keeps the
+    # journals on the host and rotates them with the host's logrotate does
+    # not name the `logs` profile -- the configuration is the same one,
+    # dockers/logrotate.conf, with only the paths changed.
+    logrotate:
+      build:
+        context: ..
+        dockerfile: dockers/Dockerfile.logrotate
+      container_name: link_shortener_logrotate
+      profiles: ["logs"]
+      restart: unless-stopped
+      environment:
+        # How often it looks, not how often it rotates: how often a file is
+        # moved aside is decided by daily and weekly in the configuration.
+        # The hourly look is what makes the size ceiling work at all, since
+        # that one is only examined at the moment of the call.
+        LOG_ROTATE_INTERVAL: ${LOG_ROTATE_INTERVAL:-3600}
+        # The same three names the application chooses its journals by.
+        # Without them the rotator would watch the files named literally in
+        # the configuration, and a deployment with its own LOG_FILENAME
+        # would lose rotation in silence.
+        LOG_FILENAME: ${LOG_FILENAME:-application}
+        ERROR_LOG_FILENAME: ${ERROR_LOG_FILENAME:-error}
+        AUDIT_LOG_FILENAME: ${AUDIT_LOG_FILENAME:-audit}
+      volumes:
+        # The same directory app uses, under a path of its own: the
+        # configuration is written from /logs so as not to depend on the
+        # application's LOG_DIR.
+        - ${LOG_HOST_PATH}:/logs
+      # The rotator has almost no output of its own -- it is silent until
+      # it fails -- but it gets a ceiling too: a container that has started
+      # failing every hour says so without stopping.
+      logging:
+        driver: json-file
+        options:
+          max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
+          max-file: "${DOCKER_LOG_MAX_FILE:-5}"
+
+
+volumes:
+  postgres_data:
+  redis_data:
+  redis_broker_data:

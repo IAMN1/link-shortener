@@ -6,12 +6,16 @@ interface using the structlog library. It provides structured logging and
 supports field binding.
 """
 
-from typing import Any, Dict
+import logging
+from typing import Optional, Any, Dict
 
 import structlog
 
-from link_shortener.application import AuditLogger
-from link_shortener.infrastructure.logging.utils import mask_url
+from link_shortener.application import AuditEvent, AuditLogger
+from link_shortener.infrastructure.logging.utils import (
+    HEALTH_PROBE_FIELDS, HEALTH_PROBE_MESSAGE, mask_email, mask_url,
+    probe_level,
+)
 
 
 class StructlogAuditLogger(AuditLogger):
@@ -26,7 +30,15 @@ class StructlogAuditLogger(AuditLogger):
         _bound_fields: Dictionary of fields bound to this logger instance.
     """
 
-    def __init__(self, bound_logger=None, bound_fields: Dict[str, Any] = None):
+    NAME = "audit"
+    """The standard library logger this chain writes through.
+
+    Named here because two things need it: the logger built when no bound
+    one is handed in, and ``is_healthy``, which asks that hierarchy what
+    level a probe has to be written at to reach a handler.
+    """
+
+    def __init__(self, bound_logger=None, bound_fields: Optional[Dict[str, Any]] = None):
         """Initialise the structlog audit logger.
 
         Args:
@@ -36,7 +48,7 @@ class StructlogAuditLogger(AuditLogger):
         """
         self._bound_fields = bound_fields or {}
         if bound_logger is None:
-            self._logger = structlog.get_logger("audit")
+            self._logger = structlog.get_logger(self.NAME)
         else:
             self._logger = bound_logger
 
@@ -70,7 +82,7 @@ class StructlogAuditLogger(AuditLogger):
         same collision: ``event_dict = self._context.copy()`` and then
         ``event_dict.update(**event_kw)`` (``structlog._base``).
 
-        Applied last, as it used to be, the binding overwrote not only a
+        Applied last, the binding would overwrite not only a
         field the call named but the event's own three: a logger bound with
         ``original_url`` put that value into the record in place of
         ``mask_url(original_url)``, so binding was a way round the masking.
@@ -105,7 +117,7 @@ class StructlogAuditLogger(AuditLogger):
             **kwargs: Additional context (e.g. batch_id, is_new).
         """
         data = self._build_data(
-            event_type="URL_CREATED",
+            event_type=AuditEvent.URL_CREATED.value,
             short_code=short_code,
             original_url=original_url,
             **kwargs
@@ -121,7 +133,7 @@ class StructlogAuditLogger(AuditLogger):
             **kwargs: Additional context (e.g. clicks count).
         """
         data = self._build_data(
-            event_type="URL_ACCESSED",
+            event_type=AuditEvent.URL_ACCESSED.value,
             short_code=short_code,
             original_url=original_url,
             **kwargs
@@ -137,21 +149,69 @@ class StructlogAuditLogger(AuditLogger):
             **kwargs: Additional context (e.g. request_id, remote_addr).
         """
         data = self._build_data(
-            event_type="URL_DELETED",
+            event_type=AuditEvent.URL_DELETED.value,
             short_code=short_code,
             original_url=original_url,
             **kwargs
         )
         self._logger.info("Url deleted successfully", **data)
 
+    def log_security_event(self, event: AuditEvent, **fields) -> None:
+        """Log an event about an account rather than about a link.
+
+        ``email`` is masked on its way in, the way ``original_url`` is on
+        the link events, and under the same rule: the field is masked
+        because of the name it arrives under. An address passed as
+        anything else -- or bound with ``bind()`` -- is written as given.
+
+        ``event_type`` is written last and therefore cannot be overridden,
+        by a bound field or by a keyword. See the reasoning in the sibling
+        adapter ``StandardAuditLogger``: a context field is a caller's to
+        override, the event's identity is not, and a record filed under the
+        wrong ``event_type`` is one that a search for its own kind never
+        returns.
+
+        Args:
+            event: Which event this is.
+            **fields: The event's fields.
+        """
+        data = dict(self._bound_fields)
+        data.update(fields)
+        if "email" in data:
+            data["email"] = mask_email(data["email"])
+        data["event_type"] = event.value
+
+        self._logger.info(f"Security event: {event.value}", **data)
+
     def is_healthy(self) -> bool:
         """Check whether the audit logger is operational.
 
+        Written at the level this chain actually passes records at, for
+        the reason ``probe_level`` gives. ``bootstrap`` sets the audit
+        handlers to ``INFO`` unconditionally, so the old ``DEBUG`` probe
+        reached none of them under any configuration -- this chain called
+        itself healthy whatever state it was in.
+
+        Asked of the hierarchy first, as ``StandardAuditLogger`` asks
+        it: a write that reaches no handler raises nothing, so a probe
+        that only writes answers ``True`` for a chain going nowhere.
+        Measured with the audit logger's handlers removed, this
+        implementation answered ``True`` where its ``standard`` sibling
+        answered ``False`` -- and the failover service moves the work
+        between the two on that answer.
+
         Returns:
-            ``True`` if a simple debug log call succeeds, ``False`` otherwise.
+            ``True`` if a handler is reachable from this logger and a
+            probe record can be written, ``False`` otherwise.
         """
+        if not logging.getLogger(self.NAME).hasHandlers():
+            return False
+
         try:
-            self._logger.debug("health_check")
+            self._logger.log(
+                probe_level(self.NAME), HEALTH_PROBE_MESSAGE,
+                **HEALTH_PROBE_FIELDS,
+            )
             return True
         except Exception:
             return False

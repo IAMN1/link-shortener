@@ -19,6 +19,7 @@ reports itself healthy.
 
 import pytest
 
+from link_shortener.application.ports.logger.audit import AuditEvent
 from link_shortener.infrastructure.failover.failover_service import (
     ALL_SERVICES_FAILED,
 )
@@ -307,8 +308,8 @@ class TestTheAuditProxyForwards:
         the bound fields last lets the context overwrite the event, so a
         record about one account is written down against another: an
         administrator deleting somebody else's link produces a trail
-        naming the administrator as the owner. Measured on the mutation
-        run of 2026-08-10: the swap survived the whole suite.
+        naming the administrator as the owner. The swap passes everything
+        else in the suite.
         """
         service = RecordingService()
         proxy = FailoverAuditLoggerProxy(service).bind(
@@ -352,7 +353,7 @@ class TestTheAuditProxyForwards:
 
 class TestABoundFieldNamedLikeAnEventArgument:
     """
-    The one shape of binding that used to break the call.
+    The one shape of binding that can break the call.
 
     ``log_url_created`` passes ``short_code`` and ``original_url``
     positionally and everything else as keywords, so a bound field of
@@ -413,8 +414,8 @@ class TestABareExceptionCallCarriesATraceback:
     ``exc_info`` defaulted to ``None`` here, and the renderer skips a falsy
     value -- so the ordinary spelling, the one ``logging`` and ``structlog``
     both accept, produced something that reads like a traceback and has
-    none. Measured: flipping the default back to ``False`` left the suite
-    green, because every call in ``src/`` passes ``exc_info`` explicitly.
+    none. Flipping the default back to ``False`` passes everything else,
+    because every call in ``src/`` passes ``exc_info`` explicitly.
     """
 
     def test_the_default_asks_for_the_exception_being_handled(self):
@@ -445,3 +446,97 @@ class TestABareExceptionCallCarriesATraceback:
 
         _, _, kwargs = service.calls[0]
         assert kwargs["exc_info"] is None
+
+
+class TestTheAuditProxyForwardsSecurityEvents:
+    """The family that arrives through one method rather than three.
+
+    The proxy forwards by method name, so a security event that never
+    reaches ``FailoverService.execute`` is a login the trail does not
+    record -- and nothing else in the suite would notice, because the
+    adapters below the proxy are tested against their own callers.
+    """
+
+    def test_the_event_reaches_the_service_under_its_own_name(self):
+        service = RecordingService()
+        proxy = FailoverAuditLoggerProxy(service)
+
+        proxy.log_security_event(AuditEvent.LOGIN_FAILED, reason="bad_password")
+
+        assert len(service.calls) == 1
+        name, args, kwargs = service.calls[0]
+        assert name == "log_security_event"
+        assert args == (AuditEvent.LOGIN_FAILED,)
+        assert kwargs["reason"] == "bad_password"
+
+    def test_the_named_wrappers_arrive_through_the_same_method(self):
+        """They are concrete on the port, so the proxy inherits them.
+
+        Which is the point of putting them there: the proxy gained the
+        whole family by implementing one method, and a wrapper added later
+        needs no change here at all.
+        """
+        service = RecordingService()
+        proxy = FailoverAuditLoggerProxy(service)
+
+        proxy.log_login_succeeded("u-1", "ivanov@example.com")
+
+        name, args, kwargs = service.calls[0]
+        assert name == "log_security_event"
+        assert args == (AuditEvent.LOGIN_SUCCEEDED,)
+        assert kwargs["target_user_id"] == "u-1"
+
+    def test_bound_fields_travel_with_a_security_event(self):
+        """A login with no address it came from is half a record."""
+        service = RecordingService()
+        proxy = FailoverAuditLoggerProxy(service).bind(remote_addr="10.0.0.1")
+
+        proxy.log_login_failed("ivanov@example.com", "bad_password")
+
+        _, _, kwargs = service.calls[0]
+        assert kwargs["remote_addr"] == "10.0.0.1"
+
+    def test_a_bound_field_named_event_does_not_break_the_call(self):
+        """``event`` is passed positionally, so a bound one arrives twice.
+
+        The same shape as ``short_code`` on the link events: without the
+        guard the implementations refuse the call with ``TypeError``,
+        ``dropped_calls`` grows and the chain moves to the standby -- over
+        a mistake in this proxy. And ``event`` is a name a binding can
+        plausibly carry, since structlog spells the message itself that
+        way.
+        """
+        service = RecordingService()
+        proxy = FailoverAuditLoggerProxy(service).bind(event="bound value")
+
+        proxy.log_security_event(AuditEvent.LOGIN_FAILED, reason="bad_password")
+
+        assert len(service.calls) == 1
+        _, args, kwargs = service.calls[0]
+        assert args == (AuditEvent.LOGIN_FAILED,)
+        assert "event" not in kwargs
+
+    @pytest.mark.parametrize("field", ["short_code", "original_url"])
+    def test_a_field_of_the_event_survives_a_name_the_link_events_pass(
+        self, field
+    ):
+        """
+        The guard is against a *bound* field colliding, not against a
+        field of the call.
+
+        ``short_code`` and ``original_url`` are passed positionally by the
+        three link events, so a binding carrying either would reach the
+        implementation twice and be refused. This method passes neither:
+        they arrive as ordinary fields, and dropping them took a value the
+        caller asked to record out of the trail without saying so. On the
+        link events the collision cannot arise from a call at all --
+        Python refuses two values for one parameter before the proxy is
+        entered.
+        """
+        service = RecordingService()
+        proxy = FailoverAuditLoggerProxy(service)
+
+        proxy.log_security_event(AuditEvent.LOGIN_FAILED, **{field: "kept"})
+
+        _, _, kwargs = service.calls[0]
+        assert kwargs[field] == "kept"

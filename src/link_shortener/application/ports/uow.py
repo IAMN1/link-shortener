@@ -1,8 +1,10 @@
+from typing import Protocol
 from abc import ABC, abstractmethod
 
 from link_shortener.domain import (
-    EmailVerificationRepository, LinkRepository, PermissionRepository,
-    RefreshSessionRepository, RoleRepository, UserRepository
+    EmailVerificationRepository, LinkRepository, LinkVisitRepository,
+    PasswordResetRepository, PermissionRepository, RefreshSessionRepository,
+    RoleRepository, SecurityEventRepository, UserRepository
 )
 
 class UnitOfWork(ABC):
@@ -60,6 +62,24 @@ class UnitOfWork(ABC):
         """Return an EmailVerificationRepository bound to the current session."""
         ...
 
+    @property
+    @abstractmethod
+    def password_resets(self) -> PasswordResetRepository:
+        """Return a PasswordResetRepository bound to the current session."""
+        ...
+
+    @property
+    @abstractmethod
+    def link_visits(self) -> LinkVisitRepository:
+        """Return a LinkVisitRepository bound to the current session."""
+        ...
+
+    @property
+    @abstractmethod
+    def security_events(self) -> SecurityEventRepository:
+        """Return a SecurityEventRepository bound to the current session."""
+        ...
+
     # ----- Transaction management -----
     @abstractmethod
     def commit(self) -> None:
@@ -85,4 +105,28 @@ class UnitOfWork(ABC):
     @abstractmethod
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exit the context, committing or rolling back."""
+        ...
+
+
+class UnitOfWorkFactory(Protocol):
+    """
+    What a caller needs in order to open a unit of work.
+
+    Declared as a protocol rather than as ``Callable[[], UnitOfWork]``,
+    because that spelling says the factory takes nothing while every
+    read-only caller in the service passes ``read_only=True`` -- a flag the
+    unit of work itself accepts and honours. The declaration described a
+    narrower interface than the one those callers use.
+    """
+
+    def __call__(self, read_only: bool = False) -> UnitOfWork:
+        """
+        Open a unit of work.
+
+        Args:
+            read_only: If True, the transaction is not intended for writes.
+
+        Returns:
+            A unit of work that has not been entered yet.
+        """
         ...

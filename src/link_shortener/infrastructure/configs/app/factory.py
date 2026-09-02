@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import Dict, Optional
 
 from dotenv import dotenv_values, find_dotenv
@@ -180,7 +181,7 @@ class ConfigFactory:
         if is_unset(env):
             env = cls._read_env_file(".env").get("FLASK_ENV")
 
-        if is_unset(env):
+        if env is None or is_unset(env):
             return None
 
         return env.strip().lower()
@@ -206,7 +207,7 @@ class ConfigFactory:
         return cls.DEFAULT_ENV if named is None else named
 
     @classmethod
-    def create_config_unvalidated(cls, env: str = None) -> BaseConfig:
+    def create_config_unvalidated(cls, env: Optional[str] = None) -> BaseConfig:
         """
         Assemble the configuration object without validating it.
 
@@ -243,7 +244,7 @@ class ConfigFactory:
         return config_class()
 
     @classmethod
-    def create_config(cls, env: str = None) -> BaseConfig:
+    def create_config(cls, env: Optional[str] = None) -> BaseConfig:
         """
         Create a configuration object for the given environment.
 
@@ -260,10 +261,26 @@ class ConfigFactory:
         """
 
         config = cls.create_config_unvalidated(env)
-        config.validate()
+        try:
+            config.validate()
+        except ValueError as error:
+            # Said out loud before it is raised. The exception travels out
+            # through ``create_app`` and Flask's own ``find_best_app``, so
+            # what an operator sees is twenty-five frames of traceback with
+            # the useful part at the very bottom -- on a
+            # production profile missing DOMAIN. The list is what they
+            # need; the frames are what a developer needs, and both stay.
+            print(
+                f"\n{error}\n\n"
+                f"Profile: {cls.resolve_env(env)}. "
+                f"Settings come from the environment first, then "
+                f".env.<profile>, then .env.\n",
+                file=sys.stderr,
+            )
+            raise
         return config
 
 
-def get_config(env: str = None) -> BaseConfig:
+def get_config(env: Optional[str] = None) -> BaseConfig:
     """Convenience function to get configuration."""
     return ConfigFactory.create_config(env)

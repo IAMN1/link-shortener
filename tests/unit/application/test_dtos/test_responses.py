@@ -17,7 +17,7 @@ class TestShortLinkResponse:
 
     def test_from_link_creates_correct_fields(self):
         """Should create ShortLinkResponse with correct fields from Link entity."""
-        
+
         url_hash = UrlHash('a'*64)
         short_code = ShortCode('abc123')
         original_url = OriginalUrl('https://example.com')
@@ -46,7 +46,7 @@ class TestShortLinkResponse:
         assert response.last_accessed == link.last_accessed
         assert response.is_new is True
         assert response.from_cache is False
-    
+
     def test_to_dict(self):
         """Should convert ShortLinkResponse to dictionary with ISO formatted dates."""
 
@@ -110,7 +110,7 @@ class TestBatchItemResponse:
 
     def test_error_factory(self):
         """Should create error BatchItemResponse with error message."""
-        
+
         url = 'https://example.com'
         error = 'Invalid URL'
 
@@ -171,6 +171,57 @@ class TestBatchCreateResponse:
         assert len(response.items) == 4
         assert response.created_at is not None
 
+    def test_a_repeated_url_is_not_counted_as_a_repository_hit(self, base_url):
+        """One address named three times is one link, found in one place.
+
+        The repeats come back pointing at the link the first one got, so
+        they are neither new nor cached -- and ``not is_new and not
+        from_cache`` counted them as lookups the repository never made.
+        Three copies of one new URL reported ``new_count=1,
+        from_db_count=2`` against a batch that read the repository once and
+        found nothing there.
+        """
+        first = BatchItemResponse.success_(
+            url='https://same.com',
+            short_code='s1',
+            original_url='https://same.com',
+            base_url=base_url,
+            is_new=True,
+        )
+        repeats = [
+            BatchItemResponse.success_(
+                url='https://same.com',
+                short_code='s1',
+                original_url='https://same.com',
+                base_url=base_url,
+                is_new=False,
+                duplicate_of='https://same.com',
+            )
+            for _ in range(2)
+        ]
+
+        response = BatchCreateResponse.from_results([first] + repeats)
+
+        assert response.total == 3
+        assert response.successful == 3
+        assert response.new_count == 1
+        assert response.from_db_count == 0
+        assert response.from_cache_count == 0
+
+    def test_the_duration_it_reports_is_the_one_it_was_given(self):
+        """The field documented as the batch's execution time.
+
+        Filled by nobody: the use case measured the duration, wrote it to
+        the journal, and built the response without it -- so every response
+        the service has produced carried ``0.0`` under a name that promised
+        otherwise.
+        """
+        response = BatchCreateResponse.from_results(
+            [], processing_time_seconds=1.25
+        )
+
+        assert response.processing_time_seconds == 1.25
+
 
 # ------------------------------------------------------------------
 # ServiceStatsResponse
@@ -180,7 +231,7 @@ class TestServiceStatsResponse:
 
     def test_to_dict(self):
         """Should convert ServiceStatsResponse to dictionary with rounded avg clicks."""
-        
+
         now = datetime.now()
         popular = [
             StatsItemResponse(
@@ -198,7 +249,7 @@ class TestServiceStatsResponse:
             popular_links=popular
         )
         data = response.to_dict()
-        
+
         assert data['total_urls'] == 10
         assert data['total_clicks'] == 500
         assert data['avg_clicks_per_url'] == 50.0
@@ -230,7 +281,7 @@ class TestExtendLinkInfoResponse:
         link.clicks = 20
         link.last_accessed = datetime.now(timezone.utc) - timedelta(days=1)
         return link
-    
+
     def test_from_link_computes_correct_fields(self, sample_link):
         """Should compute age_days, clicks_per_day, last_access_days_ago correctly."""
 

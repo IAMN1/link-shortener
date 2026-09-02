@@ -1,6 +1,6 @@
 from link_shortener.infrastructure.configs.app.base import BaseConfig
 from link_shortener.infrastructure.configs.app.env import (
-    env_bool, env_int, env_str, read_env_for
+    env_bool, env_int, env_list, env_str, is_unset, read_env_for
 )
 
 
@@ -27,8 +27,11 @@ class ProductionConfig(BaseConfig):
     # --------------------------------------------------------------------------
     # Security: secrets are mandatory
     # --------------------------------------------------------------------------
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def SECRET_KEY(self) -> str:
+    def SECRET_KEY(self) -> str:  # type: ignore[override]
         """Secret key must be set in environment."""
 
         # read_env() rather than os.environ.get(): a blank value has to count
@@ -40,8 +43,11 @@ class ProductionConfig(BaseConfig):
 
         return key
 
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def SHORT_CODE_SECRET_PEPPER(self) -> str:
+    def SHORT_CODE_SECRET_PEPPER(self) -> str:  # type: ignore[override]
         """Pepper must be set in environment."""
 
         pepper = read_env_for(self, "SHORT_CODE_PEPPER")
@@ -56,21 +62,24 @@ class ProductionConfig(BaseConfig):
     # --------------------------------------------------------------------------
     # Application settings
     # --------------------------------------------------------------------------
-    HOST: str = env_str("HOST", "0.0.0.0")
+    # Inside a container anything narrower is invisible from outside,
+    # however many ports are published. The mark below carries no test id on
+    # purpose: given one, bandit suppresses the finding and complains in the
+    # same breath that nothing fired on that line -- it looks for the finding
+    # by the call's line and reports it by the literal's. The mark word
+    # cannot appear in prose here either, because bandit reads whatever
+    # follows it as a list of test ids.
+    HOST: str = env_str("HOST", "0.0.0.0")  # nosec
+    # 8000 rather than the 5000 every other default uses, and it is
+    # reached only outside the shipped container: ``dockers/Dockerfile``
+    # binds gunicorn with ``${PORT:-5000}`` and the compose file publishes
+    # and health-checks 5000, so with ``PORT`` unset there the server
+    # listens on 5000 while this reports 8000. Both templates document the
+    # difference; a deployment that sets ``PORT`` never meets it.
     PORT: int = env_int("PORT", 8000)
 
     USE_HTTPS: bool = env_bool("USE_HTTPS", True)
     """Production is expected to be served over TLS, so this defaults to true."""
-
-    @property
-    def BASE_URL(self) -> str:
-        """Base URL for production – uses DOMAIN environment variable if set."""
-
-        if self.DOMAIN:
-            scheme = "https" if self.USE_HTTPS else "http"
-            return f"{scheme}://{self.DOMAIN}"
-        return f"http://{self.HOST}:{self.PORT}/"
-
 
     # --------------------------------------------------------------------------
     # Limits
@@ -83,8 +92,11 @@ class ProductionConfig(BaseConfig):
     # --------------------------------------------------------------------------
     REDIS_ENABLED: bool = env_bool("REDIS_ENABLED", True)
 
+    # A deployed profile turns an optional base setting into a mandatory one,
+    # so a writeable attribute becomes a read-only property here. That
+    # narrowing is the point of the profile, not an oversight.
     @property
-    def REDIS_URL(self) -> str:
+    def REDIS_URL(self) -> str:  # type: ignore[override]
         """
         Redis URL, demanded only when Redis is actually switched on.
 
@@ -122,6 +134,30 @@ class ProductionConfig(BaseConfig):
     # --------------------------------------------------------------------------
     # Security: cookies should be secure in production
     # --------------------------------------------------------------------------
+
+    # --------------------------------------------------------------------------
+    # CORS: nothing is allowed until a deployment names it
+    # --------------------------------------------------------------------------
+    CORS_ORIGINS: list = env_list("CORS_ORIGINS", [])
+    """
+    Origins allowed to send credentials, and empty until one is named.
+
+    The base default is ``http://localhost:5000``, which is right for a run
+    on a laptop and wrong everywhere else: inherited here it left a deployed
+    service answering ``Access-Control-Allow-Origin: http://localhost:5000``
+    with ``Allow-Credentials: true``, so a page a visitor opened on that port
+    could read this service's answers with that visitor's cookies. Nobody
+    needs the allowance, and a deployment that does needs a different value
+    anyway.
+
+    Empty is not the same as closed. The CSRF layer adds ``BASE_URL`` to the
+    origins it admits, so the service's own pages keep working with nothing
+    named here -- measured: with ``CORS_ORIGINS`` empty, a signed-in form
+    post from ``https://maizlink.example`` answered 201 and the same post
+    from ``https://evil.example`` answered 403. What is empty is the list of
+    *other* origins, which is the honest default for one.
+    """
+
     COOKIE_SECURE: bool = env_bool("COOKIE_SECURE", True)
     SESSION_COOKIE_SECURE: bool = env_bool("SESSION_COOKIE_SECURE", True)
 
@@ -138,29 +174,73 @@ class ProductionConfig(BaseConfig):
     SQLALCHEMY_ECHO: bool = env_bool("SQLALCHEMY_ECHO", False)
 
     # --------------------------------------------------------------------------
-    # Auto-seed roles: disabled – all DB changes via migrations
+    # Auto-seed roles: off, so that a deliberate command puts them there
     # --------------------------------------------------------------------------
     AUTO_SEED_ROLES: bool = env_bool("AUTO_SEED_ROLES", False)
     """
-    In production, we strictly control DB schema and data via migrations.
-    Automatic seeding is disabled to prevent accidental changes.
+    Off, so that the roles table is filled by a command somebody ran
+    rather than by a start-up that happened.
+
+    Not "because migrations do it": no Alembic revision seeds RBAC, which
+    ``AUTO_SEED_ROLES`` in the base configuration states outright. With
+    this off, ``flask db load-custom-roles`` is the way in, and a
+    deployment that does neither comes up with an empty ``roles`` table --
+    which refuses even anonymous shortening.
+
     The profile only sets the default – it stays overridable via env var,
     like every other documented setting.
     """
 
 
-    def validate(self) -> None:
-        """Enforce presence of required environment variables."""
-        super().validate()
-        # Force property evaluation to ensure required environment variables are set.
-        _ = self.SECRET_KEY
-        _ = self.SHORT_CODE_SECRET_PEPPER
-        _ = self.get_database_url()
-        
-        if self.REDIS_ENABLED:
-            _ = self.REDIS_URL
+    def _collect_errors(self) -> list:
+        """Add what a deployed profile demands beyond the base checks.
 
-        # self.DOMAIN, not os.environ: the field already treats a blank
-        # value as unset, and validate() must agree with what BASE_URL will see.
-        if not self.DOMAIN:
-            raise ValueError("DOMAIN environment variable must be set in production")
+        Extends the base list rather than raising after it, so an operator
+        learns about every missing setting in one run.
+
+        Returns:
+            List of human-readable error messages.
+        """
+        errors = super()._collect_errors()
+
+        # Secrets and Redis are already collected by the base class, which
+        # reads both through the properties this profile overrides and
+        # keeps the message each raises.
+        try:
+            self.get_database_url()
+        except ValueError as error:
+            errors.append(str(error))
+
+        # The parts that have defaults, demanded explicitly on a deployed
+        # profile. ``DATABASE_HOST`` falls back to ``localhost`` and
+        # ``DATABASE_NAME`` to ``db_shortener``, so a deployment naming
+        # only ``DATABASE_TYPE=postgresql`` and a user would connect to a
+        # server and a database nobody chose -- the same class of fault
+        # ``_deployed_backend_errors`` exists for, on PostgreSQL rather
+        # than on SQLite.
+        if not self.DATABASE_URL and self.DATABASE_TYPE == "postgresql":
+            for name in ("DATABASE_HOST", "DATABASE_NAME"):
+                # Both halves are asked, because either one is a way of
+                # saying it deliberately: the variable, or a profile that
+                # pins the value as a class attribute. Only the value that
+                # is still the inherited default *and* unnamed in the
+                # environment is the one nobody chose.
+                default = vars(BaseConfig)[name].default
+                if getattr(self, name) == default and is_unset(
+                    read_env_for(self, name)
+                ):
+                    errors.append(
+                        f"{name} must be set when a deployed profile builds "
+                        f"its connection from the DATABASE_* parts -- the "
+                        f"default names a database nobody chose"
+                    )
+
+        # domain_value, not os.environ and not the raw field: it is what
+        # BASE_URL builds from, so the check and the builder cannot
+        # disagree about what counts as set.
+        if not self.domain_value:
+            errors.append(
+                "DOMAIN environment variable must be set in production"
+            )
+
+        return errors

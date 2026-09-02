@@ -15,8 +15,10 @@ held against the real URL map by the last test here.
 import pytest
 from openapi_spec_validator import validate
 
-from link_shortener.web.schemas.openapi import OPERATION_VERBS
-from tests.integration.conftest import register_and_login
+from link_shortener.web.schemas.openapi import (
+    OPERATION_VERBS, READS_ITS_BODY_LENIENTLY,
+)
+from tests.integration.conftest import account_with_permissions, register_and_login
 
 
 def operations_of(path_item):
@@ -71,9 +73,9 @@ class TestTheDocumentIsServed:
     def test_a_real_validator_accepts_it(self, document):
         """Checked by a validator, not by reading back our own string.
 
-        This test used to assert that ``openapi`` starts with ``"3."`` --
-        a value the module itself sets two lines above, so it could not
-        fail. Meanwhile the document was declared ``3.0.3`` and was not:
+        Asserting that ``openapi`` starts with ``"3."`` checks a value the
+        module itself sets two lines above, so it cannot fail while the
+        document is declared ``3.0.3`` and is not:
         pydantic v2 emits JSON Schema 2020-12, whose ``{"type": "null"}``
         the 3.0 Schema Object has no word for -- twenty of them in this
         document -- and the 3.0 validator refuses it with an
@@ -151,8 +153,11 @@ class TestEveryApiRouteIsDescribed:
             path = str(rule)
             if not path.startswith(API_PREFIX):
                 continue
-            if path.startswith("/api/v1/admin"):
-                continue  # Administration is not part of the public API.
+            # Administration used to be skipped here, as "not part of the
+            # public API". Not public is about who may call it, not about
+            # whether it is written down: the operator's surface was the
+            # one part of the service with no contract, while the
+            # dashboard was already written against these exact bodies.
             # Werkzeug writes <converter:name>; OpenAPI writes {name}.
             openapi_path = path.replace("<", "{").replace(">", "}")
             if openapi_path not in described:
@@ -221,10 +226,10 @@ class TestEveryApiRouteIsDescribed:
         """
         Every route is bounded, by its own limit or by the default.
 
-        Nine of the thirteen operations declared no 429 at all. Not the
-        tightest limits -- shorten, batch, register and login declared
-        theirs -- but the tightest of the nine is ten requests a minute,
-        which a client meets by reading statistics twice a second.
+        Nine of the operations declared no 429 at all. Not the tightest
+        limits -- shorten, batch, register and login declared theirs --
+        but the tightest of the nine is ten requests a minute, which a
+        client meets by reading statistics twice a second.
 
         Declared everywhere, including where a deployment can switch it
         off: RATE_LIMIT_AUTH_DISABLED silences the four auth limits, and a
@@ -238,6 +243,170 @@ class TestEveryApiRouteIsDescribed:
         ]
 
         assert not undeclared, f"429 undeclared on: {sorted(undeclared)}"
+
+    def test_every_api_operation_declares_the_undeclared_input_refusal(
+        self, document
+    ):
+        """
+        This service refuses what it does not understand, on every route.
+
+        A body field no model declares is refused by ``StrictRequest``; a
+        query parameter no operation declares is refused by
+        ``middleware/query_strictness.py`` -- which reads *this* document
+        to decide, so every operation in it is one that rule speaks for.
+        Both answer ``400``.
+
+        Found by the contract run: a request carrying one unknown
+        parameter was answered ``400`` by operations whose documented
+        answers were ``200, 401, 403, 429``. Held here as well as there,
+        because a generated run reaches this only when it happens to
+        generate an unknown name, and this has to hold every time.
+        """
+        undeclared = [
+            f"{verb.upper()} {path}"
+            for path, path_item in document["paths"].items()
+            if path.startswith("/api/v1")
+            for verb, operation in operations_of(path_item)
+            if "400" not in operation["responses"]
+        ]
+
+        assert not undeclared, f"400 undeclared on: {sorted(undeclared)}"
+
+    def test_every_operation_taking_a_body_declares_the_media_type_refusal(
+        self, document
+    ):
+        """
+        A body that is not JSON is refused before the endpoint is reached.
+
+        Flask answers ``415`` when a view asks for JSON and the request
+        does not carry ``Content-Type: application/json`` -- including
+        when it carries no body at all. Measured by the contract run:
+        ``POST /api/v1/auth/verify`` with no body answered ``415`` against
+        a document declaring ``200, 400, 403, 429``.
+
+        "Asks for JSON" is the rule, and having a request body is not the
+        same question. Two operations read theirs through
+        ``optional_json_object``, which answers ``{}`` for a request that
+        is not offered as JSON rather than refusing it -- so written
+        against ``requestBody`` alone this demanded a 415 those two cannot
+        answer, and the document grew one. They are read from
+        ``READS_ITS_BODY_LENIENTLY``, the same constant the document
+        builder consults, so the rule cannot be exempted in one place and
+        not the other; the test below proves the exemption is earned.
+        """
+        undeclared = [
+            f"{verb.upper()} {path}"
+            for path, path_item in document["paths"].items()
+            for verb, operation in operations_of(path_item)
+            if "requestBody" in operation
+            and (path, verb) not in READS_ITS_BODY_LENIENTLY
+            and "415" not in operation["responses"]
+        ]
+
+        assert not undeclared, f"415 undeclared on: {sorted(undeclared)}"
+
+    @pytest.mark.parametrize("path, verb", sorted(READS_ITS_BODY_LENIENTLY))
+    def test_an_exempted_operation_really_does_not_answer_415(
+        self, client, path, verb
+    ):
+        """
+        The premise of the exemption above, asked of the running service.
+
+        Without it the set is a list of two strings the document and the
+        test agree about, and an operation added to it would be excused
+        from a refusal it does make.
+        """
+        for body in (
+            {"data": "a=b", "content_type": "application/x-www-form-urlencoded"},
+            {},
+        ):
+            answer = client.open(path, method=verb.upper(), **body)
+
+            assert answer.status_code != 415, (
+                f"{verb.upper()} {path} answered 415 for {body or 'no body'}, "
+                f"so it does not belong in READS_ITS_BODY_LENIENTLY"
+            )
+
+    def test_every_other_operation_with_a_body_does_answer_415(self, client):
+        """The other half: the exemption must not have swallowed the rule."""
+        for path, verb in (
+            ("/api/v1/shorten", "post"), ("/api/v1/auth/verify", "post"),
+        ):
+            answer = client.open(path, method=verb.upper())
+
+            assert answer.status_code == 415, f"{verb.upper()} {path}"
+
+    def test_the_refusals_it_declares_are_ones_the_service_gives(self, client):
+        """
+        The other direction, so the two checks above are not a formality.
+
+        A document may declare anything; these two are declared because
+        the service answers them.
+        """
+        undeclared_parameter = client.get(
+            "/api/v1/stats?there-is-no-such-parameter=1"
+        )
+        no_media_type = client.post("/api/v1/auth/verify", data="not json")
+
+        assert undeclared_parameter.status_code == 400
+        assert no_media_type.status_code == 415
+
+    def test_an_address_is_documented_as_the_service_reads_it(self, document):
+        """
+        The document says what an address is, in the domain's own words.
+
+        ``email`` was published as a plain string, so a client generated
+        from this document had no way to know an address was wanted -- and
+        the contract run, which builds requests from the schema, sent
+        ``"invalid-url"`` to sign-in, registration, the reset request and
+        the resend, meeting a ``400`` none of them had predicted.
+
+        The pattern is imported from ``Email`` rather than copied, so the
+        published rule and the enforced rule cannot drift; this checks
+        that the published one is still that.
+        """
+        from link_shortener.domain.value_objects.email import EMAIL_PATTERN
+
+        schemas = document["components"]["schemas"]
+        # Request models only: a response carries whatever the account
+        # actually has, and holding an answer to the shape of an input is
+        # how a service starts refusing to describe its own data.
+        addressed = [
+            name for name, schema in schemas.items()
+            if name.endswith("Request") and "email" in schema.get("properties", {})
+        ]
+
+        assert addressed, "no request model carries an address any more"
+        for name in addressed:
+            email = schemas[name]["properties"]["email"]
+            assert email.get("pattern") == EMAIL_PATTERN, name
+            assert email.get("format") == "email", name
+
+    def test_a_password_is_documented_with_the_bounds_the_policy_sets(self, document):
+        """
+        Length is the part of the policy a schema can carry, so it does.
+
+        The rest -- a list of common passwords -- is not a shape, and the
+        document says nothing it cannot keep.
+        """
+        from link_shortener.domain.policies.password_policy import (
+            MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH,
+        )
+
+        schemas = document["components"]["schemas"]
+        fields = [
+            (name, field)
+            for name, schema in schemas.items()
+            if name.endswith("Request")
+            for field in schema.get("properties", {})
+            if field in {"password", "new_password"}
+        ]
+
+        assert fields, "no request model carries a password any more"
+        for name, field in fields:
+            described = schemas[name]["properties"][field]
+            assert described.get("minLength") == MIN_PASSWORD_LENGTH, (name, field)
+            assert described.get("maxLength") == MAX_PASSWORD_LENGTH, (name, field)
 
     def test_a_path_level_field_is_not_mistaken_for_an_operation(self):
         """
@@ -315,7 +484,7 @@ class TestEveryApiRouteIsDescribed:
 
     def test_the_document_does_not_share_one_header_object_with_itself(self):
         """
-        Thirteen operations must not be handed the same dict.
+        No two operations may be handed the same dict.
 
         The document is rebuilt on every request; a shared object edited
         through one operation is edited for all of them and for every
@@ -418,6 +587,80 @@ class TestEveryApiRouteIsDescribed:
 
         assert {verb.upper() for verb in SAFE_VERBS} == set(SAFE_METHODS)
 
+    def test_no_route_verb_is_undocumented(self, app, document):
+        """
+        The other direction, which nothing checked.
+
+        ``test_no_api_route_is_missing`` compares paths and
+        ``test_every_documented_verb_actually_exists`` walks from the
+        document to the code, so a second verb added to a path already in
+        the document was invisible to both. ``POST /api/v1/auth/verify``
+        lived that way: the route took ``["GET", "POST"]``, the document
+        described the GET, and a client generated from it could not send
+        what the confirmation page sends.
+
+        Args:
+            app: The application, for its URL map.
+            document: The generated OpenAPI document.
+        """
+        undocumented = {}
+        for rule in app.url_map.iter_rules():
+            path = str(rule)
+            if not path.startswith(API_PREFIX):
+                continue
+            openapi_path = path.replace("<", "{").replace(">", "}")
+            described = {
+                verb.lower()
+                for verb, _ in operations_of(document["paths"].get(openapi_path, {}))
+            }
+            # HEAD and OPTIONS are Werkzeug's own, on every rule, and are
+            # not part of what an endpoint offers.
+            offered = {
+                method.lower() for method in rule.methods
+            } - {"head", "options"}
+            missing = offered - described
+            if missing:
+                undocumented[openapi_path] = sorted(missing)
+
+        assert not undocumented, f"verbs nobody wrote down: {undocumented}"
+
+    def test_a_listing_declares_the_window_it_reads(self, app, document):
+        """
+        A listing that reads ``limit`` and ``offset`` says so.
+
+        ``window_from_query`` is the one place either is read, so the
+        handlers that call it are exactly the operations whose callers may
+        pass them. ``GET /api/v1/links/mine`` read both and declared
+        neither, while the account listing beside it declared both -- so
+        the document said one of the two pages could not be walked.
+
+        Args:
+            app: The application, for its URL map and view functions.
+            document: The generated OpenAPI document.
+        """
+        import inspect
+
+        silent = {}
+        for rule in app.url_map.iter_rules():
+            view = app.view_functions.get(rule.endpoint)
+            try:
+                source = inspect.getsource(view)
+            except (OSError, TypeError):  # pragma: no cover - builtin views
+                continue
+            if "window_from_query" not in source:
+                continue
+            openapi_path = str(rule).replace("<", "{").replace(">", "}")
+            operation = document["paths"].get(openapi_path, {}).get("get", {})
+            declared = {
+                parameter["name"]
+                for parameter in operation.get("parameters", [])
+            }
+            missing = {"limit", "offset"} - declared
+            if missing:
+                silent[openapi_path] = sorted(missing)
+
+        assert not silent, f"listings that read a window and hide it: {silent}"
+
     def test_every_documented_verb_actually_exists(self, app, document):
         real = {}
         for rule in app.url_map.iter_rules():
@@ -458,3 +701,132 @@ class TestADeclaredStatusIsOneThatCanHappen:
         assert "401" not in (
             document["paths"]["/api/v1/stats"]["get"]["responses"]
         )
+
+
+class TestTheHealthBodyMatchesWhatIsWrittenDown:
+    """
+    The one response in the document nothing generates.
+
+    Every other body here is a Pydantic model's own schema, so it cannot
+    disagree with what the endpoint sends. ``GET /api/v1/admin/health``
+    assembles a dict by hand, and ``HEALTH_SCHEMA`` describes it by hand:
+    two hands, which is the arrangement that drifts. This holds them
+    together by asking the running endpoint.
+    """
+
+    def test_every_field_the_endpoint_sends_is_described(self, app):
+        from link_shortener.web.schemas.openapi import HEALTH_SCHEMA
+
+        client, _, _ = account_with_permissions(
+            app,
+            "health-doc@example.com",
+            "Test1234!",
+            "health-doc",
+            ["admin:view_system_health"],
+        )
+
+        answered = client.get("/api/v1/admin/health")
+        assert answered.status_code == 200, answered.get_data(as_text=True)
+
+        described = set(HEALTH_SCHEMA["properties"])
+        sent = set(answered.get_json())
+        assert sent <= described, f"undocumented health fields: {sorted(sent - described)}"
+
+    def test_every_field_that_is_described_is_one_the_endpoint_can_send(self, app):
+        """
+        The other direction. A field written here and never sent reads as
+        a promise, and a reader who believes it stops looking.
+
+        ``logging`` is the one exception and is documented as such: it
+        appears only where a failover logger is configured.
+        """
+        from link_shortener.web.schemas.openapi import HEALTH_SCHEMA
+
+        client, _, _ = account_with_permissions(
+            app,
+            "health-doc-2@example.com",
+            "Test1234!",
+            "health-doc-2",
+            ["admin:view_system_health"],
+        )
+
+        sent = set(client.get("/api/v1/admin/health").get_json())
+        described = set(HEALTH_SCHEMA["properties"]) - {"logging"}
+        assert described <= sent, f"described and never sent: {sorted(described - sent)}"
+
+    def test_the_logging_section_is_described_down_to_each_chain(self, app):
+        """
+        The section is where the two hands actually drift.
+
+        Both tests above compare the top level only, so every field of
+        `logging` -- and every field of the two chains inside it -- was
+        outside what holds the endpoint and the document together. Three
+        were added to it in one change with nothing to notice if only one
+        of the two hands had been moved.
+        """
+        from link_shortener.web.schemas.openapi import HEALTH_SCHEMA
+
+        client, _, _ = account_with_permissions(
+            app,
+            "health-doc-3@example.com",
+            "Test1234!",
+            "health-doc-3",
+            ["admin:view_system_health"],
+        )
+
+        sent = client.get("/api/v1/admin/health").get_json().get("logging")
+        assert sent is not None, "the endpoint sent no logging section"
+
+        described = HEALTH_SCHEMA["properties"]["logging"]["properties"]
+        assert set(sent) <= set(described), (
+            f"undocumented logging fields: {sorted(set(sent) - set(described))}"
+        )
+
+        for chain in ("logger", "audit"):
+            fields = set(sent[chain])
+            written_down = set(described[chain]["properties"])
+            assert fields <= written_down, (
+                f"undocumented {chain} fields: {sorted(fields - written_down)}"
+            )
+            assert written_down <= fields, (
+                f"described and never sent by {chain}: "
+                f"{sorted(written_down - fields)}"
+            )
+
+
+class TestTheDocumentedVocabulariesAreTheApplicationsOwn:
+    """The words in the document against the words in the code.
+
+    Three ``enum`` lists in `HEALTH_SCHEMA` and the journal parameters are
+    typed out by hand, and each has a counterpart the application actually
+    answers with: ``CheckOutcome`` for what a background round found, and
+    ``Journal`` for which of the three files. Two hands again, the
+    arrangement the health body itself is held against a test for -- a
+    value renamed on one side reads to every client as a value the service
+    can send, or hides one it can.
+    """
+
+    def test_the_findings_are_the_ones_the_failover_service_can_report(self):
+        from link_shortener.infrastructure.failover.failover_service import (
+            CheckOutcome,
+        )
+        from link_shortener.web.schemas.openapi import _LOG_CHANNEL
+
+        described = set(_LOG_CHANNEL["properties"]["last_check"]["enum"])
+
+        assert described == {outcome.value for outcome in CheckOutcome}
+
+    def test_the_journal_names_are_the_ones_the_reader_knows(self):
+        from link_shortener.application.ports.journal_reader import Journal
+        from link_shortener.web.schemas.openapi import HEALTH_SCHEMA
+
+        logging_section = HEALTH_SCHEMA["properties"]["logging"]["properties"]
+        written = set(logging_section["journals_written"]["items"]["enum"])
+        unavailable = set(
+            logging_section["journals_unavailable"]["items"]
+            ["properties"]["journal"]["enum"]
+        )
+        names = {journal.value for journal in Journal}
+
+        assert written == names
+        assert unavailable == names

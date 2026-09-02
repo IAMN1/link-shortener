@@ -1,0 +1,243 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{{ _('Journals — MaizLink') }}{% endblock %}
+{% block dashboard_content %}
+<h1 class="dash-title">{{ _('Journals') }}</h1>
+
+{# Everything the page script works with sits inside this element, and the
+   script is handed it rather than reaching into `document`: the page is
+   mounted on every Turbo navigation, and a script that queries the whole
+   document finds the controls of whatever page is still cached. #}
+<div data-journal-view>
+
+<div id="journal-error" class="alert alert--error hidden mb-2"></div>
+
+{# One page over three journals rather than three pages, and the choice is
+   a control rather than an address: an operator reading an error and
+   looking for the audit entry beside it is doing one thing, and a
+   navigation between two pages would lose the interval, the line count and
+   the scroll position each time.
+
+   Only the journals this caller may read are offered. `audit:view` and
+   `logs:view` are separate permissions, so a holder of one sees fewer
+   buttons than a holder of both -- and an unoffered journal is not merely
+   hidden: the endpoint refuses it, which is what makes this a rendering
+   decision rather than the security one. #}
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">{{ _('What to read') }}</span>
+        <span class="chart-fresh">
+            <span class="chart-fresh-dot" data-journal-fresh-dot></span>
+            <span data-journal-fresh-text></span>
+        </span>
+    </div>
+
+    <div class="chart-bar">
+        <span class="chart-bar-label">{{ _('Journal') }}</span>
+        {% if can('logs:view') %}
+            <button type="button" class="btn btn--sm" data-journal="application">{{ _('Application') }}</button>
+            <button type="button" class="btn btn--sm" data-journal="error">{{ _('Errors') }}</button>
+        {% endif %}
+        {% if can('audit:view') %}
+            <button type="button" class="btn btn--sm" data-journal="audit">{{ _('Audit') }}</button>
+        {% endif %}
+
+        <span class="chart-bar-label">{{ _('Lines') }}</span>
+        <button type="button" class="btn btn--sm" data-journal-lines="50">50</button>
+        <button type="button" class="btn btn--sm" data-journal-lines="200">200</button>
+        <button type="button" class="btn btn--sm" data-journal-lines="1000">1000</button>
+    </div>
+
+    <div class="chart-bar">
+        <span class="chart-bar-label">{{ _('Refresh') }}</span>
+        {# The same five intervals and the same off switch the charts
+           offer, because it is the same question asked of a different
+           reading -- and an operator who has learnt one control should not
+           have to learn a second. Polling, not a held connection:
+           production is `gunicorn --worker-class sync --workers 4`, where
+           a connection kept open occupies a worker entirely, and four open
+           journal pages would be the whole service. #}
+        <button type="button" class="btn btn--sm" data-journal-every="5">{{ _('5 s') }}</button>
+        <button type="button" class="btn btn--sm" data-journal-every="10">{{ _('10 s') }}</button>
+        <button type="button" class="btn btn--sm" data-journal-every="30">{{ _('30 s') }}</button>
+        <button type="button" class="btn btn--sm" data-journal-every="60">{{ _('1 min') }}</button>
+        <button type="button" class="btn btn--sm" data-journal-every="300">{{ _('5 min') }}</button>
+        <button type="button" class="btn btn--sm" data-journal-every="0">{{ _('Off') }}</button>
+
+        <span class="chart-bar-gap"></span>
+
+        {# Off by default, and a separate control rather than a wider line
+           count: the newest archive is uncompressed but the ones behind it
+           are gzip, which cannot be read from the end, so asking for them
+           costs whole files. The button says what it costs. #}
+        <button type="button" class="btn btn--sm" data-journal-archives
+                aria-pressed="false">{{ _('Include archives') }}</button>
+        <button type="button" class="btn btn--sm btn--ghost" data-journal-refresh>{{ _('Refresh now') }}</button>
+    </div>
+
+    {# A search costs what a tail does not: the reader stops at the page it
+       was asked for, a filter keeps looking past it -- measured, 2 ms
+       against some 130. So the terms are empty by default and the page
+       goes on polling the plain tail until somebody asks for something.
+
+       A form rather than loose inputs, so Enter searches; the script stops
+       it from submitting, since the answer is fetched rather than
+       navigated to. #}
+    <form class="journal-search" data-journal-search>
+        <div class="journal-search-fields">
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Event') }}</span>
+                <input type="text" class="form-input" data-journal-term="event_type"
+                       placeholder="LOGIN_FAILED" spellcheck="false" maxlength="64">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Account') }}</span>
+                {# One field for both names an event can carry an account
+                   under: who acted, and who was acted upon. Searching one
+                   of them shows half of what happened without saying so. #}
+                <input type="text" class="form-input" data-journal-term="account"
+                       placeholder="{{ _('id of the account') }}" spellcheck="false" maxlength="64">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Address') }}</span>
+                <input type="text" class="form-input" data-journal-term="remote_addr"
+                       placeholder="203.0.113.7" spellcheck="false" maxlength="64">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('Code') }}</span>
+                <input type="text" class="form-input" data-journal-term="short_code"
+                       placeholder="abc123" spellcheck="false" maxlength="64">
+            </label>
+            {# A date, an hour or a whole stamp -- any prefix of the shape
+               the journals are written in. Both ends are inclusive, so one
+               date in both fields is that day. #}
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('From') }}</span>
+                <input type="text" class="form-input" data-journal-term="since"
+                       placeholder="2026-08-18" spellcheck="false" maxlength="20">
+            </label>
+            <label class="journal-search-field">
+                <span class="form-label">{{ _('To') }}</span>
+                <input type="text" class="form-input" data-journal-term="until"
+                       placeholder="2026-08-18T14" spellcheck="false" maxlength="20">
+            </label>
+        </div>
+        <div class="journal-search-actions">
+            <button type="submit" class="btn btn--sm btn--primary">{{ _('Search') }}</button>
+            <button type="button" class="btn btn--sm btn--ghost" data-journal-clear>{{ _('Clear') }}</button>
+        </div>
+    </form>
+</div>
+
+<div class="card card--flush">
+    <div class="card-header">
+        <span class="card-title" data-journal-title>&mdash;</span>
+    </div>
+    {# The table scrolls inside its own box rather than down the page. Two
+       hundred lines is a screen and a half of scrolling, a thousand is
+       twenty, and the controls are at the top: without this, choosing a
+       different journal means scrolling back up to reach the button. #}
+    <div class="table-wrap journal-scroll" data-journal-scroll>
+        <table class="table journal-table">
+            <thead>
+                <tr>
+                    <th>{{ _('Time') }}</th>
+                    <th>{{ _('Level') }}</th>
+                    <th>{{ _('Event') }}</th>
+                    <th>{{ _('Details') }}</th>
+                </tr>
+            </thead>
+            {# Newest last, the order they were written in. A journal read
+               backwards on screen is a journal nobody can follow a request
+               through: the lines of one request arrive in sequence, and the
+               sequence is the whole reason they are read. #}
+            <tbody data-journal-body>
+                <tr><td colspan="4" class="loading">{{ _('Loading…') }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# What this answer reached, as against what exists. The table above is
+   newest last, so without this the *first* line on screen reads as the
+   beginning of the journal, when it is usually the point at which the
+   page filled up. #}
+<p class="text-xs text-muted mt-2" data-journal-reach></p>
+
+{# The counted half, and the reason it is on this page rather than beside
+   the visit charts: these figures are this journal counted, they open to
+   the same permission, and an operator asking "is somebody guessing
+   passwords" wants the number and the lines in one place.
+
+   Shown only to a reader who may see them. `audit:view` opens them, and
+   the page itself opens to either journal permission -- so a reader with
+   `logs:view` alone gets the viewer above and nothing here, rather than a
+   panel that answers 403 into the console. #}
+{% if can('audit:view') %}
+<div class="card mt-3" data-security-counts>
+    <div class="card-header">
+        <span class="card-title">{{ _('Security events') }}</span>
+        <div class="chart-bar">
+            <button type="button" class="btn btn--sm" data-counts-period="24h"
+                    aria-pressed="false">{{ _('24 h') }}</button>
+            <button type="button" class="btn btn--sm" data-counts-period="7d"
+                    aria-pressed="false">{{ _('7 days') }}</button>
+            <button type="button" class="btn btn--sm" data-counts-period="30d"
+                    aria-pressed="false">{{ _('30 days') }}</button>
+            <button type="button" class="btn btn--sm" data-counts-period="90d"
+                    aria-pressed="false">{{ _('90 days') }}</button>
+        </div>
+    </div>
+
+    <div id="counts-error" class="alert alert--error hidden mb-2"></div>
+
+    {# The totals as figures and the same numbers over time as a chart.
+       Both, because they answer different questions: "how many" is read
+       at a glance, "when" is what says whether eleven refusals were a
+       week of typing or one minute of guessing. #}
+    <div class="counts-tiles" data-counts-tiles></div>
+    <div class="chart-figure" data-counts-chart></div>
+    <p class="text-xs text-muted mt-2" data-counts-note></p>
+</div>
+{% endif %}
+
+<div class="explain mt-2">
+    {%- set endpoint %}<code>GET /api/v1/journals/&lt;journal&gt;</code>{% endset -%}
+    {% trans name=endpoint %}Read from {{ name }}, from the end of the file, by polling.{% endtrans %}
+    {# Said on the page rather than left to documentation, because the
+       reader is looking at the thing being described. All three journals
+       carry personal data of some kind, and the permission that opened
+       this page was granted deliberately -- which is worth knowing while
+       reading, not afterwards.
+
+       Each sentence sits behind the permission that opens the journal it
+       is about, and that is a correction rather than a refinement: both
+       stood behind `audit:view`, so the one caller who reads the full
+       addresses -- a holder of `logs:view`, which is what opens
+       `application.log` -- was shown no warning at all, while a holder of
+       `audit:view` alone read a warning about a journal the endpoint
+       would refuse them. #}
+    {% if can('audit:view') %}
+        <br>{{ _('The audit journal names destination addresses and the accounts that followed them.') }}
+    {% endif %}
+    {% if can('logs:view') %}
+        <br>{{ _('The application journal names the address of everyone who registered or signed in.') }}
+    {% endif %}
+</div>
+
+</div>
+{% endblock %}
+{% block extra_head %}
+    {{ super() }}
+    {# In the head for the reason written out at the top of the file: it
+       owns a timer, and a timer's owner has to run once per tab. #}
+    <script src="{{ url_for('static', filename='js/journals.js') }}" defer></script>
+    {# `charts.js` for the frame, the axis and the tooltip: the security
+       chart is another chart, and a second set of primitives beside it
+       would be two ways for one screen to draw an axis. #}
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/security_counts.js') }}" defer></script>
+{% endblock %}
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/pages/journals.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/pages/security_counts.js') }}" defer></script>
+{% endblock %}

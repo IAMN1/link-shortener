@@ -5,11 +5,15 @@ This module contains ``StructLogger`` which wraps a structlog ``BoundLogger``
 and implements the domain ``Logger`` interface.
 """
 
+import logging
 from typing import Any, Optional
 
 import structlog
 
 from link_shortener.application import Logger
+from link_shortener.infrastructure.logging.utils import (
+    HEALTH_PROBE_FIELDS, HEALTH_PROBE_MESSAGE, probe_level,
+)
 
 
 class StructLogger(Logger):
@@ -30,8 +34,13 @@ class StructLogger(Logger):
             bound_logger: An existing ``BoundLogger``; if ``None``, a new one
                 is created.
         """
+        # Kept beside the bound logger because ``is_healthy`` needs it: the
+        # level a probe has to be written at is a property of the standard
+        # library logger underneath, and structlog's own object does not
+        # offer it without reaching into a private attribute.
+        self._name = name or __name__
         if bound_logger is None:
-            self._logger = structlog.get_logger(name or __name__).bind()
+            self._logger = structlog.get_logger(self._name).bind()
         else:
             self._logger = bound_logger
 
@@ -45,7 +54,10 @@ class StructLogger(Logger):
             A new ``StructLogger`` instance with the combined bound fields.
         """
         new_logger = self._logger.bind(**kwargs)
-        return StructLogger(bound_logger=new_logger)
+        # The name travels with the copy. Left behind, every bound logger
+        # answered ``is_healthy`` about this module's name rather than
+        # about the chain it writes to.
+        return StructLogger(name=self._name, bound_logger=new_logger)
 
     def debug(self, message: str, **kwargs: Any) -> None:
         """Log a debug message.
@@ -101,11 +113,36 @@ class StructLogger(Logger):
     def is_healthy(self) -> bool:
         """Check whether the logger is operational.
 
+        Asked of the hierarchy first, as the two ``standard`` adapters
+        ask it: a write that reaches no handler raises nothing, so a
+        probe that only writes answers ``True`` for a chain going
+        nowhere. Measured with every handler removed and structlog
+        configured as ``bootstrap`` configures it, the four
+        implementations answered the same question two ways --
+        ``StandardLogger`` and ``StandardAuditLogger`` ``False``, this
+        one and ``StructlogAuditLogger`` ``True``. They are
+        interchangeable by construction: the failover service hands the
+        work between them on this answer, so one state has to have one
+        answer, or which defect the service notices depends on
+        ``LOGGER_TYPE``.
+
+        Written at the level this chain actually passes records at, for
+        the reason ``probe_level`` gives: structlog hands the record to
+        the standard library, where a ``DEBUG`` probe was dropped by the
+        handler's own level test before it could fail on a broken one.
+
         Returns:
-            ``True`` if a simple debug log call succeeds, ``False`` otherwise.
+            ``True`` if a handler is reachable from this logger and a
+            probe record can be written, ``False`` otherwise.
         """
+        if not logging.getLogger(self._name).hasHandlers():
+            return False
+
         try:
-            self._logger.debug("health_check")
+            self._logger.log(
+                probe_level(self._name), HEALTH_PROBE_MESSAGE,
+                **HEALTH_PROBE_FIELDS,
+            )
             return True
         except Exception:
             return False

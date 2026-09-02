@@ -188,8 +188,8 @@ class TestCleanupDeletesByExpiryAlone:
     """
     ``delete_expired`` may look at nothing but ``expires_at``.
 
-    The command used to sweep by ``last_accessed``, which deleted permanent
-    links nobody had clicked and kept the expired ones it was named after.
+    Sweeping by ``last_accessed`` deletes permanent links nobody has
+    clicked and keeps the expired ones the command is named after.
     """
 
     def test_a_permanent_link_is_kept_however_stale(self, repo):

@@ -7,22 +7,14 @@ exposes factory methods for creating them.
 """
 
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import List
 
 from link_shortener.application import (
-    CreateShortLinkUseCase,
-    DeleteLinkUseCase,
-    GetExtendedLinkInfoUseCase,
-    GetLinkInfoUseCase,
-    GetUserLinksUseCase,
-    RedirectLinkUseCase,
-    UpdateLinkStatsUseCase,
-    AuditLogger,
-    LinkCache,
-    Logger,
-    RedirectCache,
-    TaskQueue,
-    UnitOfWork,
+    ServiceCache,
+    UnitOfWorkFactory, CreateShortLinkUseCase,
+    DeleteLinkUseCase, GetExtendedLinkInfoUseCase, GetLinkInfoUseCase,
+    GetUserLinksUseCase, RedirectLinkUseCase, UpdateLinkStatsUseCase,
+    AuditLogger, Logger, RedirectCache, TaskQueue
 )
 from link_shortener.application.ports.auth.authorization_service import (
     AuthorizationService,
@@ -59,11 +51,13 @@ class LinkUseCasesComponent:
         default_guest_ttl_seconds: TTL applied to guest-created links, and
             the most a guest may ask for.
         max_ttl_seconds: Longest lifetime any caller may ask for.
+        record_visits: Whether an opened link is recorded as an event and
+            not only counted, from ``VISIT_TRACKING_ENABLED``.
         authorization_service: Service that answers permission questions.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
-    cache: LinkCache
+    uow_factory: UnitOfWorkFactory
+    cache: ServiceCache
     redirect_cache: RedirectCache
     hash_calculator: HashCalculator
     code_generator: CodeGenerator
@@ -82,6 +76,7 @@ class LinkUseCasesComponent:
     default_guest_ttl_seconds: int
     max_ttl_seconds: int
     authorization_service: AuthorizationService
+    record_visits: bool = True
 
     # ------------------------------------------------------------------
     # Creation
@@ -175,15 +170,19 @@ class LinkUseCasesComponent:
         """Return a configured ``UpdateLinkStatsUseCase``.
 
         Designed to be called asynchronously (e.g. by a Celery worker);
-        increments click counts. Takes no cache: writing one here brought
-        deleted links back to life.
+        increments click counts. Takes both caches to **drop** the entries
+        of a row that is gone, and never to write one: writing here brought
+        deleted links back to life, and the use case says so at length.
 
         Returns:
             A ready-to-use ``UpdateLinkStatsUseCase`` instance.
         """
         return UpdateLinkStatsUseCase(
             uow_factory=self.uow_factory,
+            cache=self.cache,
+            redirect_cache=self.redirect_cache,
             logger=self.logger,
+            record_visits=self.record_visits,
         )
 
     # ------------------------------------------------------------------

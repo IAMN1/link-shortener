@@ -168,14 +168,16 @@ class TestNoClickIsLost:
         session = pg_session_factory()
         try:
             repository = SQLAlchemyLinkRepository(session)
-            first = repository.increment_clicks(stored_link.short_code)
+            repository.increment_clicks(stored_link.short_code)
             session.commit()
-            second = repository.increment_clicks(stored_link.short_code)
+            first = repository.find_by_code(stored_link.short_code).clicks
+            repository.increment_clicks(stored_link.short_code)
             session.commit()
+            second = repository.find_by_code(stored_link.short_code).clicks
         finally:
             session.close()
 
-        assert (first.clicks, second.clicks) == (1, 2)
+        assert (first, second) == (1, 2)
 
 
 class TestTheUseCaseTheRedirectRunsIsAtomicToo:
@@ -201,8 +203,17 @@ class TestTheUseCaseTheRedirectRunsIsAtomicToo:
             stored_link: The link every thread clicks.
         """
         with app.app_context():
+            # Both caches, because the use case now drops their entries
+            # when the row it was asked to count is not there -- which is
+            # how a process that did not perform a deletion finds out
+            # about it. Taken from the container rather than stubbed: the
+            # branch is not reached here (every click lands on a row that
+            # exists), and a stub would say this test had an opinion about
+            # invalidation, which it has not.
             use_case = UpdateLinkStatsUseCase(
                 uow_factory=app.container.get_uow_factory(),
+                cache=app.container.get_cache(),
+                redirect_cache=app.container.get_cache(),
                 logger=NullLogger(),
             )
 

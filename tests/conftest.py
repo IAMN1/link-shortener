@@ -10,9 +10,9 @@ and have nowhere else to look. Nothing takes them out again, and
 ``monkeypatch`` cannot: it restores the variables it set itself, and these
 were written by the application code under test.
 
-Measured before this file had any content: a ``.env`` holding the single
-line ``GUEST_LINK_LIMIT=-7`` turned a green suite into ``5 failed, 1
-error``. One casualty was ``test_production_config_cookie_security``, which
+Without this file, a ``.env`` holding the single line
+``GUEST_LINK_LIMIT=-7`` turns a green suite into ``5 failed, 1 error``.
+One casualty is ``test_production_config_cookie_security``, which
 already carried its own ``monkeypatch.chdir`` for precisely this reason --
 it passed when run alone and failed when run behind its neighbour. The
 neighbour had published the value process-wide before the chdir could
@@ -36,6 +36,7 @@ from typing import Iterator
 import pytest
 
 from link_shortener.infrastructure.configs.app import factory as config_factory
+from tests.support import real_stack as real_stack_support
 
 
 # ==============================================================================
@@ -119,7 +120,10 @@ def _restore_environ() -> Iterator[None]:
     anything published before the first snapshot is taken, which means
     during collection or session setup; ``os.putenv`` and ``os.unsetenv``,
     which write past ``os.environ``; and the working directory. Nothing in
-    the suite does any of those today.
+    the suite writes past ``os.environ``. The working directory two tests
+    in ``test_sqlite_path.py`` do change, and both put it back themselves
+    in a ``finally`` -- which is what this fixture would not have done for
+    them.
 
     Yields:
         Nothing. The environment is repaired after the test.
@@ -149,13 +153,13 @@ def detached_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     profiles read ``.env``, and the walk upwards from the working directory
     finds a file, which from the repository root means the developer's own.
 
-    Changing the directory is no longer enough on its own.
-    ``_read_env_file`` reads the project root before it walks anywhere, and
-    that root comes from the location of the configuration module rather
-    than from the process -- so it stays the developer's checkout however
-    the test is run. Measured when only the ``chdir`` was here:
-    ``test_base_url_property`` began reading ``HOST=127.0.0.1`` out of the
-    real ``.env`` and expected ``localhost``. The root is therefore pointed
+    Changing the directory is not enough on its own. ``_read_env_file``
+    reads the project root before it walks anywhere, and that root comes
+    from the location of the configuration module rather than from the
+    process -- so it stays the developer's checkout however the test is
+    run. With only the ``chdir`` here, ``test_base_url_property`` reads
+    ``HOST=127.0.0.1`` out of the real ``.env`` and expects ``localhost``.
+    The root is therefore pointed
     at the same empty directory.
 
     Everything outside the allowlist above is removed, so a setting is
@@ -171,3 +175,72 @@ def detached_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             monkeypatch.delenv(name, raising=False)
 
     return tmp_path
+
+
+# The marker a test carries is decided by where it lives, not written by
+# hand: the layout is the categorisation, and a marker typed into a file
+# can disagree with the directory the file sits in. Seven markers were
+# declared and none was ever used, so `-m integration` selected nothing.
+_MARKER_BY_DIRECTORY = (
+    ("tests/integration/docker", ("integration", "docker")),
+    ("tests/integration", ("integration",)),
+    ("tests/unit", ("unit",)),
+    ("tests/e2e", ("e2e",)),
+    # Generated from the published document rather than written out, so it
+    # is neither a unit nor an integration test in the sense the other
+    # three mean: nobody chose the requests it makes.
+    ("tests/contract", ("contract",)),
+)
+
+
+def pytest_collection_modifyitems(items) -> None:
+    """Mark every collected test by the directory it was collected from.
+
+    A test under no known directory is refused rather than left unmarked.
+    Silently skipping it would put the failure exactly where this whole
+    mechanism exists to prevent one: ``-m unit`` would pass over the new
+    directory, and the run would be green because nothing ran.
+
+    Args:
+        items: The collected tests, marked in place.
+
+    Raises:
+        UsageError: If a collected test lies outside every known directory.
+    """
+    unmarked = []
+    for item in items:
+        path = str(item.path).replace(os.sep, "/")
+        for directory, markers in _MARKER_BY_DIRECTORY:
+            if f"/{directory}/" in path:
+                for marker in markers:
+                    item.add_marker(getattr(pytest.mark, marker))
+                break
+        else:
+            unmarked.append(item.nodeid)
+
+    if unmarked:
+        listed = "\n  ".join(unmarked[:10])
+        raise pytest.UsageError(
+            f"{len(unmarked)} test(s) lie outside every directory named in "
+            f"_MARKER_BY_DIRECTORY, so no marker describes them and `-m` "
+            f"would pass over them:\n  {listed}"
+        )
+
+
+@pytest.fixture(scope="session")
+def real_stack():
+    """Bring the PostgreSQL and Redis containers up for the whole session.
+
+    Session-scoped and declared here, not in either directory that wants
+    it: ``tests/integration/docker`` and ``tests/e2e`` both run against
+    these containers, and a per-module fixture taking the stack down at
+    the end of its module pulled it out from under the other. That failed
+    only in some collection orders -- `pytest -p no:randomly tests/...`
+    happened to be safe, `--lf` was not -- which is the kind of failure
+    that reads as flakiness.
+    """
+    real_stack_support.start()
+
+    yield
+
+    real_stack_support.stop()

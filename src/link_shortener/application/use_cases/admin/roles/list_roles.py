@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import List
 
 from link_shortener.application.context import RequestContext
 from link_shortener.application.dtos.admin.role import RoleResponse
 from link_shortener.application.ports.logger.logger import Logger
-from link_shortener.application.ports.uow import UnitOfWork
+from link_shortener.application.ports.uow import UnitOfWorkFactory
 from link_shortener.application.use_cases.base_use_case import BaseUseCase
 
 @dataclass
@@ -12,9 +12,13 @@ class ListRolesUseCase(BaseUseCase):
     """
     Retrieves all roles defined in the system.
 
-    Requires either ``admin:view_roles`` or ``admin:manage_roles`` permission.
+    Requires ``admin:view_roles``. Not "either that or ``admin:manage_roles``", which is what
+    this said: the routes ask for one named permission each, and
+    ``test_each_admin_route_asks_for_its_own_permission`` holds them to
+    it -- OWASP A01 asks a system to deny by default, and an account
+    built to manage is not thereby an account built to read.
     """
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     logger: Logger
 
     def execute(self, context: RequestContext) -> List[RoleResponse]:

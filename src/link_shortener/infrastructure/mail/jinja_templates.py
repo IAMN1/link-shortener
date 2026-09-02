@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
+from babel.support import NullTranslations, Translations
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from link_shortener.application.ports.mail_templates import MailTemplates
@@ -17,6 +18,15 @@ places -- provided the files are shipped, which is what the
 ``web/templates/**/*.txt`` line in ``pyproject.toml`` is for.
 """
 
+CATALOGUE_DIR = Path(__file__).resolve().parents[2] / "web" / "translations"
+"""The same catalogues the pages are drawn from.
+
+One set of files, not a second set for mail. A message and the page it
+links to are the same voice, and two catalogues would let them drift --
+and would ask a translator to translate "Confirm your email address"
+twice, in two files, with no way to see that they are the same sentence.
+"""
+
 
 class JinjaMailTemplates(MailTemplates):
     """
@@ -29,17 +39,53 @@ class JinjaMailTemplates(MailTemplates):
     an apostrophe into ``&#39;``.
 
     Attributes:
-        environment: The Jinja environment loading from ``TEMPLATE_DIR``.
+        default_environment: The environment for the default language.
+            One is kept per language, because a catalogue is installed on
+            an environment rather than passed to a render -- see
+            ``_environment``. Named for what it is: while there was one
+            environment, ``environment`` was the object every render went
+            through, and leaving that name on one of several would invite
+            the next reader to configure it and wonder why three languages
+            ignored them.
     """
 
-    def __init__(self, template_dir: Path = TEMPLATE_DIR):
+    def __init__(
+        self,
+        template_dir: Path = TEMPLATE_DIR,
+        catalogue_dir: Path = CATALOGUE_DIR,
+        default_language: str = "en",
+    ):
         """
         Args:
             template_dir: Directory holding the message templates.
+            catalogue_dir: Directory holding the compiled catalogues.
+            default_language: Language for a message nobody chose one for
+                -- a task queued by the CLI, or a context from before this
+                field existed.
         """
-        self.environment = Environment(
-            loader=FileSystemLoader(str(template_dir)),
-            autoescape=False,
+        self.catalogue_dir = catalogue_dir
+        self.default_language = default_language
+        self.template_dir = template_dir
+        self._environments: dict = {}
+        self.default_environment = self._environment(default_language)
+
+    def _build_environment(self) -> Environment:
+        """
+        One Jinja environment, configured but with no catalogue installed.
+
+        Returns:
+            A fresh environment reading from ``template_dir``.
+        """
+        return Environment(
+            # The messages are translated like the pages, and a plain
+            # environment has no `{% trans %}` at all -- an untranslated
+            # template renders, and one carrying the tag raises
+            # TemplateSyntaxError at send time, inside a worker.
+            extensions=["jinja2.ext.i18n"],
+            loader=FileSystemLoader(str(self.template_dir)),
+            # A text/plain body: escaping would break the link the message
+            # exists to carry. See the class docstring.
+            autoescape=False,  # nosec B701
             # A missing variable renders as an empty string by default,
             # which for these templates means mailing somebody a message
             # with a blank where the link should be. Raising instead turns
@@ -48,13 +94,99 @@ class JinjaMailTemplates(MailTemplates):
             keep_trailing_newline=True,
         )
 
-    def verification_email(self, confirm_url: str, ttl_hours: int) -> Tuple[str, str]:
+    def _environment(self, language: Optional[str]) -> Environment:
+        """
+        The environment whose catalogue is the one this language needs.
+
+        One per language, built once and never reconfigured after that.
+        The alternative -- installing the catalogue on a shared
+        environment before each render -- is what this replaces, and it
+        was a race rather than a style: ``install_gettext_translations``
+        writes ``gettext`` into ``Environment.globals``, an overlay shares
+        that dictionary rather than copying it, and with
+        ``CELERY_ENABLED=false`` the message goes out on the request
+        thread. Two registrations in different languages then interleave
+        install and render, and one message leaves with the other's
+        catalogue -- measured with two threads of 300 renders each, and
+        the subject and the body of one message can disagree.
+
+        The environment is put in the map only once its catalogue is
+        installed, so a second thread finding it there finds it ready.
+        Two threads racing to build the same one build two and each uses
+        the one it built, which costs a parse and is otherwise the same
+        answer.
+
+        Args:
+            language: Language tag, or ``None`` for the default.
+
+        Returns:
+            The environment for that language.
+        """
+        tag = (language or self.default_language).strip().lower()
+
+        environment = self._environments.get(tag)
+        if environment is None:
+            environment = self._build_environment()
+            environment.install_gettext_translations(  # type: ignore[attr-defined]
+                self._catalogue(tag), newstyle=True
+            )
+            self._environments[tag] = environment
+
+        return environment
+
+    def _catalogue(self, tag: str):
+        """
+        Load the catalogue a message is rendered through.
+
+        Not memoised: the only caller is ``_environment``, which builds
+        one environment per language and keeps it, so this runs once per
+        language already. A second cache in front of that one could not be
+        reached.
+
+        Args:
+            tag: Language tag, already normalised.
+
+        Returns:
+            The translations object. ``NullTranslations`` when there is no
+            catalogue for that language -- which is the right answer for
+            English, whose msgids are the English text, and a survivable
+            one for a deployment offering a language nobody compiled: the
+            message goes out in English rather than not going out.
+        """
+        return Translations.load(str(self.catalogue_dir), [tag]) or NullTranslations()
+
+    def _render(self, name: str, language: Optional[str], **context) -> str:
+        """
+        Render one template with the catalogue for this language installed.
+
+        Args:
+            name: Template file name.
+            language: Language tag, or ``None`` for the default.
+            **context: What the template needs.
+
+        Returns:
+            The rendered text.
+        """
+        # The language picks the environment; nothing is installed here.
+        # One worker process sends to people who chose different
+        # languages, and a single environment reconfigured per render
+        # cannot hold two of them at once. See `_environment`.
+        return self._environment(language).get_template(name).render(**context)
+
+    def verification_email(
+        self,
+        confirm_url: str,
+        ttl_hours: int,
+        language: Optional[str] = None,
+    ) -> Tuple[str, str]:
         """
         Render the message that carries a confirmation link.
 
         Args:
             confirm_url: Absolute URL that confirms the address.
             ttl_hours: How long that URL stays usable.
+            language: Language tag chosen by the request that asked for
+                this message.
 
         Returns:
             Tuple of (subject, body), both plain text. The subject is
@@ -63,25 +195,60 @@ class JinjaMailTemplates(MailTemplates):
             does, and that refusal would arrive as a failed registration
             rather than as the template mistake it is.
         """
-        subject = self.environment.get_template("verification_subject.txt").render()
-        body = self.environment.get_template("verification_body.txt").render(
-            confirm_url=confirm_url, ttl_hours=ttl_hours
+        subject = self._render("verification_subject.txt", language)
+        body = self._render(
+            "verification_body.txt",
+            language,
+            confirm_url=confirm_url,
+            ttl_hours=ttl_hours,
         )
         return subject.strip(), body
 
-    def account_exists_email(self, sign_in_url: str) -> Tuple[str, str]:
+    def password_reset_email(
+        self,
+        reset_url: str,
+        ttl_minutes: int,
+        language: Optional[str] = None,
+    ) -> Tuple[str, str]:
         """
-        Render the message sent when the address is already registered.
+        Render the message that carries a password reset link.
 
         Args:
-            sign_in_url: Absolute URL of the sign-in page.
+            reset_url: Absolute URL that opens the reset form.
+            ttl_minutes: How long that URL stays usable.
+            language: Language tag chosen by the request that asked for
+                this message.
 
         Returns:
             Tuple of (subject, body), both plain text. The subject is
             stripped for the same reason as above.
         """
-        subject = self.environment.get_template("account_exists_subject.txt").render()
-        body = self.environment.get_template("account_exists_body.txt").render(
-            sign_in_url=sign_in_url
+        subject = self._render("password_reset_subject.txt", language)
+        body = self._render(
+            "password_reset_body.txt",
+            language,
+            reset_url=reset_url,
+            ttl_minutes=ttl_minutes,
+        )
+        return subject.strip(), body
+
+    def account_exists_email(
+        self, sign_in_url: str, language: Optional[str] = None
+    ) -> Tuple[str, str]:
+        """
+        Render the message sent when the address is already registered.
+
+        Args:
+            sign_in_url: Absolute URL of the sign-in page.
+            language: Language tag chosen by the request that asked for
+                this message.
+
+        Returns:
+            Tuple of (subject, body), both plain text. The subject is
+            stripped for the same reason as above.
+        """
+        subject = self._render("account_exists_subject.txt", language)
+        body = self._render(
+            "account_exists_body.txt", language, sign_in_url=sign_in_url
         )
         return subject.strip(), body

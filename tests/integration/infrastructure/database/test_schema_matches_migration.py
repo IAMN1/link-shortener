@@ -26,14 +26,29 @@ from link_shortener.infrastructure.database.models.base import Base
 from link_shortener.infrastructure.database.repositories import (  # noqa: F401
     sqlalchemy_email_verification_repository,
     sqlalchemy_link_repository,
+    sqlalchemy_link_visit_repository,
     sqlalchemy_permission_repository,
     sqlalchemy_refresh_session_repository,
     sqlalchemy_role_repository,
+    sqlalchemy_security_event_repository,
     sqlalchemy_user_repository,
 )
 
 
-COMPARED_TABLES = ["users", "email_verifications"]
+COMPARED_TABLES = [
+    "users",
+    "email_verifications",
+    # The three the statistics work added, and they were outside this
+    # comparison until a review put them in. All five of their counted
+    # and classified columns carried a Python-side ``default=`` in the
+    # model and a ``server_default`` in the migration -- so ``create_all``
+    # built them with no ``DEFAULT`` clause and ``alembic upgrade head``
+    # built them with one, which is the drift these tables are here to
+    # refuse.
+    "link_visits",
+    "link_visit_days",
+    "security_event_days",
+]
 
 
 def columns(path, table):

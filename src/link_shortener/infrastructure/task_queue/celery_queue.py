@@ -1,3 +1,4 @@
+from typing import Optional
 import time
 from threading import Lock
 
@@ -6,14 +7,44 @@ from link_shortener.application.ports.logger.logger import Logger
 from link_shortener.application.ports.task_queue import TaskQueue
 
 
+def _task_context(context: RequestContext) -> dict:
+    """
+    The request fields a task is published with.
+
+    One place rather than one per task. The field that decides anything is
+    ``language``: a mail task is rendered by the worker, and by then the
+    request that chose the language is over -- dropped from one copy, the
+    message for a visitor reading Russian arrives in English, and only
+    that one kind of message.
+
+    Written out at each call site before, comment included, which is how
+    the sentence about a confirmation message came to stand over the click
+    counter, where there is no message and nothing to translate.
+
+    Args:
+        context: The request the task was published by.
+
+    Returns:
+        A plain dict, because it travels through the broker as JSON.
+    """
+    return {
+        'request_id': context.request_id,
+        'remote_addr': context.remote_addr,
+        'user_agent': context.user_agent,
+        'request_path': context.request_path,
+        'request_method': context.request_method,
+        'language': context.language,
+    }
+
+
 class CeleryTaskQueue(TaskQueue):
     """
     Sends tasks to a Celery worker.
 
     The ``RequestContext`` is serialised into a dictionary and passed as a
-    task argument. Three tasks are dispatched from here:
-    ``process_link_accessed``, ``send_verification_email`` and
-    ``send_account_exists_email``.
+    task argument. What is dispatched from here is the work a request asks
+    for but must not wait on: the click counter, and the messages an address
+    is sent.
 
     Dispatching happens on the request path, so an unreachable broker is a
     latency problem before it is a correctness one. Two things bound it: the
@@ -30,7 +61,7 @@ class CeleryTaskQueue(TaskQueue):
         retry_interval: Seconds to skip dispatching after a failure.
     """
 
-    def __init__(self, logger: Logger = None, retry_interval: int = 10):
+    def __init__(self, logger: Optional[Logger] = None, retry_interval: int = 10):
         """
         Args:
             logger: Application logger for diagnostics.
@@ -77,8 +108,8 @@ class CeleryTaskQueue(TaskQueue):
         Enqueue a Celery task to update link click statistics.
 
         A broker that cannot be reached must not take the request down with
-        it. This queue only carries click statistics, so failing to dispatch
-        costs a lost counter increment -- letting the error escape instead
+        it. What a failed dispatch costs here is one counter increment,
+        which nothing is told about -- letting the error escape instead
         turned every redirect into a 500 for as long as the broker was
         unreachable, and waiting on it turned every redirect into a timeout.
 
@@ -92,13 +123,7 @@ class CeleryTaskQueue(TaskQueue):
 
         # Serialize RequestContext to a plain dictionary.
         from link_shortener.infrastructure.task_queue.tasks import process_link_accessed
-        context_dict = {
-            'request_id': context.request_id,
-            'remote_addr': context.remote_addr,
-            'user_agent': context.user_agent,
-            'request_path': context.request_path,
-            'request_method': context.request_method,
-        }
+        context_dict = _task_context(context)
         # Dispatch the task asynchronously.
         try:
             process_link_accessed.delay(short_code_str, context_dict)
@@ -141,13 +166,7 @@ class CeleryTaskQueue(TaskQueue):
             send_verification_email,
         )
 
-        context_dict = {
-            'request_id': context.request_id,
-            'remote_addr': context.remote_addr,
-            'user_agent': context.user_agent,
-            'request_path': context.request_path,
-            'request_method': context.request_method,
-        }
+        context_dict = _task_context(context)
         try:
             send_verification_email.delay(email, token, context_dict)
             return True
@@ -157,6 +176,45 @@ class CeleryTaskQueue(TaskQueue):
                 # as long as it lives, and a log outlives a mailbox.
                 self.logger.error(
                     "Failed to enqueue verification email",
+                    error=str(e),
+                    email=email,
+                )
+            return False
+
+    def enqueue_password_reset_email(
+        self, email: str, token: str, context: RequestContext
+    ) -> bool:
+        """
+        Publish the password reset message as a task for a worker.
+
+        The back-off is not consulted here, for the reason given above:
+        it decides by the clock rather than by the request, and somebody
+        who cannot get into their account should not be turned away
+        because a redirect failed a moment ago.
+
+        Args:
+            email: Address to send to.
+            token: The reset token as it goes into the link.
+            context: ``RequestContext`` containing request metadata.
+
+        Returns:
+            True if the task was published.
+        """
+        from link_shortener.infrastructure.task_queue.tasks import (
+            send_password_reset_email,
+        )
+
+        context_dict = _task_context(context)
+        try:
+            send_password_reset_email.delay(email, token, context_dict)
+            return True
+        except Exception as e:
+            if self.logger:
+                # The token is not logged, and of the tokens dispatched
+                # from here this is the one that matters most: it is a way
+                # into the account.
+                self.logger.error(
+                    "Failed to enqueue password reset email",
                     error=str(e),
                     email=email,
                 )
@@ -183,13 +241,7 @@ class CeleryTaskQueue(TaskQueue):
             send_account_exists_email,
         )
 
-        context_dict = {
-            'request_id': context.request_id,
-            'remote_addr': context.remote_addr,
-            'user_agent': context.user_agent,
-            'request_path': context.request_path,
-            'request_method': context.request_method,
-        }
+        context_dict = _task_context(context)
         try:
             send_account_exists_email.delay(email, context_dict)
             return True

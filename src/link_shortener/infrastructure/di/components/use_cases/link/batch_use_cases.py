@@ -1,17 +1,10 @@
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import List
 
 from link_shortener.application import (
-    BatchCreateLinksUseCase,
-    BatchLinkCreator,
-    BatchLinkFetcher,
-    UrlGrouper,
-    BatchResponseBuilder,
-    LinkCache,
-    StatsCache,
-    AuditLogger,
-    Logger,
-    UnitOfWork,
+    UnitOfWorkFactory, BatchCreateLinksUseCase,
+    BatchLinkCreator, BatchLinkFetcher, UrlGrouper, BatchResponseBuilder,
+    LinkCache, StatsCache, AuditLogger, Logger
 )
 from link_shortener.domain import CodeGenerator, HashCalculator
 
@@ -25,7 +18,7 @@ class BatchUseCasesComponent:
     builds the inner helper objects and wires them together.
     """
 
-    uow_factory: Callable[[], UnitOfWork]
+    uow_factory: UnitOfWorkFactory
     cache: LinkCache
     stats_cache: StatsCache
     hash_calculator: HashCalculator
@@ -71,7 +64,6 @@ class BatchUseCasesComponent:
 
         return BatchCreateLinksUseCase(
             uow_factory=self.uow_factory,
-            cache=self.cache,
             stats_cache=self.stats_cache,
             base_url=self.base_url,
             logger=self.logger,
@@ -80,6 +72,7 @@ class BatchUseCasesComponent:
             guest_link_limit=self.guest_link_limit,
             guest_link_window_days=self.guest_link_window_days,
             default_guest_ttl_seconds=self.default_guest_ttl_seconds,
+            max_collision_attempts=self.max_collision_attempts,
             grouper=grouper,
             fetcher=fetcher,
             creator=creator,

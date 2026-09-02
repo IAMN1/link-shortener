@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock, Mock, patch
 from link_shortener.web.app_factory import create_app, _seed_base_roles_if_ready
-from link_shortener.infrastructure.di.container import Container
 
 
 class Test_app_factory:
@@ -72,12 +71,16 @@ class TestStartupRoleSeeding:
     """An empty schema is a stage of setup, not an incident."""
 
     @staticmethod
-    def _container(missing=(), fail_with=None):
+    def _container(missing=(), fail_with=None, use_alembic=True):
         """Build a container whose database reports the given state.
 
         Args:
             missing: Table names the database does not have.
             fail_with: Exception the database raises when asked, if any.
+            use_alembic: What the configuration says about ``USE_ALEMBIC``.
+                Set rather than left to the mock, because a ``Mock``
+                attribute is truthy and every assertion about the hint
+                would hold for that reason alone.
 
         Returns:
             Tuple of (container, logger, db_manager).
@@ -92,6 +95,7 @@ class TestStartupRoleSeeding:
             db_manager.missing_tables.return_value = list(missing)
 
         container = Mock()
+        container.config.USE_ALEMBIC = use_alembic
         container.get_logger.return_value = logger
         container.get_db_manager.return_value = db_manager
         return container, logger, db_manager
@@ -130,6 +134,45 @@ class TestStartupRoleSeeding:
         # The hint has to name a command that exists: it said "flask db
         # upgrade", and that one never did.
         assert "flask alembic upgrade head" in kwargs["next_step"]
+
+    def test_the_way_out_is_the_one_this_configuration_leaves_open(self):
+        """``USE_ALEMBIC`` closes one of the two ways and opens the other.
+
+        The hint named ``flask alembic upgrade head`` whatever the flag
+        said, so a deployment running with it off was told, on every
+        start until it had a schema, to run the one command that
+        configuration refuses with exit 1 -- while ``flask db init``, the
+        command that would have worked, went unmentioned.
+        """
+        container, logger, _ = self._container(
+            missing=["roles"], use_alembic=False
+        )
+
+        with patch("link_shortener.web.app_factory.seed_base_roles"):
+            _seed_base_roles_if_ready(container)
+
+        _, kwargs = logger.info.call_args
+        assert "flask db init" in kwargs["next_step"]
+        assert "alembic" not in kwargs["next_step"]
+        assert "load-base-roles" in kwargs["next_step"]
+
+    def test_naming_the_way_out_does_not_warn_about_the_context(self):
+        """The flag is read off the container, not off ``current_app``.
+
+        Written the obvious way it reached for the request-time proxy,
+        and this branch runs from the CLI too: the absent schema then
+        came out as "AUTO_SEED_ROLES failed: Working outside of
+        application context", which is a warning -- the one thing this
+        function exists not to raise for a database awaiting setup.
+        """
+        container, logger, _ = self._container(
+            missing=["roles"], use_alembic=False
+        )
+
+        with patch("link_shortener.web.app_factory.seed_base_roles"):
+            _seed_base_roles_if_ready(container)
+
+        logger.warning.assert_not_called()
 
     def test_ready_schema_is_seeded(self):
         """With the tables in place the seeding still has to happen."""

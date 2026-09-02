@@ -1,9 +1,9 @@
 """Registration must not say whether an address is already registered.
 
 The response is one half of that and the work behind it is the other. A
-taken address used to return before the password was hashed, which made
-it 290x faster than a free one -- so these tests hold the shape of the
-work, not just the shape of the answer: both paths hash exactly once and
+taken address returning before the password is hashed makes it 290x faster
+than a free one -- so these tests hold the shape of the work, not just the
+shape of the answer: both paths hash exactly once and
 both hand exactly one message to the queue.
 
 What they do not hold is equality of writing, because there is none: a
@@ -27,7 +27,9 @@ from link_shortener.application.use_cases.auth.register import RegisterUseCase
 from link_shortener.application.use_cases.auth.send_account_exists_email import (
     SendAccountExistsEmailUseCase,
 )
-from link_shortener.domain import Email, PasswordHash, Role, User
+from link_shortener.domain import (
+    Email, EmailAlreadyRegisteredError, PasswordHash, Role, User,
+)
 
 
 PASSWORD = "StrongPass1!"
@@ -68,6 +70,16 @@ class FakeUow:
     Records the order of its own events, because the order is a rule here
     as much as on the other path: a message handed off inside the block is
     a network call made with the transaction still open.
+
+    Leaving an exception uncommitted is modelled, and the rows written
+    inside the block are taken back. The twin of this class in
+    ``test_email_confirmation.py`` says why in one sentence -- the real
+    ``SQLAlchemyUnitOfWork.__exit__`` rolls back on the way out, and a
+    double that did not made a use case look like it kept a change it
+    actually loses -- and this copy had drifted away from it. The window
+    it hides is real here: ``_register`` saves the account, then issues
+    the confirmation, then commits, so anything that raises in between
+    left the account standing in the fake and nowhere else.
     """
 
     def __init__(self, users=None):
@@ -76,16 +88,24 @@ class FakeUow:
         self.roles = Mock()
         self.roles.get_by_name.return_value = Role(id="r", name="user")
         self.commits = 0
+        self.rolled_back = 0
         self.events = []
+        self._committed_users = list(self.users.users)
 
     def commit(self):
         self.commits += 1
         self.events.append("commit")
+        self._committed_users = list(self.users.users)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, *rest):
+        if exc_type is not None:
+            self.rolled_back += 1
+            self.events.append("rollback")
+            self.users.users = list(self._committed_users)
+            self.email_verifications.rows = []
         self.events.append("closed")
         return False
 
@@ -134,6 +154,7 @@ def register(uow, queue, auth):
         uow_factory=lambda read_only=False: uow,
         authentication_service=auth,
         logger=Mock(),
+        audit_logger=Mock(),
         default_role_name="user",
         task_queue=queue,
         verification_ttl_hours=24,
@@ -239,6 +260,7 @@ class TestATakenAddressChangesNothing:
             uow_factory=lambda read_only=False: uow,
             authentication_service=auth,
             logger=logger,
+            audit_logger=Mock(),
             default_role_name="user",
             task_queue=queue,
             verification_ttl_hours=24,
@@ -323,3 +345,151 @@ class TestTheNoticeItself:
         use_case.execute("user@example.com", context())
 
         assert mailer.send.call_args.kwargs["to"] == "user@example.com"
+
+
+class TestTheAddressLosingARaceIsStillSilent:
+    """
+    The path taken when two registrations of one address overlap.
+
+    ``_register`` reads first and writes after, so a second registration
+    landing in between reaches the unique index and the repository raises.
+    Registration catches that and answers exactly as it answers a taken
+    address it saw coming -- 202, with the notice mailed to the address --
+    because the alternative is a 500 on a public endpoint, and the
+    difference between 202 and 500 says what the 202 is worded to
+    withhold. Measured before that catch existed: five simultaneous
+    registrations of one address answered 202, 500, 500 and two throttled.
+
+    The catch recognises the clash as a ``ValidationError`` carrying
+    ``field == "email"``. Nothing held that until this file did: making
+    ``EmailAlreadyRegisteredError`` a class of its own -- an obvious
+    tidying, since it has a code of its own -- left the whole suite green
+    and the endpoint answering 500 in a race.
+    """
+
+    @pytest.fixture
+    def racing_uow(self):
+        """A unit of work that sees a free address and then loses it."""
+
+        class LosesTheRace(FakeUow):
+            def __init__(self):
+                super().__init__(users=[])
+                self.users.save = self._save_into_a_taken_address
+
+            @staticmethod
+            def _save_into_a_taken_address(user):
+                raise EmailAlreadyRegisteredError()
+
+        return LosesTheRace()
+
+    @pytest.fixture
+    def racing_register(self, racing_uow, queue, auth):
+        return RegisterUseCase(
+            uow_factory=lambda read_only=False, _u=racing_uow: _u,
+            authentication_service=auth,
+            logger=Mock(),
+            audit_logger=Mock(),
+            default_role_name="user",
+            task_queue=queue,
+            verification_ttl_hours=24,
+        )
+
+    def test_the_race_is_not_raised_to_the_caller(self, racing_register):
+        """A raised clash is a 500 on a public endpoint."""
+        racing_register.execute(FREE, PASSWORD, context())
+
+    def test_the_owner_of_the_address_is_notified(
+        self, racing_register, queue
+    ):
+        """
+        The same thing the seen-in-advance path does: the notice goes to
+        the address, and no confirmation token is mailed to whoever
+        typed it.
+        """
+        racing_register.execute(FREE, PASSWORD, context())
+
+        queue.enqueue_account_exists_email.assert_called_once()
+        queue.enqueue_verification_email.assert_not_called()
+
+
+class TestARegistrationThatBreaksHalfwayLeavesNoAccount:
+    """
+    The window between the account and its confirmation.
+
+    ``_register`` saves the user, issues the token, saves the
+    confirmation and commits -- in that order, in one block. The
+    docstring on the use case states the guarantee that order buys:
+    "there is no state where one exists without the other". Anything
+    raising after the first save is what tests it, and nothing did:
+    ``TestTheAddressLosingARaceIsStillSilent`` raises *at* ``users.save``,
+    which never opens the window.
+
+    An account left behind here is not merely a stray row. It holds the
+    address, so the person cannot register it again -- and it can never
+    be confirmed, because the confirmation that would have let it sign in
+    is the row that failed to be written.
+    """
+
+    @pytest.fixture
+    def broken_uow(self):
+        """A unit of work whose confirmation insert fails after the save."""
+
+        class TheConfirmationCannotBeWritten(FakeUow):
+            def __init__(self):
+                super().__init__(users=[])
+                self.email_verifications.save = self._refuse
+
+            @staticmethod
+            def _refuse(verification):
+                raise RuntimeError("email_verifications insert failed")
+
+        return TheConfirmationCannotBeWritten()
+
+    @pytest.fixture
+    def broken_register(self, broken_uow, queue, auth):
+        return RegisterUseCase(
+            uow_factory=lambda read_only=False, _u=broken_uow: _u,
+            authentication_service=auth,
+            logger=Mock(),
+            audit_logger=Mock(),
+            default_role_name="user",
+            task_queue=queue,
+            verification_ttl_hours=24,
+        )
+
+    def test_the_failure_reaches_the_caller(self, broken_register):
+        """
+        Not swallowed. Only a lost race is answered as a taken address;
+        a broken insert is a fault, and a 202 for it would tell the
+        person their account exists when it does not.
+        """
+        with pytest.raises(RuntimeError):
+            broken_register.execute(FREE, PASSWORD, context())
+
+    def test_nothing_is_committed(self, broken_register, broken_uow):
+        with pytest.raises(RuntimeError):
+            broken_register.execute(FREE, PASSWORD, context())
+
+        assert broken_uow.commits == 0
+        assert broken_uow.rolled_back == 1
+
+    def test_the_account_does_not_survive_the_block(
+        self, broken_register, broken_uow
+    ):
+        """The one the drifted double could not express."""
+        with pytest.raises(RuntimeError):
+            broken_register.execute(FREE, PASSWORD, context())
+
+        assert broken_uow.users.find_by_email(Email(FREE)) is None
+
+    def test_no_confirmation_is_mailed_for_an_account_that_is_gone(
+        self, broken_register, queue
+    ):
+        """
+        The hand-off is after the block for exactly this reason: a worker
+        that got the message would deliver a link to a row nobody wrote.
+        """
+        with pytest.raises(RuntimeError):
+            broken_register.execute(FREE, PASSWORD, context())
+
+        queue.enqueue_verification_email.assert_not_called()

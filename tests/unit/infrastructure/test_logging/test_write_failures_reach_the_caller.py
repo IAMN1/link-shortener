@@ -6,8 +6,8 @@ and returns, so the standard library treats a failed write as nothing the
 caller needs to know. Under a failover chain that is the wrong default: the
 service decides to move work by catching exceptions from the call, so the
 one failure it exists for -- a full disk, a volume that went away -- never
-reached it. Measured before the fix: three audit records lost,
-``dropped_calls`` at zero, ``is_healthy()`` still ``True``, no switch.
+reaches it: three audit records lost, ``dropped_calls`` at zero,
+``is_healthy()`` still ``True``, no switch.
 
 Only this application's own records raise. The handlers sit on the root
 logger, so they carry SQLAlchemy and werkzeug too, and neither has failover
@@ -27,8 +27,19 @@ from link_shortener.infrastructure.logging.handlers.raising import (
 )
 
 
-LOGGERS_TAKEN_OVER = ("global", "audit", "link_shortener.web")
-"""Names ``logger_writing_to`` reconfigures, and this file has to give back."""
+TAKEN_OVER = {}
+"""Loggers this file has reconfigured, and how each one was found.
+
+Filled by ``logger_writing_to`` at the moment it takes a logger over, not
+written out by hand. A hand-written list is a second list beside the names
+in the tests themselves, and the two parted company exactly as one would
+expect: it named ``global``, ``audit`` and ``link_shortener.web`` while
+``TestSomebodyElsesRecords`` was taking over ``sqlalchemy.engine``,
+``werkzeug`` and ``celery`` as well. ``celery`` kept a handler whose
+``write`` raises "No space left on device" for the rest of the session, and
+``propagate=False`` with it -- so a later test that asked what a record from
+``celery.worker`` looks like on disk found no record at all.
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -38,28 +49,22 @@ def restore_the_loggers_this_file_takes_over():
 
     ``logging`` keeps named loggers for the life of the process, and
     ``logger_writing_to`` clears their handlers and installs a raising one.
-    Left in place, that reaches whatever runs next. Measured: the suite is
-    green only because ``tests/integration`` sorts before ``tests/unit`` --
-    ``pytest tests/unit tests/integration`` fails
-    ``test_the_named_logger_owns_no_handlers`` on what this file left on
-    ``global``, and the ordinary ``pytest tests/`` never shows it.
+    Left in place, that reaches whatever runs next -- and it did:
+    ``pytest tests/unit tests/integration`` reddened
+    ``test_a_record_from_another_library_is_stamped_too`` in
+    ``tests/integration/infrastructure/test_records_reach_the_journals.py``
+    with ``IndexError``, while the ordinary ``pytest tests/`` stayed green
+    because the order happens to differ. A red that CI never sees is a red
+    somebody looks for in their own change.
     """
-    saved = {
-        name: (
-            logging.getLogger(name).handlers[:],
-            logging.getLogger(name).level,
-            logging.getLogger(name).propagate,
-        )
-        for name in LOGGERS_TAKEN_OVER
-    }
-
     yield
 
-    for name, (handlers, level, propagate) in saved.items():
+    for name, (handlers, level, propagate) in TAKEN_OVER.items():
         log = logging.getLogger(name)
         log.handlers[:] = handlers
         log.setLevel(level)
         log.propagate = propagate
+    TAKEN_OVER.clear()
 
 
 class FullDisk(io.StringIO):
@@ -81,6 +86,12 @@ def logger_writing_to(stream, name):
         A configured ``logging.Logger``.
     """
     log = logging.getLogger(name)
+    # Remembered before the first change and not after a later one, so a
+    # logger taken over twice in one test is still given back as it was
+    # found.
+    TAKEN_OVER.setdefault(
+        name, (log.handlers[:], log.level, log.propagate)
+    )
     log.handlers.clear()
     log.setLevel(logging.INFO)
     log.propagate = False

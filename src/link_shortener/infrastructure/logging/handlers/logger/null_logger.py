@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from link_shortener.application.ports.logger.logger import Logger
 

@@ -2,7 +2,31 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional
 
+from link_shortener.application.dtos.refusal import Refusal
 from link_shortener.application.utils.url_utils import build_short_url
+
+
+MAX_BATCH_ITEMS = 100
+"""Hard ceiling on how many URLs one request may carry.
+
+The request schema refuses a longer list before anything looks at it, so a
+body cannot be turned into unbounded work. ``BATCH_CREATE_LIMIT`` is the
+policy inside that ceiling and cannot be set past it: above it, the setting
+silently did nothing, because the schema refused the request first and with
+its own message.
+
+Here rather than in the configuration, for the reason ``HARD_LIMIT`` is on
+the journal's port: the number arrives from a request, and whoever takes
+the request has to refuse an excess before any work starts. Read out of
+``infrastructure.configs``, it was the web layer importing a fact from a
+layer it is not allowed to know -- the same fault the journal schema was
+already tested against, left standing here because the batch is a slice of
+its own.
+
+Beside the DTOs of the operation it bounds: they are what the boundary
+already reads out of this layer, and the size a batch may be is part of
+the same contract as the shape it comes back in.
+"""
 
 
 @dataclass
@@ -17,12 +41,12 @@ class BatchItemResponse:
         original_url: The canonical original URL (may differ if deduplicated).
         short_url: Full short link (including base URL).
         clicks: Existing click count (0 for new links).
-        error: Error message if processing failed.
+        error: Why this item was refused, carried rather than worded: a
+            sentence finished here cannot be translated at the boundary.
         is_new: True if a new link was created.
         from_cache: True if the link was retrieved from cache.
         duplicate_of: If this URL is a duplicate, the canonical original URL.
         expires_at: When the link expires; ``None`` for a permanent one.
-        processing_time_ms: Time taken to process this single URL (optional).
         link_id: Identifier of the stored row. Internal: the web layer signs
             it into the deletion token handed to a guest, and never puts it
             in a response.
@@ -36,11 +60,10 @@ class BatchItemResponse:
     # Batch is where a guest silently gets a seven-day link, so withholding
     # the expiry here is exactly where it misleads most.
     expires_at: Optional[datetime] = None
-    error: Optional[str] = None
+    error: Optional[Refusal] = None
     is_new: bool = False
     from_cache: bool = False
     duplicate_of: Optional[str] = None
-    processing_time_ms: Optional[float] = None
     link_id: Optional[str] = None
 
     @classmethod
@@ -91,13 +114,13 @@ class BatchItemResponse:
         )
 
     @classmethod
-    def error_(cls, url: str, error: str) -> "BatchItemResponse":
+    def error_(cls, url: str, error: Refusal) -> "BatchItemResponse":
         """
         Factory for a failed response item.
 
         Args:
             url: The input URL that caused the error.
-            error: Human-readable error description.
+            error: The refusal, with its code and its msgid intact.
 
         Returns:
             BatchItemResponse with success=False.
@@ -116,10 +139,19 @@ class BatchCreateResponse:
         successful: Number of successful creations/cache hits.
         failed: Number of failed URLs.
         from_cache_count: Items found in cache.
-        from_db_count: Items fetched from DB (not new, not cache).
+        from_db_count: Items a repository lookup found.
         new_count: Newly created links.
-        processing_time_seconds: Total execution time of the batch.
+        processing_time_seconds: How long the batch took, in seconds.
         created_at: Timestamp of the batch completion.
+
+    The three source counts do not have to add up to ``successful``.
+    A batch may name one address more than once, and the repeats come
+    back pointing at the link the first one got -- they are that link
+    again, not a fourth place it was found. Counted as repository hits,
+    which is what ``not is_new and not from_cache`` amounts to, they
+    reported lookups nobody made: three copies of one new URL answered
+    ``new_count=1, from_db_count=2`` against a batch that read the
+    repository for one hash and found nothing.
     """
     items: List[BatchItemResponse]
     total: int = 0
@@ -138,12 +170,22 @@ class BatchCreateResponse:
     )
 
     @classmethod
-    def from_results(cls, results: List[BatchItemResponse]) -> "BatchCreateResponse":
+    def from_results(
+        cls,
+        results: List[BatchItemResponse],
+        processing_time_seconds: float = 0.0,
+    ) -> "BatchCreateResponse":
         """
         Build aggregated response from a flat list of item results.
 
         Args:
             results: List of BatchItemResponse objects.
+            processing_time_seconds: How long the batch took. Taken as an
+                argument because this is the only way the field is ever
+                filled: the use case measured the duration, wrote it to the
+                journal and built the response without it, so the field
+                documented as the batch's execution time was ``0.0`` in
+                every response the service has ever produced.
 
         Returns:
             BatchCreateResponse with computed aggregates.
@@ -153,7 +195,11 @@ class BatchCreateResponse:
         failed = total - successful
         from_cache_count = sum(1 for r in results if r.from_cache)
         from_db_count = sum(
-            1 for r in results if r.success and not r.is_new and not r.from_cache
+            1 for r in results
+            if r.success
+            and not r.is_new
+            and not r.from_cache
+            and not r.duplicate_of
         )
         new_count = sum(1 for r in results if r.is_new)
         return cls(
@@ -164,15 +210,6 @@ class BatchCreateResponse:
             from_cache_count=from_cache_count,
             from_db_count=from_db_count,
             new_count=new_count,
+            processing_time_seconds=processing_time_seconds,
             created_at=datetime.now(timezone.utc),
         )
-
-    @classmethod
-    def empty(cls) -> "BatchCreateResponse":
-        """
-        Create an empty response for zero URLs.
-
-        Returns:
-            BatchCreateResponse with all counts zero.
-        """
-        return cls(items=[])

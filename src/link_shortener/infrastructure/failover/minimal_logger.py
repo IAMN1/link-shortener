@@ -9,6 +9,8 @@ can be injected with a custom implementation for testing or later upgrade.
 import datetime
 import sys
 
+from link_shortener.infrastructure.logging.utils import UTC_SECONDS
+
 
 class MinimalLogger:
     """
@@ -55,5 +57,9 @@ class MinimalLogger:
             level: Severity label (e.g. ``"INFO"``).
             message: The log message text.
         """
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # UTC, and saying so, for the reason given in ``json_formatter``:
+        # this logger writes the lines around a failure, and they are read
+        # beside the journal's own. Two of them stamped in different zones
+        # put the cause after the effect.
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(UTC_SECONDS)
         print(f"{timestamp} [{level}] {message}", file=sys.stderr)

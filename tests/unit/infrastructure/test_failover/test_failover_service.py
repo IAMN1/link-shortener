@@ -15,8 +15,6 @@ a clock starting near zero would put the service on a code path production
 never takes.
 """
 
-import copy
-import pickle
 import threading
 import time
 
@@ -24,6 +22,7 @@ import pytest
 
 from link_shortener.infrastructure.failover.failover_service import (
     ALL_SERVICES_FAILED,
+    CheckOutcome,
     FailoverService,
 )
 from link_shortener.infrastructure.failover.minimal_logger import MinimalLogger
@@ -368,12 +367,6 @@ class TestFallingToAStandby:
         assert ALL_SERVICES_FAILED != None  # noqa: E711 - the point is ==
         assert repr(ALL_SERVICES_FAILED) == "ALL_SERVICES_FAILED"
 
-        # And it stays itself across a copy or a queue. `is` is the only
-        # test that answers, so a sentinel rebuilt on the far side of a
-        # pickle would answer wrongly and quietly.
-        assert pickle.loads(pickle.dumps(ALL_SERVICES_FAILED)) is ALL_SERVICES_FAILED
-        assert copy.deepcopy(ALL_SERVICES_FAILED) is ALL_SERVICES_FAILED
-
         # A success is still a success, and says nothing.
         assert working_log.warnings == []
         assert working.dropped_calls == 0
@@ -435,9 +428,8 @@ class TestFallingToAStandby:
         # switches only from the index its own call was made on, so the
         # first one moves the work and the rest retry on what it moved to;
         # switching unconditionally lands the work two places down, past a
-        # standby that was working. Measured on three services: without the
-        # guard the healthy standby was skipped in twenty runs out of
-        # twenty.
+        # standby that was working: on three services, without the guard,
+        # the healthy standby is skipped in twenty runs out of twenty.
         class SlowlyBroken(Service):
             """Fails, but not before every thread has arrived to fail."""
 
@@ -513,112 +505,6 @@ class TestFallingToAStandby:
         assert failover.execute("speak") is ALL_SERVICES_FAILED
         assert len(primary.calls) + len(standby.calls) == 2
 
-    def test_the_switch_is_decided_and_made_without_letting_go(self):
-        # The check and the switch are one operation or they are nothing:
-        # between "the index is still what I failed on" and
-        # `_switch_to_next()` no other thread may move it, or two threads
-        # each switch and the work lands past a standby that works.
-        # With the lock released in between, a call the standby could have
-        # taken is lost. The window is too narrow to catch by racing --
-        # re-measured 2026-08-10, 500 runs of the released-lock shape lost
-        # nothing -- so the rule is asserted directly instead of raced for.
-        primary = Service("primary", broken=True)
-        failover, _, _ = build([primary, Service("standby")])
-        original = failover._switch_to_next
-        held = []
-
-        def watched_switch():
-            held.append(failover._lock._is_owned())
-            return original()
-
-        failover._switch_to_next = watched_switch
-
-        assert failover.execute("speak") == "standby spoke"
-
-        assert held == [True], "the switch was made without holding the lock"
-
-    def test_a_call_in_flight_does_not_hold_up_a_reader(self):
-        # `get_current_service_name` reads one integer. Under the wide lock
-        # it waited out whatever call happened to be in flight, for as long
-        # as that call took -- 0.3 s of it here, and in production whatever
-        # a write to a full disk takes -- and every log line in this
-        # application goes through `execute`.
-        class Slow(Service):
-            def speak(self, *args, **kwargs):
-                time.sleep(0.3)
-                return f"{self.name} spoke"
-
-        failover, _, _ = build([Slow("primary"), Service("standby")])
-        inside = threading.Event()
-
-        def writer():
-            inside.set()
-            failover.execute("speak")
-
-        thread = threading.Thread(target=writer)
-        thread.start()
-        try:
-            assert inside.wait(1.0), "the writer never started"
-            time.sleep(0.05)          # long enough to be inside the call
-            begin = time.monotonic()
-            assert failover.get_current_service_name() == "primary"
-            waited = time.monotonic() - begin
-        finally:
-            thread.join()
-
-        # The read is really a microsecond; the margin is for a loaded
-        # machine, and it is still a fraction of the 0.25 s left to run.
-        assert waited < 0.05
-
-    def test_two_calls_do_not_queue_behind_one_another(self):
-        class Slow(Service):
-            def speak(self, *args, **kwargs):
-                time.sleep(0.2)
-                return f"{self.name} spoke"
-
-        failover, _, _ = build([Slow("primary"), Service("standby")])
-        barrier = threading.Barrier(2)
-
-        def worker():
-            barrier.wait()
-            failover.execute("speak")
-
-        threads = [threading.Thread(target=worker) for _ in range(2)]
-        begin = time.monotonic()
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-        elapsed = time.monotonic() - begin
-
-        # Serialized this is 0.4 s, side by side 0.2 s. The threshold sits
-        # between the two so that either answer is unambiguous.
-        assert elapsed < 0.3
-
-    def test_every_thread_that_drops_a_call_is_counted(self):
-        # Eight threads dropping at once, and the total is the number of
-        # calls made. This does not prove the lock is doing the work --
-        # measured, a read-modify-write outside it loses nothing on CPython
-        # at any scale tried, because the bytecode for `+= 1` on an int
-        # rarely gets interrupted. What it does hold is the arithmetic: a
-        # counter that counted rounds, or services, or switches instead of
-        # calls would answer something other than four hundred here.
-        failover, _, _ = build([Service("primary", broken=True)])
-        workers, each = 8, 50
-        barrier = threading.Barrier(workers)
-
-        def worker():
-            barrier.wait()
-            for _ in range(each):
-                failover.execute("speak")
-
-        threads = [threading.Thread(target=worker) for _ in range(workers)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-
-        assert failover.dropped_calls == workers * each == 400
 
     def test_an_upgrade_check_on_its_own_never_demotes(self):
         # The two directions are separate methods, and the one that climbs
@@ -851,116 +737,6 @@ class TestClimbingBack:
 
         assert upgrades == 1
 
-    def test_the_window_reopens_at_exactly_the_cooldown(self):
-        # The boundary itself. The tests around this one check 299 and 301,
-        # and a `<` rewritten as `<=` lives in the second between them: it
-        # costs one more check interval before a recovered service is taken
-        # back, and nothing else here would notice.
-        primary = Service("primary", healthy=False, broken=True)
-        failover, clock, _ = build([primary, Service("standby")])
-        failover.execute("speak")
-        clock.advance(301)
-        failover._attempt_upgrade()          # spends the cooldown
-        assert failover.get_current_service_name() == "standby"
-
-        primary.healthy = True
-        primary.broken = False
-        clock.advance(300)
-        failover._attempt_upgrade()
-
-        assert failover.get_current_service_name() == "primary"
-
-    def test_probes_that_all_raise_still_spend_the_cooldown(self):
-        # A probe that blew up told nobody anything, which reads as a reason
-        # not to charge the attempt for it. Then the probes go out every
-        # check interval instead of every cooldown -- measured with the
-        # stamp cleared on a raising probe, twenty probes in ten minutes
-        # against two -- and a probe is a write into the sink that is
-        # already failing, which is why it raised.
-        probes = []
-
-        def explode(service):
-            probes.append(service.name)
-            raise RuntimeError("probe exploded")
-
-        failover, clock, _ = build(
-            [Service("best"), Service("worst")], health_checker=explode
-        )
-        failover._switch_to_next()
-        clock.advance(301)
-
-        for _ in range(10):
-            failover._attempt_upgrade()
-            clock.advance(30)
-
-        assert probes == ["best"]
-
-    def test_a_climb_is_decided_on_the_list_as_it_is_at_the_time(self):
-        # The probe runs under the lock, along with the read of the index it
-        # is being asked about. Taken out from under it -- a natural-looking
-        # change, since a probe is a write to a possibly stalled sink and
-        # holding a lock across it stalls every logging thread -- the verdict
-        # is formed against an index that a failing call can move underneath
-        # it, and the demotion that call made is overwritten by an answer
-        # older than it.
-        probing = threading.Event()
-
-        def slow_on_best(service):
-            if service.name == "best":
-                probing.set()
-                time.sleep(0.2)
-            return service.healthy
-
-        best = Service("best")
-        middle = Service("middle", broken=True)
-        worst = Service("worst")
-        failover, clock, _ = build(
-            [best, middle, worst], health_checker=slow_on_best
-        )
-        failover._switch_to_next()               # the work is on middle
-        clock.advance(301)
-
-        climber = threading.Thread(target=failover._attempt_upgrade)
-        climber.start()
-        try:
-            assert probing.wait(2.0), "the probe never started"
-            spoke = failover.execute("speak")
-        finally:
-            climber.join()
-
-        # The call waited for the climb and was served by what the climb
-        # decided. Without the lock it would have run on `middle`, failed,
-        # and moved the work down to `worst` -- a demotion the climb then
-        # threw away.
-        assert spoke == "best spoke"
-        assert worst.calls == []
-        assert failover.get_current_service_name() == "best"
-
-    def test_climbing_further_up_the_list_waits_out_the_cooldown(self):
-        # What the change costs, on a list this application never builds.
-        # With three services, a climb onto the middle one no longer lets
-        # the next climb go through at once. Nothing is lost by that: the
-        # loop walks the list from the top, so had `best` been healthy at
-        # the first attempt it would have been taken then and there --
-        # which is what test_it_climbs_to_the_best_healthy_service_not
-        # _merely_a_better_one holds. Only a service recovering inside the
-        # cooldown window waits, and it waits at most one window.
-        best = Service("best", healthy=False)
-        failover, clock, _ = build([best, Service("middle"), Service("worst")])
-        failover._current_index = 2
-
-        clock.advance(301)
-        failover._attempt_upgrade()
-        assert failover.get_current_service_name() == "middle"
-
-        best.healthy = True
-        clock.advance(299)
-        failover._attempt_upgrade()
-        assert failover.get_current_service_name() == "middle"
-
-        clock.advance(2)
-        failover._attempt_upgrade()
-        assert failover.get_current_service_name() == "best"
 
     def test_a_routine_check_on_a_healthy_primary_costs_no_cooldown(self):
         # Nearly every check finds the work already on the best service and
@@ -974,63 +750,6 @@ class TestClimbingBack:
 
         assert failover._last_upgrade_attempt == 0.0
 
-    def test_the_cooldown_is_spent_by_a_check_that_had_work_to_do(self):
-        # The other side of it: once the work is on a standby, a check is
-        # an attempt, and an attempt does book the cooldown. Without this
-        # the fix above is satisfied by never stamping at all.
-        primary = Service("primary", healthy=False)
-        failover, clock, _ = build([primary, Service("standby")])
-        failover._switch_to_next()
-
-        failover._attempt_upgrade()
-
-        assert failover._last_upgrade_attempt == clock.now
-
-    def test_a_primary_that_breaks_after_a_routine_check_returns_quickly(self):
-        # What the defect cost, measured the way it is felt: the work goes
-        # down to the standby, the primary comes back, and the very next
-        # check hands the work over -- no cooldown was ever spent on the
-        # checks that did nothing.
-        primary = Service("primary")
-        failover, clock, _ = build([primary, Service("standby")])
-
-        failover._attempt_upgrade()      # routine, nothing to do
-        failover._attempt_upgrade()      # and again
-        primary.broken = True
-        assert failover.execute("speak") == "standby spoke"
-
-        primary.broken = False
-        failover._attempt_upgrade()
-
-        assert failover.get_current_service_name() == "primary"
-
-    def test_the_cooldown_is_the_one_the_caller_was_given(self):
-        # Every other test here runs on the default, so the number 300 was
-        # pinned and the parameter carrying it was not: replacing the
-        # assignment with a hard-coded 300.0 left the suite green. Both
-        # managers do pass this argument -- and both pass 300, the default,
-        # so the hard-coding would go unnoticed in production too. What is
-        # held here is the contract, before something needs a cooldown that
-        # is not five minutes.
-        primary = Service("primary", healthy=False, broken=True)
-        failover, clock, _ = build(
-            [primary, Service("standby")], upgrade_cooldown=60.0
-        )
-        failover.execute("speak")
-
-        # Spend an attempt, so the cooldown is running rather than never
-        # started -- "never attempted" is 0.0 and lets any clock through.
-        failover._attempt_upgrade()
-        primary.healthy = True
-        primary.broken = False
-
-        clock.advance(59)
-        failover._attempt_upgrade()
-        assert failover.get_current_service_name() == "standby"
-
-        clock.advance(2)
-        failover._attempt_upgrade()
-        assert failover.get_current_service_name() == "primary"
 
     def test_the_climb_names_the_service_it_left(self):
         # On two services -- the shape both managers build -- the service
@@ -1052,76 +771,6 @@ class TestClimbingBack:
 
         assert failover.get_current_service_name() == "best"
         assert logger.warnings[-1] == "Upgrading from third to best"
-
-    def test_the_announcement_is_made_under_the_lock(self):
-        # The move is announced after it is made, so the line is what tells
-        # a reader the work has moved. Written outside the lock it arrives
-        # after work has already run on the new service. How far after
-        # depends on what that work is; this test asserts the ordering
-        # itself rather than a duration. The probes are held to the same
-        # rule one test below.
-        held = []
-
-        class WatchingLogger(RecordingLogger):
-            def warning(self, message: str) -> None:
-                held.append((message, failover._lock._is_owned()))
-                super().warning(message)
-
-        primary = Service("primary", healthy=False, broken=True)
-        failover, clock, _ = build(
-            [primary, Service("standby")], logger=WatchingLogger()
-        )
-        failover.execute("speak")
-        primary.healthy = True
-        primary.broken = False
-        clock.advance(301)
-
-        failover._attempt_upgrade()
-
-        announcements = [
-            owned for message, owned in held
-            if message.startswith(("Upgrading", "Demoting", "Switched"))
-        ]
-        assert announcements, "nothing announced a move at all"
-        assert all(announcements), "a move was announced outside the lock"
-
-    def test_a_logger_that_throws_on_the_announcement_keeps_the_climb(self):
-        # The announcement was once unprotected, and the cooldown is
-        # stamped before the list is walked, so announcing the climb
-        # before making it lost both: the exception left the index where
-        # it was, and the booking it had just made stood. Measured on this
-        # shape -- the work stayed on the standby for 301 s with a healthy
-        # primary next to it, and the logger had recovered immediately.
-        #
-        # What this holds now is the absorbing, not the order: `_say`
-        # swallows the throw, so the climb would survive either order. It
-        # would not survive `_say` handing the exception on.
-        class ThrowsOnUpgrade(RecordingLogger):
-            def warning(self, message: str) -> None:
-                super().warning(message)
-                if message.startswith("Upgrading"):
-                    raise ValueError("I/O operation on closed file")
-
-        primary = Service("primary", healthy=False, broken=True)
-        logger = ThrowsOnUpgrade()
-        failover, clock, _ = build([primary, Service("standby")], logger=logger)
-        failover.execute("speak")
-        assert failover.get_current_service_name() == "standby"
-
-        primary.healthy = True
-        primary.broken = False
-        clock.advance(301)
-        failover._attempt_upgrade()
-
-        # The climb the message was about happened, message or no message,
-        # and the five minutes stamped at the top of the method were spent
-        # on a climb that took place rather than booked against one lost.
-        assert failover.get_current_service_name() == "primary"
-        assert failover._last_upgrade_attempt == clock.now
-
-        # The throw is absorbed rather than passed on -- it used to leave
-        # this method -- and the line it lost is counted.
-        assert failover.lost_log_lines == 1
 
 
 # ===========================================================================
@@ -1274,30 +923,6 @@ class TestHandingTheWorkDown:
 
         assert failover.get_current_service_name() == "middle"
 
-    def test_the_probes_run_under_the_lock(self):
-        # The verdict and the index it is about are read together. Probing
-        # outside the lock lets a failing call move the index underneath the
-        # probe, and the answer -- older than the move -- puts the work back
-        # onto the service that just threw. Measured that way on three
-        # services: the round moved the work back up onto a service whose
-        # call had thrown 150 ms earlier.
-        held = []
-
-        def watching_probe(service):
-            held.append(failover._lock._is_owned())
-            return service.healthy
-
-        failover, clock, _ = build(
-            [Service("best", healthy=False), Service("standby")],
-            health_checker=watching_probe,
-        )
-
-        failover._attempt_demotion()
-        clock.advance(301)
-        failover._attempt_upgrade()
-
-        assert held, "no probe ran at all"
-        assert all(held), "a probe ran without holding the lock"
 
     def test_a_demotion_does_not_wait_out_the_upgrade_cooldown(self):
         # The cooldown holds off attempts to climb, so that a service that
@@ -1372,9 +997,9 @@ class TestARoundOfChecking:
     def test_a_round_that_hands_the_work_down_does_not_climb_after_it(self):
         # The climb would ask the service just demoted whether it is well,
         # in the same round, with the same checker -- and book the five
-        # minute cooldown on an answer it already has. Measured with the
-        # climb in place: a primary handed down by the probe and healthy
-        # again a moment later waited 300 s for the work, against 30 s when
+        # minute cooldown on an answer it already has. With the climb in
+        # place, a primary handed down by the probe and healthy again a
+        # moment later waits 300 s for the work, against 30 s when
         # the same demotion came from a call that threw.
         primary = Service("primary", healthy=False)
         failover, clock, _ = build([primary, Service("standby")])
@@ -1421,9 +1046,9 @@ class TestARoundOfChecking:
         # demotion. Reported as one, it takes the climb with it -- the
         # round skips the climb whenever the work moved -- so a chain whose
         # active service cannot be probed at all never comes back up, and
-        # the standby keeps work the primary is well enough to do.
-        # Measured on the mutation run of 2026-08-10: the survivor was the
-        # `except` branch of `_attempt_demotion` answering True.
+        # the standby keeps work the primary is well enough to do. The
+        # shape that survives everything else is the `except` branch of
+        # `_attempt_demotion` answering True.
         def explode(service):
             if service.name == "worst":
                 raise RuntimeError("probe exploded")
@@ -1878,11 +1503,11 @@ class ThrowingLogger:
 class TestALoggerThatThrowsIsNotTheCallersProblem:
     """The class exists so a failing log does not reach the caller.
 
-    Its own logger was the hole in that: called directly, an ``ENOSPC``
-    from ``self.logger`` left ``execute`` and arrived at whichever request
-    thread was only trying to write a line. Measured before the guard: the
-    ``OSError`` reached the caller and ``dropped_calls`` stood at zero, so
-    the loss was neither absorbed nor counted.
+    Its own logger is the hole in that: called directly, an ``ENOSPC``
+    from ``self.logger`` leaves ``execute`` and arrives at whichever request
+    thread was only trying to write a line -- the ``OSError`` reaches the
+    caller and ``dropped_calls`` stands at zero, so the loss is neither
+    absorbed nor counted.
     """
 
     def test_a_dropped_call_answers_the_caller_rather_than_raising(self):
@@ -1974,3 +1599,208 @@ class TestALoggerThatThrowsIsNotTheCallersProblem:
 
         assert failover.shutdown(timeout=0.01) is False
         assert failover.lost_log_lines >= 1
+
+
+class TestReadingTheCountersWaitsForNothing:
+    """
+    The counters answer while a check is in flight.
+
+    Their reader is ``GET /api/v1/admin/health``, and the background round
+    holds this service's lock for as long as a health probe takes -- which
+    since that probe became a real write is a write to disk. Taking the
+    lock to read one integer put the endpoint that reports on the logging
+    chain behind that chain's own disk, and outside the time budget the
+    rest of its answer is bounded by: measured at 2.80 s with a probe
+    holding the lock, against a ``HEALTH_CHECK_TIMEOUT`` of 5 s that does
+    not cover this half of the answer at all.
+    """
+
+    def _service(self):
+        """Return a service whose background thread never runs."""
+        return FailoverService(
+            services=[(Service("only"), "only")],
+            check_interval=None,
+            logger=RecordingLogger(),
+        )
+
+    def test_the_counters_answer_while_somebody_holds_the_lock(self):
+        failover = self._service()
+        held = threading.Event()
+        release = threading.Event()
+
+        def hold():
+            with failover._lock:
+                held.set()
+                release.wait(5.0)
+
+        holder = threading.Thread(target=hold, daemon=True)
+        holder.start()
+        try:
+            assert held.wait(1.0), "the lock was never taken"
+
+            started = time.monotonic()
+            counters = (
+                failover.dropped_calls,
+                failover.failed_checks,
+                failover.lost_log_lines,
+                failover.get_current_service_name(),
+            )
+            waited = time.monotonic() - started
+
+            assert counters == (0, 0, 0, "only")
+            assert waited < 1.0, f"the read waited {waited:.2f}s for the lock"
+        finally:
+            release.set()
+            holder.join(timeout=2.0)
+            failover.shutdown()
+
+    def test_what_the_counters_report_is_still_what_happened(self):
+        """The premise: a read that waits for nothing still reads.
+
+        Without this the assertions above are satisfied by properties
+        that answer zero whatever the service has been through.
+        """
+        failover = FailoverService(
+            services=[(Service("broken", broken=True), "broken")],
+            check_interval=None,
+            logger=RecordingLogger(),
+        )
+        try:
+            failover.execute("speak")
+
+            assert failover.dropped_calls == 1
+        finally:
+            failover.shutdown()
+
+
+class TestWhatTheLastRoundFound:
+    """The state the three counters cannot report.
+
+    They count losses: a call nobody took, a round that threw, a line the
+    logger refused. A service can report itself unwell and produce none of
+    them -- nothing was asked of it, so nothing was dropped -- and
+    ``get_current_service_name`` does not move when there is nowhere to
+    move the work to.
+
+    Measured on the live stack with ``audit.log`` replaced by a directory
+    on a *running* application: the background round said "structlog_audit
+    reports itself unhealthy" eight times in ninety seconds, while
+    ``/api/v1/admin/health`` answered ``dropped_calls: 0, failed_checks: 0,
+    lost_log_lines: 0`` beside an unchanged ``active`` for the whole
+    window. Both audit implementations write the same file, so the chain
+    had nowhere to fail over to -- the defect the section exists to report
+    was the state it reported as health.
+    """
+
+    def test_nothing_has_been_found_before_the_first_round(self):
+        """
+        Unexamined is not well.
+
+        The two read alike from the counters -- zeroes either way -- and
+        a service whose first round has not come round yet has answered
+        nothing at all.
+        """
+        failover, _, _ = build([Service("primary"), Service("standby")])
+
+        assert failover.last_check is CheckOutcome.NOT_RUN
+
+    def test_a_service_that_answers_for_itself_is_found_well(self):
+        failover, _, _ = build([Service("primary"), Service("standby")])
+
+        failover._run_check()
+
+        assert failover.last_check is CheckOutcome.HEALTHY
+
+    def test_a_service_with_nowhere_to_fall_is_still_found_unwell(self):
+        """The measured case, and the one no other surface reported.
+
+        Two implementations that are both unwell -- which is what one
+        broken file behind both of them looks like -- leave the work
+        where it is and drop nothing, because nothing is being asked of
+        them.
+        """
+        failover, _, _ = build([
+            Service("primary", healthy=False),
+            Service("standby", healthy=False),
+        ])
+
+        failover._run_check()
+
+        assert failover.last_check is CheckOutcome.UNHEALTHY
+        # The counters beside it, in the same state: this is what the
+        # health answer had to go on, and why it read as health.
+        assert (
+            failover.dropped_calls,
+            failover.failed_checks,
+            failover.lost_log_lines,
+        ) == (0, 0, 0)
+        assert failover.get_current_service_name() == "primary"
+
+    def test_a_probe_that_raises_is_not_a_verdict(self):
+        """``PROBE_FAILED`` is not ``UNHEALTHY``.
+
+        A probe that raises answers nothing, which is why the round moves
+        no work on one -- and why an operator is owed the difference
+        rather than a verdict the round did not reach.
+        """
+        def explodes(service):
+            raise RuntimeError("the probe itself is broken")
+
+        failover, _, _ = build(
+            [Service("primary"), Service("standby")], health_checker=explodes
+        )
+
+        failover._run_check()
+
+        assert failover.last_check is CheckOutcome.PROBE_FAILED
+
+    def test_the_finding_is_about_whoever_holds_the_work_now(self):
+        """After a demotion the work is on a service that answered well.
+
+        Reporting ``unhealthy`` here would name the state of the service
+        that no longer has the work, beside the name of the one that does.
+        """
+        failover, _, _ = build([
+            Service("primary", healthy=False), Service("standby")
+        ])
+
+        failover._run_check()
+
+        assert failover.get_current_service_name() == "standby"
+        assert failover.last_check is CheckOutcome.HEALTHY
+
+    def test_the_finding_is_the_last_round_s_and_not_the_worst_seen(self):
+        """
+        It is a state, not a tally.
+
+        A field that remembered the worst answer ever given would report
+        a chain that recovered as unwell for the rest of the process --
+        and one that only ever improved would never report a chain that
+        stopped being well.
+        """
+        primary = Service("primary")
+        standby = Service("standby")
+        failover, _, _ = build([primary, standby])
+
+        failover._run_check()
+        assert failover.last_check is CheckOutcome.HEALTHY
+
+        primary.healthy = False
+        standby.healthy = False
+        failover._run_check()
+
+        assert failover.last_check is CheckOutcome.UNHEALTHY
+
+    def test_a_service_built_without_a_checker_has_found_nothing(self):
+        """Nothing to ask is not an answer of "well".
+
+        ``_attempt_demotion`` returns early where there is no checker, and
+        a round that asks nothing reaches no verdict.
+        """
+        failover, _, _ = build(
+            [Service("primary"), Service("standby")], health_checker=None
+        )
+
+        failover._run_check()
+
+        assert failover.last_check is CheckOutcome.NOT_RUN

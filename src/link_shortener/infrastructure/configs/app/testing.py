@@ -1,6 +1,5 @@
-from link_shortener.infrastructure.configs.app.base import (
-    BaseConfig, MAX_BATCH_ITEMS
-)
+from link_shortener.application.dtos.batch import MAX_BATCH_ITEMS
+from link_shortener.infrastructure.configs.app.base import BaseConfig
 
 
 class TestingConfig(BaseConfig):
@@ -33,10 +32,8 @@ class TestingConfig(BaseConfig):
     # Batch limit: the ceiling itself
     # --------------------------------------------------------------------------
     BATCH_CREATE_LIMIT: int = MAX_BATCH_ITEMS
-    """Was 200, which the request schema refused at 101 anyway.
-
-    A test written against 200 measured the schema's message, not this
-    setting -- and the profile that sets it is the one the suite runs on.
+    """The ceiling itself, so a test written against this setting
+    measures the setting and not the request schema's own refusal.
     """
 
 
@@ -51,8 +48,12 @@ class TestingConfig(BaseConfig):
     # --------------------------------------------------------------------------
     DATABASE_URL: str = "sqlite:///:memory:"
 
+    # The base class takes this setting from the environment and lets it be
+    # written; here it is a constant, because the profile answers from
+    # itself rather than from the environment (``IGNORE_ENV`` above). A
+    # read-only property over a writeable attribute is what mypy objects to.
     @property
-    def DATABASE_TYPE(self) -> str:
+    def DATABASE_TYPE(self) -> str:  # type: ignore[override]
         return "sqlite"
 
 

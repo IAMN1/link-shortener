@@ -3,8 +3,8 @@ What the managers tell the ``FailoverService`` to do, and what they hand out.
 
 ``test_chain_composition`` asks which implementations a mode puts in the
 chain. This file asks about the four decisions the managers make *around*
-that list, none of which anything read. Measured against the whole suite
-(1684 tests), each mutated on its own, all four left it green:
+that list, none of which anything else reads. Each of the four, mutated on
+its own, passes everything else in the suite:
 
 * ``AuditManager.get_audit_logger`` returning ``_active_audit_logger``
   instead of the proxy. With failover built that attribute is never set,
@@ -176,9 +176,9 @@ def running():
     Collect managers built by a test and stop their threads afterwards.
 
     A manager given an interval starts a daemon thread in its constructor.
-    Measured on this file with the fixture emptied: four ``_periodic_check``
-    threads still running at the end of the session, one per manager that
-    does not stop its own. (The twelve that ``test_chain_composition`` used
+    With the fixture emptied, four ``_periodic_check`` threads are still
+    running at the end of the session, one per manager that does not stop
+    its own. (The twelve that ``test_chain_composition`` used
     to leave are counted where they were left, in that file.)
 
     Yields:

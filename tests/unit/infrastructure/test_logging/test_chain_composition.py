@@ -1,11 +1,10 @@
 """
 Which implementations each configured mode actually builds.
 
-Nothing held the audit half before. Every test configuration switches
-logging and auditing off, so the branch that turns a mode into a list of
-implementations was reached by almost nothing. Measured against the suite
-as it stood when this file was written -- with it removed, 1665 tests, and
-before ``test_managers_wire_the_failover_service`` existed, which now
+Every test configuration switches logging and auditing off, so the branch
+that turns a mode into a list of implementations is reached by almost
+nothing else. The audit half is held here and by
+``test_managers_wire_the_failover_service``, which
 catches the first of these as well:
 
 * ``AuditManager``'s ``auto`` branch building nothing -- no auditing at
@@ -165,9 +164,9 @@ class TestTheAuditChain:
     def test_an_unknown_mode_falls_back_to_the_default_pair(self):
         """The logger chain had this test and the audit chain did not.
 
-        Measured: the audit ``else`` branch returning ``["null"]`` left the
-        whole suite green, and a typo in ``AUDIT_TYPE`` -- ``structlogg``,
-        ``syslog``, an empty value -- then wrote no audit record at all,
+        The audit ``else`` branch returning ``["null"]`` passes everything
+        else, and a typo in ``AUDIT_TYPE`` -- ``structlogg``, ``syslog``,
+        an empty value -- then writes no audit record at all,
         for any link created, followed or deleted. Nothing says so either:
         the counters read 0/0/0, because a chain that was never built
         cannot drop a call, and the only word on the health body is
@@ -206,7 +205,7 @@ class TestOffMeansOffWhateverTheSpelling:
 
     @pytest.mark.parametrize("spelling", ["STANDARD", " standard"])
     def test_the_order_modes_are_recognised_too(self, spelling):
-        """``STANDARD`` used to leave the order it was asking to reverse."""
+        """Case and blanks must not decide the order of the chain."""
         assert chain_of(build_logger(spelling)) == [
             "standard", "structlog"
         ]
@@ -215,9 +214,9 @@ class TestOffMeansOffWhateverTheSpelling:
 class TestASlotHoldsTheImplementationItNames:
     """The names are labels; nothing checked what was behind them.
 
-    Measured: building the ``standard`` slot with a ``StructLogger`` -- and
-    the ``standard_audit`` slot with a ``StructlogAuditLogger`` -- left the
-    whole suite green. What that costs is the standby: the failure that
+    Building the ``standard`` slot with a ``StructLogger`` -- and the
+    ``standard_audit`` slot with a ``StructlogAuditLogger`` -- passes
+    everything else. What that costs is the standby: the failure that
     takes the primary down takes its twin down with it, ``execute`` walks
     the whole list and answers ``ALL_SERVICES_FAILED``, every line is lost
     and ``/api/v1/admin/health`` reports ``active: "standard"`` -- so the
@@ -273,9 +272,8 @@ class TestASlotHoldsTheImplementationItNames:
 class TestTheNameTheOperatorIsGivenIsTheOneDoingTheWork:
     """``active`` on the health body, and the only word about the move.
 
-    ``AuditManager.active_name`` had this test; ``LoggerManager`` did not.
-    Measured: reading ``_services[0][1]`` instead of the current one left
-    the suite green, and with it every surface an operator has --
+    Reading ``_services[0][1]`` instead of the current one passes
+    everything else, and with it every surface an operator has --
     ``/api/v1/admin/health`` and the line at start-up both report the
     primary forever, so a chain that handed its work down looks exactly
     like one that never did.
@@ -293,13 +291,37 @@ class TestTheNameTheOperatorIsGivenIsTheOneDoingTheWork:
 
         assert manager.active_name() == "standard_audit"
 
+    def test_one_chain_answers_the_same_with_and_without_failover(self):
+        """The wiring must not decide the vocabulary.
+
+        Without failover the audit chain read its name off the class --
+        ``NullAuditLogger`` -- while the same chain under failover called
+        itself ``null_audit``, and the journal chain beside it in the
+        same answer said ``null``. One field of
+        ``/api/v1/admin/health``, three spellings, chosen by a detail of
+        the wiring that no reader of the answer can see.
+        """
+        assert build_logger("null").get_active_logger_name() == "null"
+        assert build_audit("null").active_name() == "null_audit"
+
+    def test_the_names_are_the_ones_the_chain_was_built_from(self):
+        """The premise: the two above are not a pair of hardcoded words.
+
+        Each chain names itself out of the list it was built from, so a
+        slot renamed there is renamed in the answer too.
+        """
+        manager = build_audit("null")
+        manager._active_audit_name = "renamed"
+
+        assert manager.active_name() == "renamed"
+
 
 class TestTheCountersComeFromTheChain:
     """``counters()`` can be made to answer zero, and nothing noticed.
 
-    Measured: replacing both bodies with ``return 0, 0, 0`` left the whole
-    suite green -- on the numbers introduced precisely so that "records
-    are being lost" stops looking like "everything is fine". The reason is
+    Replacing both bodies with ``return 0, 0, 0`` passes everything else --
+    on the numbers introduced precisely so that "records are being lost"
+    stops looking like "everything is fine". The reason is
     that every other test reads them off a ``FailoverService`` built by
     hand; nothing read them through a manager.
     """

@@ -1,3 +1,4 @@
+from typing import Callable, Optional
 from link_shortener.application import TaskQueue
 from link_shortener.infrastructure.task_queue.celery_queue import CeleryTaskQueue
 from link_shortener.infrastructure.task_queue.null_queue import NullTaskQueue
@@ -21,10 +22,13 @@ class TaskQueueComponent:
         self.celery_enabled = celery_enabled
         self.logger = logger
         self.retry_interval = retry_interval
-        self._queue = None
-        self._update_stats_fn = None
-        self._send_verification_fn = None
-        self._send_account_exists_fn = None
+        # Annotated Optional rather than inferred from these assignments:
+        # each holds None until the first call builds it.
+        self._queue: Optional[TaskQueue] = None
+        self._update_stats_fn: Optional[Callable[..., None]] = None
+        self._send_verification_fn: Optional[Callable[..., None]] = None
+        self._send_password_reset_fn: Optional[Callable[..., None]] = None
+        self._send_account_exists_fn: Optional[Callable[..., None]] = None
 
     def set_update_stats_fn(self, fn) -> None:
         """Set the synchronous stats update function for NullTaskQueue."""
@@ -42,6 +46,16 @@ class TaskQueueComponent:
         self._send_verification_fn = fn
         if self._queue is not None and isinstance(self._queue, NullTaskQueue):
             self._queue.set_send_verification_fn(fn)
+
+    def set_send_password_reset_fn(self, fn) -> None:
+        """Set the synchronous reset-mail function for NullTaskQueue.
+
+        Args:
+            fn: Callable with signature ``(email, token, context)``.
+        """
+        self._send_password_reset_fn = fn
+        if self._queue is not None and isinstance(self._queue, NullTaskQueue):
+            self._queue.set_send_password_reset_fn(fn)
 
     def set_send_account_exists_fn(self, fn) -> None:
         """Set the synchronous notice function for NullTaskQueue.
@@ -72,6 +86,10 @@ class TaskQueueComponent:
                     self._queue.set_update_fn(self._update_stats_fn)
                 if self._send_verification_fn:
                     self._queue.set_send_verification_fn(self._send_verification_fn)
+                if self._send_password_reset_fn:
+                    self._queue.set_send_password_reset_fn(
+                        self._send_password_reset_fn
+                    )
                 if self._send_account_exists_fn:
                     self._queue.set_send_account_exists_fn(
                         self._send_account_exists_fn

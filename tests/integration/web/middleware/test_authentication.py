@@ -1,9 +1,10 @@
 """Integration tests for AuthenticationMiddleware with real DB."""
 
-import pytest
-
+from link_shortener.infrastructure.database.unit_of_work import (
+    SQLAlchemyUnitOfWork,
+)
 from link_shortener.infrastructure.database.models.user_model import UserModel
-from tests.integration.conftest import confirm_email, register_and_login, auth_headers, csrf_headers
+from tests.integration.conftest import confirm_email, auth_headers, csrf_headers
 
 
 def _register_and_get_tokens(client, email, password="StrongPass1!"):
@@ -93,20 +94,53 @@ class TestAuthenticationMiddleware:
         assert r.status_code == 401
 
     def test_expired_token_rejected(self, client):
-        # Create a token with very short expiry
+        """
+        A token whose ``exp`` has passed opens nothing.
+
+        It used to register, sign in and assert that the **fresh** token
+        answered 200 -- line for line the test above it, under a name
+        promising the opposite. Nothing about expiry was exercised, so
+        deleting the ``exp`` check from token validation left it green.
+        The token is aged here the way
+        ``test_a_presented_credential_is_not_ignored`` ages one: minted
+        through the service with a negative lifetime, so it is this
+        service's own signature over a moment that has gone.
+        """
+        import datetime
+
+        from link_shortener.domain.value_objects.email import Email
+
+        app = client.application
         client.post("/api/v1/auth/register", json={
             "email": "exp@example.com", "password": "StrongPass1!"
         })
-        confirm_email(client.application, "exp@example.com")
+        confirm_email(app, "exp@example.com")
         r = client.post("/api/v1/auth/login", json={
             "email": "exp@example.com", "password": "StrongPass1!"
         })
-        token = r.get_json().get("access_token")
-        assert token is not None
+        fresh = r.get_json().get("access_token")
+        assert fresh is not None
 
-        # Token should be valid immediately
-        r = client.get("/api/v1/links/mine", headers=auth_headers(token))
+        with app.app_context():
+            auth = app.container.get_authentication_service()
+            claims = auth.validate_token(fresh, expected_type="access")
+            with app.container.get_uow_factory()(read_only=True) as uow:
+                user = uow.users.find_by_email(Email("exp@example.com"))
+            expired = auth._create_token(
+                user,
+                datetime.timedelta(seconds=-30),
+                "access",
+                session_id=claims["sid"],
+            )
+
+        # The premise: the same account, the same session, the same
+        # signature -- only the moment differs. Without this the assertion
+        # below could be passing for any reason at all.
+        r = client.get("/api/v1/links/mine", headers=auth_headers(fresh))
         assert r.status_code == 200
+
+        r = client.get("/api/v1/links/mine", headers=auth_headers(expired))
+        assert r.status_code == 401, r.get_data(as_text=True)[:200]
 
 
 class TestTokenTypeEnforcement:
@@ -214,3 +248,67 @@ class TestDeactivatedUser:
         assert right.status_code == 401
         assert right.status_code == wrong.status_code
         assert _without_timestamp(right) == _without_timestamp(wrong)
+
+
+class TestADatabaseThatStoppedAnswering:
+    """The hook runs before every view, so its failure is every route's.
+
+    ``load_current_user`` opens a unit of work on every request that
+    carries a token. An outage there used to be a 500 on routes that need
+    no database at all -- ``/health`` among them, whose whole purpose is
+    to report that outage, and which then reported nothing but a crash.
+    The request continues as anonymous instead, and the failure goes to
+    the log.
+
+    The claim was written down in the middleware and measured by nothing.
+
+    The outage is made by breaking ``SQLAlchemyUnitOfWork.__enter__``,
+    not by replacing anything on the container. Everything was wired at
+    application start and holds the factory itself, so a container whose
+    accessor is swapped afterwards hands the new one to nobody -- written
+    that way first, this checked a working database and passed.
+    """
+
+    @staticmethod
+    def _break_it(monkeypatch):
+        """Every unit of work opened from now on fails to open."""
+        def refuses(self):
+            raise RuntimeError("connection to the database was refused")
+
+        monkeypatch.setattr(SQLAlchemyUnitOfWork, "__enter__", refuses)
+
+    def test_the_health_probe_is_not_a_crash(self, app, monkeypatch):
+        """It exists to report an outage, so it must survive one.
+
+        With a token, deliberately: without one the hook returns before
+        it opens anything, so the outage never reaches the branch this
+        is about and the check passes without measuring it -- which is
+        how it was written first.
+        """
+        client = app.test_client()
+        token, _ = _register_and_get_tokens(client, "outage-health@example.com")
+        self._break_it(monkeypatch)
+
+        response = app.test_client().get("/health", headers=auth_headers(token))
+
+        assert response.status_code != 500, response.get_data(as_text=True)
+
+    def test_a_live_token_goes_on_as_anonymous(self, app, monkeypatch):
+        """The account cannot be read, so the caller is nobody.
+
+        Not "let through on the token's word": the token is a signed
+        claim, and what the database was being asked is whether the
+        session behind it still lives and whether the account is still
+        active. With no answer to either, the safe reading is anonymous.
+        """
+        client = app.test_client()
+        token, _ = _register_and_get_tokens(client, "outage-anon@example.com")
+
+        self._break_it(monkeypatch)
+
+        response = app.test_client().get(
+            "/api/v1/links/mine", headers=auth_headers(token)
+        )
+
+        assert response.status_code == 401, response.get_data(as_text=True)
+        assert response.get_json()["error"] == "UNAUTHENTICATED"

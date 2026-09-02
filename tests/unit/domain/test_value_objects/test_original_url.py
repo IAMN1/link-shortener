@@ -42,7 +42,7 @@ class TestOriginalUrl:
 
         with pytest.raises(ValidationError, match=expected_error):
             OriginalUrl(invalid_url)
-    
+
 
     # ------------------------------------------------------------------
     # Port validation
@@ -91,14 +91,13 @@ class TestOriginalUrl:
     def test_valid_ip_address(self, valid_ip_url):
         """Should accept valid IPv4 and IPv6 addresses.
 
-        Public ones. The private, loopback and link-local addresses this
-        list used to carry are refused now -- see
-        ``test_url_internal_targets``.
+        Public ones only: private, loopback and link-local addresses are
+        refused -- see ``test_url_internal_targets``.
         """
 
         url = OriginalUrl(valid_ip_url)
         assert url.value == valid_ip_url
-    
+
 
     # ------------------------------------------------------------------
     # Path containing control characters
@@ -121,14 +120,8 @@ class TestOriginalUrl:
 
 
     # ------------------------------------------------------------------
-    # Tests for get_domain and normalize methods
+    # Tests for normalize
     # ------------------------------------------------------------------
-    def test_get_domain(self):
-        """Should extract domain (hostname) without port."""
-
-        url = OriginalUrl("https://sub.test.com:8080/path")
-        assert url.get_domain() == "sub.test.com"
-
     @pytest.mark.parametrize("url,expected", [
         ("httPs://TesT.com", "https://test.com/"),
         ("https://test.com", "https://test.com/"),
@@ -138,7 +131,7 @@ class TestOriginalUrl:
     ])
     def test_normalize(self, url, expected):
         """
-        Should normalize URL to lowercase scheme/host, 
+        Should normalize URL to lowercase scheme/host,
         add trailing slash if needed, and strip fragment.
         """
 
