@@ -1,4 +1,25 @@
 # syntax=docker/dockerfile:1
+
+# The dependency list is exported from `uv.lock` during the build rather than
+# kept beside it in the repository. A second copy of the lock is a copy that
+# goes stale silently: Dependabot updates the two independently -- the
+# September 2026 group bumped 23 packages in the exported file and none in
+# the lock -- and CI would then test one set of packages while the image
+# shipped another.
+#
+# A stage of its own, so `uv` reaches neither the builder's site-packages nor
+# /usr/local/bin: the runtime stage copies both of those wholesale.
+FROM python:3.12-slim-bookworm AS requirements
+COPY --from=ghcr.io/astral-sh/uv:0.11.14 /uv /usr/local/bin/uv
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+# --frozen reads the lock as it stands and resolves nothing, so the image
+# carries exactly the packages CI installed. `browser` and `contract` are
+# test-only groups and stay out.
+RUN uv export --format requirements-txt --no-hashes --no-emit-project \
+        --frozen --no-group browser --no-group contract \
+        -o /requirements.txt
+
 FROM python:3.12-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -8,10 +29,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 
 WORKDIR /app
-COPY requirements.txt .
+COPY --from=requirements /requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# The package is installed apart from its dependencies: requirements.txt
+# The package is installed apart from its dependencies: the export above
 # only lists those (`uv export --no-emit-project`), and without this step
 # `link_shortener` does not import in the image.
 COPY pyproject.toml README.md ./

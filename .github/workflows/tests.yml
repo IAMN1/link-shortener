@@ -57,24 +57,6 @@ jobs:
         # of the runtime image the way `browser` does.
         run: uv sync --locked --group contract
 
-      - name: Guard requirements.txt against uv.lock
-        # requirements.txt is generated from the same lock file and is what
-        # pip installs into the image. Without this comparison CI tests one
-        # set of packages while the image carries another.
-        #
-        # `grep -v '^#'` drops the two-line header naming the command that
-        # generated the file; the provenance lines (`# via pkg`) are indented
-        # and stay in the comparison.
-        run: |
-          uv export --format requirements-txt --no-hashes --no-emit-project \
-            --frozen --no-group browser --no-group contract \
-            > "$RUNNER_TEMP/requirements.expected"
-          if ! diff -u <(grep -v '^#' requirements.txt) \
-                       <(grep -v '^#' "$RUNNER_TEMP/requirements.expected"); then
-            echo "::error::requirements.txt is stale -- re-run the uv export"
-            exit 1
-          fi
-
       - name: Pre-pull the test stack images
         # tests/support/real_stack.py gives `compose up -d` 60 seconds. That
         # budget was written on a machine where the images were already

@@ -48,7 +48,7 @@ live runs pytest does not collect, and the five things CI enforces beyond
 how the frontend decides what to show, and the load profile with the
 numbers it produced.
 
-**[Decisions](decisions.md)** — one hundred write-ups in the form *what
+**[Decisions](decisions.md)** — one hundred and one write-ups in the form *what
 was decided, why, and what holds it*. Read this one when the code does
 something that looks wrong until you know the reason.
 
