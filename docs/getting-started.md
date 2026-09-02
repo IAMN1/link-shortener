@@ -439,11 +439,13 @@ Two settings are worth knowing before switching a container stack to
 
 ## Using it
 
-Open `http://localhost:5000/`. The page states up front how many links a
-day you get without an account and how long they live — ten and seven days
-by default. A link you just made can be deleted right there, because a
-guest link has nothing to prove ownership with except the token issued
-alongside it.
+Open `http://localhost:5000/`. The page states up front how many links you
+get without an account and how long they live — ten and seven days by
+default. Ten is how many a guest may **hold** inside the window, not how
+many it may make: deleting a link frees its place at once, and an expired
+one keeps its place until it is deleted. A link you just made can be
+deleted right there, because a guest link has nothing to prove ownership
+with except the token issued alongside it.
 
 The **Look up a code** card resolves any short code; its click counters are
 shown only to whoever made the link. The card above it shortens, and its

@@ -70,13 +70,27 @@ leave the column where it was, so the migration is read back in
 ``test_the_name_bound_is_the_width_the_migration_creates``.
 """
 
-ROLE_NAME_PATTERN = r"^[A-Za-z0-9_-]+$"
+ROLE_NAME_PATTERN = r"^[A-Za-z0-9_\-]+$"
 """
 Characters a role name may be made of.
 
 Letters, digits, underscore and hyphen: enough for every name in
 ``roles.yaml`` and for the ones an operator is likely to add, and short of
 anything that has a meaning in a URL path.
+
+The hyphen is escaped, which Python does not need and a browser does. This
+string is handed to the ``pattern`` attribute of the role-name field, and
+HTML compiles that attribute with the ``v`` flag: written ``_-]`` the
+expression does not compile at all, so the browser logs
+``Invalid regular expression ... Invalid character in character class`` on
+every load of the page and then applies **no** client-side check --
+measured, ``bad!`` passed ``checkValidity()``. The three ``pattern``
+attributes written by hand in the templates already escape it; this one
+arrives from here, and did not.
+
+Nothing in the suite could see it: the pattern is valid to `re` and to
+Pydantic either way, and only a browser compiles the attribute. It was
+found by the browser walkthrough of the running stack.
 """
 
 def require_roles_are_assignable(roles: Iterable["Role"]) -> None:

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-02 05:41+0300\n"
+"POT-Creation-Date: 2026-09-02 07:38+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -235,20 +235,20 @@ msgstr ""
 msgid "This would leave the system without an administrator"
 msgstr "После этого система осталась бы без администратора"
 
-#: src/link_shortener/domain/policies/role_policy.py:132
+#: src/link_shortener/domain/policies/role_policy.py:146
 msgid "A role name must be letters, digits, hyphen or underscore"
 msgstr "Имя роли может состоять из букв, цифр, дефиса и подчёркивания"
 
-#: src/link_shortener/domain/policies/role_policy.py:142
+#: src/link_shortener/domain/policies/role_policy.py:156
 #, python-format
 msgid "A role name must be %(least)s to %(most)s characters long"
 msgstr "Имя роли должно быть длиной от %(least)s до %(most)s символов"
 
-#: src/link_shortener/domain/policies/role_policy.py:200
+#: src/link_shortener/domain/policies/role_policy.py:214
 msgid "A role description must be text"
 msgstr "Описание роли должно быть текстом"
 
-#: src/link_shortener/domain/policies/role_policy.py:209
+#: src/link_shortener/domain/policies/role_policy.py:223
 #, python-format
 msgid "A role description must be at most %(most)s characters long"
 msgstr "Описание роли не должно быть длиннее %(most)s символов"

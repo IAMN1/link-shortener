@@ -1157,3 +1157,53 @@ class TestAWildcardOriginWithCredentialsIsRefused:
             "https://attacker.example"
         )
         assert answer.headers.get("Access-Control-Allow-Credentials") == "true"
+
+
+class TestTheGuestLifetimeFitsUnderTheCeiling:
+    """
+    `MAX_TTL_SECONDS` binds every caller except the ones it was written
+    for.
+
+    `_validate_ttl` compares what a caller *asked* for against the
+    ceiling, and the guest ceiling is applied after it -- so a guest that
+    asks for nothing is handed `DEFAULT_GUEST_TTL_SECONDS` with the
+    comparison already behind it. Measured with the two set against each
+    other: a guest asking for 50 seconds was refused for exceeding 10,
+    and a guest asking for nothing got 1000.
+
+    The pair is a contradiction rather than a preference, which is why it
+    is refused here rather than silently reconciled: which of the two a
+    deployment meant is not something this code can know.
+    """
+
+    def test_a_guest_default_above_the_ceiling_is_refused(self, monkeypatch):
+        errors = validation_errors(
+            monkeypatch,
+            ProductionConfig,
+            MAX_TTL_SECONDS="10",
+            DEFAULT_GUEST_TTL_SECONDS="1000",
+        )
+
+        assert "DEFAULT_GUEST_TTL_SECONDS" in errors, errors
+        assert "MAX_TTL_SECONDS" in errors, errors
+
+    def test_equal_is_allowed(self, monkeypatch):
+        """The guest ceiling may *be* the ceiling; it may not exceed it."""
+        errors = validation_errors(
+            monkeypatch,
+            ProductionConfig,
+            MAX_TTL_SECONDS="600",
+            DEFAULT_GUEST_TTL_SECONDS="600",
+        )
+
+        assert "longer than MAX_TTL_SECONDS" not in errors, errors
+
+    def test_the_shipped_defaults_are_not_a_contradiction(self, monkeypatch):
+        """
+        The premise, and the reason this check can be added at all: a
+        rule that refused the values the templates ship would fail every
+        deployment that changed nothing.
+        """
+        errors = validation_errors(monkeypatch, ProductionConfig)
+
+        assert "longer than MAX_TTL_SECONDS" not in errors, errors

@@ -2251,6 +2251,27 @@ class BaseConfig:
                     f"(0 would mean 'never expires'), got {value}"
                 )
 
+        # And the guest lifetime has to fit under the ceiling, because it
+        # is not asked to. ``_validate_ttl`` compares what a caller asked
+        # for against ``MAX_TTL_SECONDS`` and the guest ceiling is applied
+        # after it, so a guest asking for nothing walks straight past the
+        # limit: measured, with MAX_TTL_SECONDS=10 and
+        # DEFAULT_GUEST_TTL_SECONDS=1000, a guest link came out at 1000
+        # seconds while a guest *asking* for 50 was refused for exceeding
+        # 10. The two settings are independent and the pair is a
+        # contradiction, which is the kind of configuration this method
+        # exists to refuse -- the same shape as SHORT_CODE_LENGTH having
+        # to lie between its own two bounds.
+        if 0 < self.MAX_TTL_SECONDS < self.DEFAULT_GUEST_TTL_SECONDS:
+            errors.append(
+                f"DEFAULT_GUEST_TTL_SECONDS is {self.DEFAULT_GUEST_TTL_SECONDS}, "
+                f"which is longer than MAX_TTL_SECONDS "
+                f"({self.MAX_TTL_SECONDS}) -- a guest that asks for no "
+                f"lifetime is given the guest default without it being "
+                f"checked against the ceiling, so the ceiling would apply "
+                f"to everyone except the callers it was written for"
+            )
+
         interval = self.FAILOVER_CHECK_INTERVAL
         if not math.isfinite(interval) or interval <= 0:
             errors.append(

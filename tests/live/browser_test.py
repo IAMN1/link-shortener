@@ -7,7 +7,7 @@ drives the Flask test client, which has no browser in it -- so the twelve
 files that turn an API answer into something a person reads are, as far as
 any other run can tell, empty. Reversing ``data.message || data.error`` in
 all twelve -- putting the machine-readable code back in front of the
-sentence on every form -- leaves the suite green at 5206 and the HTTP run
+sentence on every form -- leaves the suite green at 5209 and the HTTP run
 green at 159/159, and takes this one down to twenty of the sixty-seven
 checks it held when that was measured. The suite size and the HTTP figure
 are the live ones, kept by `test_the_documented_suite_size` and by the
@@ -47,6 +47,7 @@ from werkzeug.serving import make_server
 
 from mail_catcher import MailCatcher
 
+from link_shortener.domain.policies.role_policy import ROLE_NAME_PATTERN
 from link_shortener.infrastructure.configs.app.testing import TestingConfig
 from link_shortener.web.app_factory import create_app
 
@@ -443,7 +444,7 @@ def main() -> int:
 
     # The same guard smoke_test.py carries: a run that stopped checking
     # things prints a green summary otherwise.
-    expected = 69
+    expected = 71
     counted = result.passed + result.failed
     if counted != expected:
         print(f"\nExpected {expected} checks, ran {counted}.")
@@ -2425,6 +2426,49 @@ def run_checks(browser, base: str, mail: MailCatcher, app) -> None:
         ]
 
         assert refusals == [], refusals
+
+    @check("every pattern attribute the pages carry compiles in a browser")
+    def _():
+        # HTML compiles `pattern` with the `v` flag, which forbids an
+        # unescaped hyphen where `_-]` puts one. An attribute that does not
+        # compile is not a weaker check -- it is *no* check: the browser
+        # logs `Invalid regular expression ... Invalid character in
+        # character class` once and then lets every value through.
+        #
+        # Measured on the running stack: with `pattern="[A-Za-z0-9_-]+"`
+        # on the role-name field, `bad!` passed `checkValidity()`. Nothing
+        # in the suite could see it -- the string is valid to `re` and to
+        # Pydantic, and only a browser compiles the attribute.
+        page = page_for("/")
+        verdict = page.evaluate("""() => {
+            const bad = [];
+            for (const el of document.querySelectorAll('[pattern]')) {
+                const p = el.getAttribute('pattern');
+                try { new RegExp('^(?:' + p + ')$', 'v'); }
+                catch (e) { bad.push((el.id || el.name || '?') + ': ' + p); }
+            }
+            return bad;
+        }""")
+
+        assert verdict == [], verdict
+
+    @check("the role-name rule is one a browser can enforce")
+    def _():
+        # The rule itself, not a page that happens to carry it: it reaches
+        # the markup from `role_policy.ROLE_NAME_PATTERN`, and the field it
+        # lands on lives behind a permission this run's account is granted
+        # only for one other check.
+        page = page_for("/")
+        verdict = page.evaluate("""(source) => {
+            let re;
+            try { re = new RegExp('^(?:' + source + ')$', 'v'); }
+            catch (e) { return 'did not compile: ' + e.message; }
+            if (!re.test('my-role')) return 'refused an ordinary name';
+            if (re.test('bad!')) return 'admitted a name with punctuation';
+            return 'ok';
+        }""", ROLE_NAME_PATTERN.strip("^$"))
+
+        assert verdict == "ok", verdict
 
     @check("no page reported a script error to the console")
     def _():
