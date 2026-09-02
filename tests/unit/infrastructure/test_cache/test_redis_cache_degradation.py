@@ -363,7 +363,7 @@ class TestAWriteThatTheServerRefuses:
 
     def test_a_rejected_command_leaves_the_cache_up(self):
         client = Mock()
-        client.setex.side_effect = redis.ResponseError("WRONGTYPE")
+        client.set.side_effect = redis.ResponseError("WRONGTYPE")
         cache = _cache_with_client(client)
 
         cache.save_redirect(ShortCode("abc123"), "https://example.com/x")
@@ -374,7 +374,7 @@ class TestAWriteThatTheServerRefuses:
 
     def test_a_broken_connection_takes_the_cache_down(self):
         client = Mock()
-        client.setex.side_effect = redis.ConnectionError("refused")
+        client.set.side_effect = redis.ConnectionError("refused")
         cache = _cache_with_client(client)
 
         cache.save_redirect(ShortCode("abc123"), "https://example.com/x")

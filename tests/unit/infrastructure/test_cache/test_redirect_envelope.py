@@ -71,7 +71,8 @@ def _stored(client):
     Returns:
         Tuple of TTL in seconds and the decoded JSON payload.
     """
-    key, ttl, value = client.setex.call_args[0]
+    (key, value), kwargs = client.set.call_args
+    ttl = kwargs["ex"]
     payload = unseal(SECRET, key, value)
     assert payload is not None, "the cache wrote something it cannot read back"
     return ttl, json.loads(payload.decode("utf-8"))
@@ -134,7 +135,7 @@ class TestTheEntryCarriesItsOwnExpiry:
 
         with _cache(client) as cache:
             cache.save_redirect(ShortCode(CODE), URL, expires_at)
-            client.get.return_value = client.setex.call_args[0][2]
+            client.get.return_value = client.set.call_args[0][1]
 
             entry = cache.get_redirect(ShortCode(CODE))
 
@@ -186,8 +187,8 @@ class TestTheEntryNeverOutlivesTheLink:
             cache.save_redirect(ShortCode(CODE), URL, expires_at)
 
         # Writing it would only create something that has to be refused on
-        # the way out. SETEX would also reject the non-positive TTL.
-        client.setex.assert_not_called()
+        # the way out. Redis would also reject the non-positive expiry.
+        client.set.assert_not_called()
 
     def test_saving_a_link_caps_its_redirect_entry_too(self):
         # save() writes the redirect key itself; a bare URL on the full
@@ -200,11 +201,11 @@ class TestTheEntryNeverOutlivesTheLink:
             cache.save(_link(expires_in_seconds=30))
 
         redirect_calls = [
-            call for call in pipeline.setex.call_args_list
+            call for call in pipeline.set.call_args_list
             if "redirect" in call[0][0]
         ]
         assert len(redirect_calls) == 1
-        ttl = redirect_calls[0][0][1]
+        ttl = redirect_calls[0][1]["ex"]
         assert 0 < ttl <= 30
 
     def test_saving_an_expired_link_writes_no_redirect_entry(self):
@@ -216,7 +217,7 @@ class TestTheEntryNeverOutlivesTheLink:
             cache.save(_link(expires_in_seconds=-60))
 
         redirect_calls = [
-            call for call in pipeline.setex.call_args_list
+            call for call in pipeline.set.call_args_list
             if "redirect" in call[0][0]
         ]
         assert redirect_calls == []
