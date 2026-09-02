@@ -227,9 +227,13 @@ class TestNoMachineryLeaksIntoOutput:
     def test_a_future_record_attribute_would_be_caught(self):
         """The guard is the derived set, not the two names above.
 
-        Simulates the next release adding an attribute: it must not appear
-        in the output either, which is what a hand-written list could not
-        promise.
+        Two halves, and the docstring used to state only the first and
+        state it backwards. What the derived set catches is an attribute
+        the *machinery* adds -- ``taskName`` arrived that way in 3.12 and
+        put ``"taskName": null`` on every line -- and that one is filtered
+        out. An attribute the machinery does not set is application data
+        and has to come through, which is what the body asserts: a fix
+        that silenced real fields would be the worse defect of the two.
         """
         record = make_record()
         record.someFutureAttr = "added by a later Python"
@@ -241,3 +245,75 @@ class TestNoMachineryLeaksIntoOutput:
         # An attribute the machinery does NOT set is application data and
         # must still come through -- the fix must not silence real fields.
         assert "someFutureAttr" in ConsoleFormatter().format(record)
+
+
+class TestAnExceptionKeepsItsStack:
+    """
+    ``Logger.exception`` promises "with traceback", and under
+    ``LOGGER_TYPE=standard`` there was none.
+
+    Both formatters here build their output from scratch rather than
+    through ``super().format()``, and ``exc_info`` is a standard
+    ``LogRecord`` attribute -- so the extra-field loops skip it and
+    neither ever called ``formatException``. Measured: an exception
+    raised and logged came out as ``{"event": "something blew up"}`` in
+    ``error.log``, which is the file an operator opens for exactly that,
+    and as one line on the console. The structlog chain beside them
+    records ``exc_info``, so the same failure read two ways depending on
+    which adapter the failover happened to be on.
+    """
+
+    def _logged(self, formatter, name):
+        import io
+        import logging
+
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(formatter)
+        logger = logging.getLogger(name)
+        logger.handlers = [handler]
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        try:
+            try:
+                raise ValueError("boom")
+            except ValueError:
+                logger.exception("something blew up")
+            return stream.getvalue()
+        finally:
+            logger.handlers = []
+
+    def test_the_json_line_carries_the_stack(self):
+        import json
+
+        written = self._logged(JSONFormatter(), "probe-json-exc")
+        line = json.loads(written)
+
+        assert line["event"] == "something blew up"
+        assert "ValueError: boom" in line["exc_info"]
+        assert "Traceback" in line["exc_info"]
+
+    def test_an_ordinary_json_line_carries_no_such_field(self):
+        """The other half: a line with no exception must not grow one."""
+        import io
+        import json
+        import logging
+
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(JSONFormatter())
+        logger = logging.getLogger("probe-json-plain")
+        logger.handlers = [handler]
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        logger.info("ordinary")
+        logger.handlers = []
+
+        assert "exc_info" not in json.loads(stream.getvalue())
+
+    def test_the_console_line_carries_the_stack_beneath_it(self):
+        written = self._logged(ConsoleFormatter(), "probe-console-exc")
+
+        assert "something blew up" in written.splitlines()[0]
+        assert "Traceback" in written
+        assert "ValueError: boom" in written

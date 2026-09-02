@@ -286,11 +286,12 @@ class FailoverAuditLoggerProxy(AuditLogger):
     ``dropped_calls`` grows and the chain moves to the standby -- over a
     mistake in this proxy rather than anything wrong with the logger.
 
-    No call site does it today: the five callers of ``_get_audit_logger``
-    pass only ``context``, and ``RequestContext.for_logging`` returns
-    ``request_id``, ``remote_addr``, ``user_agent``, ``request_path``,
-    ``request_method`` and ``user_id``. The guard is for the sixth caller,
-    which will pass ``**extra`` because the signature invites it.
+    No call site does it today: every caller of ``_get_audit_logger`` --
+    there are two dozen -- passes only ``context``, and
+    ``RequestContext.for_logging`` returns ``request_id``,
+    ``remote_addr``, ``user_agent``, ``request_path``, ``request_method``
+    and ``user_id``. The guard is for the caller that passes ``**extra``,
+    which the signature invites.
 
     ``event`` is here for ``log_security_event`` and costs the link events
     nothing: it is not a field any of them writes, and it is not one a

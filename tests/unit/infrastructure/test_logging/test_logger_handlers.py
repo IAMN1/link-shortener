@@ -245,3 +245,65 @@ class TestNullLogger:
     def test_reports_healthy(self):
         """Discarding on purpose is a working state, not a failure."""
         assert NullLogger().is_healthy() is True
+
+
+class TestTheTwoAdaptersReadExcInfoAlike:
+    """
+    ``FailoverService`` swaps these two at will, so one call has to mean
+    one thing.
+
+    The port says ``None`` asks for *no* traceback -- "the renderer skips
+    a falsy value, which is why it is not the default" -- and
+    ``StructLogger`` implemented that. ``StandardLogger`` turned ``None``
+    into ``True``, so the same call captured the current exception on one
+    chain and suppressed it on the other, decided by which one the
+    failover happened to be on at the time.
+    """
+
+    def _written(self, adapter_name):
+        import io
+        import json
+        import logging
+
+        from link_shortener.infrastructure.logging.formatters.json_formatter import (
+            JSONFormatter,
+        )
+        from link_shortener.infrastructure.logging.handlers.logger.standard import (
+            StandardLogger,
+        )
+
+        def write(**kwargs):
+            stream = io.StringIO()
+            handler = logging.StreamHandler(stream)
+            handler.setFormatter(JSONFormatter())
+            logger = logging.getLogger(adapter_name)
+            logger.handlers = [handler]
+            logger.setLevel(logging.DEBUG)
+            logger.propagate = False
+            try:
+                try:
+                    raise ValueError("boom")
+                except ValueError:
+                    StandardLogger(adapter_name).exception("blew up", **kwargs)
+                return json.loads(stream.getvalue())
+            finally:
+                logger.handlers = []
+
+        return write
+
+    def test_none_asks_for_no_traceback(self):
+        write = self._written("probe-exc-none")
+
+        assert "exc_info" not in write(exc_info=None)
+
+    def test_the_default_still_takes_the_exception_being_handled(self):
+        """The other half: the change must not have switched tracebacks
+        off for the callers that pass nothing, which is most of them."""
+        write = self._written("probe-exc-default")
+
+        assert "ValueError: boom" in write()["exc_info"]
+
+    def test_an_instance_is_rendered(self):
+        write = self._written("probe-exc-instance")
+
+        assert "RuntimeError" in write(exc_info=RuntimeError("other"))["exc_info"]

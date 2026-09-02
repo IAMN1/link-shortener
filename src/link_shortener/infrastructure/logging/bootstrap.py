@@ -21,6 +21,7 @@ from link_shortener.infrastructure.logging.utils import UTC_SECONDS
 FOREIGN_PRE_CHAIN: list = [
     structlog.stdlib.add_log_level,
     structlog.stdlib.add_logger_name,
+    structlog.stdlib.ExtraAdder(),
     structlog.processors.TimeStamper(fmt=UTC_SECONDS, utc=True),
 ]
 """What a record gets when it was not made through structlog.
@@ -39,6 +40,26 @@ Those are the lines a reader most wants when something is wrong, and they
 were the ones no filter by time or level could reach. This chain gives
 them the same three fields the application's own records carry, from the
 same constant, so one journal has one shape.
+
+``ExtraAdder`` is the fourth, and it is here for this service's own
+records rather than for a library's. The chain the formatter is built
+from is chosen by ``LOGGER_TYPE``, while the adapter actually writing is
+chosen by the failover -- so the moment ``FailoverService`` demotes
+``structlog`` to ``standard``, which is the whole point of its existence,
+every record this application writes becomes "foreign" to the formatter.
+Without this processor the caller's own fields never arrive: measured,
+``StandardLogger(...).bind(request_id=..., user_id=...).info("Link
+created", short_code=...)`` came out as ``{"event": "Link created",
+"level": "info", "logger": ..., "timestamp": ...}`` and nothing else, and
+an audit record lost ``event_type`` with the rest.
+
+That is worse than a missing timestamp, because ``JournalFilter`` keys on
+exactly those fields. A journal search by event type, account or address
+answers *nothing* rather than "cannot say", and the probe suppression on
+``event_type`` stops firing, so the health probes flood the plain tail --
+a demoted chain quietly makes the audit trail unsearchable, which is the
+one thing ``StandardAuditLogger.log_security_event`` argues against in its
+own docstring.
 """
 
 
@@ -417,11 +438,21 @@ def _setup_error_handler(settings: LoggingSettings, root_logger: logging.Logger)
     Error logs are written to a separate file (error.log) in the same format
     as general application logs (JSON or structured text).
 
+    Gated on ``should_log_to_file`` -- ``log_to_file`` *and* a directory to
+    write into -- which is what the application and audit journals are
+    gated on, and this one was not. With ``LOG_TO_FILE=true`` and an empty
+    ``LOG_DIR`` the other two were skipped in silence while this one went
+    on to ``os.path.join("", ...)`` and failed inside ``os.makedirs("")``,
+    so it became the only entry in ``journals_unavailable()``: the health
+    endpoint reported one broken journal and said nothing about the two
+    that were never attempted, and ``_ensure_a_place_to_write`` put a
+    console handler back on a deployment that had asked for none.
+
     Args:
         settings: LoggingSettings object.
         root_logger: Root logger instance.
     """
-    if not settings.log_to_file:
+    if not settings.should_log_to_file:
         return
 
     error_file = os.path.join(settings.log_dir, f"{settings.error_log_filename}.log")

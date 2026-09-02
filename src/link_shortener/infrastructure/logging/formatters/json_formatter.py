@@ -72,4 +72,24 @@ class JSONFormatter(logging.Formatter):
             except (TypeError, ValueError):
                 # Skip non‑serialisable values
                 continue
+
+        # The traceback, which nothing here rendered. ``exc_info`` is in
+        # ``STANDARD_RECORD_ATTRS``, so the loop above skips it, and this
+        # formatter builds its output from scratch rather than through
+        # ``super().format()`` -- so ``logger.exception("...")`` under
+        # ``LOGGER_TYPE=standard`` wrote the message and no stack at all,
+        # while ``Logger.exception``'s own docstring promises one and the
+        # structlog chain beside it records ``exc_info``. Measured: an
+        # exception raised and logged came out as
+        # ``{"event": "something blew up"}`` with no type, no message and
+        # no frames -- in ``error.log``, which is the file an operator
+        # opens for exactly that.
+        #
+        # Rendered rather than passed through: the tuple holds a live
+        # exception and a traceback object, neither of which is JSON.
+        if record.exc_info:
+            log_entry["exc_info"] = self.formatException(record.exc_info)
+        elif record.exc_text:
+            log_entry["exc_info"] = record.exc_text
+
         return json.dumps(log_entry, ensure_ascii=self.ensure_ascii)

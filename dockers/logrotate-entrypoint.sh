@@ -20,11 +20,17 @@ export AUDIT_LOG_FILENAME="${AUDIT_LOG_FILENAME:-audit}"
 # A journal name is a name, not a path. The application checks these three
 # settings at startup and refuses to come up with a bad one, but the rotator
 # is a separate container: it would come up and rotate `/logs/../anything`
-# while the operator works out why the application did not. The check is the
-# same in meaning as `JOURNAL_NAME` in configs/app/base.py.
+# while the operator works out why the application did not. The check admits
+# and refuses exactly what `JOURNAL_NAME` in configs/app/base.py does, and
+# both halves of that had to be repaired: the pattern there matched with
+# `re.match` against `^...$`, which accepts a trailing newline -- the shape a
+# value read out of a file or a Secret arrives in -- so the application
+# started on `LOG_FILENAME=application\n` and this container exited 1 on the
+# same value. The second branch below is the other half: `.*` refused only a
+# leading dot, so `_app` and `-app` were rotated here and refused there.
 for name in "${LOG_FILENAME}" "${ERROR_LOG_FILENAME}" "${AUDIT_LOG_FILENAME}"; do
     case "${name}" in
-        *[!A-Za-z0-9._-]* | .* | "")
+        *[!A-Za-z0-9._-]* | [!A-Za-z0-9]* | "")
             echo "refusing to rotate: '${name}' is not a journal name" >&2
             exit 1
             ;;

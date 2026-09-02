@@ -113,13 +113,26 @@ class StandardLogger(Logger):
     ) -> None:
         """Log an exception message with traceback.
 
+        ``exc_info`` is passed through, and that is the repair of a
+        disagreement rather than a simplification. The port says ``None``
+        asks for *no* traceback -- "the renderer skips a falsy value,
+        which is why it is not the default" -- and ``StructLogger``
+        implements exactly that. This one turned ``None`` into ``True``,
+        so the same call captured the current exception here and
+        suppressed it there, and ``FailoverService`` swaps between the two
+        at will: one call, two answers, decided by which chain happened to
+        be active. The stdlib reads a falsy ``exc_info`` the way the port
+        means it, so passing it on is all that was needed.
+
         Args:
             message: The log message.
-            exc_info: The exception instance; if ``None`` the current exception
-                is captured.
+            exc_info: What to render a traceback from. ``True`` -- the
+                default -- takes the exception being handled; an exception
+                instance is rendered instead; ``None`` asks for no
+                traceback at all.
             **kwargs: Additional structured data.
         """
-        kwargs["exc_info"] = exc_info if exc_info is not None else True
+        kwargs["exc_info"] = exc_info
         self._log("exception", message, **kwargs)
 
     def is_healthy(self) -> bool:
