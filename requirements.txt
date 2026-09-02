@@ -191,7 +191,7 @@ referencing==0.37.0
     #   openapi-schema-validator
 rfc3339-validator==0.1.4
     # via openapi-schema-validator
-rich==14.2.0
+rich==15.0.0
     # via bandit
 rpds-py==2026.6.3
     # via
