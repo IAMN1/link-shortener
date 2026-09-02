@@ -275,3 +275,26 @@ jobs:
             echo "::error::messages.pot is stale -- re-run the pybabel extract, update and compile"
             exit 1
           fi
+
+  # The runtime image, built and nothing more. Until 1.0.0 the Dockerfile
+  # only copied a committed file and installed from it, and there was
+  # nothing in it to break; it now pulls `uv` from ghcr.io and runs
+  # `uv export` against the lock, and neither of those is exercised
+  # anywhere else -- the suite does not build this image. Both fail loudly,
+  # but without this job they fail on the machine doing a deployment
+  # rather than here.
+  #
+  # A job of its own so it runs beside the others rather than after them,
+  # and once rather than per matrix leg.
+  image:
+    name: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the runtime image
+        # The build context is the repository root, not `dockers/`: the
+        # image takes `src/`, `migrations/`, `alembic.ini` and the lock.
+        run: docker build -f dockers/Dockerfile -t link-shortener:ci .
