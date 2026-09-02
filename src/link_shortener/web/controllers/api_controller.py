@@ -38,7 +38,9 @@ from link_shortener.web.qr import render_svg
 from link_shortener.web.schemas.batch import BatchCreateResponse
 from link_shortener.web.schemas.link import ExtendedLinkInfoResponse, ShortLinkResponse
 from link_shortener.web.schemas.requests import BatchCreateLinkRequest, CreateShortLinkRequest
-from link_shortener.web.schemas.stats import ServiceStatsResponse
+from link_shortener.web.schemas.stats import (
+    MyStatsResponse, ServiceStatsResponse,
+)
 from link_shortener.web.schemas.visit_stats import (
     DailyVisitsResponse, VisitStatsResponse,
 )
@@ -569,9 +571,4 @@ class ApiController:
         user = g.current_user
         context = create_request_context()
         stats = self.admin_service.get_user_activity_stats(user.id, context)
-        return jsonify({
-            "total_links": stats.total_links,
-            "total_clicks": stats.total_clicks,
-            "avg_clicks_per_link": stats.avg_clicks_per_link,
-            "recent_links": [ShortLinkResponse.from_dto(link).model_dump() for link in stats.recent_links]
-        })
+        return jsonify(MyStatsResponse.from_dto(stats).model_dump())

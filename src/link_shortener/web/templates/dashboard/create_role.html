@@ -11,7 +11,18 @@
     <form id="create-role-form">
         <div class="form-group narrow">
             <label class="form-label" for="name">{{ _('Name') }}</label>
-            <input type="text" id="name" class="form-input" required minlength="2" placeholder="editor" spellcheck="false">
+            {# The whole of the server's rule, not a third of it. `pattern`
+               and `maxlength` mirror `role_policy.ROLE_NAME_PATTERN` and
+               `ROLE_NAME_MAX_LENGTH`, which the admin schema is also built
+               from -- the same arrangement the short-code fields on the
+               landing page use. With only `minlength` here, "my role" left
+               the browser happy and came back 400. #}
+            <input type="text" id="name" class="form-input" required
+                   minlength="{{ role_name_min_length }}"
+                   maxlength="{{ role_name_max_length }}"
+                   pattern="{{ role_name_pattern }}"
+                   title="{{ _('Letters, digits, hyphen or underscore') }}"
+                   placeholder="editor" spellcheck="false">
         </div>
         <div class="form-group narrow">
             <label class="form-label" for="description">{{ _('Description') }}</label>

@@ -140,7 +140,6 @@ class ExtendedLinkInfoResponse(BaseModel):
                 "clicks_per_day": 4.17,
                 "last_access_days_ago": 1,
                 "owner_id": "550e8400-e29b-41d4-a716-446655440000",
-                "deletion_token": None
             }
         }
     )

@@ -37,11 +37,16 @@ class BatchCreateLinkRequest(StrictRequest):
         min_length=1,
         max_length=MAX_BATCH_ITEMS,
         description=f"List of URLs to shorten (max {MAX_BATCH_ITEMS})",
-        examples=[
+        # One example, and it is a list -- `examples` holds values *for
+        # this field*, and this field is an array. Written as three bare
+        # strings the schema said a valid `urls` is the string
+        # "https://example.com/so-long-url-1", which is what a client
+        # generated from the document would then send.
+        examples=[[
             "https://example.com/so-long-url-1",
             "https://example.com/so-long-url-2",
             "https://example.com/so-long-url-3"
-        ]
+        ]]
     )
 
     model_config = ConfigDict(

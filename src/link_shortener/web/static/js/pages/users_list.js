@@ -82,8 +82,20 @@
                     resend.disabled = false;
                     return;
                 }
-                var data = await resp.json();
-                resend.replaceWith(document.createTextNode(data.message));
+                // Out of the catalogue, not `data.message`: both bodies
+                // this route answers are literals the API never
+                // translates, so a Russian-speaking operator was told
+                // "Confirmation message sent to ..." in English on a page
+                // drawn in Russian. Which of the two happened is the
+                // status -- 202 means a message is on its way, 200 means
+                // there was nothing to send -- and that distinction is
+                // the whole reason this route answers them apart.
+                var address = row.dataset.userEmail || '';
+                resend.replaceWith(document.createTextNode(
+                    resp.status === 202
+                        ? t('confirmation_sent_to', { email: address })
+                        : t('already_confirmed_nothing_sent', { email: address })
+                ));
             });
         }
     });

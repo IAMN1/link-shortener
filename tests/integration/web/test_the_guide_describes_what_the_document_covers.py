@@ -2,8 +2,8 @@
 What the quick-start guide tells a reader ``/api/docs`` covers.
 
 It said "describes every endpoint". The document describes the JSON API:
-measured on a running service, ``/api/openapi.json`` carried 33 paths --
-32 under ``/api/v1`` and the redirect ``/{short_code}`` beside them --
+measured on a running service, ``/api/openapi.json`` carried 34 paths --
+33 under ``/api/v1`` and the redirect ``/{short_code}`` beside them --
 and ``/health`` was not among them, while the same guide has the reader
 call ``/health`` a hundred lines further down. Neither are the dashboard
 pages, which is the other half of "every".

@@ -118,8 +118,12 @@ def assert_envelope(response, where):
 class TestEveryRefusalToAnAnonymousCaller:
 
     def test_the_route_map_has_routes_to_sweep(self, app):
-        # A sweep over an empty list passes and proves nothing.
-        assert len(api_routes(app)) >= 20
+        # A sweep over an empty list passes and proves nothing -- and a
+        # floor well under what the sweep reaches proves almost as little.
+        # This stood at 20 against 39 routes, so nineteen could go without
+        # a word. Set at the real number, as the neighbouring document
+        # sweeps are.
+        assert len(api_routes(app)) >= 39
 
     def test_each_one_refuses_in_the_envelope(self, app, client):
         # Anything the anonymous caller is allowed to do answers 2xx and is
@@ -134,7 +138,9 @@ class TestEveryRefusalToAnAnonymousCaller:
             assert_envelope(response, f"{method} {path}")
             checked += 1
 
-        assert checked >= 15, f"only {checked} refusals were seen"
+        # 34 is what this reaches; it stood at 15, so more than half the
+        # refusals could stop being refusals in silence.
+        assert checked >= 34, f"only {checked} refusals were seen"
 
 
 class TestRefusalsThatNeedAnAccount:

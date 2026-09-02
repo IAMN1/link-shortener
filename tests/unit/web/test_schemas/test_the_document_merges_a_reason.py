@@ -114,3 +114,69 @@ class TestTheSentenceIsCapitalisedOnce:
         merged = _merge_response({"description": "Not found"}, REASON)
 
         assert merged["description"].endswith(REASON)
+
+
+class TestTheBuiltDocumentSaysEachReasonOnce:
+    """
+    The guard above is exact-substring, and the table is written by hand.
+
+    Six operations declared a 415 of their own worded ``"A body that is
+    not declared application/json"`` while the fold writes ``"a body that
+    is not declared as JSON"`` -- different words for one reason, so the
+    guard missed and the published description read *"A body that is not
+    declared application/json; or a body that is not declared as JSON"*.
+    That is exactly the stutter ``_merge_response`` exists to prevent,
+    arriving through the wording rather than through the logic, and no
+    test of the built document could see it because none read one.
+    """
+
+    def test_every_415_says_it_once(self):
+        """
+        415 has exactly one reason in this document -- the folded one --
+        so a description carrying "; or" there is that reason said twice.
+        The 400 beside it legitimately joins two: a hand-written sentence
+        about *this* operation's body and the folded one about undeclared
+        input, which are different facts.
+        """
+        from link_shortener.web.schemas.openapi import build_openapi
+
+        doubled = []
+        for path, operations in build_openapi("https://x.test")["paths"].items():
+            for method, operation in operations.items():
+                if not isinstance(operation, dict):
+                    continue
+                said = operation.get("responses", {}).get("415", {})
+                said = said.get("description", "")
+                if "; or" in said:
+                    doubled.append((method.upper(), path, said))
+
+        assert doubled == [], doubled
+
+
+class TestAnOperationIsNotPromisedARefusalItCannotMake:
+    """
+    ``/auth/refresh`` and ``/auth/logout`` read their body through
+    ``optional_json_object``, which answers ``{}`` for a request that is
+    not offered as JSON rather than refusing it. The 415 was folded in on
+    "does this operation have a request body", which is a different
+    question -- so the document promised both a refusal neither can make.
+    """
+
+    def test_the_two_lenient_operations_declare_no_415(self):
+        from link_shortener.web.schemas.openapi import build_openapi
+
+        paths = build_openapi("https://x.test")["paths"]
+
+        for path in ("/api/v1/auth/refresh", "/api/v1/auth/logout"):
+            operation = paths[path]["post"]
+            assert "requestBody" in operation, path
+            assert "415" not in operation["responses"], path
+
+    def test_a_strict_operation_still_declares_one(self):
+        """The other half: the fold must not have been switched off."""
+        from link_shortener.web.schemas.openapi import build_openapi
+
+        paths = build_openapi("https://x.test")["paths"]
+
+        assert "415" in paths["/api/v1/shorten"]["post"]["responses"]
+        assert "415" in paths["/api/v1/auth/verify"]["post"]["responses"]

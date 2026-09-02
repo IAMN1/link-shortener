@@ -110,9 +110,6 @@ MODELS: Dict[str, Type[BaseModel]] = {
 """Every schema the API speaks, taken from the models it validates with."""
 
 
-ANONYMOUS_ROLE = "guest"
-"""The role an unauthenticated caller acts under, per ``AuthenticationMiddleware``."""
-
 _PATH_PARAMETER = re.compile(r"<(?:[^:<>]+:)?([^<>]+)>")
 """Flask's ``<name>`` and ``<converter:name>``, as OpenAPI's ``{name}``."""
 
@@ -332,8 +329,10 @@ def documented_paths() -> Dict[str, Any]:
 
     The parameters are the same either way: the two passes that finish the
     document touch ``responses`` and ``security`` and nothing else, so
-    what this returns is what the published document publishes. Measured
-    across all 23 operations that declare a query parameter -- identical.
+    what this returns is what the published document publishes. Compared
+    field by field across all 40 operations in the table, 8 of which
+    declare a query parameter and 22 query parameters between them --
+    identical in every one.
 
     Returns:
         The path table itself. Callers must not edit it: it is module
@@ -407,7 +406,7 @@ decide. Both answer ``400 VALIDATION_ERROR`` with the name of what was
 wrong.
 
 Folded in here for the reason the two above are: OpenAPI 3.x cannot state
-a response once for a document, and typing it into thirty-nine operations
+a response once for a document, and typing it into forty operations
 is how a document falls behind. Measured before this line existed: the
 contract run generated a request with one unknown parameter and got
 ``400`` from operations whose documented answers were ``200, 401, 403,
@@ -478,6 +477,25 @@ def _merge_response(
     return {**existing, "description": f"{described}; or {reason}"}
 
 
+READS_ITS_BODY_LENIENTLY = frozenset({
+    ("/api/v1/auth/refresh", "post"),
+    ("/api/v1/auth/logout", "post"),
+})
+"""Operations that take a body and never refuse one for its media type.
+
+Both read the refresh token from the cookie and fall back to the body only
+for a client that keeps no cookie jar, so both go through
+``optional_json_object``, which answers ``{}`` for a request that is not
+offered as JSON instead of refusing it. The 415 folded in below is keyed on
+an operation *having* a request body, which is not the same question --
+so the document promised these two a refusal neither of them can make.
+
+Named here rather than derived, because what decides it is which reader a
+controller calls, and the document builder cannot see that. A third route
+that reads its body leniently belongs in this set.
+"""
+
+
 def _add_cross_cutting_responses(paths: Dict[str, Any]) -> Dict[str, Any]:
     """
     Fold in the answers every operation can give and few of them declared.
@@ -526,7 +544,10 @@ def _add_cross_cutting_responses(paths: Dict[str, Any]) -> Dict[str, Any]:
                     responses.get("403"), CSRF_REFUSAL
                 )
 
-            if "requestBody" in value:
+            if (
+                "requestBody" in value
+                and (path, key.lower()) not in READS_ITS_BODY_LENIENTLY
+            ):
                 # Flask answers 415 when a body is expected and the
                 # request does not carry `Content-Type: application/json`
                 # -- including when it carries no body at all. Measured by
@@ -867,7 +888,6 @@ PATHS: Dict[str, Any] = {
                 },
                 "400": _error("Malformed body, URL, or ttl_seconds"),
                 "401": _error("The 'guest' role does not carry link:create"),
-                "415": _error("A body that is not declared application/json"),
                 "429": _error("Guest quota spent"),
             },
         }
@@ -889,7 +909,6 @@ PATHS: Dict[str, Any] = {
                 "200": {"description": "Per-item results", **_json("BatchCreateResponse")},
                 "400": _error("Malformed body, or more URLs than the limit"),
                 "401": _error("The 'guest' role does not carry link:create"),
-                "415": _error("A body that is not declared application/json"),
                 "429": _error("Guest quota spent, and no item got through"),
             },
         }
@@ -1506,7 +1525,6 @@ PATHS: Dict[str, Any] = {
                 "403": _error("The caller does not hold admin:manage_users"),
                 "404": _error("No role carries one of those names"),
                 "409": _error("That address is already registered"),
-                "415": _error("A body that is not declared application/json"),
             },
         },
     },
@@ -1570,7 +1588,6 @@ PATHS: Dict[str, Any] = {
                     "No account carries that id, or no role carries one of "
                     "those names"
                 ),
-                "415": _error("A body that is not declared application/json"),
             },
         }
     },
@@ -1705,7 +1722,6 @@ PATHS: Dict[str, Any] = {
                 "401": _error("Nobody is authenticated"),
                 "403": _error("The caller does not hold admin:manage_roles"),
                 "409": _error("A role of that name already exists"),
-                "415": _error("A body that is not declared application/json"),
             },
         },
     },
@@ -1768,7 +1784,6 @@ PATHS: Dict[str, Any] = {
                     "change would leave the system without an administrator"
                 ),
                 "404": _error("No role carries that name"),
-                "415": _error("A body that is not declared application/json"),
             },
         }
     },

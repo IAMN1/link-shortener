@@ -73,7 +73,14 @@
         {% if can('link:view_own') or can('link:create') %}
             <div class="dash-side-section">{{ _('Links') }}</div>
             {% if can('link:view_own') %}
-                {{ nav('dashboard.my_links', 'links', _('My Links')) }}
+                {# One link's own statistics page belongs to this entry:
+                   it is reached from the table here and nowhere else, and
+                   without it in `also` the whole sidebar goes
+                   un-highlighted while it is open -- `aria-current` on
+                   nothing, so a screen reader is told no section is
+                   current. #}
+                {{ nav('dashboard.my_links', 'links', _('My Links'),
+                       ['dashboard.link_stats']) }}
             {% endif %}
             {% if can('link:create') %}
                 {{ nav('dashboard.create_link_form', 'create', _('Create Link')) }}

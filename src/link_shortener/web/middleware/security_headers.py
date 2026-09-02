@@ -99,8 +99,10 @@ POLICY_WITHOUT_SCRIPT = POLICY.format(nonce="").replace(" 'nonce-'", "")
 
 Built once at import. A static file, a redirect or a JSON error carries no
 markup, so there is no inline script to admit and no nonce to name -- and
-naming one anyway put 261 bytes on every asset of every page load to
-describe an allowance nothing could use.
+naming one anyway describes an allowance nothing on that response could
+use. Measured: the policy with a nonce in it is 241 bytes, this one is
+210, so a nonce named on a body with no markup is 31 bytes on every asset
+of every page load, spent to admit an inline script that is not there.
 """
 
 HEADERS = {
@@ -172,10 +174,11 @@ class SecurityHeadersMiddleware:
             # overwrite that decision.
             #
             # A response that rendered no template asked for no nonce, and
-            # naming one there would be 261 bytes of header describing an
-            # allowance nothing can use. Most requests in a page load are
-            # exactly that: `base.html` references five static assets, and
-            # a redirect's body is werkzeug's own stub.
+            # naming one there would be 31 bytes of header describing an
+            # allowance nothing can use -- see `POLICY_WITHOUT_SCRIPT`,
+            # which is what such a response carries instead. Most requests
+            # in a page load are exactly that: `base.html` references five
+            # static assets, and a redirect's body is werkzeug's own stub.
             minted = g.get("csp_nonce")
             response.headers.setdefault(
                 "Content-Security-Policy",

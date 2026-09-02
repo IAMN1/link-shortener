@@ -82,10 +82,23 @@
         {% endif %}
         {% endif %}
 
+        {% if may_create %}
         {# The answer has a place before there is one, so the page says what
-           is about to happen instead of growing a card out of nothing. #}
+           is about to happen instead of growing a card out of nothing.
+           Inside `may_create` with the forms: an account entitled to look
+           links up but not to make them was told "This account may look
+           links up, but not create them" and then, with nothing between
+           the two, "Your short link appears here" -- about a slot only the
+           forms above can ever fill.
+
+           `id="result"` is addressed by nothing in this tree except
+           `tests/live/browser_test.py`, which is the only run that executes
+           the page scripts at all -- it is not collected by pytest, so a
+           sweep that reads only the suite sees an unused id. Removing it
+           takes four of that run's checks down and nothing else notices. #}
         <p data-result-hint class="text-sm text-muted mt-2">{{ _('Your short link appears here.') }}</p>
         <div id="result" data-result class="hidden"></div>
+        {% endif %}
     </section>
 </div>
 
