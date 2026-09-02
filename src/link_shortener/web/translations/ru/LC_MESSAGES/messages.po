@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: link-shortener 0.9.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-02 00:58+0300\n"
+"POT-Creation-Date: 2026-09-02 05:41+0300\n"
 "PO-Revision-Date: 2026-08-16 01:03+0300\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -83,7 +83,7 @@ msgstr "Ссылку не удалось сохранить"
 
 #: src/link_shortener/application/use_cases/journals/read_journal.py:310
 #: src/link_shortener/application/use_cases/security/get_security_counts.py:183
-#: src/link_shortener/web/controllers/api_controller.py:325
+#: src/link_shortener/web/controllers/api_controller.py:327
 #: src/link_shortener/web/security/decorators.py:55
 #: src/link_shortener/web/security/decorators.py:121
 msgid "Not authorized"
@@ -94,7 +94,11 @@ msgstr "Не разрешено"
 msgid "'%(code)s' is reserved by the service and cannot be used as a short code"
 msgstr "Код «%(code)s» занят службой и не может быть коротким кодом"
 
-#: src/link_shortener/application/use_cases/links/create_short_link.py:264
+#: src/link_shortener/application/use_cases/links/create_short_link.py:275
+msgid "ttl_seconds must not be negative"
+msgstr "ttl_seconds не может быть отрицательным"
+
+#: src/link_shortener/application/use_cases/links/create_short_link.py:283
 #, python-format
 msgid "ttl_seconds must not exceed %(max)s"
 msgstr "ttl_seconds не может превышать %(max)s"
@@ -114,64 +118,64 @@ msgstr "Неизвестный период «%(period)s». Выберите о�
 msgid "days must be between 1 and 730, got %(days)s"
 msgstr "days должно быть от 1 до 730, получено %(days)s"
 
-#: src/link_shortener/domain/exceptions.py:180
+#: src/link_shortener/domain/exceptions.py:182
 #, python-format
 msgid "Link with code (%(code)s) not found"
 msgstr "Ссылка с кодом (%(code)s) не найдена"
 
-#: src/link_shortener/domain/exceptions.py:184
+#: src/link_shortener/domain/exceptions.py:186
 #: src/link_shortener/web/middleware/error_handler.py:477
 msgid "Link not found"
 msgstr "Ссылка не найдена"
 
-#: src/link_shortener/domain/exceptions.py:241
+#: src/link_shortener/domain/exceptions.py:243
 #, python-format
 msgid "Short code '%(code)s' is already taken"
 msgstr "Короткий код «%(code)s» уже занят"
 
-#: src/link_shortener/domain/exceptions.py:254
+#: src/link_shortener/domain/exceptions.py:256
 #, python-format
 msgid "Link with code (%(code)s) has expired"
 msgstr "Срок ссылки с кодом (%(code)s) истёк"
 
-#: src/link_shortener/domain/exceptions.py:258
+#: src/link_shortener/domain/exceptions.py:260
 msgid "Link has expired"
 msgstr "Срок ссылки истёк"
 
-#: src/link_shortener/domain/exceptions.py:272
+#: src/link_shortener/domain/exceptions.py:274
 msgid "Guest link limit exceeded"
 msgstr "Превышен гостевой предел ссылок"
 
-#: src/link_shortener/domain/exceptions.py:308
+#: src/link_shortener/domain/exceptions.py:310
 #, python-format
 msgid "User with id %(id)s not found"
 msgstr "Учётная запись с id %(id)s не найдена"
 
-#: src/link_shortener/domain/exceptions.py:336
+#: src/link_shortener/domain/exceptions.py:338
 msgid "Email already registered"
 msgstr "Этот адрес уже зарегистрирован"
 
-#: src/link_shortener/domain/exceptions.py:355
+#: src/link_shortener/domain/exceptions.py:357
 #, python-format
 msgid "Role %(name)s not found"
 msgstr "Роль %(name)s не найдена"
 
-#: src/link_shortener/domain/exceptions.py:374
+#: src/link_shortener/domain/exceptions.py:376
 #, python-format
 msgid "Role %(name)s already exists"
 msgstr "Роль %(name)s уже существует"
 
-#: src/link_shortener/domain/exceptions.py:394
+#: src/link_shortener/domain/exceptions.py:396
 #, python-format
 msgid "Role %(name)s belongs to the service and cannot be modified or deleted"
 msgstr "Роль %(name)s принадлежит службе: её нельзя ни изменить, ни удалить"
 
-#: src/link_shortener/domain/exceptions.py:420
+#: src/link_shortener/domain/exceptions.py:422
 #, python-format
 msgid "Role %(name)s cannot be assigned to an account"
 msgstr "Роль %(name)s нельзя назначить учётной записи"
 
-#: src/link_shortener/domain/exceptions.py:440
+#: src/link_shortener/domain/exceptions.py:442
 #, python-format
 msgid "Permissions not found: %(names)s"
 msgstr "Права не найдены: %(names)s"
@@ -180,25 +184,25 @@ msgstr "Права не найдены: %(names)s"
 msgid "ttl_seconds is too large to be a date"
 msgstr "ttl_seconds слишком велик, чтобы быть датой"
 
-#: src/link_shortener/domain/policies/guest_quota_policy.py:58
+#: src/link_shortener/domain/policies/guest_quota_policy.py:61
 #, python-format
 msgid "Guest link limit of %(limit)s exceeded."
 msgstr "Превышен гостевой предел в %(limit)s ссылок."
 
-#: src/link_shortener/domain/policies/password_policy.py:90
+#: src/link_shortener/domain/policies/password_policy.py:97
 msgid "Password must not be blank"
 msgstr "Пароль не может состоять из одних невидимых символов"
 
-#: src/link_shortener/domain/policies/password_policy.py:101
+#: src/link_shortener/domain/policies/password_policy.py:108
 msgid "Password must not contain a null character"
 msgstr "Пароль не может содержать нулевой символ"
 
-#: src/link_shortener/domain/policies/password_policy.py:109
+#: src/link_shortener/domain/policies/password_policy.py:116
 #, python-format
 msgid "Password must be at least %(count)s characters"
 msgstr "Пароль должен быть не короче %(count)s символов"
 
-#: src/link_shortener/domain/policies/password_policy.py:131
+#: src/link_shortener/domain/policies/password_policy.py:138
 #, python-format
 msgid ""
 "Password must not exceed %(count)s characters, and fewer for alphabets "
@@ -207,7 +211,7 @@ msgstr ""
 "Пароль не должен превышать %(count)s символов — и меньше для "
 "письменностей, которым нужно больше места на символ"
 
-#: src/link_shortener/domain/policies/password_policy.py:142
+#: src/link_shortener/domain/policies/password_policy.py:149
 msgid "Password is too common -- choose one that is not on every attacker's list"
 msgstr ""
 "Пароль слишком распространён — выберите тот, которого нет в списке у "
@@ -218,7 +222,7 @@ msgstr ""
 msgid "You cannot grant permissions you do not hold yourself: %(permissions)s"
 msgstr "Нельзя выдать права, которых нет у вас самих: %(permissions)s"
 
-#: src/link_shortener/domain/policies/privilege_policy.py:225
+#: src/link_shortener/domain/policies/privilege_policy.py:227
 #, python-format
 msgid ""
 "You cannot act on an account holding permissions you do not hold "
@@ -227,24 +231,24 @@ msgstr ""
 "Нельзя распоряжаться учётной записью с правами, которых нет у вас самих: "
 "%(permissions)s"
 
-#: src/link_shortener/domain/policies/privilege_policy.py:245
+#: src/link_shortener/domain/policies/privilege_policy.py:247
 msgid "This would leave the system without an administrator"
 msgstr "После этого система осталась бы без администратора"
 
-#: src/link_shortener/domain/policies/role_policy.py:130
+#: src/link_shortener/domain/policies/role_policy.py:132
 msgid "A role name must be letters, digits, hyphen or underscore"
 msgstr "Имя роли может состоять из букв, цифр, дефиса и подчёркивания"
 
-#: src/link_shortener/domain/policies/role_policy.py:140
+#: src/link_shortener/domain/policies/role_policy.py:142
 #, python-format
 msgid "A role name must be %(least)s to %(most)s characters long"
 msgstr "Имя роли должно быть длиной от %(least)s до %(most)s символов"
 
-#: src/link_shortener/domain/policies/role_policy.py:198
+#: src/link_shortener/domain/policies/role_policy.py:200
 msgid "A role description must be text"
 msgstr "Описание роли должно быть текстом"
 
-#: src/link_shortener/domain/policies/role_policy.py:207
+#: src/link_shortener/domain/policies/role_policy.py:209
 #, python-format
 msgid "A role description must be at most %(most)s characters long"
 msgstr "Описание роли не должно быть длиннее %(most)s символов"
@@ -257,101 +261,101 @@ msgstr "Адрес почты слишком длинный"
 msgid "Invalid email format"
 msgstr "Неверный формат адреса"
 
-#: src/link_shortener/domain/value_objects/original_url.py:172
+#: src/link_shortener/domain/value_objects/original_url.py:193
 msgid "Malformed URL: its authority cannot be parsed"
 msgstr "Неверный адрес: его часть с узлом не разбирается"
 
-#: src/link_shortener/domain/value_objects/original_url.py:213
+#: src/link_shortener/domain/value_objects/original_url.py:234
 #, python-format
 msgid "URL too long (max %(max)s characters)"
 msgstr "Адрес слишком длинный (не больше %(max)s символов)"
 
-#: src/link_shortener/domain/value_objects/original_url.py:236
+#: src/link_shortener/domain/value_objects/original_url.py:257
 msgid "URL contains control characters"
 msgstr "Адрес содержит управляющие символы"
 
-#: src/link_shortener/domain/value_objects/original_url.py:242
+#: src/link_shortener/domain/value_objects/original_url.py:263
 msgid "URL must have a scheme!"
 msgstr "У адреса должна быть схема!"
 
-#: src/link_shortener/domain/value_objects/original_url.py:251
+#: src/link_shortener/domain/value_objects/original_url.py:272
 #, python-format
 msgid "Scheme '%(scheme)s' is not allowed. Allowed schemes: %(allowed)s"
 msgstr "Схема «%(scheme)s» не разрешена. Разрешённые схемы: %(allowed)s"
 
-#: src/link_shortener/domain/value_objects/original_url.py:280
+#: src/link_shortener/domain/value_objects/original_url.py:301
 msgid "URL must not contain credentials before the host"
 msgstr "Адрес не должен содержать учётные данные перед узлом"
 
-#: src/link_shortener/domain/value_objects/original_url.py:319
+#: src/link_shortener/domain/value_objects/original_url.py:340
 msgid "Brackets in a URL enclose an IPv6 address"
 msgstr "Скобки в адресе заключают адрес IPv6"
 
-#: src/link_shortener/domain/value_objects/original_url.py:341
+#: src/link_shortener/domain/value_objects/original_url.py:362
 msgid "URL must have a domain!"
 msgstr "У адреса должен быть домен!"
 
-#: src/link_shortener/domain/value_objects/original_url.py:346
+#: src/link_shortener/domain/value_objects/original_url.py:367
 msgid "Invalid host"
 msgstr "Неверный узел"
 
-#: src/link_shortener/domain/value_objects/original_url.py:348
+#: src/link_shortener/domain/value_objects/original_url.py:369
 msgid "URL must have a hostname"
 msgstr "У адреса должно быть имя узла"
 
-#: src/link_shortener/domain/value_objects/original_url.py:353
-#: src/link_shortener/domain/value_objects/original_url.py:360
+#: src/link_shortener/domain/value_objects/original_url.py:374
+#: src/link_shortener/domain/value_objects/original_url.py:381
 msgid "Invalid port number"
 msgstr "Неверный номер порта"
 
-#: src/link_shortener/domain/value_objects/original_url.py:376
+#: src/link_shortener/domain/value_objects/original_url.py:407
 msgid "Empty host"
 msgstr "Пустой узел"
 
-#: src/link_shortener/domain/value_objects/original_url.py:393
+#: src/link_shortener/domain/value_objects/original_url.py:426
 msgid "Host must contain a dot (e.g., example.com)"
 msgstr "Имя узла должно содержать точку (например, example.com)"
 
-#: src/link_shortener/domain/value_objects/original_url.py:397
+#: src/link_shortener/domain/value_objects/original_url.py:430
 msgid "Host too long"
 msgstr "Имя узла слишком длинное"
 
-#: src/link_shortener/domain/value_objects/original_url.py:403
+#: src/link_shortener/domain/value_objects/original_url.py:436
 msgid "Empty label in host"
 msgstr "Пустая метка в имени узла"
 
-#: src/link_shortener/domain/value_objects/original_url.py:405
+#: src/link_shortener/domain/value_objects/original_url.py:438
 msgid "Label too long"
 msgstr "Метка слишком длинная"
 
-#: src/link_shortener/domain/value_objects/original_url.py:412
+#: src/link_shortener/domain/value_objects/original_url.py:445
 #, python-format
 msgid "Invalid characters in host label: %(label)s"
 msgstr "Недопустимые символы в метке узла: %(label)s"
 
-#: src/link_shortener/domain/value_objects/original_url.py:428
+#: src/link_shortener/domain/value_objects/original_url.py:471
 msgid "Path contains control characters"
 msgstr "Путь содержит управляющие символы"
 
-#: src/link_shortener/domain/value_objects/original_url.py:472
-#: src/link_shortener/domain/value_objects/original_url.py:478
+#: src/link_shortener/domain/value_objects/original_url.py:515
+#: src/link_shortener/domain/value_objects/original_url.py:521
 msgid "URL must point at a public address"
 msgstr "Адрес должен указывать на публичный адрес"
 
-#: src/link_shortener/domain/value_objects/original_url.py:512
+#: src/link_shortener/domain/value_objects/original_url.py:564
 #, python-format
 msgid "Invalid international domain name: %(reason)s"
 msgstr "Неверное международное доменное имя: %(reason)s"
 
-#: src/link_shortener/domain/value_objects/original_url.py:545
-#: src/link_shortener/domain/value_objects/original_url.py:554
-#: src/link_shortener/domain/value_objects/original_url.py:558
-#: src/link_shortener/domain/value_objects/original_url.py:566
-#: src/link_shortener/domain/value_objects/original_url.py:569
+#: src/link_shortener/domain/value_objects/original_url.py:597
+#: src/link_shortener/domain/value_objects/original_url.py:606
+#: src/link_shortener/domain/value_objects/original_url.py:610
+#: src/link_shortener/domain/value_objects/original_url.py:618
+#: src/link_shortener/domain/value_objects/original_url.py:621
 msgid "Invalid IP address in host"
 msgstr "Неверный IP-адрес в узле"
 
-#: src/link_shortener/domain/value_objects/owner_id.py:33
+#: src/link_shortener/domain/value_objects/owner_id.py:39
 msgid "Owner id must not be empty. An owner-less link carries owner=None."
 msgstr ""
 "Идентификатор владельца не может быть пустым. Ссылка без владельца несёт "
@@ -366,7 +370,7 @@ msgstr ""
 "Неверный формат короткого кода: %(value)s. Нужно %(min)s–%(max)s букв, "
 "цифр, подчёркиваний или дефисов."
 
-#: src/link_shortener/domain/value_objects/url_hash.py:38
+#: src/link_shortener/domain/value_objects/url_hash.py:50
 #, python-format
 msgid "Invalid hash format: %(value)s. Must be 64 hex characters."
 msgstr "Неверный формат хеша: %(value)s. Нужно 64 шестнадцатеричных символа."
@@ -404,7 +408,7 @@ msgstr "Отправить не удалось"
 msgid "Not found"
 msgstr "Не найдено"
 
-#: src/link_shortener/web/i18n.py:270 src/link_shortener/web/i18n.py:426
+#: src/link_shortener/web/i18n.py:270 src/link_shortener/web/i18n.py:439
 msgid "Refused"
 msgstr "Отказано"
 
@@ -466,74 +470,84 @@ msgstr "Если этот адрес можно зарегистрировать
 msgid "If that address needs confirming, a link has been sent to it."
 msgstr "Если этот адрес нужно подтвердить, ссылка отправлена на него."
 
-#: src/link_shortener/web/i18n.py:318
+#: src/link_shortener/web/i18n.py:326
+#, python-format
+msgid "Confirmation message sent to %(email)s"
+msgstr "Письмо с подтверждением отправлено на %(email)s"
+
+#: src/link_shortener/web/i18n.py:329
+#, python-format
+msgid "%(email)s is already confirmed; nothing to send"
+msgstr "%(email)s уже подтверждён — отправлять нечего"
+
+#: src/link_shortener/web/i18n.py:331
 msgid "Email confirmed. You can sign in now."
 msgstr "Адрес подтверждён. Теперь можно войти."
 
-#: src/link_shortener/web/i18n.py:319
+#: src/link_shortener/web/i18n.py:332
 #: src/link_shortener/web/templates/dashboard/my_links.html:39
 msgid "No links"
 msgstr "Ссылок нет"
 
-#: src/link_shortener/web/i18n.py:320
+#: src/link_shortener/web/i18n.py:333
 msgid "No links yet"
 msgstr "Ссылок пока нет"
 
-#: src/link_shortener/web/i18n.py:321
+#: src/link_shortener/web/i18n.py:334
 msgid "No links have been visited yet"
 msgstr "По ссылкам ещё не переходили"
 
-#: src/link_shortener/web/i18n.py:322
+#: src/link_shortener/web/i18n.py:335
 msgid "never"
 msgstr "никогда"
 
-#: src/link_shortener/web/i18n.py:323
+#: src/link_shortener/web/i18n.py:336
 msgid "Results"
 msgstr "Результаты"
 
-#: src/link_shortener/web/i18n.py:324
+#: src/link_shortener/web/i18n.py:337
 #: src/link_shortener/web/templates/dashboard/link_stats.html:9
 msgid "Link"
 msgstr "Ссылка"
 
-#: src/link_shortener/web/i18n.py:325
-#: src/link_shortener/web/templates/public/index.html:102
+#: src/link_shortener/web/i18n.py:338
+#: src/link_shortener/web/templates/public/index.html:115
 msgid "Extended"
 msgstr "Подробно"
 
-#: src/link_shortener/web/i18n.py:333
+#: src/link_shortener/web/i18n.py:346
 msgctxt "a link that was just made"
 msgid "Created"
 msgstr "Создана"
 
-#: src/link_shortener/web/i18n.py:334
+#: src/link_shortener/web/i18n.py:347
 msgctxt "a link that already existed"
 msgid "Existing"
 msgstr "Уже была"
 
-#: src/link_shortener/web/i18n.py:335
+#: src/link_shortener/web/i18n.py:348
 msgid "Copy"
 msgstr "Копировать"
 
-#: src/link_shortener/web/i18n.py:336
+#: src/link_shortener/web/i18n.py:349
 #: src/link_shortener/web/templates/dashboard/roles_list.html:48
 #: src/link_shortener/web/templates/dashboard/users_list.html:90
 msgid "Delete"
 msgstr "Удалить"
 
-#: src/link_shortener/web/i18n.py:337
+#: src/link_shortener/web/i18n.py:350
 msgid "Delete this link"
 msgstr "Удалить эту ссылку"
 
-#: src/link_shortener/web/i18n.py:338
+#: src/link_shortener/web/i18n.py:351
 msgid "Only from this page, and only now."
 msgstr "Только с этой страницы и только сейчас."
 
-#: src/link_shortener/web/i18n.py:340
+#: src/link_shortener/web/i18n.py:353
 msgid "This link's traffic is shown to whoever made it."
 msgstr "Переходы по ссылке видит тот, кто её создал."
 
-#: src/link_shortener/web/i18n.py:342
+#: src/link_shortener/web/i18n.py:355
 #: src/link_shortener/web/templates/dashboard/home.html:36
 #: src/link_shortener/web/templates/dashboard/my_links.html:27
 #: src/link_shortener/web/templates/dashboard/my_stats.html:40
@@ -542,7 +556,7 @@ msgstr "Переходы по ссылке видит тот, кто её соз
 msgid "Clicks"
 msgstr "Переходы"
 
-#: src/link_shortener/web/i18n.py:347
+#: src/link_shortener/web/i18n.py:360
 #: src/link_shortener/web/templates/dashboard/home.html:36
 #: src/link_shortener/web/templates/dashboard/link_stats.html:57
 #: src/link_shortener/web/templates/dashboard/my_links.html:28
@@ -552,225 +566,225 @@ msgstr "Переходы"
 msgid "Created"
 msgstr "Создана"
 
-#: src/link_shortener/web/i18n.py:348
+#: src/link_shortener/web/i18n.py:361
 #: src/link_shortener/web/templates/dashboard/link_stats.html:61
 msgid "Last Access"
 msgstr "Последний переход"
 
-#: src/link_shortener/web/i18n.py:349
+#: src/link_shortener/web/i18n.py:362
 msgid "Never"
 msgstr "Никогда"
 
-#: src/link_shortener/web/i18n.py:350
+#: src/link_shortener/web/i18n.py:363
 msgid "Days Old"
 msgstr "Дней с создания"
 
-#: src/link_shortener/web/i18n.py:351
+#: src/link_shortener/web/i18n.py:364
 #: src/link_shortener/web/templates/dashboard/link_stats.html:53
 msgid "Clicks/Day"
 msgstr "Переходов в день"
 
-#: src/link_shortener/web/i18n.py:352
+#: src/link_shortener/web/i18n.py:365
 msgid "Popular"
 msgstr "Популярная"
 
-#: src/link_shortener/web/i18n.py:353
+#: src/link_shortener/web/i18n.py:366
 msgid "Recent"
 msgstr "Свежая"
 
-#: src/link_shortener/web/i18n.py:356
+#: src/link_shortener/web/i18n.py:369
 msgid "Total"
 msgstr "Всего"
 
-#: src/link_shortener/web/i18n.py:357
+#: src/link_shortener/web/i18n.py:370
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:75
 msgid "People"
 msgstr "Люди"
 
-#: src/link_shortener/web/i18n.py:358
+#: src/link_shortener/web/i18n.py:371
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:78
 msgid "Robots"
 msgstr "Роботы"
 
-#: src/link_shortener/web/i18n.py:359
+#: src/link_shortener/web/i18n.py:372
 msgid "No visits in this span"
 msgstr "За этот промежуток переходов не было"
 
-#: src/link_shortener/web/i18n.py:360
+#: src/link_shortener/web/i18n.py:373
 msgid "Try a wider span"
 msgstr "Попробуйте промежуток шире"
 
-#: src/link_shortener/web/i18n.py:361
+#: src/link_shortener/web/i18n.py:374
 msgid "The figures could not be loaded"
 msgstr "Не удалось загрузить данные"
 
-#: src/link_shortener/web/i18n.py:366
+#: src/link_shortener/web/i18n.py:379
 msgid "Others"
 msgstr "Другие"
 
-#: src/link_shortener/web/i18n.py:369
+#: src/link_shortener/web/i18n.py:382
 msgid "As bars"
 msgstr "Полосами"
 
-#: src/link_shortener/web/i18n.py:370
+#: src/link_shortener/web/i18n.py:383
 msgid "As a ring"
 msgstr "Кольцом"
 
-#: src/link_shortener/web/i18n.py:375
+#: src/link_shortener/web/i18n.py:388
 msgid "updated just now"
 msgstr "обновлено только что"
 
-#: src/link_shortener/web/i18n.py:376
+#: src/link_shortener/web/i18n.py:389
 #, python-format
 msgid "updated %(count)s s ago"
 msgstr "обновлено %(count)s с назад"
 
-#: src/link_shortener/web/i18n.py:377
+#: src/link_shortener/web/i18n.py:390
 #, python-format
 msgid "updated %(count)s min ago"
 msgstr "обновлено %(count)s мин назад"
 
-#: src/link_shortener/web/i18n.py:378
+#: src/link_shortener/web/i18n.py:391
 #, python-format
 msgid "every %(interval)s"
 msgstr "каждые %(interval)s"
 
-#: src/link_shortener/web/i18n.py:379
+#: src/link_shortener/web/i18n.py:392
 msgid "auto-refresh off"
 msgstr "автообновление выключено"
 
-#: src/link_shortener/web/i18n.py:382
+#: src/link_shortener/web/i18n.py:395
 #: src/link_shortener/web/templates/dashboard/users_list.html:56
 msgid "Stats"
 msgstr "Статистика"
 
-#: src/link_shortener/web/i18n.py:385
+#: src/link_shortener/web/i18n.py:398
 msgid "QR"
 msgstr "QR"
 
-#: src/link_shortener/web/i18n.py:390
+#: src/link_shortener/web/i18n.py:403
 msgid "Nothing has been written to this journal"
 msgstr "В этот журнал ничего не записано"
 
-#: src/link_shortener/web/i18n.py:391
+#: src/link_shortener/web/i18n.py:404
 msgid "The journal could not be read"
 msgstr "Журнал не удалось прочитать"
 
-#: src/link_shortener/web/i18n.py:395
+#: src/link_shortener/web/i18n.py:408
 msgid "not a record"
 msgstr "не запись"
 
-#: src/link_shortener/web/i18n.py:402
+#: src/link_shortener/web/i18n.py:415
 #, python-format
 msgid "Lines: %(count)s · %(files)s"
 msgstr "Строк: %(count)s · %(files)s"
 
-#: src/link_shortener/web/i18n.py:406
+#: src/link_shortener/web/i18n.py:419
 msgid "Nothing here matched that search"
 msgstr "Ничего подходящего под этот поиск"
 
-#: src/link_shortener/web/i18n.py:410
+#: src/link_shortener/web/i18n.py:423
 #, python-format
 msgid "Found: %(found)s · scanned: %(scanned)s"
 msgstr "Найдено: %(found)s · просмотрено: %(scanned)s"
 
-#: src/link_shortener/web/i18n.py:415
+#: src/link_shortener/web/i18n.py:428
 msgid "Not searched further back than this."
 msgstr "Глубже поиск не заходил."
 
-#: src/link_shortener/web/i18n.py:417
+#: src/link_shortener/web/i18n.py:430
 msgid "This is the start of the journal."
 msgstr "Это начало журнала."
 
-#: src/link_shortener/web/i18n.py:418
+#: src/link_shortener/web/i18n.py:431
 msgid "Older lines exist."
 msgstr "Есть строки старше."
 
-#: src/link_shortener/web/i18n.py:420
+#: src/link_shortener/web/i18n.py:433
 #, python-format
 msgid "Archives reach back to %(name)s."
 msgstr "Архивы уходят до %(name)s."
 
-#: src/link_shortener/web/i18n.py:425
+#: src/link_shortener/web/i18n.py:438
 msgid "Signed in"
 msgstr "Входов"
 
-#: src/link_shortener/web/i18n.py:427
+#: src/link_shortener/web/i18n.py:440
 msgid "Roles changed"
 msgstr "Смены ролей"
 
-#: src/link_shortener/web/i18n.py:428
+#: src/link_shortener/web/i18n.py:441
 msgid "Other events"
 msgstr "Прочие события"
 
-#: src/link_shortener/web/i18n.py:433
+#: src/link_shortener/web/i18n.py:446
 #, python-format
 msgid "Counted: %(since)s — %(until)s"
 msgstr "Подсчитано: %(since)s — %(until)s"
 
-#: src/link_shortener/web/i18n.py:434
+#: src/link_shortener/web/i18n.py:447
 msgid "Security events over time"
 msgstr "События безопасности по времени"
 
-#: src/link_shortener/web/i18n.py:435
+#: src/link_shortener/web/i18n.py:448
 msgid "The counters could not be read"
 msgstr "Счётчики не удалось прочитать"
 
-#: src/link_shortener/web/i18n.py:436
+#: src/link_shortener/web/i18n.py:449
 msgid "answering"
 msgstr "отвечает"
 
-#: src/link_shortener/web/i18n.py:437
+#: src/link_shortener/web/i18n.py:450
 msgid "not answering"
 msgstr "не отвечает"
 
-#: src/link_shortener/web/i18n.py:442
+#: src/link_shortener/web/i18n.py:455
 msgid "timed out"
 msgstr "время вышло"
 
-#: src/link_shortener/web/i18n.py:446
+#: src/link_shortener/web/i18n.py:459
 msgid "not configured"
 msgstr "не настроен"
 
-#: src/link_shortener/web/i18n.py:453
+#: src/link_shortener/web/i18n.py:466
 msgid "answering, no schema"
 msgstr "отвечает, схемы нет"
 
-#: src/link_shortener/web/i18n.py:460
+#: src/link_shortener/web/i18n.py:473
 msgid "in this process only"
 msgstr "только в этом процессе"
 
-#: src/link_shortener/web/i18n.py:461
+#: src/link_shortener/web/i18n.py:474
 msgid "unknown"
 msgstr "неизвестно"
 
-#: src/link_shortener/web/i18n.py:464
+#: src/link_shortener/web/i18n.py:477
 #, python-format
 msgid "Worker process %(pid)s"
 msgstr "Рабочий процесс %(pid)s"
 
-#: src/link_shortener/web/i18n.py:469
+#: src/link_shortener/web/i18n.py:482
 msgid "well at the last check"
 msgstr "здорова на последней проверке"
 
-#: src/link_shortener/web/i18n.py:470
+#: src/link_shortener/web/i18n.py:483
 msgid "reports itself unwell"
 msgstr "сообщает, что нездорова"
 
-#: src/link_shortener/web/i18n.py:473
+#: src/link_shortener/web/i18n.py:486
 msgid "the check itself failed"
 msgstr "сама проверка не удалась"
 
-#: src/link_shortener/web/i18n.py:474
+#: src/link_shortener/web/i18n.py:487
 msgid "not checked yet"
 msgstr "ещё не проверялась"
 
-#: src/link_shortener/web/i18n.py:477
+#: src/link_shortener/web/i18n.py:490
 #, python-format
 msgid "%(active)s · %(finding)s"
 msgstr "%(active)s · %(finding)s"
 
-#: src/link_shortener/web/i18n.py:486
+#: src/link_shortener/web/i18n.py:499
 #, python-format
 msgid "%(journal)s (%(reason)s)"
 msgstr "%(journal)s (%(reason)s)"
@@ -788,12 +802,12 @@ msgstr "Тело запроса должно быть объектом JSON"
 msgid "Confirmation for %(email)s could not be queued"
 msgstr "Не удалось поставить письмо с подтверждением для %(email)s в очередь"
 
-#: src/link_shortener/web/controllers/api_controller.py:430
-#: src/link_shortener/web/controllers/api_controller.py:494
+#: src/link_shortener/web/controllers/api_controller.py:432
+#: src/link_shortener/web/controllers/api_controller.py:496
 msgid "Sign in to see your own statistics"
 msgstr "Войдите, чтобы видеть свою статистику"
 
-#: src/link_shortener/web/controllers/api_controller.py:483
+#: src/link_shortener/web/controllers/api_controller.py:485
 msgid "days must be a whole number"
 msgstr "days должно быть целым числом"
 
@@ -935,8 +949,8 @@ msgstr ""
 "учётной записи, перестают работать через несколько дней."
 
 #: src/link_shortener/web/templates/error.html:28
-#: src/link_shortener/web/templates/public/index.html:109
-#: src/link_shortener/web/templates/public/index.html:120
+#: src/link_shortener/web/templates/public/index.html:122
+#: src/link_shortener/web/templates/public/index.html:133
 msgid "Short code"
 msgstr "Короткий код"
 
@@ -945,8 +959,8 @@ msgid "Try another code"
 msgstr "Попробуйте другой код"
 
 #: src/link_shortener/web/templates/error.html:30
-#: src/link_shortener/web/templates/public/index.html:111
-#: src/link_shortener/web/templates/public/index.html:122
+#: src/link_shortener/web/templates/public/index.html:124
+#: src/link_shortener/web/templates/public/index.html:135
 msgid "Look up"
 msgstr "Найти"
 
@@ -977,18 +991,18 @@ msgstr "24 часа"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:50
 #: src/link_shortener/web/templates/dashboard/create_link.html:18
-#: src/link_shortener/web/templates/dashboard/journals.html:182
+#: src/link_shortener/web/templates/dashboard/journals.html:183
 msgid "7 days"
 msgstr "7 дней"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:51
 #: src/link_shortener/web/templates/dashboard/create_link.html:19
-#: src/link_shortener/web/templates/dashboard/journals.html:184
+#: src/link_shortener/web/templates/dashboard/journals.html:185
 msgid "30 days"
 msgstr "30 дней"
 
 #: src/link_shortener/web/templates/dashboard/_visit_charts.html:52
-#: src/link_shortener/web/templates/dashboard/journals.html:186
+#: src/link_shortener/web/templates/dashboard/journals.html:187
 msgid "90 days"
 msgstr "90 дней"
 
@@ -1053,46 +1067,46 @@ msgstr "Обзор"
 msgid "Links"
 msgstr "Ссылки"
 
-#: src/link_shortener/web/templates/dashboard/base.html:76
+#: src/link_shortener/web/templates/dashboard/base.html:82
 #: src/link_shortener/web/templates/dashboard/home.html:12
 #: src/link_shortener/web/templates/dashboard/my_links.html:5
 msgid "My Links"
 msgstr "Мои ссылки"
 
-#: src/link_shortener/web/templates/dashboard/base.html:79
+#: src/link_shortener/web/templates/dashboard/base.html:86
 #: src/link_shortener/web/templates/dashboard/create_link.html:4
 msgid "Create Link"
 msgstr "Создать ссылку"
 
-#: src/link_shortener/web/templates/dashboard/base.html:84
+#: src/link_shortener/web/templates/dashboard/base.html:91
 msgid "Analytics"
 msgstr "Аналитика"
 
-#: src/link_shortener/web/templates/dashboard/base.html:86
+#: src/link_shortener/web/templates/dashboard/base.html:93
 #: src/link_shortener/web/templates/dashboard/my_stats.html:5
 msgid "My Stats"
 msgstr "Моя статистика"
 
-#: src/link_shortener/web/templates/dashboard/base.html:89
+#: src/link_shortener/web/templates/dashboard/base.html:96
 msgid "Service Stats"
 msgstr "Статистика службы"
 
-#: src/link_shortener/web/templates/dashboard/base.html:100
-#: src/link_shortener/web/templates/dashboard/base.html:101
+#: src/link_shortener/web/templates/dashboard/base.html:107
+#: src/link_shortener/web/templates/dashboard/base.html:108
 #: src/link_shortener/web/templates/dashboard/journals.html:4
 msgid "Journals"
 msgstr "Журналы"
 
-#: src/link_shortener/web/templates/dashboard/base.html:106
+#: src/link_shortener/web/templates/dashboard/base.html:113
 msgid "Administration"
 msgstr "Администрирование"
 
-#: src/link_shortener/web/templates/dashboard/base.html:108
+#: src/link_shortener/web/templates/dashboard/base.html:115
 #: src/link_shortener/web/templates/dashboard/users_list.html:5
 msgid "Users"
 msgstr "Пользователи"
 
-#: src/link_shortener/web/templates/dashboard/base.html:113
+#: src/link_shortener/web/templates/dashboard/base.html:120
 #: src/link_shortener/web/templates/dashboard/create_user.html:20
 #: src/link_shortener/web/templates/dashboard/edit_user.html:15
 #: src/link_shortener/web/templates/dashboard/roles_list.html:6
@@ -1100,43 +1114,43 @@ msgstr "Пользователи"
 msgid "Roles"
 msgstr "Роли"
 
-#: src/link_shortener/web/templates/dashboard/base.html:117
+#: src/link_shortener/web/templates/dashboard/base.html:124
 msgid "Health Check"
 msgstr "Состояние"
 
-#: src/link_shortener/web/templates/dashboard/base.html:125
+#: src/link_shortener/web/templates/dashboard/base.html:132
 #: src/link_shortener/web/templates/dashboard/journals.html:93
 msgid "Account"
 msgstr "Учётная запись"
 
-#: src/link_shortener/web/templates/dashboard/base.html:126
+#: src/link_shortener/web/templates/dashboard/base.html:133
 #: src/link_shortener/web/templates/dashboard/security.html:4
 msgid "Security"
 msgstr "Безопасность"
 
-#: src/link_shortener/web/templates/dashboard/base.html:129
+#: src/link_shortener/web/templates/dashboard/base.html:136
 msgid "Back to Home"
 msgstr "На главную"
 
-#: src/link_shortener/web/templates/dashboard/base.html:130
-#: src/link_shortener/web/templates/dashboard/base.html:131
+#: src/link_shortener/web/templates/dashboard/base.html:137
+#: src/link_shortener/web/templates/dashboard/base.html:138
 #: src/link_shortener/web/templates/layout/base.html:102
 msgid "Log out"
 msgstr "Выйти"
 
-#: src/link_shortener/web/templates/dashboard/base.html:139
+#: src/link_shortener/web/templates/dashboard/base.html:146
 msgid "Expand the menu"
 msgstr "Развернуть меню"
 
-#: src/link_shortener/web/templates/dashboard/base.html:140
+#: src/link_shortener/web/templates/dashboard/base.html:147
 msgid "Collapse"
 msgstr "Свернуть"
 
-#: src/link_shortener/web/templates/dashboard/base.html:159
+#: src/link_shortener/web/templates/dashboard/base.html:166
 msgid "Menu"
 msgstr "Меню"
 
-#: src/link_shortener/web/templates/dashboard/base.html:163
+#: src/link_shortener/web/templates/dashboard/base.html:170
 #: src/link_shortener/web/templates/layout/base.html:106
 #: src/link_shortener/web/templates/public/login.html:8
 #: src/link_shortener/web/templates/public/login.html:21
@@ -1146,7 +1160,7 @@ msgstr "Меню"
 msgid "Log in"
 msgstr "Войти"
 
-#: src/link_shortener/web/templates/dashboard/base.html:164
+#: src/link_shortener/web/templates/dashboard/base.html:171
 #, python-format
 msgid "You are not logged in. %(link)s"
 msgstr "Вы не вошли. %(link)s"
@@ -1202,22 +1216,26 @@ msgstr "Отмена"
 msgid "Name"
 msgstr "Имя"
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:17
+#: src/link_shortener/web/templates/dashboard/create_role.html:24
+msgid "Letters, digits, hyphen or underscore"
+msgstr "Буквы, цифры, дефис или подчёркивание"
+
+#: src/link_shortener/web/templates/dashboard/create_role.html:28
 #: src/link_shortener/web/templates/dashboard/roles_list.html:18
 msgid "Description"
 msgstr "Описание"
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:18
+#: src/link_shortener/web/templates/dashboard/create_role.html:29
 msgid "What this role is for"
 msgstr "Для чего эта роль"
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:21
+#: src/link_shortener/web/templates/dashboard/create_role.html:32
 #: src/link_shortener/web/templates/dashboard/edit_role.html:15
 #: src/link_shortener/web/templates/dashboard/roles_list.html:18
 msgid "Permissions"
 msgstr "Разрешения"
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:22
+#: src/link_shortener/web/templates/dashboard/create_role.html:33
 msgid ""
 "Grouped by what they act on. The whole set used to be one flat column of "
 "ticks."
@@ -1225,7 +1243,7 @@ msgstr ""
 "Сгруппированы по тому, на что действуют. Раньше весь набор был одним "
 "плоским столбцом галочек."
 
-#: src/link_shortener/web/templates/dashboard/create_role.html:26
+#: src/link_shortener/web/templates/dashboard/create_role.html:37
 msgid "Create role"
 msgstr "Создать роль"
 
@@ -1509,20 +1527,20 @@ msgstr "Уровень"
 msgid "Details"
 msgstr "Подробности"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:177
+#: src/link_shortener/web/templates/dashboard/journals.html:178
 msgid "Security events"
 msgstr "События безопасности"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:180
+#: src/link_shortener/web/templates/dashboard/journals.html:181
 msgid "24 h"
 msgstr "24 ч"
 
-#: src/link_shortener/web/templates/dashboard/journals.html:204
+#: src/link_shortener/web/templates/dashboard/journals.html:205
 #, python-format
 msgid "Read from %(name)s, from the end of the file, by polling."
 msgstr "Читается через %(name)s, с конца файла, опросом."
 
-#: src/link_shortener/web/templates/dashboard/journals.html:219
+#: src/link_shortener/web/templates/dashboard/journals.html:220
 msgid ""
 "The audit journal names destination addresses and the accounts that "
 "followed them."
@@ -1530,7 +1548,7 @@ msgstr ""
 "В журнале аудита названы адреса назначения и учётные записи, которые по "
 "ним переходили."
 
-#: src/link_shortener/web/templates/dashboard/journals.html:222
+#: src/link_shortener/web/templates/dashboard/journals.html:223
 msgid ""
 "The application journal names the address of everyone who registered or "
 "signed in."
@@ -2028,41 +2046,41 @@ msgstr[2] "каждая живёт %(days)s дней"
 msgid "%(link)s to keep them"
 msgstr "%(link)s, чтобы сохранить их"
 
-#: src/link_shortener/web/templates/public/index.html:87
+#: src/link_shortener/web/templates/public/index.html:99
 msgid "Your short link appears here."
 msgstr "Короткая ссылка появится здесь."
 
-#: src/link_shortener/web/templates/public/index.html:96
+#: src/link_shortener/web/templates/public/index.html:109
 msgid "Look up a code"
 msgstr "Найти по коду"
 
-#: src/link_shortener/web/templates/public/index.html:97
+#: src/link_shortener/web/templates/public/index.html:110
 msgid ""
 "Where a short code leads, when it was made, how many times it has been "
 "followed."
 msgstr "Куда ведёт короткий код, когда создан, сколько раз по нему перешли."
 
-#: src/link_shortener/web/templates/public/index.html:100
+#: src/link_shortener/web/templates/public/index.html:113
 msgid "How much detail"
 msgstr "Насколько подробно"
 
-#: src/link_shortener/web/templates/public/index.html:101
+#: src/link_shortener/web/templates/public/index.html:114
 msgid "Basic"
 msgstr "Кратко"
 
-#: src/link_shortener/web/templates/public/index.html:124
+#: src/link_shortener/web/templates/public/index.html:137
 msgid "Extended figures are shown for your own links."
 msgstr "Подробные цифры показываются для своих ссылок."
 
-#: src/link_shortener/web/templates/public/index.html:136
+#: src/link_shortener/web/templates/public/index.html:149
 msgid "The whole service is an API"
 msgstr "Вся служба — это API"
 
-#: src/link_shortener/web/templates/public/index.html:137
+#: src/link_shortener/web/templates/public/index.html:150
 msgid "Everything on this page is one call"
 msgstr "Всё на этой странице — один вызов"
 
-#: src/link_shortener/web/templates/public/index.html:139
+#: src/link_shortener/web/templates/public/index.html:152
 #, python-format
 msgid "No SDK and no key ceremony. The full description lives at %(link)s."
 msgstr "Ни SDK, ни возни с ключами. Полное описание — %(link)s."
