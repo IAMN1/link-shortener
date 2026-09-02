@@ -506,7 +506,7 @@ flowchart TD
     end
 ```
 
-Beyond "the tests passed", four things are checked:
+Beyond "the tests passed", five things are checked:
 
 | | Why |
 |---|---|
@@ -514,6 +514,7 @@ Beyond "the tests passed", four things are checked:
 | The exit code of collection, before the count | An interrupted collection prints a plausible number and exits 2 |
 | `--error-for-skips` | A skip is a failure, except for the Docker daemon |
 | The live runs | They are the only thing that walks every routing rule and executes the page scripts |
+| The runtime image builds | The Dockerfile pulls `uv` from ghcr.io and exports the dependency list from `uv.lock`, and nothing else in CI runs either |
 
 The browser run is on the clean half only: it reads nothing from the
 environment, and Chromium is a hundred megabytes to download.
