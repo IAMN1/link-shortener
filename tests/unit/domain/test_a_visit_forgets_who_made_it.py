@@ -135,6 +135,51 @@ class TestAUserAgentIsReducedToThreeFacts:
         )
         assert browser == "edge"
 
+    @pytest.mark.parametrize("user_agent, browser", [
+        ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+         "EdgiOS/120.0 Mobile/15E148 Safari/605.1.15", "edge"),
+        ("Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
+         "AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/16.0.0.0 "
+         "Mobile/15E148 Safari/9537.53", "opera"),
+        ("Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/86 "
+         "Mobile Safari/537.36 OPT/2.3", "opera"),
+    ])
+    def test_a_browser_on_ios_is_not_reported_as_safari(
+        self, user_agent, browser
+    ):
+        """
+        On iOS every browser is WebKit and every string says ``Safari/``,
+        so the family is named by the vendor's own token or not at all.
+        ``crios`` and ``fxios`` were there from the start and ``edgios``,
+        ``opios`` and ``opt`` were not, so Edge and Opera on a phone were
+        both counted as Safari -- measured on the strings above.
+        """
+        assert classify_client(user_agent)[1] == browser
+
+    def test_opera_mini_on_android_is_a_phone(self):
+        """
+        The tablet rule reads an Android string with no ``Mobile`` token as
+        a tablet, and Opera Mini's classic string is the one that carries
+        neither ``Mobile`` nor ``Tablet``: ``Opera/9.80 (Android; Opera
+        Mini/7.5...)``. It was counted as a tablet, which is the same shape
+        of mistake the iPad case above records, in the other direction.
+        """
+        device, browser, _ = classify_client(
+            "Opera/9.80 (Android; Opera Mini/7.5.33361/34.1160; U; en) "
+            "Presto/2.8.119 Version/11.10"
+        )
+
+        assert (device, browser) == ("mobile", "opera")
+
+    def test_an_ordinary_android_tablet_is_still_a_tablet(self):
+        """The other side of the rule the case above narrowed: excluding
+        ``mini`` must not take real tablets with it."""
+        assert classify_client(
+            "Mozilla/5.0 (Linux; Android 13; SM-X710) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120 Safari/537.36"
+        )[0] == "tablet"
+
     @pytest.mark.parametrize("user_agent", [
         "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
         "facebookexternalhit/1.1",

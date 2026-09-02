@@ -145,8 +145,10 @@ def is_privileged(permission: str) -> bool:
     administrative permission nobody classified would leave the accounts
     holding it reachable by anyone who may manage users.
 
-    Two shapes count, and between them they cover every permission this
-    service defines. Everything under ``admin``, ``audit`` and ``logs`` is
+    Two shapes count, and between them they decide every permission this
+    service defines -- ten of the fifteen match one of them and the five
+    named below match neither, which is the answer for those, not a gap.
+    Everything under ``admin``, ``audit`` and ``logs`` is
     authority by the resource it names. Everything ending in ``_any`` is
     authority by reaching past its holder's own rows --
     ``link:delete_own`` is use, ``link:delete_any`` is not.

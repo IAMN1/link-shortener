@@ -65,10 +65,12 @@ class PermissionDeniedError(DomainError):
     table keeps deciding, and a caller sees what it saw before.
 
     Not every 403 is one of these. "This would leave the system without an
-    administrator" and "no account may wear guest" are refusals about the
-    state of the request, not about who is asking, and they stay ordinary
-    domain errors -- a journal that files them as attempted escalation
-    would bury the ones that are.
+    administrator" is a refusal about the state of the service, not about
+    who is asking, and it stays an ordinary ``DomainError`` carrying
+    ``FORBIDDEN`` -- a journal that filed it as attempted escalation would
+    bury the ones that are. "No account may wear guest" is not a 403 at
+    all: ``RoleNotAssignableError`` is answered 400, because the request
+    is well formed and names an operation the service does not perform.
 
     Attributes:
         message: Human-readable description, in English.

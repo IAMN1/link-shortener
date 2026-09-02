@@ -136,6 +136,26 @@ class TestLink:
         assert sample_link.is_recent(days) == expected
 
 
+    def test_a_stored_timestamp_without_a_zone_is_read_as_utc(self, sample_link: Link):
+        """
+        SQLite hands back naive datetimes, which is why ``RefreshSession``
+        and ``EmailVerification`` each attach UTC inside their own
+        ``is_usable``. This entity left it to whoever built it -- three
+        columns in the SQLAlchemy adapter and two in the Redis one -- so a
+        ``Link`` reaching ``is_expired`` with a naive ``expires_at`` raised
+        ``TypeError: can't compare offset-naive and offset-aware
+        datetimes``, on the redirect path, where it is answered 500.
+        """
+        sample_link.expires_at = datetime(2020, 1, 1)
+        assert sample_link.is_expired() is True
+
+        sample_link.expires_at = datetime(2999, 1, 1)
+        assert sample_link.is_expired() is False
+
+        sample_link.created_at = datetime(2020, 1, 1)
+        assert sample_link.is_recent(5) is False
+
+
     def test_equality_based_on_id(
         self, valid_url_hash, valid_short_code, valid_original_url
     ):

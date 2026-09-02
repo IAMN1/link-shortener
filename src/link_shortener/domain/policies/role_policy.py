@@ -1,9 +1,11 @@
 """
 Rules for what a role may be called.
 
-A role name is not only a label: it is the last segment of the URL every
-route that acts on one role is reached through
-(``/api/v1/admin/roles/<role_name>``). Werkzeug's default converter
+A role name is not only a label: it is a path segment of the URL every
+route that acts on one role is reached through --
+``/api/v1/admin/roles/<role_name>``, and the segment before the last on
+``/api/v1/admin/roles/<role_name>/permissions`` and on the panel's
+``/dashboard/roles/<role_name>/edit``. Werkzeug's default converter
 "accepts any string but only one path segment. Thus the string can not
 include a slash" -- so a name with a slash in it names a role no route
 can address: it is created, and then reachable by nothing and removable

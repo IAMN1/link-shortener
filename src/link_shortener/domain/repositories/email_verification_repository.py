@@ -67,7 +67,9 @@ class EmailVerificationRepository(ABC):
 
         Called when a new one is issued, so that an address confirmed by
         the newest link cannot also be confirmed by an older one still
-        sitting in the mailbox.
+        sitting in the mailbox -- and again when an administrator confirms
+        the address outright, which leaves every link already mailed for it
+        with nothing left to confirm.
 
         Args:
             user_id: Account whose confirmations are retired.

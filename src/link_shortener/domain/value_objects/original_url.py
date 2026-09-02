@@ -68,6 +68,24 @@ none of which any resolver would.
 """
 
 
+def _without_root_label(host: str) -> str:
+    """
+    Drop the root label a fully qualified name ends with.
+
+    Args:
+        host: Hostname as parsed out of the URL.
+
+    Returns:
+        The same name without its single trailing dot. A name ending in
+        two of them is returned untouched: the second one really is an
+        empty label, and refusing it is the point of the check that
+        follows.
+    """
+    if host.endswith(".") and not host.endswith(".."):
+        return host[:-1]
+    return host
+
+
 @dataclass(frozen=True)
 class OriginalUrl:
     """
@@ -102,10 +120,13 @@ class OriginalUrl:
     trusted: bool = field(default=False, compare=False, repr=False)
     """``True`` when the value comes from this service's own storage.
 
-    Admission rules -- length, the scheme list, control characters,
-    credentials, the ban on internal destinations -- are then skipped,
-    because they decide what may *enter* and re-deciding them on the way out
-    makes stored rows unreadable. Format rules still run.
+    Everything but parsing is then skipped -- length, the scheme list,
+    control characters, credentials, the ban on internal destinations, and
+    the format rules about the host and the path -- because they decide
+    what may *enter*, and re-deciding them on the way out makes stored rows
+    unreadable. What still runs is ``_parse`` and the demand that there be
+    an authority at all, which is the one rule every version of this object
+    has made: see ``_validate_authority_present`` and ``from_storage``.
     """
 
     def __post_init__(self):
@@ -369,11 +390,23 @@ class OriginalUrl:
         cannot start or end with hyphen, and total length ≤ 253. A name written
         in a national script is checked in its punycode form, which is the
         form that actually travels over DNS.
+
+        A single trailing dot is dropped rather than refused. ``example.com.``
+        is the fully qualified spelling of ``example.com`` -- the root label,
+        which every resolver and every browser accepts -- and splitting on
+        the dots left an empty last label, so the name was refused as
+        ``Empty label in host``: a wrong answer given for a wrong reason.
+        It also left the trailing-dot handling further down this file
+        unreachable, in ``_validate_public_target`` and ``_as_ip_address``,
+        which both expect to meet one. Exactly one dot: ``example.com..``
+        really does carry an empty label and is still refused.
         """
 
         # Validate as a domain name.
         if not host:
             raise ValidationError(N_("Empty host"), field="url")
+
+        host = _without_root_label(host)
 
         # Check if it's a valid IP address (IPv4 or IPv6)
         try:
@@ -417,6 +450,16 @@ class OriginalUrl:
         """Validate that the URL path does not contain control characters.
 
         Control characters (ASCII 0-31 and 127) are not allowed in the path.
+
+        A guard standing behind another one, and the sentence it raises is
+        not one a caller sees: ``_validate_admissible_characters`` asks the
+        same question of the raw string and asks it first, so anything this
+        would catch has already been refused as ``URL contains control
+        characters``. Kept because the two are about different things --
+        that one is about what may be submitted, this one about what the
+        parser handed back -- and because both are skipped together for a
+        stored row, so neither is load-bearing alone. Stated here so that
+        the message is not mistaken for one the API answers with.
 
         Args:
             parsed: The parsed URL result from urllib.parse.urlparse.
@@ -500,6 +543,15 @@ class OriginalUrl:
         Raises:
             ValidationError: If the name cannot be expressed in punycode.
         """
+        # Here as well as in ``_validate_host``, because this is what
+        # ``normalize`` builds the stored form from: left on, the root
+        # label makes ``http://example.com./`` hash differently from
+        # ``http://example.com/`` and take a second short code for one
+        # destination. ``idna.encode`` also refuses a name ending in a dot,
+        # so an international name would be rejected here for carrying the
+        # spelling this one accepts.
+        host = _without_root_label(host)
+
         if host.isascii():
             return host.lower()
 

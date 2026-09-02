@@ -59,6 +59,13 @@ and neither belongs in a domain policy. What this catches is the top of
 every cracking list; what it does not catch is a password that is merely
 weak. Stated rather than implied, because a check like this reads as more
 protection than it gives.
+
+Narrower still than it looks: 48 of these 94 are shorter than
+``MIN_PASSWORD_LENGTH``, and the length check runs first, so those are
+refused for being short and never reach this set at all. They are kept
+because the floor is the reason they are unreachable -- lower it and they
+are the first guesses an attacker makes -- but the working half of this
+list is the other 46.
 """
 
 

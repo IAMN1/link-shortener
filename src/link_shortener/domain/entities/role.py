@@ -23,7 +23,8 @@ class Role:
         permissions: The Permission objects assigned to this role.
     """
     id: str
-    name: str                                           # admin, analyst, user
+    name: str                    # roles.yaml ships guest, user, analyst,
+                                 # auditor, admin
     description: Optional[str] = None
     is_system: bool = False                             # System roles cannot be deleted.
     permissions: Tuple[Permission, ...] = ()
