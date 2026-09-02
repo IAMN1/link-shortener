@@ -70,6 +70,12 @@ class ProductionConfig(BaseConfig):
     # cannot appear in prose here either, because bandit reads whatever
     # follows it as a list of test ids.
     HOST: str = env_str("HOST", "0.0.0.0")  # nosec
+    # 8000 rather than the 5000 every other default uses, and it is
+    # reached only outside the shipped container: ``dockers/Dockerfile``
+    # binds gunicorn with ``${PORT:-5000}`` and the compose file publishes
+    # and health-checks 5000, so with ``PORT`` unset there the server
+    # listens on 5000 while this reports 8000. Both templates document the
+    # difference; a deployment that sets ``PORT`` never meets it.
     PORT: int = env_int("PORT", 8000)
 
     USE_HTTPS: bool = env_bool("USE_HTTPS", True)
@@ -168,12 +174,19 @@ class ProductionConfig(BaseConfig):
     SQLALCHEMY_ECHO: bool = env_bool("SQLALCHEMY_ECHO", False)
 
     # --------------------------------------------------------------------------
-    # Auto-seed roles: disabled – all DB changes via migrations
+    # Auto-seed roles: off, so that a deliberate command puts them there
     # --------------------------------------------------------------------------
     AUTO_SEED_ROLES: bool = env_bool("AUTO_SEED_ROLES", False)
     """
-    In production, we strictly control DB schema and data via migrations.
-    Automatic seeding is disabled to prevent accidental changes.
+    Off, so that the roles table is filled by a command somebody ran
+    rather than by a start-up that happened.
+
+    Not "because migrations do it": no Alembic revision seeds RBAC, which
+    ``AUTO_SEED_ROLES`` in the base configuration states outright. With
+    this off, ``flask db load-custom-roles`` is the way in, and a
+    deployment that does neither comes up with an empty ``roles`` table --
+    which refuses even anonymous shortening.
+
     The profile only sets the default – it stays overridable via env var,
     like every other documented setting.
     """

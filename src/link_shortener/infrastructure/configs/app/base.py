@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote
 
+from babel import Locale, UnknownLocaleError
 from sqlalchemy.engine import URL, make_url
 
 from link_shortener.application.dtos.batch import MAX_BATCH_ITEMS
@@ -17,15 +18,25 @@ from link_shortener.infrastructure.configs.app.env import (
 )
 
 
-JOURNAL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+JOURNAL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 """What a journal may be called.
 
 A name, not a path: the three journal settings are joined to ``LOG_DIR``
 and given a ``.log`` suffix by ``os.path.join``, which is perfectly willing
-to leave the directory if the name asks it to. Anchored at both ends and
-starting on a letter or a digit, so ``..`` and ``./`` are refused along
-with every separator -- a leading dot is refused too, since a journal
-nobody can see is not a journal anybody reads.
+to leave the directory if the name asks it to. The whole name has to match
+and it has to start on a letter or a digit, so ``..`` and ``./`` are
+refused along with every separator -- a leading dot is refused too, since a
+journal nobody can see is not a journal anybody reads.
+
+Matched with ``fullmatch``, for the reason ``short_code.CODE_PATTERN``
+spells out: written ``^...$`` and matched with ``match`` it accepted a name
+with a newline after it, because ``$`` in Python also matches just before a
+trailing newline. A value arriving from a file or a Secret carries one, and
+``LOG_FILENAME='application\n'`` then passed this check and wrote
+``application\n.log`` -- while ``dockers/logrotate-entrypoint.sh``, whose
+own comment says its check "is the same in meaning as ``JOURNAL_NAME``",
+refuses a newline and exits 1. The two were not the same, and the
+application started where the rotator would not.
 """
 
 
@@ -405,7 +416,7 @@ class BaseConfig:
     # ==========================================================================
     # Generated once per process, at import. Every worker therefore gets a
     # different pair, which is why using them is warned about rather than
-    # merely tolerated -- see ``warn_about_default_secrets``.
+    # merely tolerated -- see ``default_secrets_in_use``.
     _default_secret_key: str = secrets.token_hex(32)
     _default_pepper: str = secrets.token_hex(32)
 
@@ -456,13 +467,23 @@ class BaseConfig:
     # ==========================================================================
     HOST: str = env_str("HOST", "localhost")
     """
-    Host address the Flask development server will bind to.
+    Address the server binds to, whichever server is running.
+
+    Not only the development one: ``dockers/Dockerfile`` binds gunicorn
+    with ``--bind ${HOST:-0.0.0.0}:${PORT:-5000}``, and
+    ``ProductionConfig`` overrides this to ``0.0.0.0`` for exactly that
+    reason. The pair also builds ``BASE_URL`` wherever ``DOMAIN`` is
+    unset.
+
     Use "0.0.0.0" to listen on all interfaces (Docker).
     """
 
     PORT: int = env_int("PORT", 5000)
     """
-    Port number the Flask development server will listen on.
+    Port the server listens on, whichever server is running.
+
+    Read by the same three places ``HOST`` is: gunicorn's bind line, the
+    compose file that publishes and health-checks it, and ``BASE_URL``.
     """
 
     USE_HTTPS: bool = env_bool("USE_HTTPS", False)
@@ -742,8 +763,11 @@ class BaseConfig:
 
     A language listed without a catalogue on disk is not an error -- gettext
     falls back to the untranslated text, which is English. The opposite is
-    the real fault, and it is what the deployment check looks for: a
-    catalogue nobody can reach because its language is not named here.
+    the real fault: a catalogue nobody can reach because its language is
+    not named here. Nothing checks for it. ``_language_errors`` asks two
+    questions and neither is this one -- that the list is not empty, and
+    that ``DEFAULT_LANGUAGE`` is in it -- so a catalogue dropped out of
+    this list is silently unreachable and the deployment starts.
     """
 
     DEFAULT_LANGUAGE: str = env_str("DEFAULT_LANGUAGE", "en")
@@ -782,7 +806,11 @@ class BaseConfig:
     DEFAULT_ROLE_NAME: str = env_str("DEFAULT_ROLE_NAME", "user")
     """
     Name of the role assigned to newly registered users.
-    Must exist in the database (created by seed or migrations).
+
+    Must exist in the database. It is put there by ``AUTO_SEED_ROLES`` at
+    start-up or by ``flask db load-custom-roles``, and by nothing else --
+    no Alembic revision seeds RBAC, which is what ``AUTO_SEED_ROLES``
+    twenty lines up says at length.
     """
 
 
@@ -823,7 +851,7 @@ class BaseConfig:
     """
     The window ``LOGIN_ACCOUNT_FAILURE_LIMIT`` is counted over, in seconds.
 
-    Fifteen minutes: long enough that ten guesses an hour is the ceiling a
+    Fifteen minutes: long enough that forty guesses an hour is the ceiling a
     spray meets, short enough that somebody who has locked themselves out
     with typos waits rather than writes in.
     """
@@ -1565,9 +1593,57 @@ class BaseConfig:
         errors.extend(self._log_level_errors())
         errors.extend(self._language_errors())
         errors.extend(self._journal_name_errors())
+        errors.extend(self._session_cookie_errors())
+        errors.extend(self._cors_errors())
 
         return errors
 
+
+    def _cors_errors(self) -> List[str]:
+        """
+        Refuse a deployed profile that opens cross-origin reads to anybody.
+
+        ``app_factory`` installs CORS with ``supports_credentials=True``,
+        which is what lets a browser send the session cookie on a
+        cross-origin call. Paired with ``*`` that is not a wildcard in the
+        usual sense: flask-cors echoes the caller's own ``Origin`` back in
+        ``Access-Control-Allow-Origin`` and adds
+        ``Access-Control-Allow-Credentials: true`` -- measured on the
+        installed version -- so any page on any site can read this
+        service's answers as whoever is signed in.
+
+        Writing stays refused whatever this says, because the CSRF check
+        compares ``Origin`` against these values literally and ``*``
+        matches no origin at all. Reading does not, and reading is enough:
+        the dashboard, the journals and the link lists are all reads.
+
+        Only for deployed profiles, on the reasoning
+        ``_deployed_backend_errors`` sets out: ``development`` is a
+        machine where a wide setting costs nothing, and a profile nobody
+        named resolves to ``development``, so refusing there would land on
+        a developer rather than on a deployment. Both deployed profiles
+        default this to ``[]``, so reaching the refusal takes writing the
+        ``*`` down.
+
+        Returns:
+            List of human-readable error messages (empty for the local
+            profiles, and for any list that names actual origins).
+        """
+        if self.DEBUG or self.TESTING:
+            return []
+
+        if "*" not in [str(origin).strip() for origin in self.CORS_ORIGINS]:
+            return []
+
+        return [
+            "CORS_ORIGINS is '*' while credentials are allowed on "
+            "cross-origin requests, which lets a page on any site read "
+            "this service's answers as the signed-in visitor. Name the "
+            "origins that may call it, comma-separated "
+            "(CORS_ORIGINS=\"https://app.example.com,https://admin.example.com\"), "
+            "or leave it empty for a service that is not called from "
+            "another origin at all."
+        ]
 
     def _journal_name_errors(self) -> List[str]:
         """
@@ -1602,7 +1678,7 @@ class BaseConfig:
             "LOG_FILENAME", "AUDIT_LOG_FILENAME", "ERROR_LOG_FILENAME"
         ):
             name = getattr(self, setting, "")
-            if not JOURNAL_NAME.match(name or ""):
+            if not JOURNAL_NAME.fullmatch(name or ""):
                 errors.append(
                     f"Invalid {setting}: {name!r} -- a journal is named by "
                     "letters, digits, dot, dash and underscore, starting "
@@ -1686,11 +1762,22 @@ class BaseConfig:
         """
         Check that a language can actually be chosen.
 
-        Both faults here are silent at runtime rather than loud: an empty
-        list leaves the negotiator with nothing to match and a default
-        outside the list makes every page fall back to a language the
-        deployment did not offer. Neither raises anywhere -- the pages just
-        come out in the wrong language, which nobody reports as a bug.
+        The first two faults here are silent at runtime rather than loud:
+        an empty list leaves the negotiator with nothing to match and a
+        default outside the list makes every page fall back to a language
+        the deployment did not offer. Neither raises anywhere -- the pages
+        just come out in the wrong language, which nobody reports as a bug.
+
+        The third is the opposite and is why it was added: a tag Babel
+        cannot parse takes the whole service down. ``select_language``
+        hands the negotiated tag to Flask-Babel, which does
+        ``Locale.parse(tag)`` with its default ``_`` separator, so
+        ``SUPPORTED_LANGUAGES=en,pt-BR`` starts cleanly and then answers
+        **500** to the first browser that asks for Portuguese -- every
+        page and the error handler with them, since the handler renders a
+        page too. Measured: ``Locale.parse("pt-br")`` raises ``ValueError:
+        expected only letters``. Written ``pt_BR`` it parses, so the
+        refusal names the spelling that works rather than the language.
 
         Compared case-insensitively: language tags are case-insensitive by
         RFC 5646, and refusing to start over ``DEFAULT_LANGUAGE=EN`` would
@@ -1712,6 +1799,18 @@ class BaseConfig:
                 f"SUPPORTED_LANGUAGES ({', '.join(supported)})"
             )
 
+        for tag in supported:
+            try:
+                Locale.parse(tag)
+            except (ValueError, UnknownLocaleError) as unusable:
+                errors.append(
+                    f"SUPPORTED_LANGUAGES names {tag!r}, which the "
+                    f"catalogue machinery cannot read ({unusable}). A "
+                    f"region is written with an underscore -- pt_BR, not "
+                    f"pt-BR -- and the language itself has to be one Babel "
+                    f"knows"
+                )
+
         return errors
 
 
@@ -1727,6 +1826,37 @@ class BaseConfig:
             return [
                 f"Invalid LOG_LEVEL: {self.LOG_LEVEL} "
                 f"(allowed: {', '.join(allowed_levels)})"
+            ]
+
+        return []
+
+
+    def _session_cookie_errors(self) -> List[str]:
+        """
+        Check that ``SESSION_COOKIE_SAMESITE`` is one of the three words.
+
+        The setting names its own allowed values and nothing checked them,
+        unlike ``LOG_LEVEL`` beside it. Werkzeug does the checking instead,
+        at the moment a cookie is set: ``SESSION_COOKIE_SAMESITE=Bogus``
+        starts cleanly and then raises ``ValueError: SameSite must be
+        'Strict', 'Lax', or 'None'`` out of every response that touches the
+        session -- a 500 per request, from a typo start-up had declared
+        valid.
+
+        Compared exactly rather than case-insensitively, because that is
+        how Werkzeug compares it: ``lax`` is refused there and must be
+        refused here, or this check would pass a value the response layer
+        will not take.
+
+        Returns:
+            List of human-readable error messages.
+        """
+        allowed = ("Strict", "Lax", "None")
+        if self.SESSION_COOKIE_SAMESITE not in allowed:
+            return [
+                f"Invalid SESSION_COOKIE_SAMESITE: "
+                f"{self.SESSION_COOKIE_SAMESITE!r} "
+                f"(allowed: {', '.join(allowed)})"
             ]
 
         return []

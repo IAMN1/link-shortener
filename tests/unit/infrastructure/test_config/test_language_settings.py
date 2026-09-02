@@ -140,6 +140,55 @@ class TestSomethingHasToBeOnOffer:
         assert "SUPPORTED_LANGUAGES" in (refusal(config) or "")
 
 
+class TestATagTheCatalogueMachineryCanCarry:
+    """
+    A language the deployment names has to be one Babel can parse.
+
+    The other two checks in this file catch faults that are silent -- the
+    page comes out in the wrong language and nobody files a bug. This one
+    is the opposite, which is why it exists: ``select_language`` hands the
+    negotiated tag to Flask-Babel, which parses it with ``_`` as the
+    separator, so ``SUPPORTED_LANGUAGES=en,pt-BR`` starts cleanly and then
+    answers **500** to the first browser that asks for Portuguese -- every
+    page, and the error handler with them, since that renders a page too.
+    """
+
+    @pytest.mark.parametrize("tag", ["pt-BR", "zh-Hans", "klingon", "xx"])
+    def test_a_tag_babel_cannot_read_is_refused_at_startup(
+        self, monkeypatch, tag
+    ):
+        config = configure(monkeypatch, SUPPORTED_LANGUAGES=f"en,{tag}")
+
+        assert "SUPPORTED_LANGUAGES" in (refusal(config) or "")
+
+    @pytest.mark.parametrize("tag", ["pt_BR", "zh_Hans", "de", "fr"])
+    def test_a_tag_it_can_read_is_accepted(self, monkeypatch, tag):
+        """The other half: the check must not refuse a language somebody
+        could legitimately add."""
+        config = configure(
+            monkeypatch, SUPPORTED_LANGUAGES=f"en,{tag}", DEFAULT_LANGUAGE="en"
+        )
+
+        assert refusal(config) is None
+
+    def test_the_refusal_names_the_spelling_that_works(self, monkeypatch):
+        """An operator reading this has to know what to write instead, not
+        merely that something was wrong."""
+        config = configure(monkeypatch, SUPPORTED_LANGUAGES="en,pt-BR")
+
+        assert "pt_BR" in (refusal(config) or "")
+
+    def test_babel_really_does_refuse_what_this_refuses(self):
+        """The premise. Without it the list above is four strings this
+        file agrees with itself about."""
+        from babel import Locale
+
+        with pytest.raises(Exception):
+            Locale.parse("pt-br")
+
+        assert str(Locale.parse("pt_BR")) == "pt_BR"
+
+
 class TestTheDefaults:
 
     def test_the_three_languages_are_offered_out_of_the_box(self, monkeypatch):
