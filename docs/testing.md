@@ -244,8 +244,8 @@ What it holds:
 
 Playwright is declared in its own `browser` dependency group rather than in
 `dev`: `uv export` writes the default group and `dev` is that group, so
-everything in `dev` lands in `requirements.txt` and the Dockerfile installs
-exactly that, while a group of its own is written only when it is asked for.
+everything in `dev` lands in the export the image installs from, while a
+group of its own is written only when it is asked for.
 The export names `--no-group browser --no-group contract` as well, which
 says the same thing where a reader of the command can see it. Measured —
 with playwright in `dev` the runtime image grew from 540 MB to 731 MB, for a
@@ -496,8 +496,8 @@ catch tests that read configuration nobody gave them.
 ```mermaid
 flowchart TD
     subgraph clean["clean"]
-        C1[uv sync --locked] --> C2[requirements.txt vs uv.lock]
-        C2 --> C3[count collected tests<br/>minimum 4500] --> C4[pytest --error-for-skips]
+        C1[uv sync --locked] --> C3[count collected tests<br/>minimum 4800]
+        C3 --> C4[pytest --error-for-skips]
         C4 --> C5[smoke_test.py<br/>159 checks] --> C6[browser_test.py<br/>71 checks]
     end
     subgraph hostile["hostile"]
@@ -506,14 +506,13 @@ flowchart TD
     end
 ```
 
-Beyond "the tests passed", five things are checked:
+Beyond "the tests passed", four things are checked:
 
 | | Why |
 |---|---|
 | The number of collected tests, as a floor | "N passed" means nothing until you know how many were collected. A file that stops being collected gives a green run with a smaller N |
 | The exit code of collection, before the count | An interrupted collection prints a plausible number and exits 2 |
 | `--error-for-skips` | A skip is a failure, except for the Docker daemon |
-| `requirements.txt` against `uv.lock` | Otherwise the image ships a different set of packages than CI tested |
 | The live runs | They are the only thing that walks every routing rule and executes the page scripts |
 
 The browser run is on the clean half only: it reads nothing from the

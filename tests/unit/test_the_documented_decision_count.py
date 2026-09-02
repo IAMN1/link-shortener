@@ -49,13 +49,18 @@ TENS = {
 }
 
 WORDED = re.compile(
-    r"\b(" + "|".join(TENS) + r")[- ]?(" + "|".join(ONES) + r")?\b",
+    r"\b(" + "|".join(TENS) + r")(?:\s+(?:and|и)\s+|[- ])?("
+    + "|".join(ONES) + r")?\b",
     re.IGNORECASE,
 )
 """A number written out, in either language.
 
 Both are spelled the same way -- a tens word, optionally a ones word after
-it -- so one pattern reads `ninety-five` and `девяносто пять` alike.
+it -- so one pattern reads `ninety-five` and `девяносто пять` alike. Past a
+hundred English puts an `and` between the two, which the separator has to
+admit or `one hundred and one` reads as a hundred -- wrong in the direction
+that passes. That alternative is tried first: `[- ]` would otherwise match
+the space in front of `and` and leave the ones word unread.
 """
 
 NEAR = re.compile(
